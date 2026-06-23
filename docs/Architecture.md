@@ -81,4 +81,57 @@ graph LR
     ur01 & ur02 & ur03 --> AGG
     re01 & re02 & re03 --> AGG
     co01 & co02 & co03 --> AGG
+
+## Sprint 2 — Concrete Implementations
+
+```mermaid
+classDiagram
+    class AbstractChargingNode {
+        <<abstract>>
+        +config: NodeConfig
+        +collect_data() dict
+        +preprocess(raw) dict
+        +get_status() str
+    }
+
+    class ChargingNode {
+        +protocol_adapter: AbstractProtocolAdapter
+        +collect_data() dict
+        +preprocess(raw) dict
+        +get_status() str
+    }
+
+    class AbstractProtocolAdapter {
+        <<abstract>>
+        +encode(data) bytes
+        +decode(raw) bytes
+        +get_protocol_name() str
+    }
+
+    class OCPP16Adapter {
+        +encode(data) bytes
+        +decode(raw) bytes
+        +get_protocol_name() str
+    }
+
+    class AbstractDataset {
+        <<abstract>>
+        +load(path) None
+        +get_sample(index) dict
+        +__len__() int
+        +get_feature_names() list
+    }
+
+    class ElaadNLDataset {
+        +load(path) None
+        +get_sample(index) dict
+        +__len__() int
+        +get_feature_names() list
+    }
+
+    AbstractChargingNode <|-- ChargingNode
+    AbstractProtocolAdapter <|-- OCPP16Adapter
+    AbstractDataset <|-- ElaadNLDataset
+    ChargingNode --> AbstractProtocolAdapter
+```
 ```

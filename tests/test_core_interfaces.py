@@ -100,3 +100,57 @@ def test_auditor_returns_report():
 def test_auditor_cumulative_epsilon():
     auditor = DummyAuditor()
     assert auditor.get_cumulative_epsilon("highway-01") == 0.1
+
+# --- Test OCPP16Adapter ---
+
+from src.adapters.ocpp16_adapter import OCPP16Adapter
+
+def test_ocpp16_encode_returns_bytes():
+    adapter = OCPP16Adapter()
+    data = {
+        "node_id": "highway-01",
+        "cluster_id": "highway",
+        "session_id": "abc-123",
+        "transaction_id": "tx-456",
+        "timestamp": "2024-01-01T00:00:00+00:00",
+        "voltage_v": 230.0,
+        "current_a": 16.0,
+        "power_kw": 3.68,
+        "energy_kwh": 10.5,
+        "soc_percent": 80.0,
+        "temperature_c": 25.0,
+        "charging_mode": "AC",
+        "error_code": None,
+    }
+    encoded = adapter.encode(data)
+    assert isinstance(encoded, bytes)
+
+def test_ocpp16_decode_roundtrip():
+    adapter = OCPP16Adapter()
+    data = {
+        "node_id": "highway-01",
+        "cluster_id": "highway",
+        "session_id": "abc-123",
+        "transaction_id": "tx-456",
+        "timestamp": "2024-01-01T00:00:00+00:00",
+        "voltage_v": 230.0,
+        "current_a": 16.0,
+        "power_kw": 3.68,
+        "energy_kwh": 10.5,
+        "soc_percent": 80.0,
+        "temperature_c": 25.0,
+        "charging_mode": "AC",
+        "error_code": None,
+    }
+    encoded = adapter.encode(data)
+    decoded = adapter.decode(encoded)
+    assert decoded["node_id"] == "highway-01"
+    assert decoded["cluster_id"] == "highway"
+    assert decoded["session_id"] == "abc-123"
+    assert decoded["voltage_v"] == 230.0
+    assert decoded["soc_percent"] == 80.0
+    assert decoded["charging_mode"] == "AC"
+
+def test_ocpp16_protocol_name():
+    adapter = OCPP16Adapter()
+    assert adapter.get_protocol_name() == "OCPP_16"
