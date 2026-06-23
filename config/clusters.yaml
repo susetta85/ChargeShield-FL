@@ -1,0 +1,16 @@
+clusters:
+  - id: highway
+    name: Highway Cluster
+    nodes: [highway-01, highway-02, highway-03]
+
+  - id: urban
+    name: Urban Cluster
+    nodes: [urban-01, urban-02, urban-03]
+
+  - id: residential
+    name: Residential Cluster
+    nodes: [residential-01, residential-02, residential-03]
+
+  - id: corporate
+    name: Corporate Cluster
+    nodes: [corporate-01, corporate-02, corporate-03]

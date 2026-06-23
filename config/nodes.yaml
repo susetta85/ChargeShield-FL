@@ -1,0 +1,72 @@
+nodes:
+  - id: highway-01
+    cluster: highway
+    location: "A1"
+    max_power_kw: 150
+    protocol: OCPP_16
+
+  - id: highway-02
+    cluster: highway
+    location: "A2"
+    max_power_kw: 150
+    protocol: OCPP_16
+
+  - id: highway-03
+    cluster: highway
+    location: "A3"
+    max_power_kw: 150
+    protocol: OCPP_16
+
+  - id: urban-01
+    cluster: urban
+    location: "B1"
+    max_power_kw: 22
+    protocol: OCPP_16
+
+  - id: urban-02
+    cluster: urban
+    location: "B2"
+    max_power_kw: 22
+    protocol: OCPP_16
+
+  - id: urban-03
+    cluster: urban
+    location: "B3"
+    max_power_kw: 22
+    protocol: OCPP_16
+
+  - id: residential-01
+    cluster: residential
+    location: "C1"
+    max_power_kw: 7
+    protocol: MQTT_v5
+
+  - id: residential-02
+    cluster: residential
+    location: "C2"
+    max_power_kw: 7
+    protocol: MQTT_v5
+
+  - id: residential-03
+    cluster: residential
+    location: "C3"
+    max_power_kw: 7
+    protocol: MQTT_v5
+
+  - id: corporate-01
+    cluster: corporate
+    location: "D1"
+    max_power_kw: 50
+    protocol: OCPP_20
+
+  - id: corporate-02
+    cluster: corporate
+    location: "D2"
+    max_power_kw: 50
+    protocol: OCPP_20
+
+  - id: corporate-03
+    cluster: corporate
+    location: "D3"
+    max_power_kw: 50
+    protocol: OCPP_20

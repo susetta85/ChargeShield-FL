@@ -1,0 +1,6 @@
+framework:
+  name: ChargeShield-FL
+  version: "0.1.0"
+  environment: development   # development | staging | production
+  log_level: INFO
+  seed: 42

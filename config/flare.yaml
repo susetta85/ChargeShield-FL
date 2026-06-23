@@ -1,0 +1,7 @@
+flare:
+  aggregation: FedAvg
+  rounds: 100
+  min_clients: 3
+  local_epochs: 5
+  learning_rate: 0.01
+  batch_size: 32

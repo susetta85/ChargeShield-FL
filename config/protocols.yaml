@@ -1,0 +1,16 @@
+protocols:
+  OCPP_16:
+    version: "1.6"
+    transport: WebSocket
+    encoding: JSON
+
+  OCPP_20:
+    version: "2.0.1"
+    transport: WebSocket
+    encoding: JSON
+
+  MQTT_v5:
+    version: "5.0"
+    transport: TCP
+    encoding: binary
+    qos: 1

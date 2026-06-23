@@ -1,0 +1,14 @@
+datasets:
+  elaadnl:
+    name: ElaadNL
+    path: datasets/elaadnl/
+    format: csv
+    features: [session_id, start_time, end_time, total_energy_kwh, max_power_kw]
+    target: anomaly_label
+
+  acn:
+    name: ACN-Data
+    path: datasets/acn/
+    format: csv
+    features: [session_id, site_id, user_id, energy_kwh, peak_power_kw]
+    target: anomaly_label

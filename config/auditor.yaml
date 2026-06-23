@@ -1,0 +1,10 @@
+auditor:
+  enabled: true
+  dp:
+    mechanism: Gaussian
+    epsilon: 1.0
+    delta: 1.0e-5
+    max_grad_norm: 1.0
+  attacks:
+    - FedMIA
+  alert_threshold: 0.7
