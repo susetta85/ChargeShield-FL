@@ -1,0 +1,43 @@
+[project]
+name = "chargeshield-fl"
+version = "0.1.0"
+description = "Privacy Auditing Framework for Federated Learning in OT Environments"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    {name = "Assunta Imperatrice", email = "assunta.imperatrice@imtlucca.it"}
+]
+requires-python = ">=3.10"
+keywords = ["Federated Learning", "Privacy", "IDS", "EV-charging", "FLARE"]
+
+dependencies = [
+"numpy>=1.24",
+    "pyyaml>=6.0",
+    "torch>=2.0",
+    "scikit-learn>=1.3",
+    "pandas>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "mypy>=1.0",
+    "ruff>=0.1",
+]
+flare = [
+    "nvflare>=2.4",
+]
+
+
+[build-system]
+
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+

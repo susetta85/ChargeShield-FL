@@ -1,0 +1,24 @@
+CHARGESHIELD-FL - DECISIONS
+
+Project name: ChargeShield-FL
+
+Meaning: Protection layer for EV charging infrastructures through
+Federated Learning privacy auditing.
+
+Environment: - Containerlab - Docker containers - NVIDIA FLARE
+
+Architecture: - Modular - Adapter Pattern - Plugin Pattern
+
+Datasets: 1. ElaadNL 2. ACN-Data
+
+Threat model: Honest-but-curious aggregator
+
+Privacy attack: FedMIA
+
+Initial deployment: 10 charging station nodes
+
+Future scalability: 100+ nodes without architectural changes
+
+Immediate next activities: 1. Repository refactoring 2. Folder redesign
+3. Base Node class 4. ProtocolAdapter interface 5. OCPP adapter 6.
+Containerlab topology

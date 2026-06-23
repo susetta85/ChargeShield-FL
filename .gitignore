@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual env
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+
+# Testing
+.pytest_cache/
+.coverage
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# Docker
+docker-data/
+
+# Containerlab
+clab-*/
+
+# Datasets
+datasets/raw/
+
+# NVFlare
+workspace/
+startup/
+prod_*/
