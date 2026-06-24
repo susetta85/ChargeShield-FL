@@ -214,3 +214,79 @@ intercettati, rendendo il MIA più difficile.
 | FLARE + DP | Contromisura | 3 |
 | Containerlab | Infrastruttura | 3 |
 
+## Sprint 4 — FedMIA, ChargingIDS, Autoencoder, Esperimenti
+
+```mermaid
+classDiagram
+
+    class AbstractIDS {
+        <<abstract>>
+        +analyze(report) IDSAlert
+        +update_baseline(node_id, report) None
+        +get_node_risk_score(node_id) float
+        +reset() None
+    }
+
+    class ChargingIDS {
+        -baselines: dict
+        -risk_scores: dict
+        -alert_threshold: float
+        +analyze(report) IDSAlert
+        +update_baseline(node_id, report) None
+        +get_node_risk_score(node_id) float
+        +reset() None
+    }
+
+    class FedMIA {
+        -shadow_model: Autoencoder
+        -attack_threshold: float
+        +run_attack(node_id, gradients) MIAResult
+        +train_shadow_model(dataset) None
+        +compute_membership_score(gradient) float
+    }
+
+    class Autoencoder {
+        -encoder: Sequential
+        -decoder: Sequential
+        -threshold: float
+        +forward(x) Tensor
+        +reconstruction_error(x) float
+        +is_anomaly(x) bool
+        +fit(dataloader) None
+    }
+
+    class MIAResult {
+        +node_id: str
+        +round_id: int
+        +membership_score: float
+        +is_member: bool
+        +confidence: float
+    }
+
+    AbstractIDS <|-- ChargingIDS
+    ChargingIDS --> FedMIA
+    FedMIA --> Autoencoder
+    FedMIA --> MIAResult
+```
+
+## Flusso completo Sprint 4
+
+```mermaid
+sequenceDiagram
+    participant N as ChargingNode
+    participant FL as FLAREConnector
+    participant PA as PrivacyAuditor
+    participant IDS as ChargingIDS
+    participant MIA as FedMIA
+
+    N->>FL: model update (gradiente autoencoder)
+    FL->>FL: applica DP (Gaussian noise)
+    FL->>PA: intercetta gradiente
+    PA->>PA: calcola sensitivity + epsilon
+    PA->>IDS: AuditReport
+    IDS->>MIA: gradiente sospetto?
+    MIA->>MIA: calcola membership score
+    MIA->>IDS: MIAResult
+    IDS->>FL: IDSAlert (MONITOR|THROTTLE|EXCLUDE)
+    FL->>FL: FedAvg (solo nodi approvati)
+```

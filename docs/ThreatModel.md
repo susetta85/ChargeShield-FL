@@ -110,3 +110,28 @@ causando aggregazioni incomplete o asimmetriche.
 - Attacchi fisici alle colonnine
 - Compromissione del server aggregatore
 - Side-channel attacks sull'hardware
+## Implementazione Sprint 4
+
+### FedMIA — Attacco completo
+**File:** `src/plugins/attacks/fedmia.py`
+
+Implementa l'attacco descritto in Shokri et al. (IEEE S&P 2017).
+
+Fasi dell'attacco:
+1. Addestra un shadow model sul dataset pubblico ACN-Data
+2. Usa il shadow model per generare gradienti di riferimento
+3. Confronta i gradienti del nodo target con quelli del shadow model
+4. Calcola un membership score (0.0 = non membro, 1.0 = membro)
+
+### ChargingIDS — Difesa concreta
+**File:** `src/ids/charging_ids.py`
+
+Riceve AuditReport dal PrivacyAuditor e decide per ogni nodo:
+- **MONITOR** → comportamento anomalo ma non critico
+- **THROTTLE** → limita la partecipazione ai round FL
+- **EXCLUDE** → esclude il nodo dall'aggregazione
+
+Strategie di rilevamento:
+- Anomalia sulla norma L2 del gradiente rispetto alla baseline del cluster
+- Privacy score sotto soglia configurabile
+- Pattern FedMIA rilevati dal PrivacyAuditor
