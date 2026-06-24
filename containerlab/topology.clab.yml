@@ -1,0 +1,327 @@
+# containerlab/topology.clab.yml
+# Topologia ChargeShield-FL — 12 nodi, 4 cluster
+# Deploy: containerlab deploy -t containerlab/topology.clab.yml
+# Richiede: OrbStack + Containerlab (Sprint 3)
+# Documentazione: docs/Architecture.md
+
+name: chargeshield-fl
+
+topology:
+
+  defaults:
+    # Limiti risorse default per tutti i nodi
+    # Ogni nodo può sovrascrivere questi valori
+    cpu: 0.5
+    memory: 256m
+
+  nodes:
+
+    # ─── FL Admin (NVIDIA FLARE) ─────────────────────────────────────
+    # Gestisce il ciclo di vita del server FL:
+    # avvio, shutdown, monitoring dei round
+    fl-admin:
+      kind: linux
+      image: chargeshield/fl-admin:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        FLARE_ROLE: admin
+        ADMIN_PORT: "8003"
+      binds:
+        - config/flare.yaml:/app/config/flare.yaml:ro
+        - config/framework.yaml:/app/config/framework.yaml:ro
+        - certs/fl-admin/:/app/certs/:ro
+
+    # ─── Aggregatore FLARE (Server FL) ──────────────────────────────
+    # Raccoglie i model update, esegue FedAvg,
+    # distribuisce il modello globale ai nodi
+    aggregator:
+      kind: linux
+      image: chargeshield/aggregator:latest
+      cpu: 2.0
+      memory: 2048m
+      env:
+        FLARE_ROLE: server
+        SERVER_PORT: "8002"
+        MIN_CLIENTS: "3"
+      binds:
+        - config/flare.yaml:/app/config/flare.yaml:ro
+        - config/clusters.yaml:/app/config/clusters.yaml:ro
+        - experiments/:/app/experiments/:rw
+        - certs/aggregator/:/app/certs/:ro
+
+    # ─── Privacy Auditor (Membership Inference) ──────────────────────
+    # Intercetta i model update prima dell'aggregazione
+    # e misura il rischio MIA per ogni nodo
+    auditor:
+      kind: linux
+      image: chargeshield/auditor:latest
+      cpu: 1.0
+      memory: 512m
+      env:
+        AUDITOR_PORT: "8004"
+      binds:
+        - config/auditor.yaml:/app/config/auditor.yaml:ro
+        - experiments/:/app/experiments/:rw
+        - certs/auditor/:/app/certs/:ro
+
+    # ─── IDS (Intrusion Detection System) ───────────────────────────
+    # Difesa: riceve AuditReport dall'auditor
+    # e decide se escludere nodi sospetti
+    ids:
+      kind: linux
+      image: chargeshield/ids:latest
+      cpu: 1.0
+      memory: 512m
+      env:
+        IDS_PORT: "8005"
+        ALERT_THRESHOLD: "0.7"
+      binds:
+        - config/auditor.yaml:/app/config/auditor.yaml:ro
+        - certs/ids/:/app/certs/:ro
+
+    # ─── MQTT Broker (Mosquitto) ─────────────────────────────────────
+    # Broker per i nodi Residential che usano MQTT v5
+    # I nodi Highway e Corporate usano OCPP su WebSocket diretto
+    mqtt-broker:
+      kind: linux
+      image: eclipse-mosquitto:2.0
+      cpu: 0.5
+      memory: 128m
+      binds:
+        - containerlab/configs/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+        - certs/mqtt-broker/:/mosquitto/certs/:ro
+
+    # ─── Cluster Highway (OCPP 1.6) ──────────────────────────────────
+    highway-01:
+      kind: linux
+      image: chargeshield/charging-node:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        NODE_ID: highway-01
+        CLUSTER_ID: highway
+        PROTOCOL: OCPP_16
+        MAX_POWER_KW: "150"
+        AGGREGATOR_URL: "aggregator:8002"
+      binds:
+        - config/nodes.yaml:/app/config/nodes.yaml:ro
+        - config/protocols.yaml:/app/config/protocols.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro+
+        - certs/highway-01/:/app/certs/:ro
+
+    highway-02:
+      kind: linux
+      image: chargeshield/charging-node:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        NODE_ID: highway-02
+        CLUSTER_ID: highway
+        PROTOCOL: OCPP_16
+        MAX_POWER_KW: "150"
+        AGGREGATOR_URL: "aggregator:8002"
+      binds:
+        - config/nodes.yaml:/app/config/nodes.yaml:ro
+        - config/protocols.yaml:/app/config/protocols.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+        - certs/highway-02/:/app/certs/:ro
+
+    highway-03:
+      kind: linux
+      image: chargeshield/charging-node:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        NODE_ID: highway-03
+        CLUSTER_ID: highway
+        PROTOCOL: OCPP_16
+        MAX_POWER_KW: "150"
+        AGGREGATOR_URL: "aggregator:8002"
+      binds:
+        - config/nodes.yaml:/app/config/nodes.yaml:ro
+        - config/protocols.yaml:/app/config/protocols.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+        - certs/highway-03/:/app/certs/:ro
+
+    # ─── Cluster Urban (OCPP 1.6) ────────────────────────────────────
+    urban-01:
+      kind: linux
+      image: chargeshield/charging-node:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        NODE_ID: urban-01
+        CLUSTER_ID: urban
+        PROTOCOL: OCPP_16
+        MAX_POWER_KW: "22"
+        AGGREGATOR_URL: "aggregator:8002"
+      binds:
+        - config/nodes.yaml:/app/config/nodes.yaml:ro
+        - config/protocols.yaml:/app/config/protocols.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+        - certs/urban-01/:/app/certs/:ro
+
+    urban-02:
+      kind: linux
+      image: chargeshield/charging-node:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        NODE_ID: urban-02
+        CLUSTER_ID: urban
+        PROTOCOL: OCPP_16
+        MAX_POWER_KW: "22"
+        AGGREGATOR_URL: "aggregator:8002"
+      binds:
+        - config/nodes.yaml:/app/config/nodes.yaml:ro
+        - config/protocols.yaml:/app/config/protocols.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+        - certs/urban-02/:/app/certs/:ro
+
+    urban-03:
+      kind: linux
+      image: chargeshield/charging-node:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        NODE_ID: urban-03
+        CLUSTER_ID: urban
+        PROTOCOL: OCPP_16
+        MAX_POWER_KW: "22"
+        AGGREGATOR_URL: "aggregator:8002"
+      binds:
+        - config/nodes.yaml:/app/config/nodes.yaml:ro
+        - config/protocols.yaml:/app/config/protocols.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+        - certs/urban-03/:/app/certs/:ro
+
+    # ─── Cluster Residential (MQTT v5) ───────────────────────────────
+    residential-01:
+      kind: linux
+      image: chargeshield/charging-node:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        NODE_ID: residential-01
+        CLUSTER_ID: residential
+        PROTOCOL: MQTT_v5
+        MAX_POWER_KW: "7"
+        MQTT_BROKER_URL: "mqtt-broker:1883"
+        AGGREGATOR_URL: "aggregator:8002"
+      binds:
+        - config/nodes.yaml:/app/config/nodes.yaml:ro
+        - config/protocols.yaml:/app/config/protocols.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+        - certs/residential-01/:/app/certs/:ro
+
+    residential-02:
+      kind: linux
+      image: chargeshield/charging-node:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        NODE_ID: residential-02
+        CLUSTER_ID: residential
+        PROTOCOL: MQTT_v5
+        MAX_POWER_KW: "7"
+        MQTT_BROKER_URL: "mqtt-broker:1883"
+        AGGREGATOR_URL: "aggregator:8002"
+      binds:
+        - config/nodes.yaml:/app/config/nodes.yaml:ro
+        - config/protocols.yaml:/app/config/protocols.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+        - certs/residential-02/:/app/certs/:ro
+
+    residential-03:
+      kind: linux
+      image: chargeshield/charging-node:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        NODE_ID: residential-03
+        CLUSTER_ID: residential
+        PROTOCOL: MQTT_v5
+        MAX_POWER_KW: "7"
+        MQTT_BROKER_URL: "mqtt-broker:1883"
+        AGGREGATOR_URL: "aggregator:8002"
+      binds:
+        - config/nodes.yaml:/app/config/nodes.yaml:ro
+        - config/protocols.yaml:/app/config/protocols.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+        - certs/residential-03/:/app/certs/:ro
+
+    # ─── Cluster Corporate (OCPP 2.0.1) ─────────────────────────────
+    corporate-01:
+      kind: linux
+      image: chargeshield/charging-node:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        NODE_ID: corporate-01
+        CLUSTER_ID: corporate
+        PROTOCOL: OCPP_20
+        MAX_POWER_KW: "50"
+        AGGREGATOR_URL: "aggregator:8002"
+      binds:
+        - config/nodes.yaml:/app/config/nodes.yaml:ro
+        - config/protocols.yaml:/app/config/protocols.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+        - certs/corporate-01/:/app/certs/:ro
+
+    corporate-02:
+      kind: linux
+      image: chargeshield/charging-node:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        NODE_ID: corporate-02
+        CLUSTER_ID: corporate
+        PROTOCOL: OCPP_20
+        MAX_POWER_KW: "50"
+        AGGREGATOR_URL: "aggregator:8002"
+      binds:
+        - config/nodes.yaml:/app/config/nodes.yaml:ro
+        - config/protocols.yaml:/app/config/protocols.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+        - certs/corporate-02/:/app/certs/:ro
+
+    corporate-03:
+      kind: linux
+      image: chargeshield/charging-node:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        NODE_ID: corporate-03
+        CLUSTER_ID: corporate
+        PROTOCOL: OCPP_20
+        MAX_POWER_KW: "50"
+        AGGREGATOR_URL: "aggregator:8002"
+      binds:
+        - config/nodes.yaml:/app/config/nodes.yaml:ro
+        - config/protocols.yaml:/app/config/protocols.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+        - certs/corporate-03/:/app/certs/:ro
+
+  links:
+    # Highway → Aggregatore
+    - endpoints: [highway-01:eth1, aggregator:eth1]
+    - endpoints: [highway-02:eth1, aggregator:eth2]
+    - endpoints: [highway-03:eth1, aggregator:eth3]
+    # Urban → Aggregatore
+    - endpoints: [urban-01:eth1, aggregator:eth4]
+    - endpoints: [urban-02:eth1, aggregator:eth5]
+    - endpoints: [urban-03:eth1, aggregator:eth6]
+    # Residential → MQTT Broker → Aggregatore
+    - endpoints: [residential-01:eth1, mqtt-broker:eth1]
+    - endpoints: [residential-02:eth1, mqtt-broker:eth2]
+    - endpoints: [residential-03:eth1, mqtt-broker:eth3]
+    - endpoints: [mqtt-broker:eth4, aggregator:eth7]
+    # Corporate → Aggregatore
+    - endpoints: [corporate-01:eth1, aggregator:eth8]
+    - endpoints: [corporate-02:eth1, aggregator:eth9]
+    - endpoints: [corporate-03:eth1, aggregator:eth10]
+    # Servizi → Aggregatore
+    - endpoints: [auditor:eth1, aggregator:eth11]
+    - endpoints: [ids:eth1, aggregator:eth12]
+    - endpoints: [fl-admin:eth1, aggregator:eth13]

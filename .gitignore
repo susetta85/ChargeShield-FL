@@ -40,3 +40,7 @@ datasets/raw/
 workspace/
 startup/
 prod_*/
+
+# mTLS certificates
+certs/
+certs/
