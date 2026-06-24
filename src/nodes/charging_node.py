@@ -7,7 +7,7 @@ from src.core.base_node import AbstractChargingNode, NodeConfig
 from src.core.base_adapter import AbstractProtocolAdapter
 
 import uuid 
-from datetime improt datetime, timezone
+from datetime import datetime, timezone
 
 class ChargingNode(AbstractChargingNode):
     """
@@ -15,7 +15,7 @@ class ChargingNode(AbstractChargingNode):
     Knows about protocol adapter, but not about datasets or FL.
     """
 
-     def __init__(self, config: NodeConfig, adapter: AbstractProtocolAdapter):
+    def __init__(self, config: NodeConfig, adapter: AbstractProtocolAdapter):
         super().__init__(config)
         self.adapter = adapter
         self._status = "online"
