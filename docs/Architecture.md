@@ -134,4 +134,83 @@ classDiagram
     AbstractDataset <|-- ElaadNLDataset
     ChargingNode --> AbstractProtocolAdapter
 ```
-```
+``
+## Sprint 3 — Privacy Auditor, FLARE Integration, Containerlab
+
+### PrivacyAuditor (src/auditor/privacy_auditor.py)
+**Ruolo: ATTACCANTE (Membership Inference)**
+
+Non è una difesa. È lo strumento con cui un avversario analizza
+i model update dei nodi PRIMA dell'aggregazione per inferire
+se un campione specifico è stato usato nel training.
+
+
+```mermaid
+classDiagram
+    class AbstractPrivacyAuditor {
+        <<abstract>>
+        +audit(node_id, round_id, model_update) AuditReport
+        +reset() None
+        +get_cumulative_epsilon(node_id) float
+    }
+
+    class PrivacyAuditor {
+        -epsilon_budget: float
+        -delta: float
+        -cumulative_epsilon: dict
+        +audit(node_id, round_id, model_update) AuditReport
+        +reset() None
+        +get_cumulative_epsilon(node_id) float
+        -_compute_sensitivity(model_update) float
+        -_detect_threats(model_update, sensitivity) list
+    }
+
+    class FLAREConnector {
+        -aggregator_url: str
+        -n_rounds: int
+        +start_round(round_id) None
+        +collect_updates(nodes) list
+        +aggregate(updates) dict
+    }
+
+    class ContainerlabTopology {
+        -nodes: list
+        -clusters: list
+        +generate_topology() None
+    }
+
+    AbstractPrivacyAuditor <|-- PrivacyAuditor
+    PrivacyAuditor --> FLAREConnector
+````
+### FedMIA (src/plugins/attacks/fedmia.py) — Sprint 4
+**Ruolo: ATTACCO completo di Membership Inference**
+
+Implementa l'attacco descritto in Shokri et al. (IEEE S&P 2017).
+Riceve i gradienti intercettati dal PrivacyAuditor e tenta
+di inferire la membership dei dati di training.
+
+### AbstractIDS / ChargingIDS (src/ids/) — Sprint 4
+**Ruolo: DIFESA**
+
+Monitora il comportamento dei nodi durante i round FL.
+Riceve gli AuditReport dal PrivacyAuditor e decide se
+un nodo è sospetto (MONITOR | THROTTLE | EXCLUDE).
+
+### Differential Privacy
+**Ruolo: CONTROMISURA**
+
+Non è nel PrivacyAuditor — è nel layer FL (src/flare/).
+Aggiunge rumore gaussiano ai gradienti PRIMA che vengano
+intercettati, rendendo il MIA più difficile.
+
+## Separazione dei ruoli
+
+| Modulo | Ruolo | Sprint |
+|--------|-------|--------|
+| PrivacyAuditor | Attaccante MIA | 3 |
+| FedMIA | Attacco completo | 4 |
+| AbstractIDS | Interfaccia difesa | 3 |
+| ChargingIDS | Difesa concreta | 4 |
+| FLARE + DP | Contromisura | 3 |
+| Containerlab | Infrastruttura | 3 |
+
