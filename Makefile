@@ -40,7 +40,8 @@ help:
 	@echo "  make status            Stato container"
 	@echo "  make logs              Log server + highway"
 	@echo "  make experiment        Esegui esperimento FedMIA (config default)"
-	@echo "  make experiment-sweep  Sweep epsilon 0.1→5.0"
+	@echo "  make experiment-sweep  Sweep epsilon 0.1→5.0 (50 round)"
+	@echo "	 make experiment-full-sweep	Sweep roundxepsilon (100-1000 x 0.1-5.0)"
 	@echo "  make experiment-dry    Dry run (verifica config e dataset)"
 	@echo "  make test              Tutti i test unitari"
 	@echo "  make test-sprint4      Solo Sprint 4"
@@ -109,9 +110,25 @@ experiment-sweep:
 	@for eps in 0.1 0.5 1.0 2.0 5.0; do \
 		echo "=== epsilon=$$eps ==="; \
 		$(PYTHON) $(SCRIPTS_DIR)/run_experiment.py \
-			--epsilon $$eps --rounds 10; \
+			--epsilon $$eps --rounds 50; \
 	done
 	@echo "✓ Sweep completato — risultati in: $(EXPERIMENTS)/"
+
+# Sweep completo: rounds × epsilon → heat map per il paper
+# rounds ∈ {100, 200, 500, 1000} × epsilon ∈ {0.1, 0.5, 1.0, 2.0, 5.0}
+# Stima: ~8-12 ore su CPU
+.PHONY: experiment-full-sweep
+experiment-full-sweep:
+	@echo "→ Full sweep: rounds × epsilon"
+	@mkdir -p $(EXPERIMENTS)
+	@for rounds in 100 200 500 1000; do \
+		for eps in 0.1 0.5 1.0 2.0 5.0; do \
+			echo "=== rounds=$$rounds epsilon=$$eps ==="; \
+			$(PYTHON) $(SCRIPTS_DIR)/run_experiment.py \
+				--epsilon $$eps --rounds $$rounds; \
+		done; \
+	done
+	@echo "✓ Full sweep completato — risultati in: $(EXPERIMENTS)/"
 
 .PHONY: experiment-dry
 experiment-dry:

@@ -3,8 +3,8 @@
 
 experiment:
   name: chargeshield_fedmia_baseline
-  fl_rounds: 10
- # fl_rounds: 30  #esperimenti finali paper
+  #fl_rounds: 10
+  fl_rounds: 100  #esperimenti finali paper
   # Differential Privacy
   epsilon: 1.0
   delta: 1.0e-5
