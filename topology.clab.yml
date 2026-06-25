@@ -1,0 +1,379 @@
+# containerlab/topology.clab.yml
+# ChargeShield-FL — Topologia Sprint 5
+# Deploy: sudo containerlab deploy -t containerlab/topology.clab.yml
+# Prerequisiti:
+#   1. docker build -f Dockerfile.flare -t chargeshield-fl:latest .
+#   2. nvflare provision -p nvflare/project.yml -w nvflare/workspace
+
+name: chargeshield-fl
+
+topology:
+  defaults:
+    cpu: 0.5
+    memory: 256m
+
+  nodes:
+
+    # ─── NVFLARE Server (Aggregatore FL) ────────────────────────────
+    # Purdue L3: riceve gradient update, esegue FedAvg,
+    # distribuisce modello globale ai cluster FL client.
+    # Certificati mTLS inclusi in startup/ (generati da nvflare provision).
+    server:
+      kind: linux
+      image: chargeshield-fl:latest
+      cpu: 2.0
+      memory: 2048m
+      env:
+        FLARE_ROLE: server
+        SERVER_PORT: "8002"
+        MIN_CLIENTS: "4"
+      binds:
+        - nvflare/workspace/chargeshield_fl/prod_00/server/startup:/workspace/startup:ro
+        - nvflare/workspace/chargeshield_fl/prod_00/server/local:/workspace/local:rw
+        - nvflare/workspace/chargeshield_fl/prod_00/server/transfer:/workspace/transfer:rw
+        - experiments/:/app/experiments/:rw
+
+    # ─── FL Admin Console ────────────────────────────────────────────
+    fl-admin:
+      kind: linux
+      image: chargeshield-fl:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        FLARE_ROLE: admin
+        ADMIN_PORT: "8003"
+      binds:
+        - nvflare/workspace/chargeshield_fl/prod_00/admin@chargeshield.local/startup:/workspace/startup:ro
+        - nvflare/workspace/chargeshield_fl/prod_00/admin@chargeshield.local/local:/workspace/local:rw
+
+    # ─── Privacy Auditor (FedMIA) ────────────────────────────────────
+    # Purdue L2: intercetta eventi ML Plane, esegue MIA,
+    # produce AuditReport per l'IDS.
+    auditor:
+      kind: linux
+      image: chargeshield-fl:latest
+      cpu: 1.0
+      memory: 512m
+      env:
+        AUDITOR_PORT: "8004"
+      binds:
+        - config/auditor.yaml:/app/config/auditor.yaml:ro
+        - experiments/:/app/experiments/:rw
+
+    # ─── IDS (Krum + CUSUM + Cosine) ────────────────────────────────
+    # Purdue L2: difesa — monitora ML Plane, esclude nodi sospetti.
+    ids:
+      kind: linux
+      image: chargeshield-fl:latest
+      cpu: 1.0
+      memory: 512m
+      env:
+        IDS_PORT: "8005"
+        ALERT_THRESHOLD: "0.7"
+      binds:
+        - config/auditor.yaml:/app/config/auditor.yaml:ro
+
+    # ─── MQTT Broker (Mosquitto) ─────────────────────────────────────
+    # Infrastruttura OT: broker per cluster Residential (MQTT v5).
+    mqtt-broker:
+      kind: linux
+      image: eclipse-mosquitto:2.0
+      cpu: 0.5
+      memory: 128m
+      binds:
+        - containerlab/configs/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+
+    # ─── FL Client: Highway ──────────────────────────────────────────
+    # Purdue L2: aggrega dati da highway-01/02/03,
+    # esegue AutoencoderTrainer, invia gradient update al server.
+    highway:
+      kind: linux
+      image: chargeshield-fl:latest
+      cpu: 1.0
+      memory: 512m
+      env:
+        FLARE_ROLE: client
+        SITE_NAME: highway
+        CLUSTER_ID: highway
+        PROTOCOL: OCPP_16
+        MAX_POWER_KW: "150"
+        DATASET_PATH: /app/datasets/acn/
+      binds:
+        - nvflare/workspace/chargeshield_fl/prod_00/highway/startup:/workspace/startup:ro
+        - nvflare/workspace/chargeshield_fl/prod_00/highway/local:/workspace/local:rw
+        - nvflare/workspace/chargeshield_fl/prod_00/highway/transfer:/workspace/transfer:rw
+        - config/nodes/cluster_highway.yaml:/app/config/node.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+
+    # ─── FL Client: Urban ────────────────────────────────────────────
+    urban:
+      kind: linux
+      image: chargeshield-fl:latest
+      cpu: 1.0
+      memory: 512m
+      env:
+        FLARE_ROLE: client
+        SITE_NAME: urban
+        CLUSTER_ID: urban
+        PROTOCOL: OCPP_16
+        MAX_POWER_KW: "22"
+        DATASET_PATH: /app/datasets/acn/
+      binds:
+        - nvflare/workspace/chargeshield_fl/prod_00/urban/startup:/workspace/startup:ro
+        - nvflare/workspace/chargeshield_fl/prod_00/urban/local:/workspace/local:rw
+        - nvflare/workspace/chargeshield_fl/prod_00/urban/transfer:/workspace/transfer:rw
+        - config/nodes/cluster_urban.yaml:/app/config/node.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+
+    # ─── FL Client: Residential ──────────────────────────────────────
+    residential:
+      kind: linux
+      image: chargeshield-fl:latest
+      cpu: 1.0
+      memory: 512m
+      env:
+        FLARE_ROLE: client
+        SITE_NAME: residential
+        CLUSTER_ID: residential
+        PROTOCOL: MQTT_v5
+        MAX_POWER_KW: "7"
+        MQTT_BROKER_URL: "mqtt-broker:1883"
+        DATASET_PATH: /app/datasets/acn/
+      binds:
+        - nvflare/workspace/chargeshield_fl/prod_00/residential/startup:/workspace/startup:ro
+        - nvflare/workspace/chargeshield_fl/prod_00/residential/local:/workspace/local:rw
+        - nvflare/workspace/chargeshield_fl/prod_00/residential/transfer:/workspace/transfer:rw
+        - config/nodes/cluster_residential.yaml:/app/config/node.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+
+    # ─── FL Client: Corporate ────────────────────────────────────────
+    corporate:
+      kind: linux
+      image: chargeshield-fl:latest
+      cpu: 1.0
+      memory: 512m
+      env:
+        FLARE_ROLE: client
+        SITE_NAME: corporate
+        CLUSTER_ID: corporate
+        PROTOCOL: OCPP_20
+        MAX_POWER_KW: "50"
+        DATASET_PATH: /app/datasets/acn/
+      binds:
+        - nvflare/workspace/chargeshield_fl/prod_00/corporate/startup:/workspace/startup:ro
+        - nvflare/workspace/chargeshield_fl/prod_00/corporate/local:/workspace/local:rw
+        - nvflare/workspace/chargeshield_fl/prod_00/corporate/transfer:/workspace/transfer:rw
+        - config/nodes/cluster_corporate.yaml:/app/config/node.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+
+    # ─── Charging Nodes: Highway (OT, Purdue L0/L1) ──────────────────
+    highway-01:
+      kind: linux
+      image: chargeshield/charging-node:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        NODE_ID: highway-01
+        CLUSTER_ID: highway
+        PROTOCOL: OCPP_16
+        MAX_POWER_KW: "150"
+        FL_CLIENT_URL: "highway:9000"
+      binds:
+        - config/nodes.yaml:/app/config/nodes.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+
+    highway-02:
+      kind: linux
+      image: chargeshield/charging-node:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        NODE_ID: highway-02
+        CLUSTER_ID: highway
+        PROTOCOL: OCPP_16
+        MAX_POWER_KW: "150"
+        FL_CLIENT_URL: "highway:9000"
+      binds:
+        - config/nodes.yaml:/app/config/nodes.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+
+    highway-03:
+      kind: linux
+      image: chargeshield/charging-node:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        NODE_ID: highway-03
+        CLUSTER_ID: highway
+        PROTOCOL: OCPP_16
+        MAX_POWER_KW: "150"
+        FL_CLIENT_URL: "highway:9000"
+      binds:
+        - config/nodes.yaml:/app/config/nodes.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+
+    # ─── Charging Nodes: Urban (OT, Purdue L0/L1) ────────────────────
+    urban-01:
+      kind: linux
+      image: chargeshield/charging-node:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        NODE_ID: urban-01
+        CLUSTER_ID: urban
+        PROTOCOL: OCPP_16
+        MAX_POWER_KW: "22"
+        FL_CLIENT_URL: "urban:9000"
+      binds:
+        - config/nodes.yaml:/app/config/nodes.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+
+    urban-02:
+      kind: linux
+      image: chargeshield/charging-node:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        NODE_ID: urban-02
+        CLUSTER_ID: urban
+        PROTOCOL: OCPP_16
+        MAX_POWER_KW: "22"
+        FL_CLIENT_URL: "urban:9000"
+      binds:
+        - config/nodes.yaml:/app/config/nodes.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+
+    urban-03:
+      kind: linux
+      image: chargeshield/charging-node:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        NODE_ID: urban-03
+        CLUSTER_ID: urban
+        PROTOCOL: OCPP_16
+        MAX_POWER_KW: "22"
+        FL_CLIENT_URL: "urban:9000"
+      binds:
+        - config/nodes.yaml:/app/config/nodes.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+
+    # ─── Charging Nodes: Residential (OT, Purdue L0/L1) ─────────────
+    residential-01:
+      kind: linux
+      image: chargeshield/charging-node:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        NODE_ID: residential-01
+        CLUSTER_ID: residential
+        PROTOCOL: MQTT_v5
+        MAX_POWER_KW: "7"
+        MQTT_BROKER_URL: "mqtt-broker:1883"
+        FL_CLIENT_URL: "residential:9000"
+      binds:
+        - config/nodes.yaml:/app/config/nodes.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+
+    residential-02:
+      kind: linux
+      image: chargeshield/charging-node:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        NODE_ID: residential-02
+        CLUSTER_ID: residential
+        PROTOCOL: MQTT_v5
+        MAX_POWER_KW: "7"
+        MQTT_BROKER_URL: "mqtt-broker:1883"
+        FL_CLIENT_URL: "residential:9000"
+      binds:
+        - config/nodes.yaml:/app/config/nodes.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+
+    residential-03:
+      kind: linux
+      image: chargeshield/charging-node:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        NODE_ID: residential-03
+        CLUSTER_ID: residential
+        PROTOCOL: MQTT_v5
+        MAX_POWER_KW: "7"
+        MQTT_BROKER_URL: "mqtt-broker:1883"
+        FL_CLIENT_URL: "residential:9000"
+      binds:
+        - config/nodes.yaml:/app/config/nodes.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+
+    # ─── Charging Nodes: Corporate (OT, Purdue L0/L1) ────────────────
+    corporate-01:
+      kind: linux
+      image: chargeshield/charging-node:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        NODE_ID: corporate-01
+        CLUSTER_ID: corporate
+        PROTOCOL: OCPP_20
+        MAX_POWER_KW: "50"
+        FL_CLIENT_URL: "corporate:9000"
+      binds:
+        - config/nodes.yaml:/app/config/nodes.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+
+    corporate-02:
+      kind: linux
+      image: chargeshield/charging-node:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        NODE_ID: corporate-02
+        CLUSTER_ID: corporate
+        PROTOCOL: OCPP_20
+        MAX_POWER_KW: "50"
+        FL_CLIENT_URL: "corporate:9000"
+      binds:
+        - config/nodes.yaml:/app/config/nodes.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+
+    corporate-03:
+      kind: linux
+      image: chargeshield/charging-node:latest
+      cpu: 0.5
+      memory: 256m
+      env:
+        NODE_ID: corporate-03
+        CLUSTER_ID: corporate
+        PROTOCOL: OCPP_20
+        MAX_POWER_KW: "50"
+        FL_CLIENT_URL: "corporate:9000"
+      binds:
+        - config/nodes.yaml:/app/config/nodes.yaml:ro
+        - datasets/acn/:/app/datasets/acn/:ro
+
+  links:
+    # OT nodes → FL clients (dati di sessione)
+    - endpoints: [highway-01:eth1, highway:eth1]
+    - endpoints: [highway-02:eth1, highway:eth2]
+    - endpoints: [highway-03:eth1, highway:eth3]
+    - endpoints: [urban-01:eth1, urban:eth1]
+    - endpoints: [urban-02:eth1, urban:eth2]
+    - endpoints: [urban-03:eth1, urban:eth3]
+    - endpoints: [residential-01:eth1, mqtt-broker:eth1]
+    - endpoints: [residential-02:eth1, mqtt-broker:eth2]
+    - endpoints: [residential-03:eth1, mqtt-broker:eth3]
+    - endpoints: [mqtt-broker:eth4, residential:eth1]
+    - endpoints: [corporate-01:eth1, corporate:eth1]
+    - endpoints: [corporate-02:eth1, corporate:eth2]
+    - endpoints: [corporate-03:eth1, corporate:eth3]
+    # FL clients → NVFLARE server
+    - endpoints: [highway:eth4, server:eth1]
+    - endpoints: [urban:eth4, server:eth2]
+    - endpoints: [residential:eth2, server:eth3]
+    - endpoints: [corporate:eth4, server:eth4]
+    # Servizi → server
+    - endpoints: [auditor:eth1, server:eth5]
+    - endpoints: [ids:eth1, server:eth6]
+    - endpoints: [fl-admin:eth1, server:eth7]
