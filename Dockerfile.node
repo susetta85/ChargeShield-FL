@@ -1,0 +1,48 @@
+# ChargeShield-FL — Dockerfile.node
+# Immagine leggera per i charging node OT (Purdue L0/L1)
+# Non contiene NVFLARE — solo codice OT (OCPP/MQTT)
+#
+# Build:
+#   docker build -f Dockerfile.node -t chargeshield/charging-node:latest .
+#
+# Usato da: highway-01/02/03, urban-01/02/03,
+#           residential-01/02/03, corporate-01/02/03
+
+FROM python:3.10-slim
+
+LABEL maintainer="ChargeShield-FL"
+LABEL version="0.5.0"
+LABEL description="OT Charging Node — OCPP/MQTT simulator"
+
+# ── System dependencies ───────────────────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    iproute2 \
+    iputils-ping \
+    net-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Python dependencies ───────────────────────────────────────────────────────
+# Dipendenze minime per simulazione OT:
+#   paho-mqtt  → MQTT v5 (cluster Residential)
+#   pyyaml     → lettura config
+#   numpy      → preprocessing dati sessione
+#   pandas     → caricamento ACN-Data JSON
+RUN pip install --no-cache-dir \
+    paho-mqtt==2.1.0 \
+    pyyaml==6.0.2 \
+    numpy==1.26.4 \
+    pandas==2.2.2
+
+# ── Sorgenti ChargeShield-FL ──────────────────────────────────────────────────
+WORKDIR /app
+COPY src/ /app/src/
+COPY config/ /app/config/
+
+ENV PYTHONPATH="/app/src"
+
+# ── Entrypoint ────────────────────────────────────────────────────────────────
+# Il charging node attende connessione dal FL client del proprio cluster.
+# In produzione viene sostituito dallo script di simulazione OCPP/MQTT.
+CMD ["python3", "-c", "import time; print('Charging node ready'); time.sleep(infinity)"]

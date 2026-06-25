@@ -1,11 +1,7 @@
 # ChargeShield-FL — NVFLARE 2.7.2 Provisioning
 # Esegui: nvflare provision -p nvflare/project.yml -w nvflare/workspace
-#
-# Genera startup/ con certificati mTLS e config per:
-#   1 server, 4 client (cluster highway/urban/residential/corporate), 1 admin
 
 api_version: 3
-
 name: chargeshield_fl
 description: "Federated Learning for EV Charging Privacy Auditing"
 
@@ -14,29 +10,24 @@ participants:
   - name: server
     type: server
     org: chargeshield
-    cn: server
     fed_learn_port: 8002
     admin_port: 8003
 
   - name: highway
     type: client
-    org: highway
-    cn: highway
+    org: chargeshield
 
   - name: urban
     type: client
-    org: urban
-    cn: urban
+    org: chargeshield
 
   - name: residential
     type: client
-    org: residential
-    cn: residential
+    org: chargeshield
 
   - name: corporate
     type: client
-    org: corporate
-    cn: corporate
+    org: chargeshield
 
   - name: admin@chargeshield.local
     type: admin
@@ -44,27 +35,15 @@ participants:
     role: project_admin
 
 builders:
+  - path: nvflare.lighter.impl.workspace.WorkspaceBuilder
+    args:
+      template_file:
+        - master_template.yml
+
   - path: nvflare.lighter.impl.static_file.StaticFileBuilder
+    args:
+      config_folder: config
 
   - path: nvflare.lighter.impl.cert.CertBuilder
 
   - path: nvflare.lighter.impl.signature.SignatureBuilder
-
-  - path: nvflare.lighter.impl.workspace.WorkspaceBuilder
-
-  - path: nvflare.lighter.impl.auth_policy.AuthPolicyBuilder
-    args:
-      orgs:
-        chargeshield:
-          - role: project_admin
-        highway:
-          - role: lead
-        urban:
-          - role: lead
-        residential:
-          - role: lead
-        corporate:
-          - role: lead
-      roles:
-        project_admin: Project administrator with full access
-        lead: Site lead with training rights

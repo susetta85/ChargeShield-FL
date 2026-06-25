@@ -31,9 +31,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ── Python dependencies ───────────────────────────────────────────────────────
 # nvflare: FL framework + mTLS + provisioning
 # torch:   Autoencoder training (CPU-only per compatibilità OrbStack)
+# Installa torch da indice PyTorch CPU
+RUN pip install --no-cache-dir \
+    torch==2.3.1 --index-url https://download.pytorch.org/whl/cpu
+
+# Installa le restanti dipendenze da PyPI
 RUN pip install --no-cache-dir \
     nvflare==2.7.2 \
-    torch==2.3.1 --index-url https://download.pytorch.org/whl/cpu \
     numpy==1.26.4 \
     scikit-learn==1.5.1 \
     pandas==2.2.2 \
@@ -46,7 +50,7 @@ COPY src/ /app/src/
 COPY config/ /app/config/
 
 # Aggiunge src/ al PYTHONPATH per gli import (es. from ml.base_ml import ...)
-ENV PYTHONPATH="/app/src:${PYTHONPATH}"
+ENV PYTHONPATH="/app/src"
 
 # ── Workspace NVFLARE ─────────────────────────────────────────────────────────
 # Containerlab monta il workspace provisionato via binds:
