@@ -1,154 +1,172 @@
 # Makefile — ChargeShield-FL
-# Automazione build, deploy, test e certificati mTLS
+# Sprint 5: OrbStack + Containerlab + NVFLARE 2.7.2
 #
-# Comandi disponibili:
-#   make help        → mostra questo help
-#   make build       → build tutte le immagini Docker
-#   make deploy      → deploy topologia Containerlab
-#   make destroy     → teardown topologia
-#   make certs       → genera certificati mTLS per tutti i nodi
-#   make test        → esegui unit test
-#   make lint        → controlla qualità del codice
-#   make experiment  → lancia un round FL completo
-#   make clean       → rimuovi artefatti temporanei
+# Flusso tipico:
+#   1. make build       → build immagine Docker con NVFLARE
+#   2. make provision   → genera workspace NVFLARE (una volta sola)
+#   3. make deploy      → deploya topologia Containerlab
+#   4. make experiment  → esegui esperimento FedMIA
+#
+# Altri target:
+#   make test           → unit test
+#   make experiment-sweep → sweep epsilon per privacy/utility trade-off
+#   make destroy        → rimuovi topologia
+#   make clean          → rimuovi artefatti temporanei
 
 # ─── Variabili ────────────────────────────────────────────────────────────────
-
-PROJECT     := chargeshield-fl
-VERSION     := 0.3.0
-TOPOLOGY    := containerlab/topology.clab.yml
-CERTS_DIR   := certs
-SCRIPTS_DIR := scripts
-PYTHON      := python3
-PYTEST      := python3 -m pytest
-
-# Nodi per cui generare certificati mTLS
-NODES := \
-    highway-01 highway-02 highway-03 \
-    urban-01 urban-02 urban-03 \
-    residential-01 residential-02 residential-03 \
-    corporate-01 corporate-02 corporate-03 \
-    aggregator auditor ids fl-admin
-
-# Immagini Docker da buildare
-IMAGES := \
-    charging-node \
-    aggregator \
-    auditor \
-    ids \
-    fl-admin
+PROJECT      := chargeshield-fl
+VERSION      := 0.5.0
+IMAGE        := chargeshield-fl:latest
+TOPOLOGY     := containerlab/topology.clab.yml
+PROJECT_YML  := nvflare/project.yml
+WORKSPACE    := nvflare/workspace
+SCRIPTS_DIR  := scripts
+PYTHON       := python3
+PYTEST       := python3 -m pytest
+NVFLARE      := nvflare
+CLAB         := sudo containerlab
+EXPERIMENTS  := experiments
 
 # ─── Help ─────────────────────────────────────────────────────────────────────
-
 .PHONY: help
 help:
 	@echo ""
-	@echo "ChargeShield-FL — Makefile"
-	@echo "─────────────────────────────────────────"
-	@echo "  make build       Build tutte le immagini Docker"
-	@echo "  make deploy      Deploy topologia Containerlab"
-	@echo "  make destroy     Teardown topologia"
-	@echo "  make certs       Genera certificati mTLS"
-	@echo "  make test        Esegui unit test"
-	@echo "  make lint        Controlla qualità del codice"
-	@echo "  make experiment  Lancia un round FL completo"
-	@echo "  make clean       Rimuovi artefatti temporanei"
+	@echo "ChargeShield-FL v$(VERSION) — Makefile"
+	@echo "════════════════════════════════════════"
+	@echo "  make build             Build immagine Docker con NVFLARE 2.7.2"
+	@echo "  make provision         Genera workspace NVFLARE (una volta sola)"
+	@echo "  make deploy            Deploy topologia Containerlab"
+	@echo "  make destroy           Rimuovi topologia"
+	@echo "  make status            Stato container"
+	@echo "  make logs              Log server + highway"
+	@echo "  make experiment        Esegui esperimento FedMIA (config default)"
+	@echo "  make experiment-sweep  Sweep epsilon 0.1→5.0"
+	@echo "  make experiment-dry    Dry run (verifica config e dataset)"
+	@echo "  make test              Tutti i test unitari"
+	@echo "  make test-sprint4      Solo Sprint 4"
+	@echo "  make test-sprint5      Solo Sprint 5"
+	@echo "  make lint              Controllo qualità codice"
+	@echo "  make clean             Rimuovi __pycache__ e artefatti"
+	@echo "  make clean-workspace   Rimuovi workspace NVFLARE"
+	@echo "  make clean-experiments Rimuovi risultati esperimenti"
 	@echo ""
 
-# ─── Test ─────────────────────────────────────────────────────────────────────
-
-.PHONY: test
-test:
-	@echo "→ Esecuzione unit test..."
-	$(PYTEST) tests/ -v
-
-.PHONY: test-coverage
-test-coverage:
-	@echo "→ Esecuzione test con coverage..."
-	$(PYTEST) tests/ -v --cov=src --cov-report=term-missing
-
-# ─── Lint ─────────────────────────────────────────────────────────────────────
-
-.PHONY: lint
-lint:
-	@echo "→ Controllo qualità codice con ruff..."
-	ruff check src/ tests/
-
-# ─── Certificati mTLS ─────────────────────────────────────────────────────────
-
-.PHONY: certs
-certs:
-	@echo "→ Generazione certificati mTLS..."
-	@bash $(SCRIPTS_DIR)/generate_certs.sh $(CERTS_DIR) "$(NODES)"
-	@echo "✓ Certificati generati in $(CERTS_DIR)/"
-
-.PHONY: clean-certs
-clean-certs:
-	@echo "→ Rimozione certificati..."
-	rm -rf $(CERTS_DIR)/
-	@echo "✓ Certificati rimossi"
-
-# ─── Docker ───────────────────────────────────────────────────────────────────
-
+# ─── Build ────────────────────────────────────────────────────────────────────
 .PHONY: build
 build:
-	@echo "→ Build immagini Docker..."
-	@for image in $(IMAGES); do \
-		echo "  Building chargeshield/$$image:latest ..."; \
-		docker build \
-			-t chargeshield/$$image:latest \
-			-f docker/$$image/Dockerfile \
-			.; \
-	done
-	@echo "✓ Build completato"
+	@echo "→ Building $(IMAGE)..."
+	docker build -f Dockerfile.flare -t $(IMAGE) .
+	@echo "✓ Build completato: $(IMAGE)"
 
-.PHONY: push
-push:
-	@echo "→ Push immagini Docker..."
-	@for image in $(IMAGES); do \
-		docker push chargeshield/$$image:latest; \
-	done
+# ─── NVFLARE Provisioning ─────────────────────────────────────────────────────
+# Genera workspace con certificati mTLS e startup scripts.
+# Eseguire UNA SOLA VOLTA dopo il primo build.
+.PHONY: provision
+provision:
+	@echo "→ NVFLARE provisioning..."
+	@mkdir -p $(WORKSPACE)
+	$(NVFLARE) provision -p $(PROJECT_YML) -w $(WORKSPACE)
+	@echo "✓ Workspace generato in: $(WORKSPACE)/chargeshield_fl/prod_00/"
 
 # ─── Containerlab ─────────────────────────────────────────────────────────────
-
 .PHONY: deploy
-deploy: certs build
-	@echo "→ Deploy topologia Containerlab..."
-	containerlab deploy -t $(TOPOLOGY)
+deploy:
+	@echo "→ Deploy topologia ChargeShield-FL..."
+	$(CLAB) deploy -t $(TOPOLOGY) --reconfigure
 	@echo "✓ Topologia attiva"
 
 .PHONY: destroy
 destroy:
-	@echo "→ Teardown topologia Containerlab..."
-	containerlab destroy -t $(TOPOLOGY)
+	@echo "→ Teardown topologia..."
+	$(CLAB) destroy -t $(TOPOLOGY) --cleanup
 	@echo "✓ Topologia rimossa"
 
-.PHONY: inspect
-inspect:
-	@echo "→ Stato topologia..."
-	containerlab inspect -t $(TOPOLOGY)
+.PHONY: status
+status:
+	@docker ps --filter "name=clab-chargeshield" \
+		--format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+.PHONY: logs
+logs:
+	@echo "=== aggregator ==="
+	docker logs clab-chargeshield-fl-aggregator --tail 50
+	@echo "=== highway ==="
+	docker logs clab-chargeshield-fl-highway --tail 20
 
 # ─── Esperimento FL ───────────────────────────────────────────────────────────
-
 .PHONY: experiment
 experiment:
-	@echo "→ Avvio esperimento FL..."
-	$(PYTHON) scripts/run_experiment.py \
-		--config config/flare.yaml \
-		--nodes config/nodes.yaml \
-		--output experiments/
-	@echo "✓ Esperimento completato — risultati in experiments/"
+	@echo "→ Avvio esperimento FedMIA..."
+	@mkdir -p $(EXPERIMENTS)
+	$(PYTHON) $(SCRIPTS_DIR)/run_experiment.py \
+		--config config/experiment.yaml
+	@echo "✓ Risultati salvati in: $(EXPERIMENTS)/"
+
+.PHONY: experiment-sweep
+experiment-sweep:
+	@echo "→ Epsilon sweep: 0.1, 0.5, 1.0, 2.0, 5.0"
+	@mkdir -p $(EXPERIMENTS)
+	@for eps in 0.1 0.5 1.0 2.0 5.0; do \
+		echo "=== epsilon=$$eps ==="; \
+		$(PYTHON) $(SCRIPTS_DIR)/run_experiment.py \
+			--epsilon $$eps --rounds 10; \
+	done
+	@echo "✓ Sweep completato — risultati in: $(EXPERIMENTS)/"
+
+.PHONY: experiment-dry
+experiment-dry:
+	$(PYTHON) $(SCRIPTS_DIR)/run_experiment.py \
+		--config config/experiment.yaml --dry-run
+
+# ─── Test ─────────────────────────────────────────────────────────────────────
+.PHONY: test
+test:
+	@echo "→ Esecuzione unit test..."
+	$(PYTEST) tests/ -v --tb=short
+
+.PHONY: test-sprint4
+test-sprint4:
+	$(PYTEST) tests/test_sprint4.py -v --tb=short
+
+.PHONY: test-sprint5
+test-sprint5:
+	$(PYTEST) tests/test_sprint5.py -v --tb=short
+
+.PHONY: test-coverage
+test-coverage:
+	$(PYTEST) tests/ -v --cov=src --cov-report=term-missing
+
+# ─── Lint ─────────────────────────────────────────────────────────────────────
+.PHONY: lint
+lint:
+	@echo "→ Controllo qualità codice..."
+	ruff check src/ tests/
 
 # ─── Clean ────────────────────────────────────────────────────────────────────
-
 .PHONY: clean
 clean:
-	@echo "→ Pulizia artefatti temporanei..."
+	@echo "→ Pulizia artefatti..."
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -name "*.pyc" -delete 2>/dev/null || true
 	rm -rf .pytest_cache/ .coverage
 	@echo "✓ Pulizia completata"
 
+.PHONY: clean-workspace
+clean-workspace:
+	@echo "→ Rimozione workspace NVFLARE..."
+	rm -rf $(WORKSPACE)
+	@echo "✓ Workspace rimosso — ri-esegui 'make provision'"
+
+.PHONY: clean-experiments
+clean-experiments:
+	@echo "→ Rimozione risultati esperimenti..."
+	rm -rf $(EXPERIMENTS)
+	@echo "✓ Esperimenti rimossi"
+
 .PHONY: clean-all
-clean-all: clean clean-certs destroy
+clean-all: clean clean-workspace destroy
 	@echo "✓ Pulizia completa"
+
+# ─── All ──────────────────────────────────────────────────────────────────────
+.PHONY: all
+all: build provision deploy experiment
