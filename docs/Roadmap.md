@@ -30,10 +30,14 @@ ChargingIDS reale (CUSUM + Krum + Cosine Similarity),
 - 140 test unitari (77 Sprint 4+5 + regression)
 
 ## Sprint 6 — v0.6.0 (pianificato)
-- Esecuzione Case Studies su ACN-Data JPL reale
-- Misura AUC-ROC per sweep ε ∈ {0.1, 0.5, 1.0, 2.0, 5.0}
+- Deploy reale su OrbStack + Containerlab (`make build` + `make provision` + `make deploy`)
+- Full sweep esperimenti: rounds ∈ {100, 200, 500, 1000} × ε ∈ {0.1, 0.5, 1.0, 2.0, 5.0}
+- Heat map AUC-ROC generata da `scripts/compare_results.py`
+- CS1: curva ε vs AUC-ROC (contribuzione principale paper)
+- CS2: membership score per cluster (non-IID analysis)
+- CS3: DP vs no-DP, FedAvg vs FedProx
 - OCPP 2.0 Adapter completo
 - MQTT Adapter completo
 - Scenario 2 MIA (client curioso) — future work
 - Dataset ElaadNL (se disponibile)
-- Paper: risultati sperimentali e analisi privacy/utility trade-off
+- Paper: risultati sperimentali, heat map, analisi privacy/utility trade-off

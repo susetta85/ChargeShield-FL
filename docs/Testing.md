@@ -140,3 +140,21 @@ pytest tests/ -v --tb=short
 | Sprint 4 | `test_sprint4.py` | 52 |
 | Sprint 5 | `test_sprint5.py` | 25 |
 | **Totale** | | **77** |
+
+## Script di analisi
+
+| Script | Descrizione |
+|---|---|
+| `scripts/run_experiment.py` | Esegue esperimento FedMIA + IDS, salva JSON in `experiments/` |
+| `scripts/compare_results.py` | Confronta tutti i JSON in `experiments/`, produce heat map rounds×ε e CSV |
+
+```bash
+# Singolo esperimento
+python scripts/run_experiment.py --config config/experiment.yaml
+
+# Full sweep rounds × epsilon (Sprint 6)
+make experiment-full-sweep
+
+# Confronto risultati
+python scripts/compare_results.py --output experiments/summary.csv
+```

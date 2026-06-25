@@ -37,14 +37,17 @@ Split: 50% members (in training), 50% non-members (attacco).
 > (AUC-ROC → 0.5) anche quando opera su pesi già privatizzati da DP?
 
 ### Risultati attesi
+| ε | Rumore DP | AUC-ROC atteso (100 round) | AUC-ROC atteso (1000 round) |
+|---|---|---|---|
+| 0.1 | alto | → 0.5 (MIA inefficace) | → 0.5 |
+| 0.5 | medio | ~0.55–0.65 | ~0.60–0.70 |
+| 1.0 | standard | ~0.65–0.75 | ~0.70–0.80 |
+| 2.0 | basso | ~0.70–0.80 | ~0.75–0.85 |
+| 5.0 | minimo | ~0.75–0.85 | ~0.80–0.90 |
 
-| ε | Rumore DP | AUC-ROC atteso |
-|---|---|---|
-| 0.1 | alto | → 0.5 (MIA inefficace) |
-| 0.5 | medio | ~0.55–0.65 |
-| 1.0 | standard | ~0.65–0.75 |
-| 2.0 | basso | ~0.70–0.80 |
-| 5.0 | minimo | ~0.75–0.85 |
+**Sweep completo:** rounds ∈ {100, 200, 500, 1000} × ε ∈ {0.1, 0.5, 1.0, 2.0, 5.0}
+→ heat map 4×5 generata da `scripts/compare_results.py`
+→ eseguibile con `make experiment-full-sweep` (stima: 8-12 ore su CPU)
 
 ### Status
 
