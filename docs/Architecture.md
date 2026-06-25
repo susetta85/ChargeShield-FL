@@ -290,3 +290,120 @@ sequenceDiagram
     IDS->>FL: IDSAlert (MONITOR|THROTTLE|EXCLUDE)
     FL->>FL: FedAvg (solo nodi approvati)
 ```
+## Sprint 5 — Deploy reale, FLARE, Esperimenti
+
+```mermaid
+graph TD
+    subgraph OrbStack
+        subgraph Containerlab
+            AGG[FLARE Aggregator]
+            AUD[PrivacyAuditor]
+            IDS_C[ChargingIDS]
+
+            subgraph Highway
+                H1[highway-01]
+                H2[highway-02]
+                H3[highway-03]
+            end
+
+            subgraph Urban
+                U1[urban-01]
+                U2[urban-02]
+                U3[urban-03]
+            end
+
+            subgraph Residential
+                R1[residential-01]
+                R2[residential-02]
+                R3[residential-03]
+            end
+
+            subgraph Corporate
+                C1[corporate-01]
+                C2[corporate-02]
+                C3[corporate-03]
+            end
+        end
+    end
+
+    subgraph Esperimenti
+        EXP[run_experiment.py]
+        RES[experiments/results/]
+    end
+
+    H1 & H2 & H3 --> AGG
+    U1 & U2 & U3 --> AGG
+    R1 & R2 & R3 --> AGG
+    C1 & C2 & C3 --> AGG
+    AGG --> AUD --> IDS_C
+    EXP --> AGG
+    IDS_C --> RES
+```
+## ML Plane — Transversal Layer (Sprint 5)
+
+Il ML Plane è **ortogonale** ai layer Core/Node/Dataset/FL.
+Attraversa verticalmente tutti i livelli Purdue (L0→L3/L4),
+catturando il traffico ML che il modello Purdue non contempla.
+
+```mermaid
+graph TD
+    subgraph "Purdue L3-4 — Operations"
+        AGG[Aggregator<br/>FedAvg]
+    end
+    subgraph "Purdue L2 — Supervisory"
+        FA[FedAvgAggregator<br/>ml/]
+        GM[GradientManager<br/>ml/]
+    end
+    subgraph "Purdue L1 — Control"
+        AT[AutoencoderTrainer<br/>ml/]
+    end
+    subgraph "Purdue L0 — Field"
+        EV[EV Charger<br/>OCPP/MQTT]
+    end
+
+    EV -->|raw sessions| AT
+    AT -->|local gradients| GM
+    GM -->|clipped + noised| FA
+    FA -->|global weights| AGG
+
+    ML_PLANE["ML PLANE<br/>intercetta L0→L3<br/>─────────────<br/>• gradient updates<br/>• weight deltas<br/>• round metadata"]
+
+    style ML_PLANE fill:#ff9900,color:#000,stroke:#cc7700
+    ML_PLANE -.->|osserva| AT
+    ML_PLANE -.->|osserva| GM
+    ML_PLANE -.->|osserva| FA
+    ML_PLANE -.->|espone a| AUDIT
+    ML_PLANE -.->|espone a| IDS
+
+    AUDIT[PrivacyAuditor<br/>FedMIA]
+    IDS[ChargingIDS<br/>Krum/CUSUM/Cosine]
+```
+
+### Componenti ML Plane
+
+| Classe | File | Responsabilità |
+|---|---|---|
+| `AbstractMLModel` | `src/ml/base_ml.py` | interfaccia astratta + eventi ML Plane |
+| `AutoencoderTrainer` | `src/ml/autoencoder_trainer.py` | training loop locale, FedAvg/FedProx (L0→L1) |
+| `GradientManager` | `src/ml/gradient_manager.py` | gradient clipping + Gaussian noise DP (L1→L2) |
+| `FedAvgAggregator` | `src/ml/fedavg_aggregator.py` | FedAvg media pesata per n_samples (L2→L3) |
+
+### FedAvg vs FedProx
+
+`AutoencoderTrainer` supporta entrambi via `proximal_mu` in config:
+- `proximal_mu: 0.0` → FedAvg puro (McMahan et al., 2017)
+- `proximal_mu: > 0.0` → FedProx (Li et al., 2020): aggiunge termine
+  `(mu/2) * ||w - w_global||²` alla loss locale per stabilizzare
+  la convergenza su dati non-IID (cluster con pattern di carica eterogenei).
+
+ACN-Data JPL ha cluster non-IID per natura (Highway/Urban/Residential/Corporate):
+FedProx è raccomandato per gli esperimenti finali.
+
+### Gap del Purdue Model
+
+Il Purdue Model definisce livelli per il traffico OT (SCADA, MODBUS, OCPP)
+ma non contempla il **traffico ML** (gradienti, delta pesi, metadati di round)
+che attraversa verticalmente tutti i livelli.
+
+ML Plane colma questo gap: rende il traffico FL **visibile e analizzabile**,
+abilitando FedMIA (attacco) e IDS (difesa) su un canale altrimenti cieco.

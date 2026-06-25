@@ -1,0 +1,32 @@
+# ChargeShield-FL — Experiment Configuration
+# Usato da: scripts/run_experiment.py
+
+experiment:
+  name: chargeshield_fedmia_baseline
+  fl_rounds: 10
+ # fl_rounds: 30  #esperimenti finali paper
+  # Differential Privacy
+  epsilon: 1.0
+  delta: 1.0e-5
+  max_grad_norm: 1.0
+  # FedAvg/FedProx — 0.0 = FedAvg puro, >0 = FedProx
+  proximal_mu: 0.01
+
+datasets:
+  jpl_2019: datasets/acn_jpl_2019.json
+  jpl_2020: datasets/acn_jpl_2020.json
+
+fedmia:
+  shadow_epochs: 5
+  attack_threshold: 0.5
+  n_shadow_models: 4
+
+ml:
+  input_dim: 7
+  lr: 0.001
+  epochs: 3
+  batch_size: 32
+  proximal_mu: 0.01
+
+output:
+  experiments_dir: experiments

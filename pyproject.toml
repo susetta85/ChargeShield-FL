@@ -37,6 +37,10 @@ build-backend = "setuptools.build_meta"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
+
+#Esperimenti ElaadNL
+#- Analisi risultati per il paper
 
 [tool.ruff]
 line-length = 88
