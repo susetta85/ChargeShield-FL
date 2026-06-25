@@ -1,0 +1,29 @@
+# ChargeShield-FL — Cluster Highway Configuration
+# FL Client: highway (NVFLARE site)
+# Purdue L1/L2: 3 stazioni di ricarica ad alta potenza (autostrada)
+
+node:
+  node_id: highway-01
+  cluster_id: highway
+  site_name: highway
+  protocol: OCPP_16
+  max_power_kw: 150
+  dataset_path: /app/datasets/acn/
+
+ml:
+  input_dim: 7
+  lr: 0.001
+  epochs: 3
+  batch_size: 32
+  proximal_mu: 0.01
+
+charging_stations:
+  - station_id: highway-01
+    protocol: OCPP_16
+    max_power_kw: 150
+  - station_id: highway-02
+    protocol: OCPP_16
+    max_power_kw: 150
+  - station_id: highway-03
+    protocol: OCPP_16
+    max_power_kw: 150

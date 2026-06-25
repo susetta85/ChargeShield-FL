@@ -1,0 +1,29 @@
+# ChargeShield-FL — Cluster Corporate Configuration
+# FL Client: corporate (NVFLARE site)
+# Purdue L1/L2: 3 stazioni aziendali (alta potenza, OCPP 2.0.1)
+
+node:
+  node_id: corporate-01
+  cluster_id: corporate
+  site_name: corporate
+  protocol: OCPP_20
+  max_power_kw: 50
+  dataset_path: /app/datasets/acn/
+
+ml:
+  input_dim: 7
+  lr: 0.001
+  epochs: 3
+  batch_size: 32
+  proximal_mu: 0.01
+
+charging_stations:
+  - station_id: corporate-01
+    protocol: OCPP_20
+    max_power_kw: 50
+  - station_id: corporate-02
+    protocol: OCPP_20
+    max_power_kw: 50
+  - station_id: corporate-03
+    protocol: OCPP_20
+    max_power_kw: 50

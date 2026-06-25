@@ -1,0 +1,30 @@
+# ChargeShield-FL — Cluster Residential Configuration
+# FL Client: residential (NVFLARE site)
+# Purdue L1/L2: 3 stazioni domestiche (bassa potenza, MQTT v5)
+
+node:
+  node_id: residential-01
+  cluster_id: residential
+  site_name: residential
+  protocol: MQTT_v5
+  max_power_kw: 7
+  mqtt_broker_url: mqtt-broker:1883
+  dataset_path: /app/datasets/acn/
+
+ml:
+  input_dim: 7
+  lr: 0.001
+  epochs: 3
+  batch_size: 32
+  proximal_mu: 0.01
+
+charging_stations:
+  - station_id: residential-01
+    protocol: MQTT_v5
+    max_power_kw: 7
+  - station_id: residential-02
+    protocol: MQTT_v5
+    max_power_kw: 7
+  - station_id: residential-03
+    protocol: MQTT_v5
+    max_power_kw: 7
