@@ -1,0 +1,68 @@
+# ChargeShield-FL — Dockerfile.flare
+# Immagine base per tutti i container FL (server, client, auditor, IDS)
+#
+# Build:
+#   docker build -f Dockerfile.flare -t chargeshield-fl:latest .
+#
+# Note:
+#   - NVFLARE 2.7.2 incluso
+#   - mTLS gestito da NVFLARE: i certificati sono generati da
+#     `nvflare provision` e montati in /workspace/startup/ via
+#     Containerlab binds — NON configurati in questo Dockerfile
+#   - PyTorch CPU-only (no CUDA): compatibile con OrbStack su Mac
+
+FROM python:3.10-slim
+
+LABEL maintainer="ChargeShield-FL"
+LABEL version="0.5.0"
+LABEL description="NVFLARE 2.7.2 + PyTorch + ChargeShield-FL"
+
+# ── System dependencies ───────────────────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    git \
+    ca-certificates \
+    iproute2 \
+    iputils-ping \
+    net-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Python dependencies ───────────────────────────────────────────────────────
+# nvflare: FL framework + mTLS + provisioning
+# torch:   Autoencoder training (CPU-only per compatibilità OrbStack)
+RUN pip install --no-cache-dir \
+    nvflare==2.7.2 \
+    torch==2.3.1 --index-url https://download.pytorch.org/whl/cpu \
+    numpy==1.26.4 \
+    scikit-learn==1.5.1 \
+    pandas==2.2.2 \
+    pyyaml==6.0.2 \
+    cryptography==42.0.8
+
+# ── Sorgenti ChargeShield-FL ──────────────────────────────────────────────────
+WORKDIR /app
+COPY src/ /app/src/
+COPY config/ /app/config/
+
+# Aggiunge src/ al PYTHONPATH per gli import (es. from ml.base_ml import ...)
+ENV PYTHONPATH="/app/src:${PYTHONPATH}"
+
+# ── Workspace NVFLARE ─────────────────────────────────────────────────────────
+# Containerlab monta il workspace provisionato via binds:
+#   /workspace/startup/  → start.sh + certificati mTLS (da nvflare provision)
+#   /workspace/local/    → configurazione locale del sito
+#   /workspace/transfer/ → scambio modelli client ↔ server
+RUN mkdir -p /workspace/startup /workspace/local /workspace/transfer
+
+WORKDIR /workspace
+
+# ── Entrypoint ────────────────────────────────────────────────────────────────
+# start.sh è generato da nvflare provision e montato via Containerlab.
+# Se non presente (container non ancora provisionato) → attende in idle.
+CMD ["/bin/bash", "-c", \
+     "if [ -f /workspace/startup/start.sh ]; \
+      then bash /workspace/startup/start.sh; \
+      else echo 'startup/ non trovato — esegui nvflare provision prima del deploy'; \
+           tail -f /dev/null; \
+      fi"]
