@@ -3,7 +3,7 @@ import csv
 from pathlib import Path
 from typing import Any
 
-from src.core.base_dataset import AbstractDataset
+from core.base_dataset import AbstractDataset
 
 
 class ElaadNLDataset(AbstractDataset):

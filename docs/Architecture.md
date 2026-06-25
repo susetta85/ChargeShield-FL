@@ -361,9 +361,10 @@ graph TD
         EV[EV Charger<br/>OCPP/MQTT]
     end
 
-    EV -->|raw sessions| AT
-    AT -->|local gradients| GM
-    GM -->|clipped + noised| FA
+    EV -->|raw sessions JSON| ENRICH[enrich_sessions<br/>hour_of_day · duration_hours]
+    ENRICH -->|6 feature ACN| AT
+    AT -->|local gradients| 
+    GM    GM -->|clipped + noised| FA
     FA -->|global weights| AGG
 
     ML_PLANE["ML PLANE<br/>intercetta L0→L3<br/>─────────────<br/>• gradient updates<br/>• weight deltas<br/>• round metadata"]
@@ -382,11 +383,26 @@ graph TD
 ### Componenti ML Plane
 
 | Classe | File | Responsabilità |
+| `enrich_sessions` | `scripts/run_experiments.py` | aggiunge `hour_of_day`, `duration_hours` da timestamp ACN |
 |---|---|---|
 | `AbstractMLModel` | `src/ml/base_ml.py` | interfaccia astratta + eventi ML Plane |
 | `AutoencoderTrainer` | `src/ml/autoencoder_trainer.py` | training loop locale, FedAvg/FedProx (L0→L1) |
 | `GradientManager` | `src/ml/gradient_manager.py` | gradient clipping + Gaussian noise DP (L1→L2) |
 | `FedAvgAggregator` | `src/ml/fedavg_aggregator.py` | FedAvg media pesata per n_samples (L2→L3) |
+
+### Pipeline dati ACN → AutoencoderTrainer
+
+```
+ACNDataset.load(path)          # carica JSON JPL, restituisce sessioni raw
+→ enrich_sessions(sessions)    # aggiunge hour_of_day, duration_hours
+→ AutoencoderTrainer           # usa 6 feature: total_energy_kwh, max_power_kw,
+                               #   kwh_requested, minutes_available,
+                               #   hour_of_day, duration_hours
+→ GradientManager (DP)         # clip L2 + Gaussian noise (ε=1.0, δ=1e-5)
+→ FedAvgAggregator             # media pesata per n_samples
+→ FedMIA (shadow model)        # DataLoader da members → AUC-ROC
+```
+
 
 ### FedAvg vs FedProx
 

@@ -24,7 +24,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from src.core.base_dataset import AbstractDataset
+from core.base_dataset import AbstractDataset
 
 
 # Formato data usato da ACN-Data nei campi connectionTime / disconnectTime

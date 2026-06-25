@@ -26,12 +26,16 @@ ChargingIDS reale (CUSUM + Krum + Cosine Similarity),
 - Threat Model aggiornato: aggregatore honest-but-curious (Scenario 1),
   FedMIA su pesi post-DP, WireGuard + mTLS per il canale
 - Case Studies: CS1 (ε vs AUC-ROC), CS2 (multi-cluster), CS3 (DP vs no-DP)
-- run_experiment.py: sweep epsilon, FedMIA + IDS evaluation
+- `run_experiments.py`: sweep epsilon, FedMIA + IDS evaluation
 - 140 test unitari (77 Sprint 4+5 + regression)
+- **Fix Sprint 5/6**: ACNDataset API, `enrich_sessions()` (6 feature ACN reali),
+  FedMIA DataLoader, CONTINUOUS_FEATURES allineate ad ACN-Data JPL
 
-## Sprint 6 — v0.6.0 (pianificato)
-- Deploy reale su OrbStack + Containerlab (`make build` + `make provision` + `make deploy`)
-- Full sweep esperimenti: rounds ∈ {100, 200, 500, 1000} × ε ∈ {0.1, 0.5, 1.0, 2.0, 5.0}
+
+## Sprint 6 — v0.6.0 🔄 (in corso)
+- ✅ Deploy reale su OrbStack + Containerlab (completato Sprint 5)
+- ✅ Primo esperimento: 100 round, ε=1.0, 13,073 sessioni ACN-Data JPL
+- Full sweep: rounds ∈ {100, 200, 500, 1000} × ε ∈ {0.1, 0.5, 1.0, 2.0, 5.0}
 - Heat map AUC-ROC generata da `scripts/compare_results.py`
 - CS1: curva ε vs AUC-ROC (contribuzione principale paper)
 - CS2: membership score per cluster (non-IID analysis)

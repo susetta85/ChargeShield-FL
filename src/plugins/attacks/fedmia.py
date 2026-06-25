@@ -35,7 +35,7 @@ import torch.nn as nn
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.core.autoencoder import Autoencoder
+from core.autoencoder import Autoencoder
 
 
 @dataclass
@@ -280,7 +280,7 @@ class FedMIA:
         Returns:
             tensore di shape (1, INPUT_DIM)
         """
-        from src.core.autoencoder import INPUT_DIM
+        from core.autoencoder import INPUT_DIM
         if len(values) >= INPUT_DIM:
             tensor_values = values[:INPUT_DIM]
         else:

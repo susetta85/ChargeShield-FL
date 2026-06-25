@@ -190,16 +190,17 @@ Rileva gradienti con direzione anomala rispetto al cluster.
 
 ---
 
-## Case Studies pianificati (Sprint 5)
-
+## Case Studies (Sprint 5/6)
 ### CS1 — JPL Network: epsilon vs AUC-ROC
-Misura la vulnerabilità MIA su 13,073 sessioni reali ACN-Data JPL.
+Misura la vulnerabilità MIA su 13,073 sessioni reali ACN-Data JPL
+(acndata_sessions_2019.json + acndata_sessions_2020.json).
 FedMIA opera sui pesi post-DP dell'aggregatore.
-
+Shadow model addestrato su 50% delle sessioni (members),
+valutato su 100% (members + non-members) → AUC-ROC.
 **Domanda:** A quale epsilon FedMIA diventa statisticamente
 non migliore del random (AUC-ROC → 0.5)?
-
 **Variabili:** ε ∈ {0.1, 0.5, 1.0, 2.0, 5.0}
+**Status:** 🔄 Primo run in corso — 100 round, ε=1.0
 
 ### CS2 — Multi-Cluster Heterogeneous
 Misura il membership score FedMIA su cluster con pattern diversi

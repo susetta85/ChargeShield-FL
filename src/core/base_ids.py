@@ -31,7 +31,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.core.base_auditor import AuditReport
+from core.base_auditor import AuditReport
 
 
 @dataclass

@@ -13,8 +13,8 @@ experiment:
   proximal_mu: 0.01
 
 datasets:
-  jpl_2019: datasets/acn_jpl_2019.json
-  jpl_2020: datasets/acn_jpl_2020.json
+  jpl_2019: datasets/acn/jpl/acndata_sessions_2019.json
+  jpl_2020: datasets/acn/jpl/acndata_sessions_2020.json
 
 fedmia:
   shadow_epochs: 5
@@ -22,7 +22,7 @@ fedmia:
   n_shadow_models: 4
 
 ml:
-  input_dim: 7
+  input_dim: 6
   lr: 0.001
   epochs: 3
   batch_size: 32

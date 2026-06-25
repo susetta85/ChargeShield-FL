@@ -3,7 +3,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from src.core.base_adapter import AbstractProtocolAdapter
+from core.base_adapter import AbstractProtocolAdapter
 
 
 class OCPP16Adapter(AbstractProtocolAdapter):

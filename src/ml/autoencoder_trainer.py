@@ -44,13 +44,12 @@ class AutoencoderTrainer(AbstractMLModel):
     """
 
     CONTINUOUS_FEATURES = [
-        "voltage_v",
-        "current_a",
-        "power_kw",
-        "energy_kwh",
-        "temperature_c",
-        "soc_percent",
-        "timestamp",
+        "total_energy_kwh",   # kWh erogati (ACN: kWhDelivered)
+        "max_power_kw",       # potenza media stimata
+        "kwh_requested",      # energia richiesta dall'utente
+        "minutes_available",  # minuti disponibili dichiarati
+        "hour_of_day",        # ora connessione (0–23) — pattern comportamentale
+        "duration_hours",     # durata sessione in ore
     ]
 
     def __init__(self, config: dict[str, Any], node_id: str, cluster_id: str) -> None:

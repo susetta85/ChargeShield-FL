@@ -40,8 +40,8 @@ import yaml
 from pathlib import Path
 from typing import Any
 
-from src.core.base_node import AbstractChargingNode
-from src.core.base_auditor import AbstractPrivacyAuditor, AuditReport
+from core.base_node import AbstractChargingNode
+from core.base_auditor import AbstractPrivacyAuditor, AuditReport
 
 
 def _load_flare_config(config_path: str = "config/flare.yaml") -> dict:

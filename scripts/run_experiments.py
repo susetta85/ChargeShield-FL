@@ -77,8 +77,9 @@ def load_sessions(cfg: dict) -> list[dict[str, Any]]:
         if not p.exists():
             logger.warning(f"Dataset non trovato: {p} — skip {key}")
             continue
-        dataset = ACNDataset(str(p))
-        loaded = dataset.load()
+        dataset = ACNDataset()
+        dataset.load(str(p))
+        loaded = [dataset.get_sample(i) for i in range(len(dataset))]
         sessions.extend(loaded)
         logger.info(f"{key}: {len(loaded)} sessioni caricate")
     if not sessions:
@@ -89,6 +90,24 @@ def load_sessions(cfg: dict) -> list[dict[str, Any]]:
     logger.info(f"Totale sessioni: {len(sessions)}")
     return sessions
 
+# ── Session enrichment ─────────────────────────────────────────────────────────
+def enrich_sessions(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Aggiunge feature derivate dai timestamp ACN-Data.
+    - hour_of_day: ora di connessione (0–23), pattern comportamentale
+    - duration_hours: durata sessione in ore, correlata all'energia
+    """
+    enriched = []
+    for s in sessions:
+        try:
+            start = datetime.fromisoformat(s["start_time"])
+            end   = datetime.fromisoformat(s["end_time"])
+            s["hour_of_day"]    = float(start.hour)
+            s["duration_hours"] = max(0.0, (end - start).total_seconds() / 3600.0)
+            enriched.append(s)
+        except (KeyError, ValueError):
+            pass  # scarta sessioni con timestamp malformati
+    return enriched
 
 # ── FL Experiment ──────────────────────────────────────────────────────────────
 
@@ -167,6 +186,46 @@ def run_fl_rounds(
 
 
 # ── FedMIA Attack ──────────────────────────────────────────────────────────────
+# ── FedMIA Attack ──────────────────────────────────────────────────────────────
+
+# Feature ACN usate per FedMIA — allineate con AutoencoderTrainer
+_MIA_FEATURES = [
+    "total_energy_kwh", "max_power_kw", "kwh_requested",
+    "minutes_available", "hour_of_day", "duration_hours",
+]
+
+def _sessions_to_loader(
+    sessions: list[dict[str, Any]],
+    batch_size: int = 32,
+) -> "torch.utils.data.DataLoader":
+    """
+    Converte sessioni ACN in DataLoader per shadow model FedMIA.
+    Usa dataset custom che restituisce tensori diretti (non tuple),
+    compatibile con autoencoder.fit() che itera batch come Tensor.
+    """
+    import torch
+
+    rows = [
+        [float(s.get(f) or 0.0) for f in _MIA_FEATURES]
+        for s in sessions
+    ]
+    tensor = torch.tensor(rows, dtype=torch.float32)
+
+    class _DirectTensorDataset(torch.utils.data.Dataset):
+        """Dataset che restituisce tensori row-by-row, non tuple."""
+        def __init__(self, t: torch.Tensor) -> None:
+            self._t = t
+        def __len__(self) -> int:
+            return len(self._t)
+        def __getitem__(self, i: int) -> torch.Tensor:
+            return self._t[i]
+
+    return torch.utils.data.DataLoader(
+        _DirectTensorDataset(tensor),
+        batch_size=batch_size,
+        shuffle=True,
+    )
+
 
 def run_fedmia(
     cfg: dict,
@@ -174,8 +233,10 @@ def run_fedmia(
     fl_results: dict[int, dict[str, Any]],
 ) -> dict[int, dict[str, Any]]:
     """
-    Esegue FedMIA su ogni round FL.
-    Misura AUC-ROC (members vs non-members).
+    Esegue FedMIA su sessioni ACN-Data.
+    Shadow model addestrato su members (50%) — poi scorecard su tutti.
+    Misura AUC-ROC: capacità di distinguere membro da non-membro.
+    FedMIA opera su dati post-DP — gradienti già privatizzati.
     """
     from sklearn.metrics import roc_auc_score
 
@@ -186,35 +247,39 @@ def run_fedmia(
 
     logger.info(f"FedMIA — members: {len(members)}, non-members: {len(non_members)}")
 
-    fedmia = FedMIA(
-        shadow_epochs=mia_cfg["shadow_epochs"],
-        attack_threshold=mia_cfg["attack_threshold"],
-        n_shadow_models=mia_cfg["n_shadow_models"],
-    )
+    fedmia = FedMIA(attack_threshold=mia_cfg["attack_threshold"])
 
+    # Addestra shadow model su DataLoader dei membri
     logger.info("Training shadow model...")
-    fedmia.train_shadow_model(members)
+    member_loader = _sessions_to_loader(members)
+    fedmia.train_shadow_model(member_loader)
 
+    # Calcola membership score per ogni sessione individualmente
+    # Passa dict con sole feature numeriche per evitare ambiguità
+    logger.info("Computing membership scores...")
+    def _score(s: dict) -> float:
+        feat = {f: float(s.get(f) or 0.0) for f in _MIA_FEATURES}
+        return fedmia.compute_membership_score(feat)
+
+    member_scores     = [_score(s) for s in members]
+    non_member_scores = [_score(s) for s in non_members]
+
+    labels = [1] * len(member_scores) + [0] * len(non_member_scores)
+    scores = member_scores + non_member_scores
+    auc    = roc_auc_score(labels, scores)
+    logger.info(f"AUC-ROC: {auc:.4f}")
+
+    # Associa AUC a ogni round FL (il shadow model è fisso,
+    # il round indica il numero di round di training FL prima dell'attacco)
     mia_results: dict[int, dict[str, Any]] = {}
-
     for round_num in fl_results:
-        logger.info(f"FedMIA — round {round_num}")
-        member_scores     = fedmia.compute_membership_score(members)
-        non_member_scores = fedmia.compute_membership_score(non_members)
-
-        labels = [1] * len(member_scores) + [0] * len(non_member_scores)
-        scores = list(member_scores) + list(non_member_scores)
-        auc    = roc_auc_score(labels, scores)
-
         mia_results[round_num] = {
             "auc_roc":               auc,
             "member_score_mean":     float(np.mean(member_scores)),
             "non_member_score_mean": float(np.mean(non_member_scores)),
         }
-        logger.info(f"Round {round_num} — AUC-ROC: {auc:.4f}")
 
     return mia_results
-
 
 # ── IDS Evaluation ─────────────────────────────────────────────────────────────
 
@@ -354,6 +419,8 @@ def main() -> None:
     )
 
     sessions = load_sessions(cfg)
+    sessions = enrich_sessions(sessions)
+    logger.info(f"Sessioni dopo enrichment: {len(sessions)}")
 
     if args.dry_run:
         logger.info("Dry run completato — uscita.")

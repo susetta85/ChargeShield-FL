@@ -60,22 +60,25 @@ ricevono ogni evento tramite `on_ml_event()`. Implementato da
 
 Esegue il training locale dell'Autoencoder su sessioni EV (ACN-Data).
 
-**Modello:** Encoder `7→16→8→4` + Decoder `4→8→16→7` (MSE loss)
+**Modello:** Encoder `6→16→8→4` + Decoder `4→8→16→6` (MSE loss)
 
-**Feature continue usate (7):**
+**Feature continue usate (6) — ACN-Data JPL:**
+| Feature | Fonte | Tipo |
+|---|---|---|
+| `total_energy_kwh` | ACN: kWhDelivered | float |
+| `max_power_kw` | calcolato: kWh / ore ricarica | float |
+| `kwh_requested` | ACN: userInputs.kWhRequested | float |
+| `minutes_available` | ACN: userInputs.minutesAvailable | float |
+| `hour_of_day` | derivato: ora da connectionTime (0–23) | float |
+| `duration_hours` | derivato: (disconnectTime − connectionTime) in ore | float |
 
-| Feature | Tipo |
-|---|---|
-| `voltage_v` | float |
-| `current_a` | float |
-| `power_kw` | float |
-| `energy_kwh` | float |
-| `temperature_c` | float (None → sessione scartata) |
-| `soc_percent` | float (None → sessione scartata) |
-| `timestamp` | float |
+`voltage_v`, `current_a`, `soc_percent` non sono presenti nei dati
+per-sessione di ACN-Data JPL — sono dati pilota a granularità diversa.
+Le due feature derivate (`hour_of_day`, `duration_hours`) sono aggiunte
+da `enrich_sessions()` in `scripts/run_experiments.py` prima del training.
 
-Le sessioni con valori `None` nelle feature continue vengono scartate
-silenziosamente — mai silent default.
+Le sessioni con valori `None` o timestamp malformati vengono scartate
+silenziosamente da `enrich_sessions()` — mai silent default.
 
 **FedAvg vs FedProx:**
 
@@ -195,7 +198,7 @@ In `config/experiment.yaml` sezione `ml`:
 
 ```yaml
 ml:
-  input_dim: 7
+  input_dim: 6       #4 feature ACN reali + hour_of_day + duration_hours
   lr: 0.001
   epochs: 3           # round di sviluppo; 10+ per paper
   batch_size: 32

@@ -27,9 +27,12 @@ Split: 50% members (in training), 50% non-members (attacco).
 
 - 4 cluster FL (highway, urban, residential, corporate)
 - FedAvg con proximal_mu=0.0 (baseline) e FedProx con proximal_mu=0.01
-- 10 round (sviluppo) → 30 round (paper)
+- 100 round  →  sweep {100, 200, 500, 1000}
 - GradientManager: ε ∈ {0.1, 0.5, 1.0, 2.0, 5.0}, δ=1e-5
 - FedMIA: shadow model su dati pubblici ACN-Data JPL
+- Feature ACN (6): `total_energy_kwh`, `max_power_kw`, `kwh_requested`,
+  `minutes_available`, `hour_of_day`, `duration_hours`
+- Pipeline: `load_sessions()` → `enrich_sessions()` → trainer
 
 ### Domanda di ricerca
 
@@ -51,8 +54,8 @@ Split: 50% members (in training), 50% non-members (attacco).
 
 ### Status
 
-🔄 Pianificato Sprint 5 — eseguibile con `make experiment-sweep`
-
+🔄 In esecuzione Sprint 5/6 — primo run 100 round completato (ε=1.0)
+Sweep completo: `make experiment-full-sweep` (stima: 8–12 ore CPU)
 ---
 
 ## Case Study 2 — Multi-Cluster Heterogeneous: membership score per cluster
@@ -113,7 +116,7 @@ Misura quanto DP riduce l'efficacia di FedMIA.
 - ε=1.0, δ=1e-5 (DP attiva) vs ε=∞ (DP disattiva, max_grad_norm=∞)
 - FedAvg (proximal_mu=0.0) e FedProx (proximal_mu=0.01) a confronto
 - ChargingIDS in modalità completa (CUSUM + Krum + Cosine)
-- 30 round, 4 cluster
+- 100 round, 4 cluster
 
 **Nota:** FedMIA opera sempre sui pesi post-decrypt mTLS.
 La differenza è solo la presenza/assenza del rumore gaussiano
@@ -156,7 +159,7 @@ Da implementare in Sprint 6 con dataset ElaadNL (se disponibile).
 make experiment-sweep
 
 # CS2/CS3 — configurazione specifica
-python scripts/run_experiment.py --config config/experiment.yaml --epsilon 1.0 --rounds 30
+python scripts/run_experiments.py --config config/experiment.yaml --epsilon 1.0 --rounds 100
 
 # Dry run — verifica config e dataset
 make experiment-dry

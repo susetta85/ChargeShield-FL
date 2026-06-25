@@ -3,8 +3,8 @@ import yaml
 from pathlib import Path
 from typing import Any
 
-from src.core.base_node import AbstractChargingNode, NodeConfig
-from src.core.base_adapter import AbstractProtocolAdapter
+from core.base_node import AbstractChargingNode, NodeConfig
+from core.base_adapter import AbstractProtocolAdapter
 
 import uuid 
 from datetime import datetime, timezone

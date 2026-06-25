@@ -44,9 +44,9 @@ import yaml
 from pathlib import Path
 from typing import Any
 
-from src.core.base_ids import AbstractIDS, IDSAlert, RoundAnalysis
-from src.core.base_auditor import AuditReport
-from src.plugins.attacks.fedmia import FedMIA, MIAResult
+from core.base_ids import AbstractIDS, IDSAlert, RoundAnalysis
+from core.base_auditor import AuditReport
+from plugins.attacks.fedmia import FedMIA, MIAResult
 
 
 def _load_ids_config(config_path: str = "config/auditor.yaml") -> dict:

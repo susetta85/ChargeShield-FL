@@ -15,8 +15,8 @@ pytest tests/ -v --tb=short
 
 | Test | Descrizione |
 |---|---|
-| `test_encoder_output_shape` | Verifica che Encoder produca output di dim 4 da input dim 7 |
-| `test_decoder_output_shape` | Verifica che Decoder ricostruisca dim 7 da dim 4 |
+| `test_encoder_output_shape` | Verifica che Encoder produca output di dim 4 da input dim 6 |
+| `test_decoder_output_shape` | Verifica che Decoder ricostruisca dim 6 da dim 4 |
 | `test_autoencoder_forward` | Forward pass end-to-end: input e output stessa shape |
 | `test_autoencoder_fit` | `fit()` su dati sintetici, loss decresce |
 | `test_calibrate_threshold` | Soglia al 95° percentile calcolata correttamente |
@@ -119,6 +119,28 @@ pytest tests/ -v --tb=short
 | `test_ml_plane_event_emitted` | Evento `aggregation` emesso a `purdue_level=3` |
 
 ---
+---
+## Fix e adattamenti Sprint 5/6
+
+### Pipeline dati ACN-Data
+| Modifica | Dettaglio |
+|---|---|
+| `ACNDataset` API | `__init__()` senza argomenti; path passato a `load(path)` separatamente |
+| `enrich_sessions()` | Aggiunge `hour_of_day` e `duration_hours` da timestamp ISO prima del training |
+| Feature set | Da 7 feature simulate a 6 feature ACN reali (`input_dim: 6`) |
+
+### FedMIA
+| Modifica | Dettaglio |
+|---|---|
+| `train_shadow_model` | Richiede `DataLoader` — convertito da sessioni via `_sessions_to_loader()` |
+| `compute_membership_score` | Chiamato per-sessione con dict di sole feature numeriche |
+| Costruttore | Solo `attack_threshold` — rimossi `shadow_epochs` e `n_shadow_models` non esistenti |
+
+### AutoencoderTrainer
+| Modifica | Dettaglio |
+|---|---|
+| `CONTINUOUS_FEATURES` | Aggiornato a campi ACN reali + feature derivate da timestamp |
+
 
 ## Esecuzione per sprint
 
@@ -145,7 +167,7 @@ pytest tests/ -v --tb=short
 
 | Script | Descrizione |
 |---|---|
-| `scripts/run_experiment.py` | Esegue esperimento FedMIA + IDS, salva JSON in `experiments/` |
+| `scripts/run_experiments.py` | Esegue esperimento FedMIA + IDS, salva JSON in `experiments/` |
 | `scripts/compare_results.py` | Confronta tutti i JSON in `experiments/`, produce heat map rounds×ε e CSV |
 
 ```bash

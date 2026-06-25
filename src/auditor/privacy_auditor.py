@@ -35,7 +35,7 @@ import yaml
 from pathlib import Path
 from typing import Any
 
-from src.core.base_auditor import AbstractPrivacyAuditor, AuditReport
+from core.base_auditor import AbstractPrivacyAuditor, AuditReport
 
 
 def _load_auditor_config(config_path: str = "config/auditor.yaml") -> dict:
