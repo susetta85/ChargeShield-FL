@@ -45,4 +45,4 @@ ENV PYTHONPATH="/app/src"
 # ── Entrypoint ────────────────────────────────────────────────────────────────
 # Il charging node attende connessione dal FL client del proprio cluster.
 # In produzione viene sostituito dallo script di simulazione OCPP/MQTT.
-CMD ["python3", "-c", "import time; print('Charging node ready'); time.sleep(infinity)"]
+CMD ["/bin/bash", "-c", "echo 'Charging node ready'; tail -f /dev/null"]

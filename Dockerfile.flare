@@ -65,8 +65,8 @@ WORKDIR /workspace
 # start.sh è generato da nvflare provision e montato via Containerlab.
 # Se non presente (container non ancora provisionato) → attende in idle.
 CMD ["/bin/bash", "-c", \
-     "if [ -f /workspace/startup/start.sh ]; \
-      then bash /workspace/startup/start.sh; \
+     "if [ -f /workspace/startup/sub_start.sh ]; \
+      then bash /workspace/startup/sub_start.sh; \
       else echo 'startup/ non trovato — esegui nvflare provision prima del deploy'; \
            tail -f /dev/null; \
       fi"]
