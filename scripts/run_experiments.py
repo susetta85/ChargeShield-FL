@@ -352,15 +352,15 @@ def run_ids(
         ids_results[round_num] = {
             "alerts": [
                 {
-                    "type":     a.alert_type,
+                    "node_id":     a.node_id,
                     "severity": a.severity,
-                    "node_id":  a.node_id,
-                    "message":  a.message,
+                    "reasons":  a.reasons,
+                    "recommended_action":  a.recommended_action,
                 }
                 for a in (analysis.alerts if analysis else [])
             ],
-            "byzantine_detected": analysis.byzantine_detected if analysis else False,
-            "drift_detected":     analysis.drift_detected if analysis else False,
+            "byzantine_detected": len(analysis.byzantine_nodes) > 0 if analysis else False,
+            "low_similarity_nodes": analysis.low_similarity_nodes if analysis else [],
         }
 
     return ids_results

@@ -1,0 +1,5018 @@
+{
+  "experiment_name": "chargeshield_fedmia_baseline",
+  "timestamp": "20260626_161749",
+  "config": {
+    "epsilon": 1.0,
+    "delta": 1e-05,
+    "fl_rounds": 100,
+    "proximal_mu": 0.01
+  },
+  "summary": {
+    "mean_auc_roc": 0.4827617985297513,
+    "max_auc_roc": 0.48276179852975126,
+    "min_auc_roc": 0.48276179852975126,
+    "privacy_risk": "LOW"
+  },
+  "per_round": {
+    "1": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "2": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "3": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "4": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "5": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "6": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "7": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "8": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "9": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "10": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "11": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "12": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "13": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "14": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "15": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "16": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "17": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "18": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "19": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "20": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "21": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "22": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "23": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "24": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "25": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "26": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "27": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "28": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "29": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "30": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "31": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "32": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "33": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "34": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "35": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "36": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "37": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "38": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "39": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "40": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "41": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "42": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "43": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "44": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "45": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "46": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "47": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "48": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "49": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "50": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "51": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "52": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "53": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "54": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "55": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "56": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "57": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "58": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "59": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "60": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "61": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "62": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "63": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "64": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "65": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "66": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "67": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "68": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "69": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "70": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "71": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "72": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "73": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "74": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "75": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "76": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "77": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "78": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "79": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "80": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "81": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "82": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "83": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "84": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "85": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "86": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "87": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "88": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "89": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "90": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "91": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "92": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "93": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "94": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "95": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "96": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "97": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "98": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "99": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    },
+    "100": {
+      "mia": {
+        "auc_roc": 0.48276179852975126,
+        "member_score_mean": 0.6277539779681762,
+        "non_member_score_mean": 0.6622303809086737
+      },
+      "ids": {
+        "alerts": [
+          {
+            "node_id": "highway-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "urban-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "residential-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          },
+          {
+            "node_id": "corporate-01",
+            "severity": "HIGH",
+            "reasons": [
+              "Cosine similarity anomala: 0.0000 (soglia=0.85) \u2014 gradiente ortogonale/opposto al cluster"
+            ],
+            "recommended_action": "EXCLUDE"
+          }
+        ],
+        "byzantine_detected": false,
+        "low_similarity_nodes": [
+          "highway-01",
+          "urban-01",
+          "residential-01",
+          "corporate-01"
+        ]
+      }
+    }
+  }
+}
