@@ -47,7 +47,7 @@ from torch import Tensor
 
 # Numero di feature numeriche in input all'autoencoder.
 # Corrisponde alle feature dell'ACNDataset dopo preprocessing.
-INPUT_DIM = 7
+INPUT_DIM = 6
 
 
 class Encoder(nn.Module):

@@ -184,8 +184,6 @@ def run_fl_rounds(
 
     return results
 
-
-# ── FedMIA Attack ──────────────────────────────────────────────────────────────
 # ── FedMIA Attack ──────────────────────────────────────────────────────────────
 
 # Feature ACN usate per FedMIA — allineate con AutoencoderTrainer
@@ -282,31 +280,73 @@ def run_fedmia(
     return mia_results
 
 # ── IDS Evaluation ─────────────────────────────────────────────────────────────
+# ── IDS Evaluation ─────────────────────────────────────────────────────────────
 
 def run_ids(
+    cfg: dict,
     fl_results: dict[int, dict[str, Any]],
 ) -> dict[int, dict[str, Any]]:
     """
-    Valuta ChargingIDS (Krum + Cosine + CUSUM) come baseline defense.
+    Valuta ChargingIDS su ogni round FL.
+    Costruisce AuditReport e gradient dict dai GradientUpdate del ML Plane
+    per ogni nodo, poi chiama analyze_round() con la firma corretta.
     """
-    ids = ChargingIDS(config={
-        "cusum_threshold":        5.0,
-        "cusum_drift":            0.5,
-        "krum_byzantine_tolerance": 1,
-        "cosine_threshold":       0.85,
-    })
+    from core.base_auditor import AuditReport
 
+    ids = ChargingIDS(
+        byzantine_tolerance=1,
+        cosine_threshold=0.85,
+    )
+
+    epsilon = cfg["experiment"]["epsilon"]
     ids_results: dict[int, dict[str, Any]] = {}
 
     for round_num, round_data in fl_results.items():
         updates = round_data.get("updates", [])
         if not updates:
-            ids_results[round_num] = {"alerts": [], "byzantine_detected": False}
+            ids_results[round_num] = {
+                "alerts": [], "byzantine_detected": False, "drift_detected": False,
+            }
+            continue
+
+        # Costruisce AuditReport e gradient dict da GradientUpdate (ML Plane)
+        reports: dict[str, AuditReport] = {}
+        gradients: dict[str, dict[str, Any]] = {}
+
+        for update in updates:
+            if not update or not update.node_id:
+                continue
+
+            # AuditReport: privacy_score=1.0 se DP applicato, 0.5 altrimenti
+            reports[update.node_id] = AuditReport(
+                node_id=update.node_id,
+                round_id=round_num,
+                privacy_score=1.0 if update.metadata.get("dp_applied") else 0.5,
+                epsilon=epsilon,
+                threats_detected=[],
+                metadata={
+                    "n_samples": update.n_samples,
+                    "loss":      update.loss,
+                    "cluster_id": update.cluster_id,
+                },
+            )
+
+            # Gradient dict: {layer_0: tensor, layer_1: tensor, ...}
+            gradients[update.node_id] = {
+                f"layer_{i}": w
+                for i, w in enumerate(update.weights or [])
+            }
+
+        if not reports:
+            ids_results[round_num] = {
+                "alerts": [], "byzantine_detected": False, "drift_detected": False,
+            }
             continue
 
         analysis = ids.analyze_round(
-            round_num=round_num,
-            gradient_updates=updates,
+            round_id=round_num,
+            reports=reports,
+            gradients=gradients,
         )
 
         ids_results[round_num] = {
@@ -428,7 +468,7 @@ def main() -> None:
 
     fl_results  = run_fl_rounds(cfg, sessions)
     mia_results = run_fedmia(cfg, sessions, fl_results)
-    ids_results = {} if args.skip_ids else run_ids(fl_results)
+    ids_results = {} if args.skip_ids else run_ids(cfg, fl_results)
 
     save_results(cfg, mia_results, ids_results)
 

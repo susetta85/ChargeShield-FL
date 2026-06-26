@@ -83,6 +83,7 @@ class FedMIA:
     def __init__(
         self,
         attack_threshold: float = 0.5,
+        input_dim: int = 6,
         device: str | None = None,
     ):
         """
@@ -103,8 +104,8 @@ class FedMIA:
 
         # Shadow model: stesso autoencoder usato dai nodi target
         # Viene addestrato su dati pubblici (ACN-Data JPL)
-        self._shadow_model = Autoencoder().to(self._device)
-
+        #self._shadow_model = Autoencoder().to(self._device)
+        self._shadow_model = Autoencoder(input_dim=input_dim).to(self._device)
         # Soglia per classificare un campione come membro
         self._attack_threshold = attack_threshold
 
