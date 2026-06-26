@@ -99,7 +99,7 @@ logs:
 experiment:
 	@echo "→ Avvio esperimento FedMIA..."
 	@mkdir -p $(EXPERIMENTS)
-	$(PYTHON) $(SCRIPTS_DIR)/run_experiment.py \
+	$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
 		--config config/experiment.yaml
 	@echo "✓ Risultati salvati in: $(EXPERIMENTS)/"
 
@@ -109,8 +109,8 @@ experiment-sweep:
 	@mkdir -p $(EXPERIMENTS)
 	@for eps in 0.1 0.5 1.0 2.0 5.0; do \
 		echo "=== epsilon=$$eps ==="; \
-		$(PYTHON) $(SCRIPTS_DIR)/run_experiment.py \
-			--epsilon $$eps --rounds 50; \
+		$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
+			--epsilon $$eps --rounds 100; \
 	done
 	@echo "✓ Sweep completato — risultati in: $(EXPERIMENTS)/"
 
@@ -124,7 +124,7 @@ experiment-full-sweep:
 	@for rounds in 100 200 500 1000; do \
 		for eps in 0.1 0.5 1.0 2.0 5.0; do \
 			echo "=== rounds=$$rounds epsilon=$$eps ==="; \
-			$(PYTHON) $(SCRIPTS_DIR)/run_experiment.py \
+			$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
 				--epsilon $$eps --rounds $$rounds; \
 		done; \
 	done
@@ -132,7 +132,7 @@ experiment-full-sweep:
 
 .PHONY: experiment-dry
 experiment-dry:
-	$(PYTHON) $(SCRIPTS_DIR)/run_experiment.py \
+	$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
 		--config config/experiment.yaml --dry-run
 
 # ─── Test ─────────────────────────────────────────────────────────────────────
@@ -163,7 +163,7 @@ lint:
 .PHONY: clean
 clean:
 	@echo "→ Pulizia artefatti..."
-	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -name "*.pyc" -delete 2>/dev/null || true
 	rm -rf .pytest_cache/ .coverage
 	@echo "✓ Pulizia completata"
