@@ -6,7 +6,7 @@ A research framework for evaluating Membership Inference Attacks and differentia
 
 ## Abstract
 
-ChargeShield-FL is an open research framework designed to empirically evaluate the privacy guarantees of Federated Learning (FL) in the context of Electric Vehicle (EV) charging networks, with a particular focus on Membership Inference Attacks (MIA) and the effectiveness of differential privacy (DP) as a countermeasure. As smart-grid deployments increasingly adopt FL to train shared models over distributed charging stations without centralising raw session data, the question of whether individual charging sessions can be re-identified from model updates becomes a critical safety and regulatory concern. The framework instantiates a realistic, heterogeneous topology of 12 nodes across four cluster types — Highway, Urban, Residential, and Corporate — each governed by distinct communication protocols (OCPP 1.6, OCPP 2.0.1, MQTT v5) and power profiles, trained on 13,073 real EV sessions drawn from the ACN-Data JPL dataset (2019–2020). FedMIA, a shadow-model-based membership inference attacker, is integrated natively alongside CUSUM, Krum, and Cosine Similarity intrusion detection baselines, enabling controlled measurement of attack success (AUC-ROC) across a full sweep of FL aggregation strategies (FedAvg, FedProx) and privacy budgets (ε ∈ {0.1, 0.5, 1.0, 2.0, 5.0}). Initial results from a 100-round experiment at ε = 1.0 yield AUC-ROC = 0.5172, confirming that the Gaussian Mechanism at standard privacy budgets is effective at suppressing membership leakage to near-random-guess levels; ChargeShield-FL targets publication at the IEEE/IFIP International Conference on Dependable Systems and Networks (DSN) 2027.
+ChargeShield-FL is an open research framework designed to empirically evaluate the privacy guarantees of Federated Learning (FL) in the context of Electric Vehicle (EV) charging networks, with a particular focus on Membership Inference Attacks (MIA) and the effectiveness of differential privacy (DP) as a countermeasure. As smart-grid deployments increasingly adopt FL to train shared models over distributed charging stations without centralising raw session data, the question of whether individual charging sessions can be re-identified from model updates becomes a critical safety and regulatory concern. The framework instantiates a realistic, heterogeneous topology of 12 nodes across four cluster types — Highway, Urban, Residential, and Corporate — each governed by distinct communication protocols (OCPP 1.6, OCPP 2.0.1, MQTT v5) and power profiles, trained on 13,073 real EV sessions drawn from the ACN-Data JPL dataset (2019–2020). MIA evaluation is performed via a loss-based per-round evaluator (Yeom et al. 2018) embedded in the experiment pipeline: at each FL round the global weights are loaded into the Autoencoder, membership scores are computed as −MSE, and AUC-ROC is measured per round via scikit-learn; summary statistics (mean, max, min AUC-ROC across rounds) are reported in the experiment JSON. A separate shadow-model-based FedMIA plugin (`src/plugins/attacks/fedmia.py`) is used by ChargingIDS for per-node IDS scoring and remains unchanged. Both mechanisms are integrated alongside CUSUM, Krum, and Cosine Similarity intrusion detection baselines, enabling controlled measurement of attack success across a full sweep of FL aggregation strategies (FedAvg, FedProx) and privacy budgets (ε ∈ {0.1, 0.5, 1.0, 2.0, 5.0}). Initial results from a 100-round experiment at ε = 1.0 yield mean AUC-ROC = 0.5172 across rounds, confirming that the Gaussian Mechanism at standard privacy budgets is effective at suppressing membership leakage to near-random-guess levels; ChargeShield-FL targets publication at the IEEE/IFIP International Conference on Dependable Systems and Networks (DSN) 2027.
 
 ---
 
@@ -80,9 +80,16 @@ ChargeShield-FL fills this gap by providing a fully reproducible, containerised 
 |         +-------------------------------------------------+                |
 |         |               ATTACKER PLANE (FedMIA)          |                |
 |         |  +-------------------------------------------+  |                |
-|         |  |  Shadow Model (public ACN split)          |  |                |
-|         |  |  Reconstruction Error -> Membership Score |  |                |
-|         |  |  Evaluation Metric: AUC-ROC               |  |                |
+|         |  |  (a) FedMIA Plugin (IDS, per-node)        |  |                |
+|         |  |      Shadow Model on public ACN split     |  |                |
+|         |  |      Reconstruction Error -> Membership   |  |                |
+|         |  |      Score; used by ChargingIDS           |  |                |
+|         |  +-------------------------------------------+  |                |
+|         |  +-------------------------------------------+  |                |
+|         |  |  (b) FedMIA Evaluator (run_experiments)   |  |                |
+|         |  |      Loss-based per-round (Yeom 2018)     |  |                |
+|         |  |      Score = -MSE on global_weights       |  |                |
+|         |  |      AUC-ROC measured each FL round       |  |                |
 |         |  +-------------------------------------------+  |                |
 |         +-------------------------------------------------+                |
 +-----------------------------------------------------------------------------+
@@ -97,7 +104,8 @@ ChargeShield-FL fills this gap by providing a fully reproducible, containerised 
 | FL Aggregation Server | NVFLARE 2.7.2 | Coordinates federated rounds; applies FedAvg or FedProx aggregation; enforces DP clipping and noise injection |
 | Local Autoencoder | PyTorch (6→16→8→4→8→16→6) | Per-client anomaly detector trained on local EV session features; produces reconstruction error as membership signal |
 | Differential Privacy Layer | Gaussian Mechanism | Clips per-sample gradients to max_grad_norm; adds calibrated Gaussian noise with σ = max_grad_norm × √(2 ln(1.25/δ)) / ε before upload |
-| FedMIA Attacker | Shadow model on public ACN split | Trains a reference autoencoder on held-out public data; uses reconstruction error gap between members and non-members to estimate AUC-ROC leakage |
+| FedMIA Plugin (`src/plugins/attacks/fedmia.py`) | Shadow model on public ACN split | Trains a reference autoencoder on held-out public data; uses reconstruction error gap between members and non-members to produce per-node membership scores; used by ChargingIDS for IDS scoring |
+| FedMIA Evaluator (`scripts/run_experiments.py`) | Loss-based per-round evaluator (Yeom et al. 2018) | At each FL round loads global weights into the Autoencoder; computes membership score as −MSE; measures AUC-ROC via scikit-learn per round; JSON output includes `per_round[round]["auc_roc"]` and summary `mean_auc_roc`, `max_auc_roc`, `min_auc_roc` |
 | CUSUM IDS Baseline | Sequential CUSUM statistic | Detects distributional drift in incoming gradient magnitudes; triggers alert when cumulative sum exceeds threshold |
 | Krum IDS Baseline | Multi-Krum filter | Rejects client updates that are Euclidean outliers relative to the median neighbourhood; provides Byzantine resilience baseline |
 | Cosine Similarity IDS | Pairwise cosine distance | Flags updates that deviate in direction from the running aggregate; identifies gradient inversion style anomalies |
@@ -112,7 +120,7 @@ ChargeShield-FL fills this gap by providing a fully reproducible, containerised 
 
 | Threat | Attacker Type | Defence | Metric |
 |---|---|---|---|
-| Membership Inference on training sessions | Honest-but-curious FL server; external adversary with model access | Gaussian Mechanism DP (ε ∈ {0.1–5.0}, δ = 1e-5) | AUC-ROC of FedMIA shadow-model attack |
+| Membership Inference on training sessions | Honest-but-curious FL server; external adversary with model access | Gaussian Mechanism DP (ε ∈ {0.1–5.0}, δ = 1e-5) | AUC-ROC per FL round (loss-based evaluator, Yeom 2018); mean AUC-ROC reported across rounds |
 | Gradient Inversion (reconstruction of raw session data) | Active server-side attacker | DP noise injection; mTLS transport integrity | Reconstruction MSE on held-out sessions |
 | Byzantine update poisoning | Malicious FL client submitting corrupted updates | Krum aggregation filter; Cosine Similarity anomaly detection | Attack detection rate; model accuracy degradation |
 | Distributional shift / concept drift exploitation | Compromised client inflating local loss | CUSUM sequential monitoring | False positive rate; detection latency in rounds |
@@ -174,7 +182,7 @@ All FL client-to-server communication is protected by two layers:
 
 ### Experiment 1: Baseline DP Effectiveness (100 rounds, ε = 1.0)
 
-The first completed experiment ran 100 federated rounds with FedAvg aggregation and Gaussian Mechanism DP at ε = 1.0, δ = 1e-5, across all 12 nodes. FedMIA was applied post-training using a shadow model trained on the public ACN split.
+The first completed experiment ran 100 federated rounds with FedAvg aggregation and Gaussian Mechanism DP at ε = 1.0, δ = 1e-5, across all 12 nodes. MIA evaluation used the loss-based per-round evaluator (Yeom et al. 2018): at each round the global weights were loaded into the Autoencoder, membership scores were computed as −MSE, and AUC-ROC was measured via scikit-learn. The reported AUC-ROC is the mean across all 100 rounds.
 
 | Parameter | Value |
 |---|---|
@@ -182,10 +190,10 @@ The first completed experiment ran 100 federated rounds with FedAvg aggregation 
 | Rounds | 100 |
 | Privacy budget ε | 1.0 |
 | Privacy budget δ | 1e-5 |
-| FedMIA AUC-ROC | **0.5172** |
+| FedMIA mean AUC-ROC (per-round, Yeom 2018) | **0.5172** |
 | Interpretation | Near random-guess; DP effective at standard budget |
 
-An AUC-ROC of 0.5172 — where 0.50 is the theoretical minimum for a random classifier and 1.00 indicates perfect membership discrimination — confirms that the Gaussian Mechanism at ε = 1.0 successfully suppresses membership leakage to statistically negligible levels under the FedMIA threat model.
+A mean AUC-ROC of 0.5172 across rounds — where 0.50 is the theoretical minimum for a random classifier and 1.00 indicates perfect membership discrimination — confirms that the Gaussian Mechanism at ε = 1.0 successfully suppresses membership leakage to statistically negligible levels under the loss-based MIA threat model.
 
 ### Ongoing: Full Parameter Sweep
 
@@ -261,8 +269,24 @@ make clean
 | `make destroy` | Tear down all containers and remove the Containerlab topology |
 | `make experiment` | Run a single federated experiment with default parameters (100 rounds, ε=1.0, FedAvg) |
 | `make experiment-sweep` | Execute the full parameter sweep (rounds × ε × algorithm grid) sequentially |
-| `make test` | Run the unit and integration test suite (pytest) |
+| `make test` | Run the unit and integration test suite (pytest, 140 tests across 6 test files) |
 | `make clean` | Remove build artefacts, compiled Python files, and intermediate experiment outputs |
+
+### Experiment Result Scripts
+
+| Script | Description |
+|---|---|
+| `scripts/run_experiments.py` | Orchestrates FL experiment sweeps; embeds the loss-based FedMIA evaluator (Yeom 2018) per round; writes per-round `auc_roc` and summary statistics to experiment JSON |
+| `scripts/generate_excel_report.py` | Reads all experiment JSON files from `experiments/` (configurable via `load_experiments(experiments_dir: Path | None = None)`) and generates a multi-sheet Excel workbook with 4 sheets: **Raw Data** (one row per experiment), **Heat Map** (AUC-ROC by ε × rounds), **Per Rounds** (per-round AUC-ROC trajectories), **Per Epsilon** (AUC-ROC distributions by privacy budget) |
+
+### Engineering Fixes
+
+The following fixes were applied during Sprint 5/6 development:
+
+- **`drop_last=True` in DataLoader** (`src/ml/autoencoder_trainer.py:178`): prevents a BatchNorm1d crash when the last training batch contains only a single sample (batch size 1 causes BatchNorm to divide by zero on the variance estimate).
+- **`_compute_sigma()` input validation**: enforces `epsilon > 0` and `0 < delta < 1.25`; the upper bound is 1.25 (not 1.0) because the noise formula contains `ln(1.25/δ)`, which is only defined and positive for δ < 1.25.
+- **`_parse_record()` error handling**: wraps `datetime` parsing in a `try/except` block that raises `ValueError` on malformed records, replacing a silent failure with a diagnostically useful exception.
+- **`PrivacyAuditor.audit()` now active**: previously dead code; now called from `run_ids()`. Input is `model_update: dict[str, Any]` where keys are layer identifiers (`layer_i`) and values are `list[float]`.
 
 ---
 
@@ -286,6 +310,8 @@ make clean
 ## References
 
 1. R. Shokri, M. Stronati, C. Song, and V. Shmatikov, "Membership Inference Attacks Against Machine Learning Models," in *Proceedings of the 2017 IEEE Symposium on Security and Privacy (S&P)*, pp. 3–18, 2017. https://doi.org/10.1109/SP.2017.41
+
+1a. S. Yeom, I. Giacomelli, M. Fredrikson, and S. Jha, "Privacy Risk in Machine Learning: Analyzing the Connection to Overfitting," in *Proceedings of the 31st IEEE Computer Security Foundations Symposium (CSF)*, pp. 268–282, 2018. https://doi.org/10.1109/CSF.2018.00027
 
 2. N. Carlini, S. Chien, M. Nasr, S. Song, A. Terzis, and F. Tramèr, "Membership Inference Attacks From First Principles," in *Proceedings of the 2022 IEEE Symposium on Security and Privacy (S&P)*, pp. 1897–1914, 2022. https://doi.org/10.1109/SP46214.2022.9833649
 

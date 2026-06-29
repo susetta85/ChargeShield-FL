@@ -223,6 +223,8 @@ classDiagram
         +compute_auc_roc() float
     }
 
+    %% Note: the class diagram above accurately reflects src/plugins/attacks/fedmia.py (unchanged).
+
     class ChargingIDS {
         +krum_threshold: float
         +cosine_threshold: float
@@ -265,6 +267,8 @@ classDiagram
     GradientManager ..> MLPlane : emit_event()
     FedAvgAggregator ..> MLPlane : emit_event()
 ```
+
+**FedMIA plugin vs. experiment evaluator distinction.** The class diagram above accurately describes `src/plugins/attacks/fedmia.py` — the FedMIA plugin used by ChargingIDS for per-node IDS scoring via the ML Plane event system. This plugin is **unchanged**. There is a separate, architecturally distinct FedMIA evaluator in `scripts/run_experiments.py::run_fedmia()` that is used to measure per-round AUC-ROC in the experimental case studies. The evaluator does **not** use a shadow model and does not subscribe to ML Plane events. Instead, it runs post-round: after FedAvg aggregation completes, it reads `global_weights` from the `AggregatedUpdate`, loads them into an Autoencoder instance, and computes `score = -MSE` for each evaluation sample. AUC-ROC is computed via `sklearn.metrics.roc_auc_score` for each FL round (Yeom et al. 2018). The per-round results are stored in the experiment JSON as `per_round[round]["auc_roc"]`, with summary statistics `mean_auc_roc`, `max_auc_roc`, and `min_auc_roc`.
 
 ### 3.3 The `emit_event()` Method
 
@@ -319,6 +323,8 @@ $$\mathcal{L}_{\text{MSE}} = \frac{1}{6} \sum_{j=1}^{6} (x_j - \hat{x}_j)^2$$
 MSE is selected for three reasons: (1) it is directly interpretable as a per-session reconstruction error, which doubles as the membership inference signal for FedMIA — the hypothesis being that member sessions have lower reconstruction error than non-member sessions; (2) it produces smooth gradients suitable for DP clipping and noise addition; (3) it does not require any labeled anomaly data, which is unavailable at training time in a real deployment — the autoencoder is trained exclusively on normal charging sessions from the ACN-Data JPL dataset (13,073 real EV sessions from 2019-2020).
 
 **Activations:** ReLU for all hidden layers, linear for the output layer. ReLU is chosen over sigmoid or tanh because: (a) it does not saturate for large positive inputs, which is relevant for `total_energy_kwh` and `max_power_kw` features that may take large values after normalization outliers; (b) it produces sparser activations, encouraging the bottleneck to use a subset of its 4 dimensions actively; (c) its gradient is 1 for positive inputs and 0 for negative inputs, which interacts favorably with gradient clipping in the DP mechanism (clipped gradients through ReLU layers maintain their sign information).
+
+**DataLoader configuration note.** The `AutoencoderTrainer` DataLoader is configured with `drop_last=True` (see `src/ml/autoencoder_trainer.py:178`). This means the last incomplete batch is dropped during training if the dataset size is not evenly divisible by the batch size. This ensures consistent batch size across all training steps, which is important for the stability of the DP Gaussian Mechanism noise calibration (the noise scale is calibrated to the configured batch size; variable-size batches would alter the effective per-sample privacy guarantee).
 
 **Why autoencoder, not a supervised classifier:** No labeled anomaly data exists for EV charging session data at the time of training. Supervised approaches (random forests, SVMs) require labeled positive (anomalous) and negative (normal) examples. In the EV charging domain, anomalous sessions are rare, domain-specific, and not systematically labeled in ACN-Data. The autoencoder circumvents this by training only on normal sessions; anomalies manifest as high reconstruction error at inference time without requiring labels.
 
@@ -695,7 +701,13 @@ The `GradientUploadEvent` emission from `GradientManager` to the ML Plane occurs
 
 The `dp_applied=True` flag is visible to all three subscribers simultaneously. `PrivacyAuditor` uses it for compliance verification; `FedMIA` uses it as a conditioning variable for stratified AUC-ROC analysis; `ChargingIDS` uses it to adjust its anomaly detection thresholds (DP noise changes the expected gradient norm distribution, which must be accounted for in Krum and cosine similarity computations to avoid false positive anomaly flags on legitimately DP-noised gradients).
 
-The `AggregationCompleteEvent` emission occurs at L3, after all clients have submitted. FedMIA uses this event to update its shadow model — a key step in the attack loop, since the shadow model is trained to mimic the FL global model's evolution and thereby calibrate the membership inference threshold across FL rounds.
+The `AggregationCompleteEvent` emission occurs at L3, after all clients have submitted. Within the ML Plane event system, FedMIA (plugin) uses this event to update its shadow model — a key step in the attack loop, since the shadow model is trained to mimic the FL global model's evolution and thereby calibrate the membership inference threshold across FL rounds.
+
+**Plugin IDS vs. experiment evaluator on AggregationCompleteEvent.** The `AggregationCompleteEvent` is consumed differently by the two FedMIA implementations:
+- **FedMIA plugin (`fedmia.py`):** Subscribes to this event via the ML Plane observer interface. On receipt, the plugin calls `update_shadow_model(event.global_gradient)` to refine its shadow model in sync with each FL round.
+- **Experiment evaluator (`run_experiments.py::run_fedmia()`):** Does **not** use the ML Plane event system. Instead, it directly reads `global_weights` from the `AggregatedUpdate` object after FedAvg completes, bypassing the event bus. This path is for per-round AUC-ROC measurement (Yeom et al. 2018), not for IDS per-node scoring.
+
+**Note on the sequence diagram above.** The sequence diagram illustrates the event-based architecture used by the FedMIA plugin and ChargingIDS for per-node IDS evaluation. In the experiment pipeline, `run_experiments.py::run_fedmia()` performs FedMIA evaluation post-round by reading `global_weights` from the `AggregatedUpdate` after FedAvg — not through the event system shown here. The event-based architecture is the IDS path; the direct `global_weights` read is the experiment evaluator path.
 
 ---
 

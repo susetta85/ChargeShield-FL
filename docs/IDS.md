@@ -14,6 +14,14 @@ The central thesis demonstrated by the CS1 experimental scenario is: **behaviora
 
 ---
 
+## Implementation Status: PrivacyAuditor Is Now Actively Integrated
+
+**As of the current codebase, `PrivacyAuditor.audit()` is actively called in `scripts/run_experiments.py::run_ids()`.** This was previously dead code — earlier versions of `run_ids()` bypassed `audit()` entirely and constructed `AuditReport` objects manually with `threats_detected=[]`. This has been corrected.
+
+`PrivacyAuditor` is now instantiated before the FL loop and called per-node per-round within `run_ids()`. The `AuditReport` objects it produces are the actual inputs to the IDS pipeline described in this document, not placeholder stubs.
+
+---
+
 ## 1. Introduction
 
 ### 1.1 Federated Learning in EV Charging Infrastructure
@@ -621,7 +629,11 @@ class CosineSimilarityDetector:
 
 ### 6.6 FedMIA Integration Note
 
-The MIA results produced by the FedMIA module — specifically the AUC-ROC of the membership inference classifier and the reconstruction error of the autoencoder-based attack — are available as additional signals that can, in principle, be fed into the IDS decision pipeline as metadata fields in `IDSAlert`. However, it is critical to note that these signals **do not trigger behavioral alerts** in the ChargingIDS pipeline for honest-but-curious attackers: they are computed by the attacker (not by the IDS), and the IDS has no visibility into the attacker's inference computation. The FedMIA signals are included in the experimental reporting layer (not in the detection layer) to provide ground truth for the negative result: the IDS generates zero alerts while the attacker achieves significant inference capability.
+The FedMIA module referenced in the ChargingIDS context refers specifically to the **FedMIA plugin (`src/plugins/attacks/fedmia.py`)** — a shadow-model MIA component that subscribes to ML Plane gradient events and produces per-node membership inference scores used as one signal among several in the IDS composite scoring. This plugin is unchanged and is what ChargingIDS integrates with.
+
+There is a separate, architecturally distinct **FedMIA experiment evaluator (`scripts/run_experiments.py::run_fedmia()`)** that is not part of the IDS pipeline. This evaluator measures per-round AUC-ROC for the experimental case studies using a loss-based approach (Yeom et al. 2018) — it reads `global_weights` post-aggregation, computes `-MSE` scores, and calls `sklearn.metrics.roc_auc_score`. It does not subscribe to ML Plane events and does not feed into ChargingIDS decisions.
+
+The MIA results produced by the FedMIA plugin — specifically the AUC-ROC of the membership inference classifier and the reconstruction error of the autoencoder-based attack — are available as additional signals that can, in principle, be fed into the IDS decision pipeline as metadata fields in `IDSAlert`. However, it is critical to note that these signals **do not trigger behavioral alerts** in the ChargingIDS pipeline for honest-but-curious attackers: they are computed by the attacker (not by the IDS), and the IDS has no visibility into the attacker's inference computation. The FedMIA signals are included in the experimental reporting layer (not in the detection layer) to provide ground truth for the negative result: the IDS generates zero alerts while the attacker achieves significant inference capability.
 
 This design choice — keeping FedMIA results separate from the IDS detection pipeline — is deliberate and scientifically important. Conflating inference measurement with behavioral detection would obscure the fundamental point: the IDS cannot detect the attack because it has no signal from the attacker's internal inference process.
 
@@ -870,14 +882,24 @@ from chargeshield.audit import AuditReport
 import numpy as np
 
 # Construct a synthetic AuditReport for node "node_001" in round 15
+# Real AuditReport fields: node_id, round_id, privacy_score, epsilon,
+# threats_detected (list[str]), metadata (dict[str, Any])
+# Note: sensitivity is in metadata["sensitivity"], NOT a top-level field
 audit_report = AuditReport(
     node_id="node_001",
     round_id=15,
-    privacy_score=0.42,          # Within normal range
-    gradient_norm=0.87,          # L2 norm of clipped gradient
-    cumulative_epsilon=7.3,      # Cumulative DP epsilon consumed
-    gradient_vector=np.random.randn(512),  # Flattened gradient
-    timestamp=1735200000.0,
+    privacy_score=0.42,
+    epsilon=0.87,
+    threats_detected=[],
+    metadata={
+        "gradient_norm": 0.87,
+        "sensitivity": 0.87,       # metadata["sensitivity"], not top-level
+        "baseline_norm": 0.45,
+        "update_magnitude": 1.93,
+        "epsilon_cumulative": 7.3,
+        "timestamp": 1735200000.0,
+        "cluster_type": "highway",
+    },
 )
 
 # Analyze the report
@@ -909,14 +931,22 @@ for i in range(8):
     gradient /= np.linalg.norm(gradient)   # Normalize
     gradient *= np.random.uniform(0.5, 1.5)  # Random magnitude
 
+    g_norm = float(np.linalg.norm(gradient))
     report = AuditReport(
         node_id=f"node_{i:03d}",
         round_id=42,
-        privacy_score=np.random.uniform(0.35, 0.55),
-        gradient_norm=np.linalg.norm(gradient),
-        cumulative_epsilon=np.random.uniform(5.0, 10.0),
-        gradient_vector=gradient,
-        timestamp=1735200000.0,
+        privacy_score=float(np.random.uniform(0.35, 0.55)),
+        epsilon=g_norm,
+        threats_detected=[],
+        metadata={
+            "gradient_norm": g_norm,
+            "sensitivity": g_norm,
+            "baseline_norm": 0.45,
+            "update_magnitude": g_norm / 0.45,
+            "epsilon_cumulative": float(np.random.uniform(5.0, 10.0)),
+            "timestamp": 1735200000.0,
+            "cluster_type": "highway",
+        },
     )
     round_reports.append(report)
 

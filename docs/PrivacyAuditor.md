@@ -8,6 +8,19 @@
 
 ---
 
+## Implementation Status: PrivacyAuditor.audit() Is Now Actively Called
+
+**As of the current codebase, `PrivacyAuditor.audit()` is actively called in `scripts/run_experiments.py::run_ids()` for every node at every FL round.** In earlier versions, `run_ids()` constructed `AuditReport` objects manually (with `threats_detected=[]`) and `audit()` was dead code. This is no longer the case.
+
+The call site in `run_ids()`:
+1. A `PrivacyAuditor` instance is created before the FL round loop: `auditor = PrivacyAuditor(config_path=...)`.
+2. For each `GradientUpdate` received, the gradient tensors are converted to a `dict[str, Any]` with keys `layer_0`, `layer_1`, ... and values `list[float]` (via `w.flatten().tolist()` for each weight tensor `w`).
+3. `auditor.audit(node_id, round_id, model_update)` is called with this dictionary as the `model_update` argument.
+
+The `audit()` method signature accepts `model_update: dict[str, Any]` — not a flat `np.ndarray` as in older stub code. The layer-keyed dictionary format matches the structure of NVFLARE weight diffs where each key identifies a model layer.
+
+---
+
 ## Abstract
 
 This document provides a complete technical and scientific specification of the `PrivacyAuditor` component within the ChargeShield-FL framework. The `PrivacyAuditor` is the primary **observation instrument** of the framework: it intercepts individual gradient updates from Federated Learning (FL) participants prior to server-side aggregation, computes a suite of privacy leakage proxies — including gradient sensitivity, per-round differential privacy (DP) epsilon estimates, and cumulative privacy budget consumption — and emits structured `AuditReport` objects consumed by downstream modules including the `FedMIA` attack evaluator and the `ChargingIDS` anomaly detection system.
@@ -119,7 +132,8 @@ Local Trainer (FL Client)
         |
         | Plaintext g_tilde_i (honest-but-curious aggregator observes here)
         v
-[PrivacyAuditor.audit(node_id, round_id, g_tilde_i, baseline_norm)]
+[PrivacyAuditor.audit(node_id, round_id, model_update, baseline_norm)]
+        [model_update: dict[str, Any] — layer_i -> list[float] via w.flatten().tolist()]
         |
         | AuditReport(node_id, round_id, privacy_score, epsilon,
         |             threats_detected, metadata)
@@ -642,10 +656,12 @@ The `PrivacyAuditor` produces `AuditReport` objects; the `ChargingIDS` consumes 
 
 ```python
 # Simplified integration in ChargeShieldAggregator
+# model_update is dict[str, Any]: keys = "layer_i", values = list[float]
+# constructed from GradientUpdate tensors via w.flatten().tolist()
 report: AuditReport = privacy_auditor.audit(
     node_id=client_id,
     round_id=current_round,
-    gradient_update=client_gradient,
+    model_update=client_model_update,   # dict[str, Any], NOT np.ndarray
     baseline_norm=baseline_norm_registry[client_id],
 )
 
@@ -892,10 +908,15 @@ class PrivacyAuditor:
     Examples
     --------
     >>> auditor = PrivacyAuditor("config/auditor.yaml")
+    >>> # model_update is a dict[str, Any] with layer keys and list[float] values
+    >>> model_update = {
+    ...     "layer_0": [0.01, -0.03, 0.02, ...],  # w.flatten().tolist()
+    ...     "layer_1": [0.05, 0.01, -0.02, ...],
+    ... }
     >>> report = auditor.audit(
     ...     node_id="highway_cluster_1",
     ...     round_id=1,
-    ...     gradient_update=np.random.randn(10000),
+    ...     model_update=model_update,
     ...     baseline_norm=0.45,
     ... )
     >>> print(report.privacy_score)
@@ -989,7 +1010,7 @@ class PrivacyAuditor:
         self,
         node_id: str,
         round_id: int,
-        gradient_update: np.ndarray,
+        model_update: dict[str, Any],
         baseline_norm: float,
     ) -> AuditReport:
         """
@@ -999,8 +1020,8 @@ class PrivacyAuditor:
         all privacy leakage proxies, updates the per-node epsilon accumulator,
         detects threat patterns, and returns an immutable AuditReport.
 
-        The gradient_update is NOT modified. This method is read-only with
-        respect to the gradient vector.
+        The model_update is NOT modified. This method is read-only with
+        respect to the weight dictionary.
 
         Parameters
         ----------
@@ -1008,9 +1029,14 @@ class PrivacyAuditor:
             Unique identifier for the FL client (e.g., "highway_cluster_1").
         round_id : int
             FL training round number (1-indexed).
-        gradient_update : np.ndarray
-            Flattened gradient update vector, shape (n_parameters,).
-            Should be the post-DP-noise gradient as transmitted by the client.
+        model_update : dict[str, Any]
+            Dictionary mapping layer names to weight values.
+            Keys: "layer_0", "layer_1", ... (one per model layer).
+            Values: list[float] — the flattened weight tensor for that layer,
+            obtained via w.flatten().tolist() for each weight tensor w.
+            This matches the format produced by run_ids() in run_experiments.py,
+            which iterates over GradientUpdate tensors and converts them to
+            layer-keyed float lists before calling audit().
         baseline_norm : float
             Baseline L2-norm for this node. Typically the exponential moving
             average of previous gradient norms, maintained by the caller.
@@ -1025,17 +1051,22 @@ class PrivacyAuditor:
         Raises
         ------
         ValueError
-            If gradient_update is empty or contains NaN/Inf values.
+            If model_update is empty or contains NaN/Inf values.
         """
-        if gradient_update.size == 0:
-            raise ValueError(f"gradient_update for node {node_id} is empty.")
-        if not np.isfinite(gradient_update).all():
+        # Flatten the layer-keyed weight dict into a single vector for norm computation
+        # model_update keys: "layer_0", "layer_1", ...; values: list[float]
+        all_weights = np.concatenate([
+            np.array(v, dtype=float) for v in model_update.values()
+        ])
+        if all_weights.size == 0:
+            raise ValueError(f"model_update for node {node_id} is empty.")
+        if not np.isfinite(all_weights).all():
             raise ValueError(
-                f"gradient_update for node {node_id} contains NaN or Inf values."
+                f"model_update for node {node_id} contains NaN or Inf values."
             )
 
         # Step 1: Compute gradient L2-norm
-        gradient_norm: float = float(np.linalg.norm(gradient_update))
+        gradient_norm: float = float(np.linalg.norm(all_weights))
         sensitivity: float = gradient_norm  # Proxy: empirical norm approximates Δf
 
         # Step 2: Per-round epsilon estimate (simplified Gaussian accounting)
@@ -1247,11 +1278,15 @@ for round_id in range(1, 51):
         gradient = np.random.randn(10000)
         gradient = gradient / np.linalg.norm(gradient) * grad_norm_target
 
+        # Convert to layer-keyed dict[str, list[float]] as expected by audit()
+        # (mirrors the run_ids() call site in run_experiments.py)
+        model_update = {"layer_0": gradient.tolist()}
+
         # Audit the gradient
         report = auditor.audit(
             node_id=node_id,
             round_id=round_id,
-            gradient_update=gradient,
+            model_update=model_update,
             baseline_norm=baseline_norms[node_id],
         )
 
@@ -1360,11 +1395,19 @@ class ChargeShieldAggregator(InTimeAccumulateWeightedAggregator):
                     np.linalg.norm(gradient_vector)
                 )
 
-            # Invoke PrivacyAuditor (read-only on gradient_vector)
+            # Convert gradient tensors to layer-keyed dict[str, list[float]]
+            # matching the format expected by audit() in the run_experiments.py
+            # call site: keys = "layer_0", "layer_1", ...; values = w.flatten().tolist()
+            model_update = {
+                f"layer_{i}": v.flatten().tolist()
+                for i, v in enumerate(dxo.data.values())
+            }
+
+            # Invoke PrivacyAuditor (read-only on model_update)
             report = self._auditor.audit(
                 node_id=client_name,
                 round_id=current_round,
-                gradient_update=gradient_vector,
+                model_update=model_update,
                 baseline_norm=self._baseline_norms[client_name],
             )
 

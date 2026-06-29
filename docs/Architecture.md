@@ -38,7 +38,7 @@ The framework provides:
 
 - A **faithful OT environment simulation** using Containerlab-provisioned Docker topologies that replicate the network segmentation, latency profiles, and computational constraints of real EVSE deployments.
 - A **complete FL training lifecycle** governed by NVFLARE 2.7.2, supporting FedAvg and FedProx aggregation strategies with swappable configuration.
-- A **privacy evaluation pipeline** that trains an autoencoder on real ACN-Data sessions, applies Gaussian Mechanism DP during gradient aggregation, and subsequently evaluates membership leakage using the FedMIA shadow-model attack.
+- A **privacy evaluation pipeline** that trains an autoencoder on real ACN-Data sessions, applies Gaussian Mechanism DP during gradient aggregation, and subsequently evaluates membership leakage through two complementary mechanisms: (a) the FedMIA shadow-model plugin integrated into ChargingIDS for per-node intrusion detection, and (b) an experiment-level loss-based MIA evaluator (Yeom et al., 2018) in `scripts/run_experiments.py::run_fedmia()` that loads each round's aggregated global weights into the Autoencoder and reports per-round AUC-ROC, enabling analysis of membership leakage dynamics over the course of FL training.
 - A **modular attack surface** via a plugin-based attack directory (`attacks/`) that allows new MIA strategies to be registered without modifying core framework code.
 - An **ML Plane abstraction** — a transversal logical layer that crosses all levels of the Purdue Model, monitored via an observer pattern — enabling collection of FL traffic metrics and model update signals without coupling monitoring logic to training logic.
 
@@ -124,7 +124,8 @@ graph TB
     subgraph L3["L3 — Operations / Aggregator"]
         AGG[NVFLARE Aggregator<br/>FedAvg / FedProx]
         IDS[ChargingIDS<br/>CUSUM + Krum + Cosine]
-        MIA[FedMIA Evaluator<br/>Shadow Model + AUC-ROC]
+        MIA[FedMIA Plugin<br/>Shadow Model / IDS per-node]
+        MIAX[FedMIA Evaluator<br/>Loss-based per-round<br/>Yeom 2018 / AUC-ROC]
         ML3[MLPlaneListener<br/>Observer]
     end
 
@@ -167,6 +168,7 @@ graph TB
     AGG --> ML3
     ML3 --> IDS
     ML3 --> MIA
+    ML3 --> MIAX
 ```
 
 ### 3.5 Trust Boundary Analysis
@@ -380,7 +382,8 @@ The following table enumerates all primary components in ChargeShield-FL, their 
 | `FedProxStrategy` | Proximal-term regularized aggregation; `proximal_mu=0.01` | L3 | Sprint 2 |
 | `MLPlaneListener` | Observer interface for FL lifecycle events; base for all monitoring components | L2–L3 | Sprint 2 |
 | `ChargingIDS` | IDS baseline: CUSUM anomaly detection, Krum Byzantine resilience, Cosine Similarity gradient drift | L3 | Sprint 3 |
-| `FedMIAEvaluator` | Shadow model training on public ACN-Data split; reconstruction-error membership scoring; AUC-ROC computation | L3 | Sprint 3 |
+| `FedMIA` plugin (`src/plugins/attacks/fedmia.py`) | Shadow-model MIA plugin used by `ChargingIDS` for per-node intrusion detection; implements `BaseAttack`; gradient-magnitude and cosine-similarity membership scoring | L3 | Sprint 3 |
+| `FedMIA Evaluator` (`scripts/run_experiments.py::run_fedmia()`) | Loss-based per-round MIA evaluator (Yeom et al., 2018); loads global weights into Autoencoder each round; score = −MSE; AUC-ROC via `sklearn`; outputs `per_round[round]["auc_roc"]` and summary `mean_auc_roc`, `max_auc_roc`, `min_auc_roc` | L3 | Sprint 5 |
 | `PluginRegistry` | Filesystem-based plugin discovery for the `attacks/` directory | L3 | Sprint 2 |
 | `NVFLAREServer` | NVFLARE 2.7.2 server process; provisioning orchestration; round lifecycle management | L3 | Sprint 1 |
 | `NVFLAREClient` | NVFLARE 2.7.2 client process; local training execution on each node | L2 | Sprint 1 |
@@ -402,6 +405,8 @@ The dataset was selected over synthetic alternatives for three reasons. First, m
 
 - `hour_of_day`: the integer hour of session start time extracted from the `connectionTime` timestamp field (range 0–23). This feature captures the time-of-day behavioral signal, which is both operationally meaningful (time-of-day correlates with charging demand and grid conditions) and privacy-sensitive (session timing patterns are among the most personally identifiable behavioral attributes, enabling correlation with work schedules and commuting patterns).
 - `duration_hours`: computed as `(disconnectTime - connectionTime).total_seconds() / 3600`. This captures parking duration, which correlates with workplace versus residential usage patterns and is a strong predictor of energy demand.
+
+**Malformed record handling in `_parse_record()`.** The private method `_parse_record()` wraps all `datetime` parsing in a `try/except ValueError` block. If a raw CSV record contains a malformed or missing timestamp string in `connectionTime` or `disconnectTime`, the exception is caught and the record is dropped from the session list rather than crashing the dataset load. Dropped records are logged at `WARNING` level. This guards against occasional corrupted rows in ACN-Data export files without requiring a separate pre-processing validation step.
 
 The final feature vector is `[total_energy_kwh, max_power_kw, kwh_requested, minutes_available, hour_of_day, duration_hours]`, yielding a 6-dimensional input for the autoencoder. All features are normalized to the unit interval [0, 1] using per-feature min-max scaling computed from the training split — scaling parameters are computed exclusively from training data and applied to test and shadow splits, preventing data leakage.
 
@@ -439,6 +444,8 @@ MSE loss is selected over alternatives (Binary Cross-Entropy, Huber loss) becaus
 
 The local training procedure runs a configurable number of epochs per FL round (default: 5 epochs, consistent with the FedAvg hyperparameter settings in [McMahan et al., 2017]). Batch size is set to 32 sessions, a value compatible with the memory constraints of the edge controller hardware tier.
 
+**`drop_last=True` (`src/ml/autoencoder_trainer.py`, line 178).** The `DataLoader` is constructed with `drop_last=True` to prevent `BatchNorm1d` crashes. If a node's dataset partition produces a tail batch of size 1, `BatchNorm1d` computes zero variance and generates NaN activations, crashing the forward pass. `drop_last=True` discards any sub-batch-size remainder, eliminating this failure mode unconditionally with negligible data loss.
+
 ### 6.4 GradientManager: Differential Privacy via the Gaussian Mechanism
 
 The `GradientManager` implements (ε, δ)-Differential Privacy via the Gaussian Mechanism, following the theoretical framework of Dwork and Roth [2014] and its application to deep learning by Abadi et al. [2016].
@@ -459,13 +466,20 @@ sigma = max_grad_norm * sqrt(2 * ln(1.25 / delta)) / epsilon
 
 This formula is the Gaussian Mechanism construction from Dwork and Roth [2014], Theorem A.1: for a function with L2 sensitivity Δ₂ = `max_grad_norm`, adding isotropic Gaussian noise with standard deviation σ = Δ₂ × √(2 ln(1.25/δ)) / ε achieves (ε, δ)-differential privacy. Gaussian noise is sampled independently for each gradient coordinate.
 
+**Parameter validation in `_compute_sigma()`.** Before computing σ, the method validates both inputs:
+
+- `epsilon > 0`: a non-positive epsilon makes the DP guarantee undefined and would produce a non-positive or infinite σ.
+- `0 < delta < 1.25`: delta must be strictly positive (zero requires infinite noise) and must satisfy the formula's domain constraint. The upper bound is 1.25 — not 1.0 — because the formula contains `ln(1.25 / delta)`, which is positive only when `delta < 1.25`. In practice, delta should always be a negligibly small probability (e.g., 1e-5); the bound 1.25 is the mathematical domain limit of the Gaussian Mechanism formula.
+
+Both conditions raise `ValueError` with a descriptive message if violated.
+
 **Why the Gaussian Mechanism Over the Laplace Mechanism.** The Laplace Mechanism achieves (ε, 0)-differential privacy (pure DP, without the δ relaxation) but requires noise proportional to the L1 sensitivity, which scales linearly with model dimensionality d. The Gaussian Mechanism achieves (ε, δ)-approximate DP with noise proportional to L2 sensitivity, which scales as √d. For the 1,200-parameter autoencoder, this is a modest difference, but the Gaussian Mechanism is selected because (1) it is the standard mechanism in the deep learning DP literature [Abadi et al., 2016], enabling comparison with published results; and (2) δ can be set to a negligibly small value (e.g., 10⁻⁵, much smaller than 1/|training set|), making the (ε, δ) guarantee practically equivalent to pure DP for the purposes of the threat model.
 
 **DP Budget Accounting.** The current implementation applies the Gaussian Mechanism independently per round without Rényi DP composition. This simplification is noted as a limitation; future work should integrate a Rényi accountant [Mironov, 2017] or the Opacus library [Yousefpour et al., 2021] for tight per-round composition tracking.
 
-### 6.5 FedMIA Evaluator: Membership Inference Attack
+### 6.5 FedMIA Plugin: Shadow-Model Membership Inference (IDS)
 
-FedMIA [Hu et al., 2022] frames membership inference as a binary classification problem: given a data record x and access to the trained global model θ, predict whether x was a member of the FL training set.
+`src/plugins/attacks/fedmia.py` implements the FedMIA attack [Hu et al., 2022] as a `BaseAttack` plugin used by `ChargingIDS` for per-node intrusion detection. It frames membership inference as a binary classification problem: given a data record x and access to the trained global model θ, predict whether x was a member of the FL training set.
 
 **Shadow Model Training.** A shadow autoencoder, architecturally identical to the target model (6→16→8→4→8→16→6, same MSE loss), is trained on the public ACN-Data split using the same FL procedure (same number of rounds, same aggregation algorithm, same hyperparameters). This produces a shadow model θ_shadow that approximates the target model's membership decision boundary without access to the target training data. The shadow training data is split into shadow-in (records that were used to train θ_shadow) and shadow-out (records excluded from shadow training), providing ground-truth membership labels for calibrating the membership score threshold.
 
@@ -474,6 +488,33 @@ FedMIA [Hu et al., 2022] frames membership inference as a binary classification 
 **Evaluation Metric.** AUC-ROC (Area Under the Receiver Operating Characteristic Curve) is computed over the membership score distribution across all records. A value of 0.5 indicates chance-level performance — no membership leakage beyond random guessing. A value approaching 1.0 indicates near-perfect membership inference. AUC-ROC is preferred over accuracy or precision/recall because it is threshold-independent and provides a summary of attack performance across the full range of membership score operating points.
 
 **Primary Experimental Output.** The ε vs. AUC-ROC curve is the principal experimental output: as ε decreases (stronger DP, more noise), AUC-ROC should approach 0.5 (chance). The rate and shape of this convergence, stratified by cluster type (Highway/Urban/Residential/Corporate) and aggregation algorithm (FedAvg/FedProx), is the empirical finding that the ChargeShield-FL DSN 2027 submission reports.
+
+#### 6.5.1 Experiment-Level FedMIA Evaluation (`scripts/run_experiments.py::run_fedmia()`)
+
+This is a **separate mechanism** from the shadow-model plugin above. `run_fedmia()` implements the loss-based membership inference evaluation of Yeom et al. (2018): *"Privacy Risk in Machine Learning: Analyzing the Connection to Overfitting."* IEEE CSF 2018.
+
+**Approach.** After each FL round, the function loads the current `global_weights` checkpoint into a fresh `Autoencoder` instance. For each candidate record, the membership score is computed as `-MSE` (negative reconstruction error): higher score means lower error, which correlates with membership. AUC-ROC is then computed via `sklearn.metrics.roc_auc_score` over the score distribution.
+
+**Why loss-based (Yeom 2018) rather than shadow-model.** The shadow-model attack requires a complete parallel FL training run and is computationally expensive to run at every round. The Yeom loss-based attack is a simpler, single-model oracle: given the final (or per-round) model weights, membership can be inferred directly from reconstruction loss without training a separate shadow model. This makes it suitable for per-round monitoring of membership leakage dynamics over the full training trajectory.
+
+**JSON output format.**
+
+```json
+{
+  "per_round": {
+    "1": {"auc_roc": 0.612},
+    "2": {"auc_roc": 0.587},
+    ...
+  },
+  "summary": {
+    "mean_auc_roc": 0.541,
+    "max_auc_roc": 0.612,
+    "min_auc_roc": 0.502
+  }
+}
+```
+
+The `per_round` field enables time-series analysis of privacy leakage across FL rounds; the `summary` fields support the aggregate ε vs. AUC-ROC curve reported in the DSN submission.
 
 ---
 
@@ -650,7 +691,9 @@ ChargeShield-FL makes no claims of novelty for the following components, which a
 
 [26] Yousefpour, A., Shilov, I., Joglekar, A., Bhatt, D., Edunov, S., Gururangan, G., Huang, H., Khabsa, M., Kuznetsov, M., Mao, A., Mehta, H., Patel, K., Russi, M., and Zon, G. (2021). Opacus: User-friendly differential privacy library in PyTorch. *arXiv preprint arXiv:2109.12298*.
 
-[27] Zhao, J., Chen, Y., and Zhang, W. (2021). Feasibility and transferability of transfer learning: A mathematical framework. *arXiv preprint arXiv:1904.08461*. [Note: attribute inference attack methodology referenced in the context of future extension to ChargeShield-FL's plugin architecture.]
+[27] Yeom, S., Giacomelli, I., Fredrikson, M., and Jha, S. (2018). Privacy risk in machine learning: Analyzing the connection to overfitting. In *Proceedings of the 31st IEEE Computer Security Foundations Symposium* (CSF '18), pp. 268–282. IEEE. https://doi.org/10.1109/CSF.2018.00027
+
+[28] Zhao, J., Chen, Y., and Zhang, W. (2021). Feasibility and transferability of transfer learning: A mathematical framework. *arXiv preprint arXiv:1904.08461*. [Note: attribute inference attack methodology referenced in the context of future extension to ChargeShield-FL's plugin architecture.]
 
 ---
 

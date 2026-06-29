@@ -346,11 +346,21 @@ This inequality holds (in expectation) when the model generalizes imperfectly �
 
 The shadow model approach [Shokri et al. 2017] operationalizes this by training a second model (f_s, the shadow Autoencoder) on a controlled subset of D_pub for which membership is known, and using the resulting reconstruction error distributions to calibrate the membership threshold.
 
+**Note: Two distinct FedMIA approaches in the codebase.** There are two architecturally separate MIA implementations in ChargeShield-FL, both grounded in reconstruction error but operating differently:
+
+1. **Plugin shadow model (`src/plugins/attacks/fedmia.py`):** Used by ChargingIDS for per-node IDS evaluation. Trains a dedicated shadow Autoencoder on D_pub (the mechanism described in Sections 6.3–6.4 below). This plugin is **unchanged** and is the subject of the IDS baseline evaluation.
+
+2. **Experiment evaluator (`scripts/run_experiments.py::run_fedmia()`):** A separate loss-based MIA evaluator used to measure per-round AUC-ROC for the experimental case studies. Following Yeom et al. [2018], this evaluator loads the global model weights (`global_weights`) from each completed FL round directly into an Autoencoder, uses that global model to compute reconstruction errors, and scores samples as `score = -MSE`. AUC-ROC is then computed via `sklearn.metrics.roc_auc_score` for each round. This evaluator does **not** use a shadow model and does not intercept per-node gradients — it reads `global_weights` from the `AggregatedUpdate` produced by FedAvg after each round.
+
 ### 6.3 Attack Algorithm
 
-The FedMIA attack proceeds in five phases:
+The FedMIA plugin attack (`fedmia.py`, used by ChargingIDS for per-node IDS scoring) proceeds in five phases. The experiment evaluator (`run_experiments.py::run_fedmia()`) uses a simpler loss-based approach grounded in Yeom et al. [2018]: since overfitting causes training members to have lower loss than non-members, the global model's MSE directly serves as the membership score without a shadow model (score = -MSE, AUC-ROC per round via sklearn).
 
-**Phase 1: Shadow Model Training**
+The FedMIA plugin attack proceeds in five phases:
+
+**Phase 1: Shadow Model Training — FedMIA Plugin Only (`fedmia.py`)**
+
+*This phase applies only to the FedMIA plugin used by ChargingIDS for per-node IDS scoring. The experiment evaluator (`run_experiments.py::run_fedmia()`) does not have a shadow model training phase — it uses the FL global model directly.*
 
 ```
 INPUT:  D_pub (public ACN-Data, N=13,073 sessions), shadow_epochs=10
@@ -378,9 +388,12 @@ Step 3. mean_e_member    = mean({e_member(x) for x in D_shadow_train})
 Step 4. Store both means in reference_errors dict
 ```
 
-**Phase 3: Gradient Interception**
+**Phase 3: Gradient / Weight Interception**
+
+*For the FedMIA plugin (`fedmia.py`), gradient weights are intercepted from the per-node `GradientUpdate` at the aggregator, as described below. For the experiment evaluator (`run_experiments.py::run_fedmia()`), this phase does not intercept per-node gradients. Instead, the evaluator reads `global_weights` from the `AggregatedUpdate` object produced by FedAvg after the round is complete — it observes the global model post-aggregation, not individual client gradients.*
 
 ```
+[Plugin path — FedMIA per-node IDS scoring]
 INPUT:  GradientUpdate u = (weights, node_id, cluster_id, round_num, n_samples)
         [intercepted at NVFLARE aggregator, post-mTLS decrypt, post-DP noise]
 OUTPUT: gradient_weights (floating-point tensor)
@@ -392,12 +405,19 @@ Step 2. Extract u.weights
          - Gaussian noise added: N(0, sigma^2 * I)
            where sigma = C * sqrt(2*ln(1.25/delta)) / epsilon]
 Step 3. Forward gradient_weights to FedMIA.compute_membership_score()
+
+[Evaluator path — run_experiments.py::run_fedmia() per-round AUC-ROC]
+Step 1. After FedAvg completes for round r, read global_weights from AggregatedUpdate
+Step 2. Load global_weights into Autoencoder instance
+Step 3. Forward evaluation samples through Autoencoder; compute MSE per sample
+        [Proceeds to Phase 4 evaluator path]
 ```
 
 **Phase 4: Membership Score Computation**
 
 ```
-INPUT:  gradient_weights, target sample x*, f_s, reference_errors
+[Plugin path — FedMIA plugin (fedmia.py), shadow model scoring]
+INPUT:  gradient_weights, target sample x*, f_s (shadow model), reference_errors
 OUTPUT: MIAResult(node_id, round_id, membership_score, is_member_predicted, confidence)
 
 Step 1. Compute e_star = MSE(f_s(x*), x*)
@@ -412,6 +432,19 @@ Step 4. Compute confidence: confidence = |s - 0.5| * 2.0
 Step 5. Return MIAResult(node_id=u.node_id, round_id=u.round_num,
                          membership_score=s, is_member_predicted=is_member,
                          confidence=confidence)
+
+[Evaluator path — run_experiments.py::run_fedmia(), loss-based per-round AUC-ROC]
+        Following Yeom et al. [2018]: overfitted models reconstruct member samples
+        with lower loss than non-member samples.
+INPUT:  global_weights (loaded into Autoencoder), D_member, D_non_member
+OUTPUT: per_round AUC-ROC stored in experiment JSON
+
+Step 1. For each sample x in D_member ∪ D_non_member:
+           score(x) = -MSE(Autoencoder_global(x), x)
+           [higher score = lower reconstruction error = more likely member]
+Step 2. Compute auc_roc = roc_auc_score(y_true, scores)  [sklearn]
+Step 3. Store in output JSON: per_round[round]["auc_roc"] = auc_roc
+Step 4. After all rounds: compute summary["mean_auc_roc"], ["max_auc_roc"], ["min_auc_roc"]
 ```
 
 **Phase 5: Cluster-Level Deviation Analysis**
@@ -428,6 +461,8 @@ Step 4. Flag nodes with delta_i > 2.0 as geometrically anomalous within cluster
 ```
 
 ### 6.4 Attack Sequence Diagram
+
+**Note:** The diagram below illustrates the FedMIA plugin (`fedmia.py`), which uses a shadow model and operates per-node via the ML Plane event system. For the experiment evaluator (`run_experiments.py::run_fedmia()`), the flow is different: after each FL round completes, `run_fedmia()` reads `global_weights` from the `AggregatedUpdate`, loads them into an Autoencoder instance, performs a forward pass over the evaluation set, computes `-MSE` scores, and calls `roc_auc_score()` from sklearn. There is no shadow model, no gradient interception, and no ML Plane event subscription in the evaluator path.
 
 ```mermaid
 sequenceDiagram
@@ -640,7 +675,9 @@ The OT context therefore introduces a hard constraint on minimum acceptable mode
 
 **Confound control:** All hyperparameters other than ε are held constant. The shadow model is re-trained independently for each ε condition to avoid calibration leakage.
 
-**Confirmed data point:** AUC-ROC = 0.5172 at ε = 1.0, 100 rounds, FedAvg — marginally above random, indicating DP is largely effective at ε = 1.0 for this setting.
+**Per-round AUC-ROC measurement.** In CS2, AUC-ROC is not a single value per ε condition — it is measured for every FL round. The experiment evaluator (`run_experiments.py::run_fedmia()`) loads `global_weights` from each round's `AggregatedUpdate` into the Autoencoder, computes reconstruction errors, and calls `sklearn.metrics.roc_auc_score` per round. The experiment JSON output records `per_round[round]["auc_roc"]` for every round, plus summary statistics: `mean_auc_roc`, `max_auc_roc`, and `min_auc_roc` across all rounds. The per-round progression reflects how MIA susceptibility evolves as FL training proceeds and the global model memorizes training patterns.
+
+**Confirmed data point:** Mean AUC-ROC ≈ 0.5172 across rounds at ε = 1.0, 100 rounds, FedAvg — marginally above random, indicating DP is largely effective at ε = 1.0 for this setting.
 
 **Statistical analysis:** Each ε condition is run with multiple random seeds. AUC-ROC confidence intervals are computed via DeLong's method [DeLong et al. 1988]. The null hypothesis (AUC-ROC = 0.5) is tested for each condition to determine statistical significance of any privacy advantage.
 

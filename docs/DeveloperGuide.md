@@ -203,13 +203,23 @@ chargeshield-fl/
 
 **`src/adapters/`** — Protocol adapters and dataset loaders. This directory is the integration boundary between the physical world (real charging protocols and real datasets) and the abstract world (the core interfaces). Adapters are allowed to import protocol libraries (`ocpp`, `paho.mqtt`) and dataset libraries (`pandas`, `h5py`) that are forbidden in `src/core/` and `src/nodes/`.
 
+> **`ACNDataset._parse_record()` error handling.** The private method `_parse_record()` wraps all `datetime` parsing in a `try/except ValueError` block. If a raw CSV record contains a malformed or missing timestamp string in `connectionTime` or `disconnectTime`, the exception is caught and the record is silently dropped from the session list rather than crashing the entire dataset load. This guards against occasional corrupted rows in the ACN-Data export files. Any dropped record is logged at `WARNING` level so that data quality issues are visible in experiment logs without interrupting training.
+
 **`src/ml/`** — Federated learning components: the local training loop, gradient management, and server-side aggregation. The `GradientManager` is architecturally critical: it maintains a versioned on-disk store of gradient snapshots indexed by (round, node_id, timestamp). This store is the only data pathway from the FL layer to the privacy audit layer, ensuring strict separation.
+
+> **`AutoencoderTrainer` DataLoader note (`src/ml/autoencoder_trainer.py`, line 178).** The `DataLoader` used for local training is constructed with `drop_last=True`. This discards any final incomplete batch whose size would be smaller than `batch_size`. The reason is BatchNorm1d correctness: a batch of exactly 1 sample yields zero variance, causing `BatchNorm1d` to produce NaN activations and crash the forward pass. Because the autoencoder uses `BatchNorm1d` in both encoder and decoder, this crash would occur silently on any node whose dataset partition produces a tail batch of size 1 after a local epoch. `drop_last=True` eliminates this failure mode unconditionally. For all realistic node dataset sizes in ChargeShield-FL, the data loss is less than one batch per epoch (< 1.5%).
 
 **`src/ids/`** — Intrusion detection subsystem. The `ChargingIDS` class wraps the autoencoder defined in `src/core/autoencoder.py` and adds threshold-based anomaly detection logic. It reads from the same gradient store as the auditor, but its operational role is detection rather than evaluation: it is intended to be deployed in production, whereas the auditor is an experimental instrument.
 
-**`src/plugins/attacks/`** — Attack plugins. Each plugin implements the `BaseAttack` interface defined in `src/core/base_auditor.py`. The plugin directory is intentionally shallow: each attack is a single self-contained file. The `fedmia.py` plugin implements the FedMIA attack, which exploits gradient update magnitudes and direction cosines to distinguish members from non-members in the training set. New attacks are added by dropping a new file into this directory and registering the class name in `config/experiment.yaml`.
+**`src/plugins/attacks/`** — Attack plugins. Each plugin implements the `BaseAttack` interface defined in `src/core/base_auditor.py`. The plugin directory is intentionally shallow: each attack is a single self-contained file. The `fedmia.py` plugin implements the FedMIA shadow-model attack, which exploits gradient update magnitudes and direction cosines to distinguish members from non-members in the training set; this plugin is loaded by `ChargingIDS` for per-node intrusion detection and remains **unchanged**. New attacks are added by dropping a new file into this directory and registering the class name in `config/experiment.yaml`.
+
+> **Two distinct FedMIA mechanisms.** Do not conflate the plugin with the experiment-level evaluator:
+> - `src/plugins/attacks/fedmia.py` — the **shadow-model plugin** used by `ChargingIDS` for per-node IDS. It is a `BaseAttack` subclass, registered in `ATTACK_REGISTRY`, and runs within the FL pipeline.
+> - `scripts/run_experiments.py::run_fedmia()` — the **loss-based experiment evaluator** (Yeom et al., 2018). It loads each round's `global_weights` into a fresh `Autoencoder`, computes membership scores as `-MSE` (negative reconstruction error), and reports per-round AUC-ROC via `sklearn.metrics.roc_auc_score`. JSON output: `per_round[round]["auc_roc"]` and summary fields `mean_auc_roc`, `max_auc_roc`, `min_auc_roc`.
 
 **`src/auditor/`** — The privacy auditor orchestrates the complete audit workflow: it invokes the configured attack plugin, computes differential privacy accounting (tracking (epsilon, delta) expenditure across rounds), and produces the structured audit report that constitutes a primary experimental output.
+
+> **`PrivacyAuditor.audit()` is actively called.** `audit()` is invoked from `run_ids()` on every FL round in which a new model update is available — it is no longer dead code. The method signature accepts `model_update: dict[str, Any]`, where each key is a layer name of the form `layer_i` and each value is a `list[float]` of the corresponding parameter values. This format matches the serialized `ModelUpdate` produced by `GradientManager.snapshot()`.
 
 **`src/flare/`** — NVFLARE integration bridge. The `FlareConnector` wraps the NVFLARE client and server APIs, translating between NVFLARE's training task abstraction and ChargeShield-FL's internal interfaces. This isolation ensures that upgrading NVFLARE from version 2.7.2 to a future version requires changes only in this directory.
 
@@ -1014,8 +1024,8 @@ class DPConfig(BaseModel):
     @field_validator("delta")
     @classmethod
     def delta_must_be_valid_probability(cls, v: float) -> float:
-        if not (0 < v < 1):
-            raise ValueError(f"delta must be in (0, 1); got {v}")
+        if not (0 < v < 1.25):
+            raise ValueError(f"delta must be in (0, 1.25); got {v}")
         return v
 
     @model_validator(mode="after")
@@ -1030,6 +1040,38 @@ class DPConfig(BaseModel):
             )
         return self
 ```
+
+**Why delta < 1.25, not delta < 1.0.** The Gaussian Mechanism noise calibration formula is `sigma = max_grad_norm * sqrt(2 * ln(1.25 / delta)) / epsilon` (Dwork and Roth [2014], Theorem A.1). The constant 1.25 appears explicitly inside the logarithm: the formula requires `delta < 1.25` for the argument `ln(1.25 / delta)` to be positive, which is necessary for the noise standard deviation `sigma` to be real-valued and positive. Values of `delta` in (0, 1.0) — the conventional probability range — are universally valid. Values in [1.0, 1.25) are mathematically valid input to the formula but are never meaningful as a DP parameter (delta should be negligibly small, e.g., 1e-5). The upper bound 1.25 is therefore the tightest bound that keeps `sigma` well-defined; in practice, any `delta` used in research will be far below 1.0.
+
+**`_compute_sigma()` validation.** The `_compute_sigma()` method in `GradientManager` validates both parameters before computing `sigma`:
+
+- `epsilon > 0`: epsilon must be strictly positive; zero or negative values make the DP guarantee undefined.
+- `0 < delta < 1.25`: delta must be positive (zero would require infinite noise) and must satisfy the formula's domain constraint (delta >= 1.25 makes `ln(1.25 / delta)` non-positive, yielding an imaginary or zero sigma).
+
+Both checks raise `ValueError` with a descriptive message if violated. These runtime checks complement the Pydantic field-level validation and guard against any code path that constructs a `GradientManager` directly without going through the configuration loader.
+
+### 6.6 Excel Report Generation (`scripts/generate_excel_report.py`)
+
+The script `scripts/generate_excel_report.py` consumes the JSON experiment output files produced by `run_experiments.py` and produces a multi-sheet Excel workbook summarising all experimental results. It is invoked indirectly via `_update_excel_report()` using `importlib.import_module("scripts.generate_excel_report")`, allowing it to be called from within the experiment runner without creating a hard import dependency.
+
+**Entry point.**
+
+```python
+load_experiments(experiments_dir: Path | None = None) -> list[dict]
+```
+
+`load_experiments` scans `experiments_dir` (defaults to `experiments/` relative to the repository root if `None`) for all `experiment_*.json` files, parses them, and returns a list of experiment result dictionaries. Passing an explicit `Path` is useful for tests that redirect output to a temporary directory.
+
+**Output: four Excel sheets.**
+
+| Sheet name | Contents |
+|---|---|
+| `Raw Data` | One row per experiment: all scalar fields from the JSON summary (epsilon, delta, algorithm, cluster, mean_auc_roc, max_auc_roc, min_auc_roc, rounds, etc.) |
+| `Heat Map` | AUC-ROC values formatted as a colour-scaled heat map, indexed by epsilon (rows) and cluster (columns), for quick visual identification of high-leakage configurations |
+| `Per Rounds` | Per-round AUC-ROC time series for each experiment, drawn from `per_round[round]["auc_roc"]` in the JSON output |
+| `Per Epsilon` | Mean AUC-ROC aggregated by epsilon value across all clusters and algorithms, enabling direct plotting of the primary ε vs. AUC-ROC curve |
+
+The output workbook is written to `experiments/ChargeShield_FL_Results.xlsx` by default.
 
 ---
 
@@ -1663,6 +1705,12 @@ Each sprint produces a corresponding test file that remains permanently in the r
 
 - `tests/test_sprint4.py` — 52 tests covering FL training loop, gradient management, DP noise injection, FedAvg/FedProx aggregation, and NVFLARE integration.
 - `tests/test_sprint5.py` — 25 tests covering FedMIA attack plugin, privacy auditor, audit report generation, and IDS evaluation metrics.
+- `tests/test_acn_dataset.py` — Unit tests for ACNDataset loading, feature engineering, and malformed-record handling.
+- `tests/test_core_interfaces.py` — Unit tests for all abstract base class contracts and interface compliance.
+- `tests/test_flare_connector.py` — Unit tests for FlareConnector lifecycle hooks and NVFLARE bridge integration.
+- `tests/test_privacy_auditor.py` — Unit tests for PrivacyAuditor.audit() invocation, model_update input format, and DP accounting correctness.
+
+Total test count across all files: **140 tests**.
 
 If a future sprint changes the behaviour of a Sprint 4 deliverable, the corresponding Sprint 4 test should be updated (not deleted) to reflect the new expected behaviour, with a comment explaining why the expectation changed.
 
@@ -1762,7 +1810,7 @@ Definition of Done:
 | Sprint 2 | Complete | OCPP 1.6 adapter, ACN-Data loader, ChargingNode basic FL | — | — |
 | Sprint 3 | Complete | FedAvg aggregator, GradientManager, NVFLARE integration | — | — |
 | Sprint 4 | Complete | FedProx, DP Gaussian mechanism, multi-cluster topology | `test_sprint4.py` | 52 |
-| Sprint 5 | Complete | FedMIA attack plugin, PrivacyAuditor, IDS evaluation | `test_sprint5.py` | 25 |
+| Sprint 5 | Complete | FedMIA attack plugin, PrivacyAuditor, IDS evaluation | `test_sprint5.py` + `test_acn_dataset.py` + `test_core_interfaces.py` + `test_flare_connector.py` + `test_privacy_auditor.py` | 25 + 63 = 88 |
 | Sprint 6 | In progress | ElaadNL dataset, OCPP 2.0.1 adapter, experiment sweep | `test_sprint6.py` | TBD |
 
 ### 14.4 Sprint 6 Deliverables (In Progress)
