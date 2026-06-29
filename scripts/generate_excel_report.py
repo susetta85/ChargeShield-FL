@@ -24,10 +24,9 @@ from pathlib import Path
 try:
     from openpyxl import Workbook
     from openpyxl.styles import (
-        Alignment, Border, Font, GradientFill, PatternFill, Side
+        Alignment, Border, Font, PatternFill, Side
     )
     from openpyxl.utils import get_column_letter
-    from openpyxl.formatting.rule import ColorScaleRule
 except ImportError:
     print("ERROR: openpyxl non trovato. Installa con: pip install openpyxl")
     sys.exit(1)
@@ -88,10 +87,11 @@ def _set_col_width(ws, col_letter, width):
 
 # ── Carica dati ────────────────────────────────────────────────────────────────
 
-def load_experiments() -> list[dict]:
+def load_experiments(experiments_dir: Path | None = None) -> list[dict]:
     """Legge tutti i file experiment_*.json in experiments/ e li ordina."""
+    src = experiments_dir if experiments_dir is not None else EXPERIMENTS_DIR
     records = []
-    for path in sorted(EXPERIMENTS_DIR.glob("experiment_*.json")):
+    for path in sorted(src.glob("experiment_*.json")):
         try:
             with open(path) as f:
                 data = json.load(f)

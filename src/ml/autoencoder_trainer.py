@@ -175,7 +175,7 @@ class AutoencoderTrainer(AbstractMLModel):
             )
 
         dataset    = TensorDataset(tensor)
-        dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+        dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True, drop_last=True)
 
         epoch_losses: list[float] = []
         for epoch in range(self.epochs):

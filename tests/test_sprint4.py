@@ -24,16 +24,16 @@ import pytest
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
-from src.core.autoencoder import Autoencoder, Encoder, Decoder, INPUT_DIM
-from src.plugins.attacks.fedmia import FedMIA, MIAResult
-from src.ids.charging_ids import (
+from core.autoencoder import Autoencoder, Encoder, Decoder, INPUT_DIM
+from plugins.attacks.fedmia import FedMIA, MIAResult
+from ids.charging_ids import (
     ChargingIDS,
     CUSUMDetector,
     GradientAnalyzer,
     KrumDetector,
 )
-from src.core.base_ids import IDSAlert, RoundAnalysis
-from src.core.base_auditor import AuditReport
+from core.base_ids import IDSAlert, RoundAnalysis
+from core.base_auditor import AuditReport
 
 
 # ─── Fixtures ─────────────────────────────────────────────────────────────────

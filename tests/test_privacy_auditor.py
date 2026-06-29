@@ -19,12 +19,12 @@ Cosa NON testiamo qui:
 """
 
 import pytest
-from src.auditor.privacy_auditor import (
+from auditor.privacy_auditor import (
     PrivacyAuditor,
     _compute_l2_norm,
     _flatten_model_update,
 )
-from src.core.base_auditor import AuditReport
+from core.base_auditor import AuditReport
 
 
 # --- Fixture ---

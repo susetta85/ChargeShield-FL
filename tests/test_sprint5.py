@@ -26,7 +26,7 @@ from ml.fedavg_aggregator import FedAvgAggregator
 @pytest.fixture
 def trainer_config():
     return {
-        "input_dim": 7,
+        "input_dim": 6,
         "lr": 0.001,
         "epochs": 2,
         "batch_size": 4,
@@ -51,16 +51,15 @@ def dp_config():
 
 @pytest.fixture
 def sessions():
-    """Sessioni EV sintetiche con tutte le feature continue valide."""
+    """Sessioni EV sintetiche con le 6 feature continue di CONTINUOUS_FEATURES."""
     return [
         {
-            "voltage_v": 230.0,
-            "current_a": 16.0,
-            "power_kw": 3.7,
-            "energy_kwh": 10.0,
-            "temperature_c": 22.0,
-            "soc_percent": 80.0,
-            "timestamp": 1.0,
+            "total_energy_kwh": 10.0,
+            "max_power_kw": 3.7,
+            "kwh_requested": 12.0,
+            "minutes_available": 180.0,
+            "hour_of_day": 9.0,
+            "duration_hours": 3.0,
         }
         for _ in range(20)
     ]

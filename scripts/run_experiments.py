@@ -20,12 +20,14 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import random
 import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+import torch
 import yaml
 
 # ── Path setup ─────────────────────────────────────────────────────────────────
@@ -33,11 +35,12 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from adapters.acn_dataset import ACNDataset
-from ml.autoencoder_trainer import AutoencoderTrainer
-from ml.gradient_manager import GradientManager
-from ml.fedavg_aggregator import FedAvgAggregator
-from plugins.attacks.fedmia import FedMIA
+from auditor.privacy_auditor import PrivacyAuditor
+from core.autoencoder import Autoencoder
 from ids.charging_ids import ChargingIDS
+from ml.autoencoder_trainer import AutoencoderTrainer
+from ml.fedavg_aggregator import FedAvgAggregator
+from ml.gradient_manager import GradientManager
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -137,7 +140,8 @@ def run_fl_rounds(
             cluster_id=cid,
         )
         start = i * cluster_size
-        cluster_sessions[cid] = sessions[start: start + cluster_size]
+        end   = None if i == len(cluster_ids) - 1 else start + cluster_size
+        cluster_sessions[cid] = sessions[start:end]
         logger.info(f"Cluster {cid}: {len(cluster_sessions[cid])} sessioni")
 
     gm = GradientManager({
@@ -177,9 +181,10 @@ def run_fl_rounds(
         logger.info(f"Round {round_num} — loss globale: {loss_str}")
 
         results[round_num] = {
-            "mean_loss":     aggregated.mean_loss,
+            "mean_loss":      aggregated.mean_loss,
             "n_participants": aggregated.n_participants,
-            "updates":       round_updates,
+            "updates":        round_updates,
+            "global_weights": aggregated.global_weights,
         }
 
     return results
@@ -192,38 +197,6 @@ _MIA_FEATURES = [
     "minutes_available", "hour_of_day", "duration_hours",
 ]
 
-def _sessions_to_loader(
-    sessions: list[dict[str, Any]],
-    batch_size: int = 32,
-) -> "torch.utils.data.DataLoader":
-    """
-    Converte sessioni ACN in DataLoader per shadow model FedMIA.
-    Usa dataset custom che restituisce tensori diretti (non tuple),
-    compatibile con autoencoder.fit() che itera batch come Tensor.
-    """
-    import torch
-
-    rows = [
-        [float(s.get(f) or 0.0) for f in _MIA_FEATURES]
-        for s in sessions
-    ]
-    tensor = torch.tensor(rows, dtype=torch.float32)
-
-    class _DirectTensorDataset(torch.utils.data.Dataset):
-        """Dataset che restituisce tensori row-by-row, non tuple."""
-        def __init__(self, t: torch.Tensor) -> None:
-            self._t = t
-        def __len__(self) -> int:
-            return len(self._t)
-        def __getitem__(self, i: int) -> torch.Tensor:
-            return self._t[i]
-
-    return torch.utils.data.DataLoader(
-        _DirectTensorDataset(tensor),
-        batch_size=batch_size,
-        shuffle=True,
-    )
-
 
 def run_fedmia(
     cfg: dict,
@@ -231,46 +204,79 @@ def run_fedmia(
     fl_results: dict[int, dict[str, Any]],
 ) -> dict[int, dict[str, Any]]:
     """
-    Esegue FedMIA su sessioni ACN-Data.
-    Shadow model addestrato su members (50%) — poi scorecard su tutti.
-    Misura AUC-ROC: capacità di distinguere membro da non-membro.
-    FedMIA opera su dati post-DP — gradienti già privatizzati.
+    Loss-based Membership Inference Attack per FL con autoencoder.
+
+    Per ogni round FL carica i pesi globali aggregati in un Autoencoder
+    locale e misura l'errore di ricostruzione su membri e non-membri.
+    Principio (Yeom et al., 2018): il modello FL produce errore basso sui
+    campioni visti nel training (membri) e alto sui non visti (non-membri).
+    La DP riduce questa gap → AUC-ROC → 0.5 (attacco non migliore del random).
+
+    L'AUC varia per round: round iniziali → modello non converge → AUC ≈ 0.5;
+    round finali → modello memorizza → AUC cresce se DP insufficiente.
+
+    Args:
+        cfg:        configurazione esperimento
+        sessions:   sessioni EV caricate e arricchite
+        fl_results: dict round → {"global_weights": [...], ...}
+
+    Returns:
+        {round_num: {"auc_roc": float, "member_score_mean": float, ...}}
     """
     from sklearn.metrics import roc_auc_score
 
-    mia_cfg = cfg["fedmia"]
     n = len(sessions)
-    members     = sessions[: n // 2]
-    non_members = sessions[n // 2:]
+    # Split randomizzato con seed fisso — evita bias da ordinamento temporale
+    rng = random.Random(42)
+    indices = list(range(n))
+    rng.shuffle(indices)
+    member_set = set(indices[: n // 2])
+
+    members     = [sessions[i] for i in range(n) if i in member_set]
+    non_members = [sessions[i] for i in range(n) if i not in member_set]
 
     logger.info(f"FedMIA — members: {len(members)}, non-members: {len(non_members)}")
 
-    fedmia = FedMIA(attack_threshold=mia_cfg["attack_threshold"])
+    input_dim = cfg["ml"]["input_dim"]
 
-    # Addestra shadow model su DataLoader dei membri
-    logger.info("Training shadow model...")
-    member_loader = _sessions_to_loader(members)
-    fedmia.train_shadow_model(member_loader)
+    def _score_batch(model: Autoencoder, sess_list: list[dict]) -> list[float]:
+        """Calcola membership scores (-MSE) su tutte le sessioni in batch."""
+        rows = [[float(s.get(f) or 0.0) for f in _MIA_FEATURES] for s in sess_list]
+        tensor = torch.tensor(rows, dtype=torch.float32)
+        results_: list[float] = []
+        with torch.no_grad():
+            for i in range(0, len(tensor), 256):
+                batch = tensor[i : i + 256]
+                recon  = model(batch)
+                errors = torch.mean((recon - batch) ** 2, dim=1)
+                # Score = -errore: basso errore → membro → score alto
+                results_.extend(-e.item() for e in errors)
+        return results_
 
-    # Calcola membership score per ogni sessione individualmente
-    # Passa dict con sole feature numeriche per evitare ambiguità
-    logger.info("Computing membership scores...")
-    def _score(s: dict) -> float:
-        feat = {f: float(s.get(f) or 0.0) for f in _MIA_FEATURES}
-        return fedmia.compute_membership_score(feat)
-
-    member_scores     = [_score(s) for s in members]
-    non_member_scores = [_score(s) for s in non_members]
-
-    labels = [1] * len(member_scores) + [0] * len(non_member_scores)
-    scores = member_scores + non_member_scores
-    auc    = roc_auc_score(labels, scores)
-    logger.info(f"AUC-ROC: {auc:.4f}")
-
-    # Associa AUC a ogni round FL (il shadow model è fisso,
-    # il round indica il numero di round di training FL prima dell'attacco)
     mia_results: dict[int, dict[str, Any]] = {}
-    for round_num in fl_results:
+
+    for round_num, round_data in sorted(fl_results.items()):
+        global_weights = round_data.get("global_weights")
+        if global_weights is None:
+            logger.warning(f"Round {round_num}: global_weights assenti — skip FedMIA")
+            continue
+
+        # Carica pesi globali FL in un autoencoder locale (inference only)
+        model = Autoencoder(input_dim=input_dim)
+        with torch.no_grad():
+            for param, w in zip(model.parameters(), global_weights):
+                w_t = w if isinstance(w, torch.Tensor) else torch.tensor(w)
+                param.data.copy_(w_t)
+        model.eval()
+
+        member_scores     = _score_batch(model, members)
+        non_member_scores = _score_batch(model, non_members)
+
+        labels = [1] * len(member_scores) + [0] * len(non_member_scores)
+        scores = member_scores + non_member_scores
+        auc    = roc_auc_score(labels, scores)
+        logger.info(f"Round {round_num} — FedMIA AUC-ROC: {auc:.4f}")
+
         mia_results[round_num] = {
             "auc_roc":               auc,
             "member_score_mean":     float(np.mean(member_scores)),
@@ -288,17 +294,21 @@ def run_ids(
 ) -> dict[int, dict[str, Any]]:
     """
     Valuta ChargingIDS su ogni round FL.
-    Costruisce AuditReport e gradient dict dai GradientUpdate del ML Plane
-    per ogni nodo, poi chiama analyze_round() con la firma corretta.
+
+    Usa PrivacyAuditor per generare AuditReport reali con threats_detected
+    popolato (GRADIENT_EXPLOSION, PRIVACY_BUDGET_EXHAUSTED, ecc.).
+    Un singolo auditor persiste tra i round per tracciare l'epsilon cumulativo.
     """
-    from core.base_auditor import AuditReport
+    config_path = str(PROJECT_ROOT / "config" / "auditor.yaml")
 
     ids = ChargingIDS(
+        config_path=config_path,
         byzantine_tolerance=1,
         cosine_threshold=0.85,
     )
+    # Un'unica istanza traccia l'epsilon cumulativo per nodo su tutti i round
+    auditor = PrivacyAuditor(config_path=config_path)
 
-    epsilon = cfg["experiment"]["epsilon"]
     ids_results: dict[int, dict[str, Any]] = {}
 
     for round_num, round_data in fl_results.items():
@@ -309,29 +319,29 @@ def run_ids(
             }
             continue
 
-        # Costruisce AuditReport e gradient dict da GradientUpdate (ML Plane)
-        reports: dict[str, AuditReport] = {}
+        reports: dict[str, Any] = {}
         gradients: dict[str, dict[str, Any]] = {}
 
         for update in updates:
             if not update or not update.node_id:
                 continue
 
-            # AuditReport: privacy_score=1.0 se DP applicato, 0.5 altrimenti
-            reports[update.node_id] = AuditReport(
+            # Converti pesi in dict[layer → list[float]] per PrivacyAuditor
+            model_update: dict[str, Any] = {}
+            for i, w in enumerate(update.weights or []):
+                if isinstance(w, torch.Tensor):
+                    model_update[f"layer_{i}"] = w.flatten().tolist()
+                else:
+                    model_update[f"layer_{i}"] = float(w) if isinstance(w, (int, float)) else w
+
+            # AuditReport con threats_detected reali (GRADIENT_EXPLOSION, ecc.)
+            reports[update.node_id] = auditor.audit(
                 node_id=update.node_id,
                 round_id=round_num,
-                privacy_score=1.0 if update.metadata.get("dp_applied") else 0.5,
-                epsilon=epsilon,
-                threats_detected=[],
-                metadata={
-                    "n_samples": update.n_samples,
-                    "loss":      update.loss,
-                    "cluster_id": update.cluster_id,
-                },
+                model_update=model_update,
             )
 
-            # Gradient dict: {layer_0: tensor, layer_1: tensor, ...}
+            # Gradient dict per Krum / cosine analysis dell'IDS
             gradients[update.node_id] = {
                 f"layer_{i}": w
                 for i, w in enumerate(update.weights or [])
@@ -352,14 +362,14 @@ def run_ids(
         ids_results[round_num] = {
             "alerts": [
                 {
-                    "node_id":     a.node_id,
-                    "severity": a.severity,
-                    "reasons":  a.reasons,
-                    "recommended_action":  a.recommended_action,
+                    "node_id":            a.node_id,
+                    "severity":           a.severity,
+                    "reasons":            a.reasons,
+                    "recommended_action": a.recommended_action,
                 }
                 for a in (analysis.alerts if analysis else [])
             ],
-            "byzantine_detected": len(analysis.byzantine_nodes) > 0 if analysis else False,
+            "byzantine_detected":   len(analysis.byzantine_nodes) > 0 if analysis else False,
             "low_similarity_nodes": analysis.low_similarity_nodes if analysis else [],
         }
 
@@ -433,230 +443,40 @@ def save_results(
 
 def _update_excel_report(experiments_dir: Path) -> None:
     """
-    Rigenera il report Excel ChargeShield_FL_Results.xlsx leggendo tutti i
-    file experiment_*.json presenti in experiments/.
-    Chiamato automaticamente da save_results() al termine di ogni run.
-    Richiede: pip install openpyxl
+    Rigenera il report Excel a 4 sheet chiamando generate_excel_report.py.
+    Produce: Raw Data, Heat Map, Per Rounds, Per Epsilon.
     """
     try:
+        import importlib.util
         from openpyxl import Workbook
-        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-        from openpyxl.utils import get_column_letter
+
+        script_path = Path(__file__).parent / "generate_excel_report.py"
+        spec = importlib.util.spec_from_file_location("gen_xl", script_path)
+        gen  = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(gen)  # type: ignore[union-attr]
+
+        records = gen.load_experiments(experiments_dir)
+        if not records:
+            return
+
+        wb = Workbook()
+        wb.remove(wb.active)
+        gen.build_raw_data(wb.create_sheet("Raw Data"),    records)
+        gen.build_heat_map(wb.create_sheet("Heat Map"),    records)
+        gen.build_per_rounds(wb.create_sheet("Per Rounds"), records)
+        gen.build_per_epsilon(wb.create_sheet("Per Epsilon"), records)
+        wb.properties.title   = "ChargeShield-FL Experiment Results"
+        wb.properties.subject = "FedMIA vs Differential Privacy — DSN 2027"
+        output_path = experiments_dir / "ChargeShield_FL_Results.xlsx"
+        wb.save(output_path)
+        logger.info(f"Report Excel aggiornato: {output_path.name}")
     except ImportError:
         logger.warning(
             "openpyxl non trovato — report Excel non generato. "
             "Installa con: pip install openpyxl"
         )
-        return
-
-    # ── palette ────────────────────────────────────────────────────────────────
-    C_HDR_BG  = "1F4E79"
-    C_HDR_FG  = "FFFFFF"
-    C_SUB_BG  = "2E75B6"
-    C_ALT     = "D6E4F0"
-    C_PLAIN   = "FFFFFF"
-    C_GREEN   = "D5E8D4"
-    C_ORANGE  = "FFE5B4"
-    C_RED_LT  = "FFCCCC"
-    C_GREEN_FG = "2D6A2D"
-    C_RED_FG   = "FF0000"
-    C_ORG_FG   = "8B4513"
-    FONT = "Arial"
-
-    def _font(bold=False, color="000000", size=10):
-        return Font(name=FONT, bold=bold, color=color, size=size)
-
-    def _fill(h):
-        return PatternFill("solid", fgColor=h)
-
-    def _border():
-        s = Side(style="thin", color="BFBFBF")
-        return Border(left=s, right=s, top=s, bottom=s)
-
-    def _center():
-        return Alignment(horizontal="center", vertical="center")
-
-    def _hdr(cell, text, bg=C_HDR_BG, fg=C_HDR_FG):
-        cell.value = text
-        cell.font = _font(bold=True, color=fg)
-        cell.fill = _fill(bg)
-        cell.alignment = _center()
-        cell.border = _border()
-
-    def _dat(cell, val, fmt=None, alt=False, bold=False):
-        cell.value = val
-        cell.font = _font(bold=bold)
-        cell.fill = _fill(C_ALT if alt else C_PLAIN)
-        cell.border = _border()
-        cell.alignment = _center()
-        if fmt:
-            cell.number_format = fmt
-
-    def _w(ws, col, width):
-        ws.column_dimensions[get_column_letter(col)].width = width
-
-    # ── carica tutti i JSON ────────────────────────────────────────────────────
-    records = []
-    for path in sorted(experiments_dir.glob("experiment_*.json")):
-        try:
-            with open(path) as f:
-                d = json.load(f)
-            cfg  = d.get("config", {})
-            summ = d.get("summary", {})
-            records.append({
-                "timestamp":    d.get("timestamp", ""),
-                "rounds":       int(cfg.get("fl_rounds", 0)),
-                "epsilon":      float(cfg.get("epsilon", 0)),
-                "proximal_mu":  float(cfg.get("proximal_mu", 0)),
-                "auc_roc":      float(summ["mean_auc_roc"]) if summ.get("mean_auc_roc") is not None else None,
-                "privacy_risk": summ.get("privacy_risk", ""),
-                "total_alerts": sum(
-                    len(v.get("ids", {}).get("alerts", []))
-                    for v in d.get("per_round", {}).values()
-                ),
-            })
-        except Exception:
-            pass
-
-    if not records:
-        return
-
-    wb = Workbook()
-    wb.remove(wb.active)
-
-    # ── Sheet 1: Raw Data ──────────────────────────────────────────────────────
-    ws1 = wb.create_sheet("Raw Data")
-    ws1.title = "Raw Data"
-    ws1.merge_cells("A1:H1")
-    t = ws1["A1"]
-    t.value = "ChargeShield-FL — Experiment Results"
-    t.font = _font(bold=True, color=C_HDR_FG, size=12)
-    t.fill = _fill(C_HDR_BG)
-    t.alignment = _center()
-
-    hdrs = ["Timestamp", "FL Rounds", "Epsilon (ε)", "Proximal μ",
-            "AUC-ROC (mean)", "Privacy Risk", "IDS Alerts", "Notes"]
-    for c, h in enumerate(hdrs, 1):
-        _hdr(ws1.cell(2, c), h, bg=C_SUB_BG)
-
-    for ri, rec in enumerate(records, 3):
-        alt = ri % 2 == 0
-        _dat(ws1.cell(ri, 1), rec["timestamp"],   alt=alt)
-        _dat(ws1.cell(ri, 2), rec["rounds"],       alt=alt, bold=True)
-        _dat(ws1.cell(ri, 3), rec["epsilon"],      fmt="0.0#", alt=alt)
-        _dat(ws1.cell(ri, 4), rec["proximal_mu"],  fmt="0.00", alt=alt)
-
-        auc_cell = ws1.cell(ri, 5)
-        _dat(auc_cell, rec["auc_roc"], fmt="0.0000", alt=alt)
-        val = rec["auc_roc"]
-        if val is not None:
-            if val > 0.60:
-                auc_cell.font = _font(bold=True, color=C_RED_FG)
-            elif val > 0.52:
-                auc_cell.font = _font(bold=True, color=C_ORG_FG)
-            else:
-                auc_cell.font = _font(bold=True, color=C_GREEN_FG)
-
-        risk = rec["privacy_risk"]
-        rc = ws1.cell(ri, 6)
-        _dat(rc, risk, alt=alt, bold=True)
-        if risk == "HIGH":
-            rc.font = _font(bold=True, color=C_RED_FG)
-        elif risk == "MEDIUM":
-            rc.font = _font(bold=True, color="FF8C00")
-        else:
-            rc.font = _font(bold=True, color=C_GREEN_FG)
-
-        _dat(ws1.cell(ri, 7), rec["total_alerts"], alt=alt)
-        _dat(ws1.cell(ri, 8), "Sweep run",         alt=alt)
-
-    for c, w in enumerate([20, 12, 12, 12, 16, 14, 12, 14], 1):
-        _w(ws1, c, w)
-    ws1.freeze_panes = "A3"
-
-    # ── Sheet 2: Heat Map ──────────────────────────────────────────────────────
-    ws2 = wb.create_sheet("Heat Map")
-    rounds_u  = sorted(set(r["rounds"]  for r in records))
-    epsilon_u = sorted(set(r["epsilon"] for r in records))
-    data_map  = {}
-    for rec in records:
-        data_map[(rec["rounds"], rec["epsilon"])] = rec["auc_roc"]
-
-    nc = len(epsilon_u) + 2
-    ws2.merge_cells(f"A1:{get_column_letter(nc)}1")
-    t2 = ws2["A1"]
-    t2.value = "AUC-ROC Heat Map — FedMIA vs ε (DP Budget)"
-    t2.font = _font(bold=True, color=C_HDR_FG, size=12)
-    t2.fill = _fill(C_HDR_BG)
-    t2.alignment = _center()
-
-    _hdr(ws2.cell(3, 1), "Rounds \\ ε →")
-    for ci, eps in enumerate(epsilon_u, 2):
-        _hdr(ws2.cell(3, ci), f"ε = {eps}", bg=C_SUB_BG)
-    _hdr(ws2.cell(3, nc), "Row Avg", bg=C_SUB_BG)
-
-    for ri, rnd in enumerate(rounds_u, 4):
-        alt = ri % 2 == 0
-        _hdr(ws2.cell(ri, 1), f"{rnd} rounds", bg=C_SUB_BG)
-        row_vals = []
-        for ci, eps in enumerate(epsilon_u, 2):
-            val = data_map.get((rnd, eps))
-            c = ws2.cell(ri, ci)
-            c.value = val
-            c.number_format = "0.0000"
-            c.border = _border()
-            c.alignment = _center()
-            if val is not None:
-                row_vals.append(val)
-                if val > 0.60:
-                    c.fill = _fill(C_RED_LT)
-                    c.font = _font(bold=True, color=C_RED_FG)
-                elif val > 0.52:
-                    c.fill = _fill(C_ORANGE)
-                    c.font = _font(bold=True, color=C_ORG_FG)
-                else:
-                    c.fill = _fill(C_GREEN)
-                    c.font = _font(bold=False, color=C_GREEN_FG)
-            else:
-                c.fill = _fill(C_ALT if alt else C_PLAIN)
-                c.font = _font()
-
-        avg_cell = ws2.cell(ri, nc)
-        if row_vals:
-            avg_cell.value = sum(row_vals) / len(row_vals)
-            avg_cell.number_format = "0.0000"
-            avg_cell.font = _font(bold=True)
-        else:
-            avg_cell.value = "N/A"
-        avg_cell.fill = _fill("E2EFDA")
-        avg_cell.border = _border()
-        avg_cell.alignment = _center()
-
-    # Media di colonna
-    avg_row = len(rounds_u) + 4
-    _hdr(ws2.cell(avg_row, 1), "Col Avg", bg=C_SUB_BG)
-    for ci, eps in enumerate(epsilon_u, 2):
-        col_vals = [data_map.get((rnd, eps)) for rnd in rounds_u
-                    if data_map.get((rnd, eps)) is not None]
-        c = ws2.cell(avg_row, ci)
-        c.value = sum(col_vals) / len(col_vals) if col_vals else "N/A"
-        c.number_format = "0.0000"
-        c.font = _font(bold=True)
-        c.fill = _fill("E2EFDA")
-        c.border = _border()
-        c.alignment = _center()
-
-    _w(ws2, 1, 16)
-    for ci in range(2, nc + 1):
-        _w(ws2, ci, 14)
-    ws2.freeze_panes = "B4"
-
-    # ── Salva ──────────────────────────────────────────────────────────────────
-    output_path = experiments_dir / "ChargeShield_FL_Results.xlsx"
-    wb.properties.title   = "ChargeShield-FL Experiment Results"
-    wb.properties.subject = "FedMIA vs Differential Privacy — DSN 2027"
-    wb.save(output_path)
-    logger.info(f"Report Excel aggiornato: {output_path.name}")
+    except Exception as exc:
+        logger.warning(f"Report Excel non generato: {exc}")
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────────

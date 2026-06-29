@@ -152,6 +152,10 @@ class GradientManager(AbstractMLModel):
         Calcola σ per il Gaussian Mechanism.
         σ = max_grad_norm * sqrt(2 * ln(1.25 / δ)) / ε
         """
+        if self.epsilon <= 0:
+            raise ValueError(f"epsilon deve essere > 0, ricevuto: {self.epsilon}")
+        if not (0 < self.delta < 1.25):
+            raise ValueError(f"delta deve essere in (0, 1.25), ricevuto: {self.delta}")
         return (
             self.max_grad_norm
             * math.sqrt(2 * math.log(1.25 / self.delta))

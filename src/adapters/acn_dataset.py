@@ -135,10 +135,13 @@ class ACNDataset(AbstractDataset):
         altrimenti usiamo valori di default.
         """
         # Parsing date
-        start = _parse_acn_datetime(item["connectionTime"])
-        end = _parse_acn_datetime(item["disconnectTime"])
-        done_raw = item.get("doneChargingTime") or item.get("disconnectTime")
-        done = _parse_acn_datetime(done_raw)
+        try:
+            start = _parse_acn_datetime(item["connectionTime"])
+            end = _parse_acn_datetime(item["disconnectTime"])
+            done_raw = item.get("doneChargingTime") or item.get("disconnectTime")
+            done = _parse_acn_datetime(done_raw)
+        except Exception as exc:
+            raise ValueError(f"Datetime non valido nel record: {exc}") from exc
 
         kwh = float(item.get("kWhDelivered", 0.0))
 
