@@ -424,7 +424,239 @@ def save_results(
         f"AUC-ROC medio: {mean_str} — "
         f"Privacy risk: {summary['summary']['privacy_risk']}"
     )
+
+    # Aggiorna automaticamente il report Excel con tutti i risultati accumulati
+    _update_excel_report(output_dir)
+
     return result_file
+
+
+def _update_excel_report(experiments_dir: Path) -> None:
+    """
+    Rigenera il report Excel ChargeShield_FL_Results.xlsx leggendo tutti i
+    file experiment_*.json presenti in experiments/.
+    Chiamato automaticamente da save_results() al termine di ogni run.
+    Richiede: pip install openpyxl
+    """
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        logger.warning(
+            "openpyxl non trovato — report Excel non generato. "
+            "Installa con: pip install openpyxl"
+        )
+        return
+
+    # ── palette ────────────────────────────────────────────────────────────────
+    C_HDR_BG  = "1F4E79"
+    C_HDR_FG  = "FFFFFF"
+    C_SUB_BG  = "2E75B6"
+    C_ALT     = "D6E4F0"
+    C_PLAIN   = "FFFFFF"
+    C_GREEN   = "D5E8D4"
+    C_ORANGE  = "FFE5B4"
+    C_RED_LT  = "FFCCCC"
+    C_GREEN_FG = "2D6A2D"
+    C_RED_FG   = "FF0000"
+    C_ORG_FG   = "8B4513"
+    FONT = "Arial"
+
+    def _font(bold=False, color="000000", size=10):
+        return Font(name=FONT, bold=bold, color=color, size=size)
+
+    def _fill(h):
+        return PatternFill("solid", fgColor=h)
+
+    def _border():
+        s = Side(style="thin", color="BFBFBF")
+        return Border(left=s, right=s, top=s, bottom=s)
+
+    def _center():
+        return Alignment(horizontal="center", vertical="center")
+
+    def _hdr(cell, text, bg=C_HDR_BG, fg=C_HDR_FG):
+        cell.value = text
+        cell.font = _font(bold=True, color=fg)
+        cell.fill = _fill(bg)
+        cell.alignment = _center()
+        cell.border = _border()
+
+    def _dat(cell, val, fmt=None, alt=False, bold=False):
+        cell.value = val
+        cell.font = _font(bold=bold)
+        cell.fill = _fill(C_ALT if alt else C_PLAIN)
+        cell.border = _border()
+        cell.alignment = _center()
+        if fmt:
+            cell.number_format = fmt
+
+    def _w(ws, col, width):
+        ws.column_dimensions[get_column_letter(col)].width = width
+
+    # ── carica tutti i JSON ────────────────────────────────────────────────────
+    records = []
+    for path in sorted(experiments_dir.glob("experiment_*.json")):
+        try:
+            with open(path) as f:
+                d = json.load(f)
+            cfg  = d.get("config", {})
+            summ = d.get("summary", {})
+            records.append({
+                "timestamp":    d.get("timestamp", ""),
+                "rounds":       int(cfg.get("fl_rounds", 0)),
+                "epsilon":      float(cfg.get("epsilon", 0)),
+                "proximal_mu":  float(cfg.get("proximal_mu", 0)),
+                "auc_roc":      float(summ["mean_auc_roc"]) if summ.get("mean_auc_roc") is not None else None,
+                "privacy_risk": summ.get("privacy_risk", ""),
+                "total_alerts": sum(
+                    len(v.get("ids", {}).get("alerts", []))
+                    for v in d.get("per_round", {}).values()
+                ),
+            })
+        except Exception:
+            pass
+
+    if not records:
+        return
+
+    wb = Workbook()
+    wb.remove(wb.active)
+
+    # ── Sheet 1: Raw Data ──────────────────────────────────────────────────────
+    ws1 = wb.create_sheet("Raw Data")
+    ws1.title = "Raw Data"
+    ws1.merge_cells("A1:H1")
+    t = ws1["A1"]
+    t.value = "ChargeShield-FL — Experiment Results"
+    t.font = _font(bold=True, color=C_HDR_FG, size=12)
+    t.fill = _fill(C_HDR_BG)
+    t.alignment = _center()
+
+    hdrs = ["Timestamp", "FL Rounds", "Epsilon (ε)", "Proximal μ",
+            "AUC-ROC (mean)", "Privacy Risk", "IDS Alerts", "Notes"]
+    for c, h in enumerate(hdrs, 1):
+        _hdr(ws1.cell(2, c), h, bg=C_SUB_BG)
+
+    for ri, rec in enumerate(records, 3):
+        alt = ri % 2 == 0
+        _dat(ws1.cell(ri, 1), rec["timestamp"],   alt=alt)
+        _dat(ws1.cell(ri, 2), rec["rounds"],       alt=alt, bold=True)
+        _dat(ws1.cell(ri, 3), rec["epsilon"],      fmt="0.0#", alt=alt)
+        _dat(ws1.cell(ri, 4), rec["proximal_mu"],  fmt="0.00", alt=alt)
+
+        auc_cell = ws1.cell(ri, 5)
+        _dat(auc_cell, rec["auc_roc"], fmt="0.0000", alt=alt)
+        val = rec["auc_roc"]
+        if val is not None:
+            if val > 0.60:
+                auc_cell.font = _font(bold=True, color=C_RED_FG)
+            elif val > 0.52:
+                auc_cell.font = _font(bold=True, color=C_ORG_FG)
+            else:
+                auc_cell.font = _font(bold=True, color=C_GREEN_FG)
+
+        risk = rec["privacy_risk"]
+        rc = ws1.cell(ri, 6)
+        _dat(rc, risk, alt=alt, bold=True)
+        if risk == "HIGH":
+            rc.font = _font(bold=True, color=C_RED_FG)
+        elif risk == "MEDIUM":
+            rc.font = _font(bold=True, color="FF8C00")
+        else:
+            rc.font = _font(bold=True, color=C_GREEN_FG)
+
+        _dat(ws1.cell(ri, 7), rec["total_alerts"], alt=alt)
+        _dat(ws1.cell(ri, 8), "Sweep run",         alt=alt)
+
+    for c, w in enumerate([20, 12, 12, 12, 16, 14, 12, 14], 1):
+        _w(ws1, c, w)
+    ws1.freeze_panes = "A3"
+
+    # ── Sheet 2: Heat Map ──────────────────────────────────────────────────────
+    ws2 = wb.create_sheet("Heat Map")
+    rounds_u  = sorted(set(r["rounds"]  for r in records))
+    epsilon_u = sorted(set(r["epsilon"] for r in records))
+    data_map  = {}
+    for rec in records:
+        data_map[(rec["rounds"], rec["epsilon"])] = rec["auc_roc"]
+
+    nc = len(epsilon_u) + 2
+    ws2.merge_cells(f"A1:{get_column_letter(nc)}1")
+    t2 = ws2["A1"]
+    t2.value = "AUC-ROC Heat Map — FedMIA vs ε (DP Budget)"
+    t2.font = _font(bold=True, color=C_HDR_FG, size=12)
+    t2.fill = _fill(C_HDR_BG)
+    t2.alignment = _center()
+
+    _hdr(ws2.cell(3, 1), "Rounds \\ ε →")
+    for ci, eps in enumerate(epsilon_u, 2):
+        _hdr(ws2.cell(3, ci), f"ε = {eps}", bg=C_SUB_BG)
+    _hdr(ws2.cell(3, nc), "Row Avg", bg=C_SUB_BG)
+
+    for ri, rnd in enumerate(rounds_u, 4):
+        alt = ri % 2 == 0
+        _hdr(ws2.cell(ri, 1), f"{rnd} rounds", bg=C_SUB_BG)
+        row_vals = []
+        for ci, eps in enumerate(epsilon_u, 2):
+            val = data_map.get((rnd, eps))
+            c = ws2.cell(ri, ci)
+            c.value = val
+            c.number_format = "0.0000"
+            c.border = _border()
+            c.alignment = _center()
+            if val is not None:
+                row_vals.append(val)
+                if val > 0.60:
+                    c.fill = _fill(C_RED_LT)
+                    c.font = _font(bold=True, color=C_RED_FG)
+                elif val > 0.52:
+                    c.fill = _fill(C_ORANGE)
+                    c.font = _font(bold=True, color=C_ORG_FG)
+                else:
+                    c.fill = _fill(C_GREEN)
+                    c.font = _font(bold=False, color=C_GREEN_FG)
+            else:
+                c.fill = _fill(C_ALT if alt else C_PLAIN)
+                c.font = _font()
+
+        avg_cell = ws2.cell(ri, nc)
+        if row_vals:
+            avg_cell.value = sum(row_vals) / len(row_vals)
+            avg_cell.number_format = "0.0000"
+            avg_cell.font = _font(bold=True)
+        else:
+            avg_cell.value = "N/A"
+        avg_cell.fill = _fill("E2EFDA")
+        avg_cell.border = _border()
+        avg_cell.alignment = _center()
+
+    # Media di colonna
+    avg_row = len(rounds_u) + 4
+    _hdr(ws2.cell(avg_row, 1), "Col Avg", bg=C_SUB_BG)
+    for ci, eps in enumerate(epsilon_u, 2):
+        col_vals = [data_map.get((rnd, eps)) for rnd in rounds_u
+                    if data_map.get((rnd, eps)) is not None]
+        c = ws2.cell(avg_row, ci)
+        c.value = sum(col_vals) / len(col_vals) if col_vals else "N/A"
+        c.number_format = "0.0000"
+        c.font = _font(bold=True)
+        c.fill = _fill("E2EFDA")
+        c.border = _border()
+        c.alignment = _center()
+
+    _w(ws2, 1, 16)
+    for ci in range(2, nc + 1):
+        _w(ws2, ci, 14)
+    ws2.freeze_panes = "B4"
+
+    # ── Salva ──────────────────────────────────────────────────────────────────
+    output_path = experiments_dir / "ChargeShield_FL_Results.xlsx"
+    wb.properties.title   = "ChargeShield-FL Experiment Results"
+    wb.properties.subject = "FedMIA vs Differential Privacy — DSN 2027"
+    wb.save(output_path)
+    logger.info(f"Report Excel aggiornato: {output_path.name}")
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
