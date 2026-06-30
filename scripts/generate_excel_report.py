@@ -97,6 +97,7 @@ def load_experiments(experiments_dir: Path | None = None) -> list[dict]:
                 data = json.load(f)
             cfg   = data.get("config", {})
             summ  = data.get("summary", {})
+            per_round_raw = data.get("per_round", {})
             records.append({
                 "timestamp":   data.get("timestamp", path.stem.replace("experiment_", "")),
                 "file":        path.name,
@@ -111,12 +112,24 @@ def load_experiments(experiments_dir: Path | None = None) -> list[dict]:
                 # IDS: conta gli alert totali nei round
                 "total_alerts": sum(
                     len(v.get("ids", {}).get("alerts", []))
-                    for v in data.get("per_round", {}).values()
+                    for v in per_round_raw.values()
                 ),
                 "byzantine_rounds": sum(
-                    1 for v in data.get("per_round", {}).values()
+                    1 for v in per_round_raw.values()
                     if v.get("ids", {}).get("byzantine_detected")
                 ),
+                # AUC-ROC per round (per progression chart)
+                "per_round_auc": {
+                    int(k): v["mia"]["auc_roc"]
+                    for k, v in per_round_raw.items()
+                    if v.get("mia", {}).get("auc_roc") is not None
+                },
+                # FL training loss per round (andamento convergenza)
+                "per_round_loss": {
+                    int(k): v["fl"]["mean_loss"]
+                    for k, v in per_round_raw.items()
+                    if v.get("fl", {}).get("mean_loss") is not None
+                },
             })
         except Exception as e:
             print(f"WARN: impossibile leggere {path.name}: {e}")
@@ -414,6 +427,158 @@ def build_per_epsilon(ws, records: list[dict]) -> None:
         _set_col_width(ws, col, w)
 
 
+# ── Sheet 5: Comparison ────────────────────────────────────────────────────────
+
+def build_comparison(ws, records: list[dict]) -> None:
+    """Tabella di confronto: una colonna per esperimento, metriche in riga."""
+    ws.title = "Comparison"
+
+    n_exp = len(records)
+    n_cols = n_exp + 1
+
+    ws.merge_cells(f"A1:{get_column_letter(n_cols)}1")
+    t = ws["A1"]
+    t.value = "Multi-Experiment Comparison — FedMIA Attack vs DP (FedProx)"
+    t.font = _font(bold=True, color=COLOR_HEADER_FG, size=12)
+    t.fill = _fill(COLOR_HEADER_BG)
+    t.alignment = _center()
+
+    # Sub-header: nome esperimento per colonna
+    _header_cell(ws.cell(2, 1), "Metric", bg=COLOR_HEADER_BG)
+    for col, rec in enumerate(records, 2):
+        label = f"{rec['rounds']} rounds\nε={rec['epsilon']}"
+        _header_cell(ws.cell(2, col), label, bg=COLOR_SUBHDR_BG)
+        ws.row_dimensions[2].height = 28
+
+    # Righe metriche
+    metrics = [
+        ("FL Rounds",          "rounds",          None),
+        ("Epsilon (ε)",        "epsilon",          "0.0#"),
+        ("Delta (δ)",          "delta",            "0.00E+00"),
+        ("Proximal μ",         "proximal_mu",      "0.00"),
+        ("AUC-ROC Mean",       "auc_roc",          "0.0000"),
+        ("AUC-ROC Max",        "auc_max",          "0.0000"),
+        ("AUC-ROC Min",        "auc_min",          "0.0000"),
+        ("Privacy Risk",       "privacy_risk",     None),
+        ("IDS Alerts (total)", "total_alerts",     None),
+        ("Byzantine Rounds",   "byzantine_rounds", None),
+    ]
+
+    for row_idx, (label, key, fmt) in enumerate(metrics, 3):
+        alt = row_idx % 2 == 0
+        _header_cell(ws.cell(row_idx, 1), label, bg=COLOR_SUBHDR_BG)
+        for col, rec in enumerate(records, 2):
+            val = rec.get(key)
+            c = ws.cell(row_idx, col)
+            _data_cell(c, val, fmt=fmt, alt_row=alt)
+            # Colora AUC-ROC e Privacy Risk
+            if key in ("auc_roc", "auc_max", "auc_min") and val is not None:
+                if val > 0.60:
+                    c.font = _font(bold=True, color=COLOR_BAD)
+                elif val > 0.52:
+                    c.font = _font(bold=True, color=COLOR_WARN)
+                else:
+                    c.font = _font(bold=True, color=COLOR_GOOD)
+            elif key == "privacy_risk":
+                if val == "HIGH":
+                    c.font = _font(bold=True, color=COLOR_BAD)
+                elif val == "MEDIUM":
+                    c.font = _font(bold=True, color=COLOR_WARN)
+                else:
+                    c.font = _font(bold=True, color=COLOR_GOOD)
+
+    _set_col_width(ws, "A", 22)
+    for col_idx in range(2, n_cols + 1):
+        _set_col_width(ws, get_column_letter(col_idx), 18)
+    ws.freeze_panes = "B3"
+
+
+# ── Sheet 6: AUC Progression ───────────────────────────────────────────────────
+
+def build_auc_progression(ws, records: list[dict]) -> None:
+    """AUC-ROC round per round per ogni esperimento — mostra convergenza e drift."""
+    ws.title = "AUC Progression"
+
+    n_exp = len(records)
+    n_cols = n_exp * 2 + 1  # round num + (AUC, score_mean) per esperimento
+
+    ws.merge_cells(f"A1:{get_column_letter(n_cols)}1")
+    t = ws["A1"]
+    t.value = "AUC-ROC per Round — Andamento FedMIA Attack (convergenza modello FL)"
+    t.font = _font(bold=True, color=COLOR_HEADER_FG, size=12)
+    t.fill = _fill(COLOR_HEADER_BG)
+    t.alignment = _center()
+
+    sub = ws["A2"]
+    ws.merge_cells(f"A2:{get_column_letter(n_cols)}2")
+    sub.value = (
+        "AUC ≈ 0.50 su tutti i round → DP efficace.  "
+        "Salita progressiva → memorizzazione crescente.  "
+        "Ogni esperimento ha la propria sequenza di round."
+    )
+    sub.font = _font(size=9, color="404040")
+    sub.fill = _fill("EBF3FB")
+    sub.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ws.row_dimensions[2].height = 24
+
+    # Header riga 3
+    _header_cell(ws.cell(3, 1), "Round #", bg=COLOR_HEADER_BG)
+    for i, rec in enumerate(records):
+        base_col = i * 2 + 2
+        label = f"{rec['rounds']} rounds / ε={rec['epsilon']}"
+        ws.merge_cells(
+            start_row=3, start_column=base_col,
+            end_row=3,   end_column=base_col + 1,
+        )
+        _header_cell(ws.cell(3, base_col), label, bg=COLOR_SUBHDR_BG)
+
+    # Sub-header riga 4
+    _header_cell(ws.cell(4, 1), "", bg=COLOR_HEADER_BG)
+    for i in range(n_exp):
+        base_col = i * 2 + 2
+        _header_cell(ws.cell(4, base_col),     "AUC-ROC", bg=COLOR_SUBHDR_BG)
+        _header_cell(ws.cell(4, base_col + 1), "MemberScore", bg=COLOR_SUBHDR_BG)
+
+    # Raccoglie tutti i round number unici, ordinati
+    all_rounds: set[int] = set()
+    for rec in records:
+        all_rounds.update(rec["per_round_auc"].keys())
+    sorted_rounds = sorted(all_rounds)
+
+    for row_idx, rnd in enumerate(sorted_rounds, 5):
+        alt = row_idx % 2 == 0
+        _data_cell(ws.cell(row_idx, 1), rnd, alt_row=alt, bold=True)
+        for i, rec in enumerate(records):
+            base_col = i * 2 + 2
+            auc_val  = rec["per_round_auc"].get(rnd)
+            loss_val = rec["per_round_loss"].get(rnd)
+
+            auc_cell = ws.cell(row_idx, base_col)
+            _data_cell(auc_cell, auc_val, fmt="0.0000", alt_row=alt)
+            if auc_val is not None:
+                if auc_val > 0.60:
+                    auc_cell.fill = _fill("FFCCCC")
+                    auc_cell.font = _font(bold=True, color=COLOR_BAD)
+                elif auc_val > 0.52:
+                    auc_cell.fill = _fill("FFE5B4")
+                    auc_cell.font = _font(color="8B4513")
+                else:
+                    auc_cell.fill = _fill("D5E8D4")
+                    auc_cell.font = _font(color="2D6A2D")
+
+            _data_cell(ws.cell(row_idx, base_col + 1), loss_val, fmt="0.0000", alt_row=alt)
+
+    _set_col_width(ws, "A", 10)
+    for i in range(n_exp):
+        base_col = i * 2 + 2
+        _set_col_width(ws, get_column_letter(base_col),     12)
+        _set_col_width(ws, get_column_letter(base_col + 1), 14)
+
+    ws.freeze_panes = "B5"
+    ws.row_dimensions[3].height = 22
+    ws.row_dimensions[4].height = 16
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -438,11 +603,15 @@ def main() -> None:
     ws_heat  = wb.create_sheet("Heat Map")
     ws_round = wb.create_sheet("Per Rounds")
     ws_eps   = wb.create_sheet("Per Epsilon")
+    ws_comp  = wb.create_sheet("Comparison")
+    ws_prog  = wb.create_sheet("AUC Progression")
 
     build_raw_data(ws_raw, records)
     build_heat_map(ws_heat, records)
     build_per_rounds(ws_round, records)
     build_per_epsilon(ws_eps, records)
+    build_comparison(ws_comp, records)
+    build_auc_progression(ws_prog, records)
 
     # Proprietà workbook
     wb.properties.title   = "ChargeShield-FL Experiment Results"

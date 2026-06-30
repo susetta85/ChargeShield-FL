@@ -13,7 +13,7 @@
 **As of the current codebase, `PrivacyAuditor.audit()` is actively called in `scripts/run_experiments.py::run_ids()` for every node at every FL round.** In earlier versions, `run_ids()` constructed `AuditReport` objects manually (with `threats_detected=[]`) and `audit()` was dead code. This is no longer the case.
 
 The call site in `run_ids()`:
-1. A `PrivacyAuditor` instance is created before the FL round loop: `auditor = PrivacyAuditor(config_path=...)`.
+1. A `PrivacyAuditor` instance is created before the FL round loop: `auditor = PrivacyAuditor(config_path=..., epsilon=cfg["experiment"]["epsilon"])`. The `epsilon` parameter overrides the value in `auditor.yaml`, ensuring the auditor uses the same DP budget as the experiment (critical during parameter sweeps where epsilon varies per run).
 2. For each `GradientUpdate` received, the gradient tensors are converted to a `dict[str, Any]` with keys `layer_0`, `layer_1`, ... and values `list[float]` (via `w.flatten().tolist()` for each weight tensor `w`).
 3. `auditor.audit(node_id, round_id, model_update)` is called with this dictionary as the `model_update` argument.
 
@@ -907,7 +907,7 @@ class PrivacyAuditor:
 
     Examples
     --------
-    >>> auditor = PrivacyAuditor("config/auditor.yaml")
+    >>> auditor = PrivacyAuditor("config/auditor.yaml", epsilon=1.0)
     >>> # model_update is a dict[str, Any] with layer keys and list[float] values
     >>> model_update = {
     ...     "layer_0": [0.01, -0.03, 0.02, ...],  # w.flatten().tolist()
@@ -1248,7 +1248,7 @@ import numpy as np
 from chargeshield.privacy_auditor import PrivacyAuditor
 
 # Initialize auditor
-auditor = PrivacyAuditor(config_path="config/auditor.yaml")
+auditor = PrivacyAuditor(config_path="config/auditor.yaml", epsilon=1.0)  # epsilon overrides auditor.yaml
 
 # Simulate 50 FL rounds for 4 nodes across cluster types
 nodes = [
@@ -1360,7 +1360,7 @@ class ChargeShieldAggregator(InTimeAccumulateWeightedAggregator):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        self._auditor = PrivacyAuditor(config_path=auditor_config_path)
+        self._auditor = PrivacyAuditor(config_path=auditor_config_path)  # epsilon set per-experiment via run_ids()
         self._ids = ChargingIDS(config_path=ids_config_path)
         self._baseline_norms: dict = {}
 

@@ -156,6 +156,11 @@ class GradientManager(AbstractMLModel):
             raise ValueError(f"epsilon deve essere > 0, ricevuto: {self.epsilon}")
         if not (0 < self.delta < 1.25):
             raise ValueError(f"delta deve essere in (0, 1.25), ricevuto: {self.delta}")
+        if self.delta > 1e-2:
+            logger.warning(
+                f"delta={self.delta} è insolitamente alto per DP — "
+                "valori tipici sono 1e-5 o inferiori. Verificare la configurazione."
+            )
         return (
             self.max_grad_norm
             * math.sqrt(2 * math.log(1.25 / self.delta))

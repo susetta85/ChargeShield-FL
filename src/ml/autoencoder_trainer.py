@@ -97,24 +97,25 @@ class AutoencoderTrainer(AbstractMLModel):
     # ── AbstractMLModel ────────────────────────────────────────────────────────
 
     def get_weights(self) -> list[Any]:
-        """Restituisce i pesi del modello come lista di tensori CPU."""
-        return [p.data.clone().cpu() for p in self.model.parameters()]
+        """Restituisce tutti gli entry dello state_dict (parametri + buffer BN) come lista CPU.
+        Usare state_dict invece di parameters() per trasferire anche i buffer BatchNorm."""
+        return [v.clone().cpu() for v in self.model.state_dict().values()]
 
     def set_weights(self, weights: list[Any]) -> None:
         """
-        Carica i pesi globali nel modello locale.
-        Salva riferimento per il termine prossimale FedProx.
+        Carica i pesi globali nel modello locale via load_state_dict.
+        Trasferisce anche i buffer BatchNorm (running_mean, running_var).
+        Salva solo i parametri trainable per il termine prossimale FedProx.
         """
-        with torch.no_grad():
-            for param, w in zip(self.model.parameters(), weights):
-                param.data.copy_(w.to(self.device))
-        # Copia frozen per proximal term
-        self._global_weights = [
-            w.clone().detach().to(self.device)
-            if isinstance(w, torch.Tensor)
-            else torch.tensor(w, device=self.device)
-            for w in weights
-        ]
+        orig_state = self.model.state_dict()
+        keys = list(orig_state.keys())
+        new_state: dict[str, torch.Tensor] = {}
+        for k, w in zip(keys, weights):
+            t = w if isinstance(w, torch.Tensor) else torch.tensor(w)
+            new_state[k] = t.to(self.device).to(orig_state[k].dtype)
+        self.model.load_state_dict(new_state, strict=True)
+        # FedProx proximal term usa solo i parametri trainable
+        self._global_weights = [p.data.clone().detach() for p in self.model.parameters()]
 
     def train_step(self, data: Any) -> float:
         """
@@ -180,13 +181,17 @@ class AutoencoderTrainer(AbstractMLModel):
         epoch_losses: list[float] = []
         for epoch in range(self.epochs):
             batch_losses = [self.train_step(batch) for (batch,) in dataloader]
+            if not batch_losses:
+                logger.warning(
+                    f"[{self.node_id}] Epoch {epoch}: nessun batch "
+                    f"(sessioni={len(sessions)}, batch_size={self.batch_size})"
+                )
+                continue
             epoch_losses.append(sum(batch_losses) / len(batch_losses))
 
-        mean_loss = sum(epoch_losses) / len(epoch_losses)
-        logger.info(
-            f"[{self.node_id}] Round {round_num} — "
-            f"loss={mean_loss:.6f}, n={len(sessions)}"
-        )
+        mean_loss = sum(epoch_losses) / len(epoch_losses) if epoch_losses else None
+        loss_str = f"{mean_loss:.6f}" if mean_loss is not None else "N/A"
+        logger.info(f"[{self.node_id}] Round {round_num} — loss={loss_str}, n={len(sessions)}")
 
         update = GradientUpdate(
             node_id=self.node_id,

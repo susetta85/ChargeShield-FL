@@ -186,7 +186,7 @@ The first completed experiment ran 100 federated rounds with FedAvg aggregation 
 
 | Parameter | Value |
 |---|---|
-| FL algorithm | FedAvg (proximal_mu = 0.0) |
+| FL algorithm | FedProx (proximal_mu = 0.01) |
 | Rounds | 100 |
 | Privacy budget ε | 1.0 |
 | Privacy budget δ | 1e-5 |
@@ -267,7 +267,7 @@ make clean
 | `make provision` | Deploy the Containerlab topology; configure WireGuard tunnels; issue mTLS certificates |
 | `make deploy` | Start NVFLARE server and all 12 FL client processes within their respective containers |
 | `make destroy` | Tear down all containers and remove the Containerlab topology |
-| `make experiment` | Run a single federated experiment with default parameters (100 rounds, ε=1.0, FedAvg) |
+| `make experiment` | Run a single federated experiment with default parameters (100 rounds, ε=1.0, FedProx μ=0.01) |
 | `make experiment-sweep` | Execute the full parameter sweep (rounds × ε × algorithm grid) sequentially |
 | `make test` | Run the unit and integration test suite (pytest, 140 tests across 6 test files) |
 | `make clean` | Remove build artefacts, compiled Python files, and intermediate experiment outputs |
@@ -276,17 +276,24 @@ make clean
 
 | Script | Description |
 |---|---|
-| `scripts/run_experiments.py` | Orchestrates FL experiment sweeps; embeds the loss-based FedMIA evaluator (Yeom 2018) per round; writes per-round `auc_roc` and summary statistics to experiment JSON |
-| `scripts/generate_excel_report.py` | Reads all experiment JSON files from `experiments/` (configurable via `load_experiments(experiments_dir: Path | None = None)`) and generates a multi-sheet Excel workbook with 4 sheets: **Raw Data** (one row per experiment), **Heat Map** (AUC-ROC by ε × rounds), **Per Rounds** (per-round AUC-ROC trajectories), **Per Epsilon** (AUC-ROC distributions by privacy budget) |
+| `scripts/run_experiments.py` | Orchestrates a single FL experiment; embeds the loss-based FedMIA evaluator (Yeom 2018) per round; performs 80/20 hold-out split (train sessions → FL, hold-out → non-members); writes per-round `auc_roc`, FL `mean_loss`, and IDS results to experiment JSON; auto-regenerates Excel at completion |
+| `scripts/run_sweep.py` | Runs multiple experiments sequentially for a given list of `--rounds` and `--epsilon` values; logs progress and reports failures; invokes `run_experiments.py` as a subprocess per configuration |
+| `scripts/generate_excel_report.py` | Reads all experiment JSON files from `experiments/` and generates a 6-sheet Excel workbook: **Raw Data** (one row per experiment), **Heat Map** (AUC-ROC matrix: rounds × ε), **Per Rounds** (stats aggregated by round count), **Per Epsilon** (stats aggregated by ε), **Comparison** (side-by-side metrics across all experiments), **AUC Progression** (per-round AUC trajectory for each experiment) |
 
 ### Engineering Fixes
 
-The following fixes were applied during Sprint 5/6 development:
+Fixes applied during Sprint 5/6 development (pre-sweep):
 
-- **`drop_last=True` in DataLoader** (`src/ml/autoencoder_trainer.py:178`): prevents a BatchNorm1d crash when the last training batch contains only a single sample (batch size 1 causes BatchNorm to divide by zero on the variance estimate).
-- **`_compute_sigma()` input validation**: enforces `epsilon > 0` and `0 < delta < 1.25`; the upper bound is 1.25 (not 1.0) because the noise formula contains `ln(1.25/δ)`, which is only defined and positive for δ < 1.25.
-- **`_parse_record()` error handling**: wraps `datetime` parsing in a `try/except` block that raises `ValueError` on malformed records, replacing a silent failure with a diagnostically useful exception.
-- **`PrivacyAuditor.audit()` now active**: previously dead code; now called from `run_ids()`. Input is `model_update: dict[str, Any]` where keys are layer identifiers (`layer_i`) and values are `list[float]`.
+- **`drop_last=True` in DataLoader** (`src/ml/autoencoder_trainer.py`): guard against empty `batch_losses` list prevents `ZeroDivisionError` on small clusters.
+- **`_compute_sigma()` input validation**: enforces `epsilon > 0` and `0 < delta < 1.25`; warning emitted when `delta > 1e-2`.
+- **`_parse_record()` error handling**: per-record `try/except` in `load()` and `load_multiple()`; malformed records skipped with warning instead of aborting the full dataset load. `doneChargingTime` parsing isolated with fallback to `disconnectTime`.
+- **`PrivacyAuditor.audit()` now active** and receives `epsilon` from experiment config (`PrivacyAuditor(config_path=..., epsilon=cfg["experiment"]["epsilon"])`), overriding the YAML default.
+- **Hold-out split**: sessions split 80/20 before `run_fl_rounds()`; hold-out set passed as `non_members` to `run_fedmia()`, ensuring AUC-ROC measures true membership inference (not in-distribution reconstruction error).
+- **`state_dict` / `load_state_dict`**: `get_weights()` and `set_weights()` use `model.state_dict()` to transfer BatchNorm running statistics (`running_mean`, `running_var`) alongside trainable parameters; `FedAvgAggregator._weighted_average()` accumulates in `float32` and restores original dtypes.
+- **FedAvg loss denominator**: weighted mean loss computed only over nodes with `loss is not None`, using their sample counts as the denominator (previously over-divided by total samples).
+- **`_score_batch` None-filtering**: consistent with `_sessions_to_tensor` — sessions with missing features are dropped rather than substituted with zeros.
+- **`roc_auc_score` guard**: skips AUC computation if either member or non-member score list is empty.
+- **Excel report**: extended from 4 to 6 sheets; `Comparison` and `AUC Progression` sheets added; per-round FL `mean_loss` now persisted in experiment JSON.
 
 ---
 

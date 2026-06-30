@@ -314,8 +314,8 @@ ids_instances = {
 # 6. Instantiate attack plugin (depends on gradient_manager)
 attack_plugin = AttackFactory.create(config.mia.plugin, config.mia, gradient_manager)
 
-# 7. Instantiate auditor (depends on attack plugin and DP config)
-auditor = PrivacyAuditor(config.dp, attack_plugin, results_dir)
+# 7. Instantiate auditor — epsilon overrides the value in auditor.yaml
+auditor = PrivacyAuditor(config_path="config/auditor.yaml", epsilon=config.dp.epsilon)
 
 # 8. Instantiate nodes (depend on adapter, trainer, IDS)
 nodes = {
@@ -1062,14 +1062,36 @@ load_experiments(experiments_dir: Path | None = None) -> list[dict]
 
 `load_experiments` scans `experiments_dir` (defaults to `experiments/` relative to the repository root if `None`) for all `experiment_*.json` files, parses them, and returns a list of experiment result dictionaries. Passing an explicit `Path` is useful for tests that redirect output to a temporary directory.
 
-**Output: four Excel sheets.**
+**Output: six Excel sheets.**
 
 | Sheet name | Contents |
 |---|---|
-| `Raw Data` | One row per experiment: all scalar fields from the JSON summary (epsilon, delta, algorithm, cluster, mean_auc_roc, max_auc_roc, min_auc_roc, rounds, etc.) |
-| `Heat Map` | AUC-ROC values formatted as a colour-scaled heat map, indexed by epsilon (rows) and cluster (columns), for quick visual identification of high-leakage configurations |
-| `Per Rounds` | Per-round AUC-ROC time series for each experiment, drawn from `per_round[round]["auc_roc"]` in the JSON output |
-| `Per Epsilon` | Mean AUC-ROC aggregated by epsilon value across all clusters and algorithms, enabling direct plotting of the primary ε vs. AUC-ROC curve |
+| `Raw Data` | One row per experiment: timestamp, FL rounds, ε, δ, proximal μ, AUC-ROC mean/max/min, Privacy Risk, IDS alerts, Byzantine rounds |
+| `Heat Map` | AUC-ROC matrix: rows = FL round counts, columns = ε values; cells colour-coded green (≤0.52, DP effective) / orange (0.52–0.60) / red (>0.60, MIA effective) |
+| `Per Rounds` | AUC-ROC mean, min, max, std dev aggregated across all experiments with the same `fl_rounds` value |
+| `Per Epsilon` | AUC-ROC mean, min, max aggregated across all experiments with the same ε value; includes DP interpretation labels |
+| `Comparison` | Side-by-side metrics table: one column per experiment, rows = key metrics (rounds, ε, δ, μ, AUC-ROC mean/max/min, privacy risk, alerts) |
+| `AUC Progression` | Per-round AUC-ROC and FL training loss trajectory for each experiment; rows = round index, columns = (AUC, MemberScore) per experiment |
+
+The output workbook is written to `experiments/ChargeShield_FL_Results.xlsx` and is regenerated automatically after each experiment via `_update_excel_report()`.
+
+**Experiment JSON structure** (written by `save_results()`):
+
+```json
+{
+  "experiment_name": "chargeshield_fedmia_baseline",
+  "timestamp": "20260630_031200",
+  "config": {"epsilon": 1.0, "delta": 1e-5, "fl_rounds": 100, "proximal_mu": 0.01},
+  "summary": {"mean_auc_roc": 0.51, "max_auc_roc": 0.54, "min_auc_roc": 0.49, "privacy_risk": "LOW"},
+  "per_round": {
+    "1": {
+      "fl":  {"mean_loss": 15654.5},
+      "mia": {"auc_roc": 0.51, "member_score_mean": -0.42, "non_member_score_mean": -0.45},
+      "ids": {"alerts": [], "byzantine_detected": false, "drift_detected": false, "low_similarity_nodes": []}
+    }
+  }
+}
+```
 
 The output workbook is written to `experiments/ChargeShield_FL_Results.xlsx` by default.
 

@@ -16,10 +16,12 @@ datasets:
   jpl_2019: datasets/acn/jpl/acndata_sessions_2019.json
   jpl_2020: datasets/acn/jpl/acndata_sessions_2020.json
 
-fedmia:
-  shadow_epochs: 5
-  attack_threshold: 0.5
-  n_shadow_models: 4
+# fedmia: shadow-model parameters — NON USATI
+# L'implementazione usa loss-based MIA (Yeom et al. 2018), non shadow models.
+# fedmia:
+#   shadow_epochs: 5
+#   attack_threshold: 0.5
+#   n_shadow_models: 4
 
 ml:
   input_dim: 6

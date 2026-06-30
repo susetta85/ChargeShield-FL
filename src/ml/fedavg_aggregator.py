@@ -103,16 +103,11 @@ class FedAvgAggregator(AbstractMLModel):
         # FedAvg: media pesata per n_samples
         global_weights = self._weighted_average(valid, total_samples)
 
-        # Loss media pesata
-        losses = [
-            u.loss * u.n_samples
-            for u in valid
-            if u.loss is not None
-        ]
+        # Loss media pesata — pesa solo sui nodi che hanno effettivamente una loss
+        loss_pairs = [(u.loss * u.n_samples, u.n_samples) for u in valid if u.loss is not None]
         mean_loss = (
-            sum(losses) / total_samples
-            if losses
-            else None
+            sum(l for l, _ in loss_pairs) / sum(n for _, n in loss_pairs)
+            if loss_pairs else None
         )
 
         aggregated = AggregatedUpdate(
@@ -151,20 +146,29 @@ class FedAvgAggregator(AbstractMLModel):
     ) -> list[torch.Tensor]:
         """
         Calcola la media pesata dei pesi per n_samples.
-        Tutti gli update devono avere la stessa struttura di pesi.
+        Tutti gli update devono avere la stessa struttura di pesi (parametri + buffer BN).
+        L'accumulazione avviene in float32 per supportare buffer int (num_batches_tracked);
+        il dtype originale viene ripristinato al termine.
         """
-        # Inizializza accumulatore a zero
+        first_weights = updates[0].weights
+        orig_dtypes: list[torch.dtype] = [
+            (w if isinstance(w, torch.Tensor) else torch.tensor(w)).dtype
+            for w in first_weights
+        ]
+        # Accumulatore in float32 per evitare errori su tensori int
         accumulator: list[torch.Tensor] = [
             torch.zeros_like(
-                w if isinstance(w, torch.Tensor) else torch.tensor(w)
+                w if isinstance(w, torch.Tensor) else torch.tensor(w),
+                dtype=torch.float32,
             )
-            for w in updates[0].weights
+            for w in first_weights
         ]
 
         for update in updates:
             weight = update.n_samples / total_samples
             for i, w in enumerate(update.weights):
-                t = w if isinstance(w, torch.Tensor) else torch.tensor(w)
+                t = (w if isinstance(w, torch.Tensor) else torch.tensor(w)).float()
                 accumulator[i] += t * weight
 
-        return accumulator
+        # Ripristina dtype originali
+        return [acc.to(dt) for acc, dt in zip(accumulator, orig_dtypes)]

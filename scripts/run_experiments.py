@@ -200,7 +200,8 @@ _MIA_FEATURES = [
 
 def run_fedmia(
     cfg: dict,
-    sessions: list[dict[str, Any]],
+    members: list[dict[str, Any]],
+    non_members: list[dict[str, Any]],
     fl_results: dict[int, dict[str, Any]],
 ) -> dict[int, dict[str, Any]]:
     """
@@ -212,36 +213,40 @@ def run_fedmia(
     campioni visti nel training (membri) e alto sui non visti (non-membri).
     La DP riduce questa gap → AUC-ROC → 0.5 (attacco non migliore del random).
 
+    IMPORTANTE: members deve contenere sessioni effettivamente usate per il
+    training FL; non_members deve essere un hold-out set mai visto da nessun
+    FL node. Usare lo stesso pool per entrambi invalida la misura di AUC-ROC.
+
     L'AUC varia per round: round iniziali → modello non converge → AUC ≈ 0.5;
     round finali → modello memorizza → AUC cresce se DP insufficiente.
 
     Args:
-        cfg:        configurazione esperimento
-        sessions:   sessioni EV caricate e arricchite
-        fl_results: dict round → {"global_weights": [...], ...}
+        cfg:         configurazione esperimento
+        members:     sessioni usate per FL training (vere member)
+        non_members: sessioni hold-out mai viste durante training (vere non-member)
+        fl_results:  dict round → {"global_weights": [...], ...}
 
     Returns:
         {round_num: {"auc_roc": float, "member_score_mean": float, ...}}
     """
     from sklearn.metrics import roc_auc_score
 
-    n = len(sessions)
-    # Split randomizzato con seed fisso — evita bias da ordinamento temporale
-    rng = random.Random(42)
-    indices = list(range(n))
-    rng.shuffle(indices)
-    member_set = set(indices[: n // 2])
-
-    members     = [sessions[i] for i in range(n) if i in member_set]
-    non_members = [sessions[i] for i in range(n) if i not in member_set]
-
     logger.info(f"FedMIA — members: {len(members)}, non-members: {len(non_members)}")
 
     input_dim = cfg["ml"]["input_dim"]
 
     def _score_batch(model: Autoencoder, sess_list: list[dict]) -> list[float]:
-        """Calcola membership scores (-MSE) su tutte le sessioni in batch."""
-        rows = [[float(s.get(f) or 0.0) for f in _MIA_FEATURES] for s in sess_list]
+        """Calcola membership scores (-MSE) sulle sessioni con feature complete.
+        Coerente con _sessions_to_tensor: scarta sessioni con None nelle feature."""
+        rows: list[list[float]] = []
+        for s in sess_list:
+            try:
+                row = [float(s[f]) for f in _MIA_FEATURES]
+                rows.append(row)
+            except (KeyError, TypeError, ValueError):
+                continue
+        if not rows:
+            return []
         tensor = torch.tensor(rows, dtype=torch.float32)
         results_: list[float] = []
         with torch.no_grad():
@@ -261,16 +266,24 @@ def run_fedmia(
             logger.warning(f"Round {round_num}: global_weights assenti — skip FedMIA")
             continue
 
-        # Carica pesi globali FL in un autoencoder locale (inference only)
+        # Carica pesi globali FL in un autoencoder locale (inference only).
+        # load_state_dict trasferisce anche i buffer BatchNorm (running_mean/var).
         model = Autoencoder(input_dim=input_dim)
-        with torch.no_grad():
-            for param, w in zip(model.parameters(), global_weights):
-                w_t = w if isinstance(w, torch.Tensor) else torch.tensor(w)
-                param.data.copy_(w_t)
+        orig_state = model.state_dict()
+        keys = list(orig_state.keys())
+        state = {
+            k: (w if isinstance(w, torch.Tensor) else torch.tensor(w)).to(orig_state[k].dtype)
+            for k, w in zip(keys, global_weights)
+        }
+        model.load_state_dict(state, strict=True)
         model.eval()
 
         member_scores     = _score_batch(model, members)
         non_member_scores = _score_batch(model, non_members)
+
+        if not member_scores or not non_member_scores:
+            logger.warning(f"Round {round_num}: score batch vuoto — skip AUC")
+            continue
 
         labels = [1] * len(member_scores) + [0] * len(non_member_scores)
         scores = member_scores + non_member_scores
@@ -307,7 +320,7 @@ def run_ids(
         cosine_threshold=0.85,
     )
     # Un'unica istanza traccia l'epsilon cumulativo per nodo su tutti i round
-    auditor = PrivacyAuditor(config_path=config_path)
+    auditor = PrivacyAuditor(config_path=config_path, epsilon=cfg["experiment"]["epsilon"])
 
     ids_results: dict[int, dict[str, Any]] = {}
 
@@ -370,6 +383,7 @@ def run_ids(
                 for a in (analysis.alerts if analysis else [])
             ],
             "byzantine_detected":   len(analysis.byzantine_nodes) > 0 if analysis else False,
+            "drift_detected":       False,
             "low_similarity_nodes": analysis.low_similarity_nodes if analysis else [],
         }
 
@@ -382,6 +396,7 @@ def save_results(
     cfg: dict,
     mia_results: dict[int, dict[str, Any]],
     ids_results: dict[int, dict[str, Any]],
+    fl_results: dict[int, dict[str, Any]] | None = None,
 ) -> Path:
     """Salva risultati in experiments/ con timestamp."""
     output_dir = PROJECT_ROOT / cfg["output"]["experiments_dir"]
@@ -417,6 +432,7 @@ def save_results(
         },
         "per_round": {
             str(r): {
+                "fl":  {"mean_loss": (fl_results or {}).get(r, {}).get("mean_loss")},
                 "mia": mia_results.get(r, {}),
                 "ids": ids_results.get(r, {}),
             }
@@ -443,8 +459,8 @@ def save_results(
 
 def _update_excel_report(experiments_dir: Path) -> None:
     """
-    Rigenera il report Excel a 4 sheet chiamando generate_excel_report.py.
-    Produce: Raw Data, Heat Map, Per Rounds, Per Epsilon.
+    Rigenera il report Excel a 6 sheet chiamando generate_excel_report.py.
+    Produce: Raw Data, Heat Map, Per Rounds, Per Epsilon, Comparison, AUC Progression.
     """
     try:
         import importlib.util
@@ -452,8 +468,11 @@ def _update_excel_report(experiments_dir: Path) -> None:
 
         script_path = Path(__file__).parent / "generate_excel_report.py"
         spec = importlib.util.spec_from_file_location("gen_xl", script_path)
-        gen  = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(gen)  # type: ignore[union-attr]
+        if spec is None or spec.loader is None:
+            logger.warning(f"generate_excel_report.py non trovato o non caricabile: {script_path}")
+            return
+        gen = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(gen)
 
         records = gen.load_experiments(experiments_dir)
         if not records:
@@ -461,10 +480,12 @@ def _update_excel_report(experiments_dir: Path) -> None:
 
         wb = Workbook()
         wb.remove(wb.active)
-        gen.build_raw_data(wb.create_sheet("Raw Data"),    records)
-        gen.build_heat_map(wb.create_sheet("Heat Map"),    records)
-        gen.build_per_rounds(wb.create_sheet("Per Rounds"), records)
-        gen.build_per_epsilon(wb.create_sheet("Per Epsilon"), records)
+        gen.build_raw_data(wb.create_sheet("Raw Data"),           records)
+        gen.build_heat_map(wb.create_sheet("Heat Map"),           records)
+        gen.build_per_rounds(wb.create_sheet("Per Rounds"),       records)
+        gen.build_per_epsilon(wb.create_sheet("Per Epsilon"),     records)
+        gen.build_comparison(wb.create_sheet("Comparison"),       records)
+        gen.build_auc_progression(wb.create_sheet("AUC Progression"), records)
         wb.properties.title   = "ChargeShield-FL Experiment Results"
         wb.properties.subject = "FedMIA vs Differential Privacy — DSN 2027"
         output_path = experiments_dir / "ChargeShield_FL_Results.xlsx"
@@ -514,15 +535,22 @@ def main() -> None:
     sessions = enrich_sessions(sessions)
     logger.info(f"Sessioni dopo enrichment: {len(sessions)}")
 
+    # Split hold-out PRIMA del training FL: 80% train, 20% hold-out (mai visti dai nodi FL)
+    random.shuffle(sessions)
+    split = max(1, int(len(sessions) * 0.8))
+    train_sessions  = sessions[:split]
+    holdout_sessions = sessions[split:]
+    logger.info(f"Split — train: {len(train_sessions)}, hold-out: {len(holdout_sessions)}")
+
     if args.dry_run:
         logger.info("Dry run completato — uscita.")
         return
 
-    fl_results  = run_fl_rounds(cfg, sessions)
-    mia_results = run_fedmia(cfg, sessions, fl_results)
+    fl_results  = run_fl_rounds(cfg, train_sessions)
+    mia_results = run_fedmia(cfg, train_sessions, holdout_sessions, fl_results)
     ids_results = {} if args.skip_ids else run_ids(cfg, fl_results)
 
-    save_results(cfg, mia_results, ids_results)
+    save_results(cfg, mia_results, ids_results, fl_results)
 
     logger.info("=" * 60)
     logger.info("Esperimento completato.")

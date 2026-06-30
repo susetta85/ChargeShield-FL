@@ -20,9 +20,12 @@ Questo adapter NON conosce FL, protocolli, o il Privacy Auditor.
 """
 
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from core.base_dataset import AbstractDataset
 
@@ -108,7 +111,16 @@ class ACNDataset(AbstractDataset):
 
         # ACN-Data usa _items come lista delle sessioni
         items = raw["_items"]
-        self._data = [self._parse_record(item) for item in items]
+        self._data = []
+        n_skipped = 0
+        for item in items:
+            try:
+                self._data.append(self._parse_record(item))
+            except (ValueError, KeyError) as exc:
+                n_skipped += 1
+                logger.debug(f"Record scartato: {exc}")
+        if n_skipped:
+            logger.warning(f"Scartati {n_skipped}/{len(items)} record malformati")
 
     def load_multiple(self, paths: list[str]) -> None:
         """
@@ -122,9 +134,16 @@ class ACNDataset(AbstractDataset):
                 raise FileNotFoundError(f"Dataset not found at: {path}")
             with open(file_path, encoding="utf-8") as f:
                 raw = json.load(f)
-            self._data.extend(
-                [self._parse_record(item) for item in raw["_items"]]
-            )
+            items = raw["_items"]
+            n_skipped = 0
+            for item in items:
+                try:
+                    self._data.append(self._parse_record(item))
+                except (ValueError, KeyError) as exc:
+                    n_skipped += 1
+                    logger.debug(f"Record scartato ({path}): {exc}")
+            if n_skipped:
+                logger.warning(f"Scartati {n_skipped}/{len(items)} record malformati da {path}")
 
     def _parse_record(self, item: dict[str, Any]) -> dict[str, Any]:
         """
@@ -134,14 +153,19 @@ class ACNDataset(AbstractDataset):
         userInputs è una lista — prendiamo il primo elemento se esiste,
         altrimenti usiamo valori di default.
         """
-        # Parsing date
+        # Parsing date obbligatorie
         try:
             start = _parse_acn_datetime(item["connectionTime"])
-            end = _parse_acn_datetime(item["disconnectTime"])
-            done_raw = item.get("doneChargingTime") or item.get("disconnectTime")
-            done = _parse_acn_datetime(done_raw)
+            end   = _parse_acn_datetime(item["disconnectTime"])
         except Exception as exc:
-            raise ValueError(f"Datetime non valido nel record: {exc}") from exc
+            raise ValueError(f"connectionTime/disconnectTime non valido: {exc}") from exc
+
+        # doneChargingTime è opzionale — se assente o malformato si usa end
+        try:
+            done_raw = item.get("doneChargingTime")
+            done = _parse_acn_datetime(done_raw) if done_raw else end
+        except Exception:
+            done = end
 
         kwh = float(item.get("kWhDelivered", 0.0))
 

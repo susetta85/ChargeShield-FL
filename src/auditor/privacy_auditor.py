@@ -121,17 +121,18 @@ class PrivacyAuditor(AbstractPrivacyAuditor):
             pass
     """
 
-    def __init__(self, config_path: str = "config/auditor.yaml"):
+    def __init__(self, config_path: str = "config/auditor.yaml", epsilon: float | None = None):
         """
         Inizializza il Privacy Auditor dalla configurazione YAML.
 
         Args:
             config_path: percorso al file auditor.yaml
+            epsilon:     se fornito, sovrascrive il budget DP da config (usato negli sweep)
         """
         config = _load_auditor_config(config_path)
 
-        # Budget di privacy differenziale configurato
-        self._epsilon_budget: float = config["dp"]["epsilon"]
+        # Budget di privacy differenziale configurato (epsilon CLI ha priorità)
+        self._epsilon_budget: float = epsilon if epsilon is not None else config["dp"]["epsilon"]
         self._delta: float = config["dp"]["delta"]
         self._max_grad_norm: float = config["dp"]["max_grad_norm"]
 
