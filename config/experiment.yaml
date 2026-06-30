@@ -1,10 +1,11 @@
 # ChargeShield-FL — Experiment Configuration
-# Usato da: scripts/run_experiment.py
+# Usato da: scripts/run_experiments.py
 
 experiment:
   name: chargeshield_fedmia_baseline
   #fl_rounds: 10
   fl_rounds: 100  #esperimenti finali paper
+  seed: 42        # riproducibilità: usato da random.shuffle prima della split FL
   # Differential Privacy
   epsilon: 1.0
   delta: 1.0e-5
