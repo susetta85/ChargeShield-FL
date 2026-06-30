@@ -195,12 +195,18 @@ class TestGradientManager:
         assert private.metadata.get("dp_applied") is True
 
     def test_privatize_changes_weights(self, dp_config, gradient_update):
+        torch.manual_seed(42)
         gm = GradientManager(dp_config)
         private = gm.privatize(gradient_update)
-        # I pesi devono essere diversi dopo DP
-        original_flat = torch.cat([w.flatten() for w in gradient_update.weights])
-        private_flat  = torch.cat([w.flatten() for w in private.weights])
+        # I pesi floating-point devono essere diversi dopo DP
+        orig_fp  = [w for w in gradient_update.weights if w.is_floating_point()]
+        priv_fp  = [w for w in private.weights        if w.is_floating_point()]
+        original_flat = torch.cat([w.flatten() for w in orig_fp])
+        private_flat  = torch.cat([w.flatten() for w in priv_fp])
         assert not torch.allclose(original_flat, private_flat)
+        # Verifica che il rumore sia effettivamente non-zero
+        noise = private_flat - original_flat
+        assert noise.norm().item() > 0.0
 
     def test_privatize_preserves_metadata(self, dp_config, gradient_update):
         gm = GradientManager(dp_config)
@@ -287,6 +293,20 @@ class TestFedAvgAggregator:
         assert result is None
 
     def test_mean_loss_weighted(self, trainer):
+        """La media pesata FedAvg con n_samples asimmetrici deve differire dalla media semplice."""
+        agg = FedAvgAggregator({"min_participants": 2})
+        w = trainer.get_weights()
+        # n1: 100 campioni, loss=0.0 — n2: 300 campioni, loss=1.0
+        # Media pesata: (0.0*100 + 1.0*300) / 400 = 0.75
+        # Media semplice: (0.0 + 1.0) / 2 = 0.50 — diversa, il test ora verifica davvero
+        agg.collect(self._make_update("n1", "A", w, 100, 0.0))
+        agg.collect(self._make_update("n2", "B", w, 300, 1.0))
+        result = agg.aggregate(round_num=1)
+        assert result.mean_loss is not None
+        assert abs(result.mean_loss - 0.75) < 1e-5
+
+    def test_mean_loss_equal_weights_average(self, trainer):
+        """Con n_samples identici la media pesata coincide con la media semplice."""
         agg = FedAvgAggregator({"min_participants": 2})
         w = trainer.get_weights()
         agg.collect(self._make_update("n1", "A", w, 100, 0.1))
@@ -294,6 +314,35 @@ class TestFedAvgAggregator:
         result = agg.aggregate(round_num=1)
         assert result.mean_loss is not None
         assert abs(result.mean_loss - 0.2) < 1e-5
+
+    def test_min_participants_vs_valid_filter(self, trainer):
+        """
+        Anche se len(updates) >= min_participants, se il filtro valid riduce
+        i partecipanti il risultato dovrebbe avere n_participants == len(valid).
+        Con 3 update di cui 2 con n_samples=0, valid=[1 nodo].
+        """
+        agg = FedAvgAggregator({"min_participants": 2})
+        w = trainer.get_weights()
+        agg.collect(self._make_update("n1", "A", w, 0,   0.1))  # invalido
+        agg.collect(self._make_update("n2", "B", w, 0,   0.2))  # invalido
+        agg.collect(self._make_update("n3", "C", w, 100, 0.3))  # valido
+        result = agg.aggregate(round_num=1)
+        # n3 è l'unico valido — aggregazione con 1 solo nodo
+        assert result is not None
+        assert result.n_participants == 1
+
+    def test_set_weights_bn_buffer_dtype(self, trainer):
+        """num_batches_tracked (buffer BN) deve mantenere dtype int64 dopo il round-trip."""
+        weights = trainer.get_weights()
+        trainer.set_weights(weights)
+        restored = trainer.get_weights()
+        state = trainer.model.state_dict()
+        # Cerca num_batches_tracked — deve essere int64
+        for key, tensor in state.items():
+            if "num_batches_tracked" in key:
+                assert tensor.dtype == torch.int64, (
+                    f"{key} ha dtype {tensor.dtype} invece di torch.int64"
+                )
 
     def test_ml_plane_event_emitted(self, trainer):
         events: list[MLPlaneEvent] = []

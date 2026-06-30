@@ -251,11 +251,9 @@ class TestAutoencoder:
         assert all(isinstance(l, float) for l in losses)
 
     def test_fit_calibrates_threshold(self, autoencoder, train_loader_plain):
-        """fit() deve aggiornare la soglia di anomalia."""
-        initial_threshold = autoencoder.threshold
+        """fit() deve aggiornare la soglia di anomalia a un valore positivo."""
         autoencoder.fit(train_loader_plain, epochs=3)
-        # La soglia viene ricalibrata — può essere diversa dall'iniziale
-        assert autoencoder.threshold != initial_threshold or True
+        assert autoencoder.threshold > 0.0
 
 
 # ─── Test CUSUMDetector ───────────────────────────────────────────────────────

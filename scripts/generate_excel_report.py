@@ -365,7 +365,7 @@ def build_per_rounds(ws, records: list[dict]) -> None:
         _data_cell(ws.cell(row_idx, 3), mean(group) if group else None, fmt="0.0000", alt_row=alt)
         _data_cell(ws.cell(row_idx, 4), min(group)  if group else None, fmt="0.0000", alt_row=alt)
         _data_cell(ws.cell(row_idx, 5), max(group)  if group else None, fmt="0.0000", alt_row=alt)
-        _data_cell(ws.cell(row_idx, 6), stdev(group) if len(group) > 1 else 0.0, fmt="0.0000", alt_row=alt)
+        _data_cell(ws.cell(row_idx, 6), stdev(group) if len(group) > 1 else None, fmt="0.0000", alt_row=alt)
 
     for col, w in zip("ABCDEF", [14, 16, 16, 14, 14, 12]):
         _set_col_width(ws, col, w)
@@ -537,7 +537,7 @@ def build_auc_progression(ws, records: list[dict]) -> None:
     for i in range(n_exp):
         base_col = i * 2 + 2
         _header_cell(ws.cell(4, base_col),     "AUC-ROC", bg=COLOR_SUBHDR_BG)
-        _header_cell(ws.cell(4, base_col + 1), "MemberScore", bg=COLOR_SUBHDR_BG)
+        _header_cell(ws.cell(4, base_col + 1), "FL Loss", bg=COLOR_SUBHDR_BG)
 
     # Raccoglie tutti i round number unici, ordinati
     all_rounds: set[int] = set()

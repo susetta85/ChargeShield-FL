@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scripts/run_experiment.py
+# scripts/run_experiments.py
 # ChargeShield-FL — Sprint 5: Experiment Runner
 #
 # Esegue il ciclo completo:
@@ -268,9 +268,18 @@ def run_fedmia(
 
         # Carica pesi globali FL in un autoencoder locale (inference only).
         # load_state_dict trasferisce anche i buffer BatchNorm (running_mean/var).
+        # global_weights è una lista con lo stesso ordine di state_dict().values():
+        # sia AutoencoderTrainer.get_weights() che questo zip usano state_dict()
+        # sulla stessa architettura Autoencoder, quindi l'ordine è garantito.
         model = Autoencoder(input_dim=input_dim)
         orig_state = model.state_dict()
         keys = list(orig_state.keys())
+        if len(global_weights) != len(keys):
+            logger.error(
+                f"Round {round_num}: global_weights ha {len(global_weights)} elementi, "
+                f"state_dict ne richiede {len(keys)} — skip FedMIA"
+            )
+            continue
         state = {
             k: (w if isinstance(w, torch.Tensor) else torch.tensor(w)).to(orig_state[k].dtype)
             for k, w in zip(keys, global_weights)
@@ -535,7 +544,12 @@ def main() -> None:
     sessions = enrich_sessions(sessions)
     logger.info(f"Sessioni dopo enrichment: {len(sessions)}")
 
-    # Split hold-out PRIMA del training FL: 80% train, 20% hold-out (mai visti dai nodi FL)
+    # Split hold-out PRIMA del training FL: 80% train, 20% hold-out (mai visti dai nodi FL).
+    # Seed fisso per riproducibilità dei risultati — fondamentale per DSN 2027.
+    seed = exp_cfg.get("seed", 42)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
     random.shuffle(sessions)
     split = max(1, int(len(sessions) * 0.8))
     train_sessions  = sessions[:split]

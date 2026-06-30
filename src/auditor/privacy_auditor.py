@@ -176,24 +176,29 @@ class PrivacyAuditor(AbstractPrivacyAuditor):
         # Step 1: sensitivity come norma L2 del gradiente
         sensitivity = self._compute_sensitivity(model_update)
 
-        # Step 2: epsilon consumato in questo round
-        # Formula semplificata Gaussian Mechanism: sensitivity / max_grad_norm
-        # La versione completa con composizione arriva nella Sprint 4
+        # Step 2: epsilon consumato in questo round.
+        # NOTA: questa è una proxy empirica, NON il Gaussian Mechanism formale.
+        # Il Gaussian Mechanism corretto richiede sigma (noise std), non max_grad_norm:
+        #   epsilon = sensitivity * sqrt(2*ln(1.25/delta)) / sigma
+        # Qui usiamo max_grad_norm come denominatore (parametro di clipping).
+        # Delta (self._delta) non entra nel calcolo — è un'approssimazione intenzionale.
+        # Per claim DP formali usare librerie come dp-accounting (Google) o autodp.
+        # NOTA composizione: la garanzia DP si degrada con T round.
+        # Con composizione base: epsilon_tot ≈ T * epsilon_per_round.
+        # Con composizione avanzata (Dwork): epsilon_tot ≈ sqrt(2T*ln(1/delta)) * epsilon.
+        # Questo auditor non contabilizza la composizione — il claim è per-round.
         round_epsilon = sensitivity / self._max_grad_norm
 
         # Step 3: aggiorna epsilon cumulativo per questo nodo
         prev_epsilon = self._cumulative_epsilon.get(node_id, 0.0)
         self._cumulative_epsilon[node_id] = prev_epsilon + round_epsilon
 
-        # Step 4: rileva minacce
-        threats = self._detect_threats(
-            sensitivity,
-            self._cumulative_epsilon[node_id],
-        )
+        # Step 4: rileva minacce — calcola budget_ratio una sola volta e passalo
+        budget_ratio = self._cumulative_epsilon[node_id] / self._epsilon_budget
+        threats = self._detect_threats(sensitivity, self._cumulative_epsilon[node_id], budget_ratio)
 
         # Step 5: privacy score residuo
         # 1.0 = privacy intatta, 0.0 = budget esaurito
-        budget_ratio = self._cumulative_epsilon[node_id] / self._epsilon_budget
         privacy_score = max(0.0, 1.0 - budget_ratio)
 
         return AuditReport(
@@ -236,6 +241,7 @@ class PrivacyAuditor(AbstractPrivacyAuditor):
         self,
         sensitivity: float,
         cumulative_epsilon: float,
+        budget_ratio: float,
     ) -> list[str]:
         """
         Rileva pattern nei gradienti che indicano vulnerabilità MIA.
@@ -250,6 +256,8 @@ class PrivacyAuditor(AbstractPrivacyAuditor):
         Args:
             sensitivity:        norma L2 del model update corrente
             cumulative_epsilon: epsilon totale consumato dal nodo
+            budget_ratio:       rapporto cumulative_epsilon / epsilon_budget
+                                (calcolato in audit() per evitare inconsistenze)
 
         Returns:
             lista di minacce rilevate (vuota se nessuna)
@@ -261,7 +269,6 @@ class PrivacyAuditor(AbstractPrivacyAuditor):
             threats.append("GRADIENT_EXPLOSION")
 
         # Budget di privacy quasi esaurito
-        budget_ratio = cumulative_epsilon / self._epsilon_budget
         if budget_ratio >= self._alert_threshold:
             threats.append("PRIVACY_BUDGET_NEAR_EXHAUSTION")
 
@@ -279,7 +286,8 @@ class PrivacyAuditor(AbstractPrivacyAuditor):
     def reset(self) -> None:
         """
         Resetta l'epsilon cumulativo di tutti i nodi.
-        Da chiamare tra esperimenti diversi per non contaminare i risultati.
+        Da chiamare tra esperimenti diversi o quando epsilon_budget cambia,
+        per evitare che il cumulo storico diventi incompatibile col nuovo budget.
         """
         self._cumulative_epsilon.clear()
 

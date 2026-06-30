@@ -73,8 +73,8 @@ class AutoencoderTrainer(AbstractMLModel):
         self.epochs     = epochs
         self.batch_size = batch_size
 
-        # FedProx: 0.0 = FedAvg puro
-        self.proximal_mu: float = config.get("proximal_mu") or 0.0
+        # FedProx: 0.0 = FedAvg puro. Usare .get() con default — "or" ignorerebbe 0.0 intenzionale.
+        self.proximal_mu: float = config.get("proximal_mu", 0.0)
         self._global_weights: list[Any] | None = None
 
         self.model     = Autoencoder(input_dim=input_dim)

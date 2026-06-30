@@ -18,22 +18,21 @@ Perché un autoencoder:
 - Si presta naturalmente a FL: pesi aggregabili con FedAvg
 
 Architettura:
-    Input  (7 feature numeriche normalizzate)
+    Input  (6 feature numeriche normalizzate)
         ↓
-    Encoder:  7 → 16 → 8 → 4
+    Encoder:  6 → 16 → 8 → 4
         ↓
     Latent space (4 dimensioni)
         ↓
-    Decoder:  4 → 8 → 16 → 7
+    Decoder:  4 → 8 → 16 → 6
         ↓
     Output (ricostruzione)
         ↓
     MSE → soglia anomalia
 
-Feature numeriche (categoriche già codificate):
+Feature numeriche (da AutoencoderTrainer.CONTINUOUS_FEATURES):
     total_energy_kwh, max_power_kw, kwh_requested,
-    minutes_available, charging_mode (0/1),
-    soc_percent, temperature_c
+    minutes_available, hour_of_day, duration_hours
 
 Riferimenti:
     - Hinton & Salakhutdinov, "Reducing Dimensionality with NNs", Science 2006
@@ -54,8 +53,10 @@ class Encoder(nn.Module):
     """
     Encoder dell'autoencoder: comprime l'input in uno spazio latente.
 
-    Architettura: 7 → 16 → 8 → 4
-    Usa ReLU come funzione di attivazione — standard per autoencoder.
+    Architettura: 6 → 16 → 8 → 4
+    Usa ReLU nei layer intermedi. Il layer finale non ha attivazione:
+    ReLU sull'ultimo layer comprime lo spazio latente in [0,+∞),
+    dimezzando la capacità espressiva senza benefici architetturali.
     BatchNorm1d stabilizza il training in FL dove i dati locali
     possono avere distribuzioni molto diverse tra i nodi.
     """
@@ -63,12 +64,12 @@ class Encoder(nn.Module):
     def __init__(self, input_dim: int = INPUT_DIM, latent_dim: int = 4):
         """
         Args:
-            input_dim:  dimensione dell'input (default 7 feature)
+            input_dim:  dimensione dell'input (default 6 feature)
             latent_dim: dimensione dello spazio latente (default 4)
         """
         super().__init__()
         self.network = nn.Sequential(
-            # Layer 1: 7 → 16
+            # Layer 1: 6 → 16
             nn.Linear(input_dim, 16),
             nn.BatchNorm1d(16),
             nn.ReLU(),
@@ -76,9 +77,8 @@ class Encoder(nn.Module):
             nn.Linear(16, 8),
             nn.BatchNorm1d(8),
             nn.ReLU(),
-            # Layer 3: 8 → 4 (spazio latente)
+            # Layer 3: 8 → 4 (spazio latente — no ReLU: preserva segno)
             nn.Linear(8, latent_dim),
-            nn.ReLU(),
         )
 
     def forward(self, x: Tensor) -> Tensor:
@@ -98,7 +98,7 @@ class Decoder(nn.Module):
     """
     Decoder dell'autoencoder: ricostruisce l'input dallo spazio latente.
 
-    Architettura: 4 → 8 → 16 → 7
+    Architettura: 4 → 8 → 16 → 6
     Usa Sigmoid nell'ultimo layer perché le feature sono normalizzate [0,1].
     """
 
@@ -116,7 +116,7 @@ class Decoder(nn.Module):
             # Layer 2: 8 → 16
             nn.Linear(8, 16),
             nn.ReLU(),
-            # Layer 3: 16 → 7 (ricostruzione)
+            # Layer 3: 16 → 6 (ricostruzione)
             # Sigmoid: output in [0,1] — coerente con feature normalizzate
             nn.Linear(16, output_dim),
             nn.Sigmoid(),
@@ -165,7 +165,7 @@ class Autoencoder(nn.Module):
     ):
         """
         Args:
-            input_dim:  numero di feature in input (default 7)
+            input_dim:  numero di feature in input (default 6)
             latent_dim: dimensione spazio latente (default 4)
             threshold:  soglia MSE per anomalia (calibrata con fit())
         """
@@ -200,6 +200,7 @@ class Autoencoder(nn.Module):
 
         Un MSE alto indica che il campione è anomalo rispetto
         alla distribuzione appresa durante il training.
+        Il training mode originale viene ripristinato al termine.
 
         Args:
             x: tensore input di shape (1, input_dim) o (input_dim,)
@@ -207,13 +208,17 @@ class Autoencoder(nn.Module):
         Returns:
             MSE tra input e ricostruzione (float)
         """
+        was_training = self.training
         self.eval()
-        with torch.no_grad():
-            if x.dim() == 1:
-                x = x.unsqueeze(0)
-            reconstruction = self.forward(x)
-            error = self._criterion(reconstruction, x)
-        return error.item()
+        try:
+            with torch.no_grad():
+                if x.dim() == 1:
+                    x = x.unsqueeze(0)
+                reconstruction = self.forward(x)
+                error = self._criterion(reconstruction, x)
+            return error.item()
+        finally:
+            self.train(was_training)
 
     def is_anomaly(self, x: Tensor) -> bool:
         """

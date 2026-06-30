@@ -306,9 +306,12 @@ class GradientAnalyzer:
                 for other in node_ids
                 if other != node_id
             ]
+            # Con un solo nodo non è possibile calcolare la similarità.
+            # float("nan") segnala "dato insufficiente" — non viene classificato
+            # come low_similarity (NaN < threshold è sempre False in Python).
             avg_similarities[node_id] = (
                 sum(similarities) / len(similarities)
-                if similarities else 1.0
+                if similarities else float("nan")
             )
 
         return avg_similarities
@@ -359,8 +362,17 @@ class KrumDetector:
         n = len(node_ids)
         f = byzantine_tolerance
 
-        # Krum richiede almeno 2f+3 nodi
+        # Krum richiede almeno 2f+3 nodi per la garanzia teorica.
+        # Con meno nodi (tipico in cluster EV piccoli) la Byzantine detection
+        # è disabilitata — tutti i score vengono azzerati silenziosamente.
+        import logging as _logging
+        _krum_logger = _logging.getLogger(__name__)
         if n < 2 * f + 3:
+            _krum_logger.warning(
+                "Krum Byzantine detection disabilitato: cluster size %d < %d (2f+3 con f=%d). "
+                "Aumentare il cluster o ridurre byzantine_tolerance.",
+                n, 2 * f + 3, f,
+            )
             return {node_id: 0.0 for node_id in node_ids}
 
         # Calcola distanze euclidee al quadrato tra tutti i nodi

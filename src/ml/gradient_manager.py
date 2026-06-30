@@ -70,6 +70,14 @@ class GradientManager(AbstractMLModel):
             f"GradientManager — ε={epsilon}, δ={delta}, "
             f"max_norm={max_grad_norm}, σ={self.sigma:.4f}"
         )
+        # NOTA: questo modulo implementa weight perturbation (rumore sui pesi
+        # aggregati post-FedAvg), NON DP-SGD (rumore sui gradienti per-campione
+        # durante il training). I bound di privacy sono diversi:
+        # - DP-SGD: garanzia per ogni campione nel training set
+        # - Weight perturbation: garanzia sul modello globale aggregato
+        # Documentare questa distinzione nella sezione Privacy del paper.
+        # NOTA composizione: sigma è calcolato per il Gaussian Mechanism a singolo round.
+        # Con T round, la garanzia degrada. Usare RDP/zCDP per composizione formale.
 
     # ── AbstractMLModel ────────────────────────────────────────────────────────
 
@@ -170,24 +178,39 @@ class GradientManager(AbstractMLModel):
     def _clip_weights(self, weights: list[Any]) -> list[torch.Tensor]:
         """
         Clippa la norma L2 globale dei pesi a max_grad_norm.
-        Equivalente al gradient clipping per-sample di DP-SGD,
-        applicato qui ai pesi aggregati del round locale.
+        Applicato ai pesi aggregati del round locale (weight perturbation).
+        I buffer BatchNorm int64 (num_batches_tracked) vengono esclusi dal
+        clipping e restituiti invariati: non sono parametri DP-perturbabili.
         """
         tensors = [w if isinstance(w, torch.Tensor) else torch.tensor(w)
                    for w in weights]
 
-        # Norma L2 globale su tutti i pesi concatenati
-        flat   = torch.cat([t.flatten() for t in tensors])
+        # Separa floating-point (perturbabili) da int (buffer BN invariati)
+        float_tensors = [t for t in tensors if t.is_floating_point()]
+        int_masks      = [not t.is_floating_point() for t in tensors]
+
+        if not float_tensors:
+            return tensors
+
+        # Norma L2 globale su tutti i pesi float concatenati
+        flat   = torch.cat([t.flatten().float() for t in float_tensors])
         norm   = torch.norm(flat, p=2)
         factor = min(1.0, self.max_grad_norm / (float(norm) + 1e-8))
 
-        return [t * factor for t in tensors]
+        result: list[torch.Tensor] = []
+        float_iter = iter(t * factor for t in float_tensors)
+        int_iter   = iter(t for t in tensors if not t.is_floating_point())
+        for is_int in int_masks:
+            result.append(next(int_iter) if is_int else next(float_iter))
+        return result
 
     def _add_noise(self, weights: list[torch.Tensor]) -> list[torch.Tensor]:
         """
-        Aggiunge rumore Gaussiano N(0, σ²) a ogni tensore.
+        Aggiunge rumore Gaussiano N(0, σ²) solo ai tensori floating-point.
+        I buffer BatchNorm int64 (num_batches_tracked) vengono restituiti invariati:
+        torch.randn_like() su int64 solleva RuntimeError in PyTorch ≥2.0.
         """
         return [
-            w + torch.randn_like(w) * self.sigma
+            w + torch.randn_like(w) * self.sigma if w.is_floating_point() else w
             for w in weights
         ]

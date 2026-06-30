@@ -128,6 +128,8 @@ class ACNDataset(AbstractDataset):
         Utile per combinare anni diversi (2019 + 2020).
         """
         self._data = []
+        total_skipped = 0
+        total_items   = 0
         for path in paths:
             file_path = Path(path)
             if not file_path.exists():
@@ -135,6 +137,7 @@ class ACNDataset(AbstractDataset):
             with open(file_path, encoding="utf-8") as f:
                 raw = json.load(f)
             items = raw["_items"]
+            total_items += len(items)
             n_skipped = 0
             for item in items:
                 try:
@@ -144,6 +147,9 @@ class ACNDataset(AbstractDataset):
                     logger.debug(f"Record scartato ({path}): {exc}")
             if n_skipped:
                 logger.warning(f"Scartati {n_skipped}/{len(items)} record malformati da {path}")
+            total_skipped += n_skipped
+        if total_skipped:
+            logger.warning(f"Totale record scartati: {total_skipped}/{total_items}")
 
     def _parse_record(self, item: dict[str, Any]) -> dict[str, Any]:
         """
@@ -160,12 +166,31 @@ class ACNDataset(AbstractDataset):
         except Exception as exc:
             raise ValueError(f"connectionTime/disconnectTime non valido: {exc}") from exc
 
-        # doneChargingTime è opzionale — se assente o malformato si usa end
+        # Validazione temporale: end non può precedere start (clock skew / errori dati)
+        if end < start:
+            raise ValueError(
+                f"disconnectTime ({end.isoformat()}) < connectionTime ({start.isoformat()})"
+            )
+
+        # doneChargingTime è opzionale — se assente o malformato si usa end.
+        # done_time_estimated=True segnala che max_power_kw è calcolato sulla
+        # durata di connessione totale (incluso idle post-ricarica), non sulla
+        # durata effettiva di ricarica — produce valori sistematicamente più bassi.
+        done_raw = item.get("doneChargingTime")
+        done_time_estimated = False
         try:
-            done_raw = item.get("doneChargingTime")
-            done = _parse_acn_datetime(done_raw) if done_raw else end
+            if done_raw:
+                done = _parse_acn_datetime(done_raw)
+                # done non può superare end (ricarica non può finire dopo disconnessione)
+                if done > end:
+                    done = end
+                    done_time_estimated = True
+            else:
+                done = end
+                done_time_estimated = True
         except Exception:
             done = end
+            done_time_estimated = True
 
         kwh = float(item.get("kWhDelivered", 0.0))
 
@@ -173,29 +198,38 @@ class ACNDataset(AbstractDataset):
         user_inputs = item.get("userInputs", [])
         ui = user_inputs[0] if user_inputs else {}
 
+        # minutesAvailable: float-safe cast — int() su stringhe non numeriche
+        # (es. "N/A") lancerebbe ValueError e scarterebbe l'intero record.
+        try:
+            minutes_available = int(float(ui.get("minutesAvailable", 0) or 0))
+        except (TypeError, ValueError):
+            minutes_available = 0
+
         return {
-            "session_id":        item.get("sessionID", ""),
-            "node_id":           item.get("stationID", ""),
-            "cluster_id":        item.get("clusterID", ""),
-            "site_id":           item.get("siteID", ""),
-            "user_id":           item.get("userID", ""),
-            "start_time":        start.isoformat(),
-            "end_time":          end.isoformat(),
-            "done_charging_time": done.isoformat(),
-            "total_energy_kwh":  kwh,
+            # None come default per ID — evita falsi duplicati su "" in join e dedup
+            "session_id":           item.get("sessionID") or None,
+            "node_id":              item.get("stationID", ""),
+            "cluster_id":           item.get("clusterID", ""),
+            "site_id":              item.get("siteID", ""),
+            "user_id":              item.get("userID") or None,
+            "start_time":           start.isoformat(),
+            "end_time":             end.isoformat(),
+            "done_charging_time":   done.isoformat(),
+            "done_time_estimated":  done_time_estimated,
+            "total_energy_kwh":     kwh,
             # Calcolato: energia erogata / ore di ricarica effettiva
-            "max_power_kw":      _compute_max_power_kw(kwh, start, done),
+            "max_power_kw":         _compute_max_power_kw(kwh, start, done),
             # Da userInputs — energia richiesta dall'utente
-            "kwh_requested":     float(ui.get("kWhRequested", 0.0)),
+            "kwh_requested":        float(ui.get("kWhRequested", 0.0)),
             # Da userInputs — minuti disponibili dichiarati
-            "minutes_available": int(ui.get("minutesAvailable", 0)),
+            "minutes_available":    minutes_available,
             # JPL non specifica il modo → AC per default
-            "charging_mode":     "AC",
+            "charging_mode":        "AC",
             # Non presente in ACN-Data
-            "temperature_c":     None,
-            "error_code":        None,
+            "temperature_c":        None,
+            "error_code":           None,
             # Non presente → da inferire
-            "anomaly_label":     None,
+            "anomaly_label":        None,
         }
 
     def get_sample(self, index: int) -> dict[str, Any]:

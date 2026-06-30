@@ -238,3 +238,45 @@ def test_flatten_ignores_non_numeric():
     assert 1.0 in flat
     assert 2.0 in flat
     assert len(flat) == 2
+
+
+# --- Test epsilon override CLI ---
+
+def test_epsilon_override_takes_priority():
+    """
+    PrivacyAuditor(epsilon=0.01) deve usare 0.01 come budget,
+    non il valore da auditor.yaml (tipicamente > 0.01).
+    Se la logica fosse 'epsilon or config_value', epsilon=0 verrebbe ignorato.
+    """
+    auditor_override = PrivacyAuditor(config_path="config/auditor.yaml", epsilon=0.01)
+    assert auditor_override._epsilon_budget == 0.01, (
+        f"_epsilon_budget deve essere 0.01, trovato {auditor_override._epsilon_budget}"
+    )
+
+
+def test_epsilon_override_exhausts_faster(normal_update):
+    """
+    Con un budget molto piccolo (epsilon=0.001), il budget deve esaurirsi
+    prima rispetto alla config YAML standard.
+    """
+    auditor_tight = PrivacyAuditor(config_path="config/auditor.yaml", epsilon=0.001)
+    exhausted_round = None
+    for i in range(200):
+        report = auditor_tight.audit("test-node", round_id=i, model_update=normal_update)
+        if "PRIVACY_BUDGET_EXHAUSTED" in report.threats_detected:
+            exhausted_round = i
+            break
+    assert exhausted_round is not None, "Budget epsilon=0.001 non si è mai esaurito"
+
+
+def test_epsilon_none_uses_yaml_default():
+    """
+    Senza epsilon override, il budget deve corrispondere a config/auditor.yaml.
+    """
+    import yaml
+    from pathlib import Path
+    with open("config/auditor.yaml") as f:
+        cfg = yaml.safe_load(f)
+    expected_budget = cfg["auditor"]["dp"]["epsilon"]
+    auditor_default = PrivacyAuditor(config_path="config/auditor.yaml")
+    assert auditor_default._epsilon_budget == expected_budget

@@ -52,7 +52,7 @@ def run_experiment(rounds: int, epsilon: float, extra_args: list[str]) -> bool:
     logger.info("=" * 60)
 
     t0 = time.time()
-    result = subprocess.run(cmd, cwd=str(PROJECT_ROOT))
+    result = subprocess.run(cmd, cwd=str(PROJECT_ROOT), capture_output=False)
     elapsed = time.time() - t0
 
     if result.returncode == 0:

@@ -259,54 +259,32 @@ classDiagram
         +receive_command() Command
     }
 
-    class AggregationStrategy {
-        <<interface>>
-        +aggregate(updates List_ModelUpdate) ModelUpdate
-    }
-    class FedAvgStrategy {
-        -proximal_mu float
-        +aggregate(updates List_ModelUpdate) ModelUpdate
-    }
-    class FedProxStrategy {
-        -proximal_mu float
-        +aggregate(updates List_ModelUpdate) ModelUpdate
-    }
-
     class FedAvgAggregator {
-        -strategy AggregationStrategy
-        -listeners List_MLPlaneListener
-        +register_listener(l MLPlaneListener) None
-        +run_round(updates List_ModelUpdate) ModelUpdate
+        -_round_updates List_GradientUpdate
+        -min_participants int
+        -_listeners List_MLPlaneListener
+        +collect(update GradientUpdate) None
+        +aggregate(round_num int) AggregatedUpdate
+        +subscribe(listener MLPlaneListener) None
         -emit_event(event MLPlaneEvent) None
+        -_weighted_average(updates List, total int) List_Tensor
     }
+    %% NOTE: Strategy Pattern (AggregationStrategy/FedAvgStrategy/FedProxStrategy)
+    %% non è implementato nel codice. FedProx è controllato tramite proximal_mu
+    %% in AutoencoderTrainer. Queste classi sono future work.
 
     class MLPlaneListener {
         <<interface>>
-        +on_event(event MLPlaneEvent) None
+        +on_ml_event(event MLPlaneEvent) None
     }
     class ChargingIDS {
-        +on_event(event MLPlaneEvent) None
-        +run_cusum(series List_float) bool
-        +run_krum(updates List_ModelUpdate) ModelUpdate
-        +cosine_similarity(a ModelUpdate, b ModelUpdate) float
+        +on_ml_event(event MLPlaneEvent) None
+        +analyze(report AuditReport) IDSAlert
+        +analyze_round(round_id int, reports dict, gradients dict) RoundAnalysis
     }
-    class FedMIAEvaluator {
-        +on_event(event MLPlaneEvent) None
-        +train_shadow_model(public_split Dataset) None
-        +compute_membership_scores(model Model) List_float
-        +evaluate() float
-    }
-
-    class MIAPlugin {
-        <<interface>>
-        +train_shadow_model() None
-        +compute_membership_scores() List_float
-        +evaluate() float
-    }
-    class PluginRegistry {
-        -registry Dict_str_MIAPlugin
-        +discover(path str) None
-        +get(name str) MIAPlugin
+    class FedMIA {
+        +score_member(model Autoencoder, session dict) float
+        +run_attack(members List, non_members List, model Autoencoder) MIAResult
     }
 
     class GradientManager {
@@ -314,52 +292,57 @@ classDiagram
         -epsilon float
         -delta float
         -sigma float
-        +clip_gradients(grads Tensor) Tensor
-        +add_noise(grads Tensor) Tensor
-        +compute_sigma() float
+        +privatize(update GradientUpdate) GradientUpdate
+        -_clip_weights(weights List) List_Tensor
+        -_add_noise(weights List) List_Tensor
+        -_compute_sigma() float
     }
+    %% NOTE: GradientManager implementa weight perturbation (rumore post-FedAvg),
+    %% NON DP-SGD (rumore per-gradiente durante training).
 
     class ACNDataset {
-        -raw_path str
-        -sessions DataFrame
-        +load() DataFrame
-        +enrich_sessions() DataFrame
+        -_data List_dict
+        +load(path str) None
+        +load_multiple(paths List_str) None
+        +get_sample(index int) dict
     }
 
     class AutoencoderTrainer {
         -model Autoencoder
-        -grad_manager GradientManager
-        +train(dataset ACNDataset) None
-        +get_model_update() ModelUpdate
+        -proximal_mu float
+        -_global_weights List_Tensor
+        +train_local(sessions List, round_num int) GradientUpdate
+        +apply_global_model(aggregated AggregatedUpdate) None
+        +get_weights() List_Tensor
+        +set_weights(weights List_Tensor) None
+        +subscribe(listener MLPlaneListener) None
     }
+    %% NOTE: AutoencoderTrainer NON contiene GradientManager come componente.
+    %% privatize() è chiamato esternamente in run_fl_rounds() dopo train_local().
+    %% Il termine FedProx è aggiunto durante train_step() tramite proximal_mu.
 
     class Autoencoder {
-        -encoder Sequential
-        -decoder Sequential
+        -encoder Encoder
+        -decoder Decoder
+        -threshold float
         +forward(x Tensor) Tensor
-        +encode(x Tensor) Tensor
-        +decode(z Tensor) Tensor
+        +reconstruction_error(x Tensor) float
+        +is_anomaly(x Tensor) bool
+        +fit(train_loader DataLoader, epochs int) List_float
     }
 
     ProtocolAdapter <|.. OCPP16Adapter
     ProtocolAdapter <|.. OCPP201Adapter
     ProtocolAdapter <|.. MQTTv5Adapter
 
-    AggregationStrategy <|.. FedAvgStrategy
-    AggregationStrategy <|.. FedProxStrategy
-
-    FedAvgAggregator --> AggregationStrategy : uses strategy
-    FedAvgAggregator --> MLPlaneListener : notifies listeners
+    FedAvgAggregator --> MLPlaneListener : notifies via subscribe()
 
     MLPlaneListener <|.. ChargingIDS
-    MLPlaneListener <|.. FedMIAEvaluator
 
-    FedMIAEvaluator ..|> MIAPlugin
-    PluginRegistry --> MIAPlugin : manages
-
-    AutoencoderTrainer --> GradientManager : delegates DP
     AutoencoderTrainer --> Autoencoder : trains
     AutoencoderTrainer --> ACNDataset : consumes
+    %% run_fl_rounds() chiama GradientManager.privatize() dopo AutoencoderTrainer.train_local()
+    AutoencoderTrainer ..> GradientManager : used externally in run_fl_rounds()
 ```
 
 ---
@@ -377,9 +360,8 @@ The following table enumerates all primary components in ChargeShield-FL, their 
 | `OCPP16Adapter` | Protocol adapter for OCPP 1.6 JSON-over-WebSocket (Highway and Urban clusters) | L1/L2 | Sprint 1 |
 | `OCPP201Adapter` | Protocol adapter for OCPP 2.0.1 with mandatory mTLS (Corporate cluster) | L1/L2 | Sprint 3 |
 | `MQTTv5Adapter` | Protocol adapter for MQTT v5 with shared subscriptions (Residential cluster) | L1/L2 | Sprint 2 |
-| `FedAvgAggregator` | Hosts the active aggregation strategy; emits ML Plane events; coordinates NVFLARE rounds | L3 | Sprint 1 |
-| `FedAvgStrategy` | Weighted average aggregation; `proximal_mu=0.0` (pure FedAvg) | L3 | Sprint 1 |
-| `FedProxStrategy` | Proximal-term regularized aggregation; `proximal_mu=0.01` | L3 | Sprint 2 |
+| `FedAvgAggregator` | Weighted-average aggregation (FedAvg); emits ML Plane events; coordinates FL rounds | L3 | Sprint 1 |
+| `AutoencoderTrainer` | FedProx controlled via `proximal_mu` in `train_step()`; no separate Strategy class | L1 | Sprint 1 |
 | `MLPlaneListener` | Observer interface for FL lifecycle events; base for all monitoring components | L2–L3 | Sprint 2 |
 | `ChargingIDS` | IDS baseline: CUSUM anomaly detection, Krum Byzantine resilience, Cosine Similarity gradient drift | L3 | Sprint 3 |
 | `FedMIA` plugin (`src/plugins/attacks/fedmia.py`) | Shadow-model MIA plugin used by `ChargingIDS` for per-node intrusion detection; implements `BaseAttack`; gradient-magnitude and cosine-similarity membership scoring | L3 | Sprint 3 |

@@ -82,7 +82,9 @@ class FedAvgAggregator(AbstractMLModel):
             AggregatedUpdate con pesi globali, o None se
             il numero di partecipanti è sotto min_participants.
         """
-        updates = self._round_updates
+        # Estrai snapshot locale prima di pulire il buffer: evita race condition
+        # se collect() viene chiamato in parallelo mentre aggregate() è in corso.
+        updates = self._round_updates[:]
         self._round_updates = []
 
         if len(updates) < self.min_participants:

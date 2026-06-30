@@ -22,7 +22,7 @@ class ElaadNLDataset(AbstractDataset):
         "soc_percent",
         "temperature_c",
         "anomaly_label",
-        "transaction_it",
+        "transaction_id",
         "node_id",
         "cluster_id",
         "error_code",
