@@ -232,7 +232,11 @@ class TestGradientManager:
     def test_clipping_reduces_norm(self, dp_config, gradient_update):
         gm = GradientManager(dp_config)
         clipped = gm._clip_weights(gradient_update.weights)
-        flat = torch.cat([w.flatten() for w in clipped])
+        # Solo tensori float: _clip_weights non tocca i buffer int64 di BatchNorm
+        # (num_batches_tracked). La garanzia norm ≤ max_grad_norm vale solo per i
+        # parametri floating-point — non per il vettore pesi completo.
+        float_tensors = [w for w in clipped if w.is_floating_point()]
+        flat = torch.cat([w.flatten() for w in float_tensors])
         norm = float(torch.norm(flat, p=2))
         assert norm <= dp_config["max_grad_norm"] + 1e-5
 
