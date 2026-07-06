@@ -112,6 +112,49 @@ def enrich_sessions(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
             pass  # scarta sessioni con timestamp malformati
     return enriched
 
+
+# ── Feature Normalization ──────────────────────────────────────────────────────
+
+def compute_feature_stats(
+    sessions: list[dict[str, Any]],
+    features: list[str],
+) -> dict[str, tuple[float, float]]:
+    """
+    Calcola min e max per ogni feature dalle sessioni di training.
+    Chiamare SOLO su train_sessions per evitare data leakage dal hold-out.
+    """
+    stats: dict[str, tuple[float, float]] = {}
+    for feat in features:
+        vals = [float(s[feat]) for s in sessions if s.get(feat) is not None]
+        if not vals:
+            stats[feat] = (0.0, 1.0)
+            continue
+        fmin, fmax = min(vals), max(vals)
+        stats[feat] = (fmin, fmax if fmax != fmin else fmin + 1.0)
+    return stats
+
+
+def normalize_sessions(
+    sessions: list[dict[str, Any]],
+    stats: dict[str, tuple[float, float]],
+    features: list[str],
+) -> list[dict[str, Any]]:
+    """
+    Applica min-max scaling [0,1] alle feature continue.
+    stats deve provenire da compute_feature_stats(train_sessions, ...).
+    """
+    normalized = []
+    for s in sessions:
+        s = dict(s)  # shallow copy — non modificare l'originale
+        for feat in features:
+            val = s.get(feat)
+            if val is None:
+                continue
+            fmin, fmax = stats[feat]
+            s[feat] = (float(val) - fmin) / (fmax - fmin)
+        normalized.append(s)
+    return normalized
+
 # ── FL Experiment ──────────────────────────────────────────────────────────────
 
 def run_fl_rounds(
@@ -327,6 +370,11 @@ def run_ids(
         config_path=config_path,
         byzantine_tolerance=1,
         cosine_threshold=0.85,
+        # fedmia= non passato: il plugin shadow-model FedMIA (src/plugins/attacks/fedmia.py)
+        # è disabilitato in questa configurazione sperimentale. Il MIA è valutato
+        # separatamente tramite run_fedmia() che usa l'approccio loss-based (Yeom et al.,
+        # 2018): membership score = -MSE(global_model, session).
+        # Per attivare il plugin shadow-model nell'IDS, passare: fedmia=FedMIA(cfg)
     )
     # Un'unica istanza traccia l'epsilon cumulativo per nodo su tutti i round
     auditor = PrivacyAuditor(config_path=config_path, epsilon=cfg["experiment"]["epsilon"])
@@ -552,10 +600,18 @@ def main() -> None:
     torch.manual_seed(seed)
     random.shuffle(sessions)
     split = max(1, int(len(sessions) * 0.8))
-    train_sessions  = sessions[:split]
+    train_sessions   = sessions[:split]
     holdout_sessions = sessions[split:]
     logger.info(f"Split — train: {len(train_sessions)}, hold-out: {len(holdout_sessions)}")
 
+    # Normalizzazione min-max: calcolata SOLO su train_sessions (no leakage dal hold-out).
+    # Stessa trasformazione applicata a holdout_sessions per la FedMIA.
+    from ml.autoencoder_trainer import AutoencoderTrainer
+    _FEATURES = AutoencoderTrainer.CONTINUOUS_FEATURES
+    feature_stats    = compute_feature_stats(train_sessions, _FEATURES)
+    train_sessions   = normalize_sessions(train_sessions,   feature_stats, _FEATURES)
+    holdout_sessions = normalize_sessions(holdout_sessions, feature_stats, _FEATURES)
+    logger.info(f"Feature normalizzate [0,1]: {list(feature_stats.keys())}")
     if args.dry_run:
         logger.info("Dry run completato — uscita.")
         return
