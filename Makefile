@@ -149,8 +149,14 @@ test-sprint4:
 test-sprint5:
 	$(PYTEST) tests/test_sprint5.py -v --tb=short
 
+.PHONY: install-dev
+install-dev:
+	@echo "→ Installazione dipendenze sviluppo..."
+	pip install pytest pytest-cov --break-system-packages
+	@echo "✓ Dipendenze installate"
+
 .PHONY: test-coverage
-test-coverage:
+test-coverage: install-dev
 	$(PYTEST) tests/ -v --cov=src --cov-report=term-missing
 
 # ─── Lint ─────────────────────────────────────────────────────────────────────
