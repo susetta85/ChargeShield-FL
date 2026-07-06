@@ -106,7 +106,7 @@ The raw ACN-Data records contain more fields than are usable in our context. Aft
 | `hour_of_day` | Derived from `connectionTime` | Hour at which the session began (0–23) | integer |
 | `duration_hours` | Derived from `disconnectTime - connectionTime` | Total session wall-clock duration | hours |
 
-The derivation of `hour_of_day` and `duration_hours` from raw timestamp fields is performed in the preprocessing pipeline and is documented in `data/preprocess.py`. All six features are standardised to zero mean and unit variance using statistics computed on the training split only, preventing data leakage into the evaluation set.
+The derivation of `hour_of_day` and `duration_hours` from raw timestamp fields is performed by `enrich_sessions()` in `scripts/run_experiments.py`. All six features are scaled to [0, 1] using **min-max normalization** with statistics computed on the training split only (80% of all sessions), preventing any data leakage into the hold-out evaluation set. The normalization statistics (min and max per feature) are computed after the 80/20 split and applied uniformly to both the FL training sessions and the MIA hold-out sessions.
 
 **Design justification for feature selection.** The six features capture three orthogonal dimensions of charging behaviour: energy throughput (`total_energy_kwh`, `kwh_requested`, `max_power_kw`), temporal context (`hour_of_day`), and session duration (`minutes_available`, `duration_hours`). This decomposition is sufficient for the autoencoder to learn a compressed representation of normal charging behaviour, while being minimal enough to avoid overfitting on the 13,073 available sessions. Driver identity and vehicle identifier fields are deliberately excluded; their inclusion would trivialise MIA (any model could achieve near-perfect membership inference by memorising identifiers) and would not reflect realistic threat conditions in a properly anonymised deployment.
 
@@ -116,11 +116,12 @@ For CS1, the 13,073 sessions are split as follows:
 
 | Split | Fraction | Sessions | Purpose |
 |---|---|---|---|
-| FL training | 50% | ~6,537 | Distributed across 12 nodes for FL training |
-| Shadow model public | 25% | ~3,268 | FedMIA shadow model training (attacker-accessible) |
-| MIA evaluation | 25% | ~3,268 | Membership inference evaluation (held-out) |
+| FL training (members) | 80% | ~10,458 | Distributed across 4 clusters for FL training; used as the member set in FedMIA evaluation |
+| Hold-out (non-members) | 20% | ~2,615 | Never seen by any FL node; used as the non-member set in FedMIA evaluation |
 
-The FL training split is further partitioned across the 12 nodes using a temporal assignment: sessions are sorted chronologically and assigned to nodes in round-robin order within each cluster, preserving within-cluster temporal structure while introducing inter-cluster distributional heterogeneity.
+The split is performed with a fixed random seed (42) before any FL training begins, ensuring the hold-out set is strictly disjoint from the training process. No shadow model public set is used: FedMIA employs the **loss-based approach** (Yeom et al., 2018), which requires no separate shadow training data — membership is inferred directly from the reconstruction error of the FL global model (see Section 2.5).
+
+The FL training split is further partitioned across the 4 clusters in equal contiguous blocks (sessions are shuffled before splitting). Each cluster trains on approximately 2,615 sessions.
 
 ### 2.3 Local Model: Autoencoder Architecture
 
@@ -196,17 +197,31 @@ FedMIA operates under the honest-but-curious server threat model: the attacker i
 
 The attacker does not inject malicious updates, does not modify the FL protocol, and does not communicate with individual nodes outside the protocol. The IDS baselines (CUSUM, Krum, Cosine Similarity) therefore generate no alerts during CS1 experiments, as there is no anomalous network behaviour to detect.
 
-#### 2.5.2 Shadow Model Training
+#### 2.5.2 Loss-Based Membership Inference (Yeom et al., 2018)
 
-FedMIA uses the shadow model methodology introduced by Shokri et al. [2017] and adapted for the federated setting by Nasr et al. [2019]:
+FedMIA in ChargeShield-FL uses the **loss-based membership inference** approach introduced by Yeom et al. [2018], not the shadow model methodology. This choice is motivated by the threat model: the attacker is the FL aggregation server, which has direct access to the final global model weights but does not necessarily have access to a labelled shadow dataset.
 
-1. **Shadow model training set.** The attacker trains a shadow autoencoder on the public 25% split of ACN-Data (approximately 3,268 sessions). This public split is disjoint from the FL training split and represents data to which the attacker has legitimate access — for example, historical ACN-Data records published before the FL deployment period.
+The attack proceeds as follows:
 
-2. **Reconstruction error as membership score.** For each session in the MIA evaluation set, the shadow model computes a reconstruction error (MSE). Sessions with low reconstruction error are hypothesised to have been members of the training set (the model has "seen" similar records and reconstructed them well); sessions with high reconstruction error are hypothesised to be non-members.
+1. **Global model acquisition.** The attacker (FL server) directly loads the aggregated global model weights from any given FL round. No auxiliary shadow model or separate training data is required.
 
-3. **Threshold-free evaluation.** Rather than selecting a fixed threshold, MIA effectiveness is evaluated via the Area Under the Receiver Operating Characteristic Curve (AUC-ROC), which measures the attacker's ability to rank members above non-members across all possible thresholds. An AUC-ROC of 0.5 corresponds to random guessing; an AUC-ROC of 1.0 corresponds to perfect membership inference.
+2. **Reconstruction error as membership score.** For each candidate session, the global FL autoencoder computes a reconstruction error (MSE). The **membership score** is defined as the negative reconstruction error:
 
-**Design justification for reconstruction error as membership score.** Reconstruction-based membership inference is particularly appropriate for autoencoder models, where membership can be inferred from the generalisation gap: models tend to reconstruct training samples more accurately than held-out samples due to overfitting, even when the overfitting is not visually apparent in loss curves. This approach requires no knowledge of the model's training procedure, gradient history, or hyperparameters, making it applicable to black-box settings where the attacker can only query the model.
+   ```
+   membership_score(x) = -MSE(Autoencoder_global(x), x)
+   ```
+
+   Sessions with low reconstruction error (high membership score) are inferred to be members of the FL training set; sessions with high reconstruction error (low membership score) are inferred to be non-members. This exploits the *generalisation gap*: models trained on a set tend to reconstruct its members more accurately than held-out samples.
+
+3. **Threshold-free evaluation.** MIA effectiveness is evaluated via AUC-ROC across all possible membership score thresholds. An AUC-ROC of 0.5 corresponds to random guessing; an AUC-ROC of 1.0 corresponds to perfect membership inference.
+
+4. **Ground truth labels.** Sessions in the 80% FL training split are labelled as members (label=1); sessions in the 20% hold-out split are labelled as non-members (label=0).
+
+**Implementation.** The loss-based FedMIA evaluator is implemented in `run_fedmia()` in `scripts/run_experiments.py`. It runs for every FL round stored in `fl_results`, enabling per-round AUC-ROC measurement throughout training.
+
+**Design justification.** The loss-based approach (Yeom et al., 2018) is appropriate here because: (a) the attacker (FL server) controls the aggregation and thus has white-box access to global model weights at every round; (b) no auxiliary public dataset is required, making the threat model more realistic for OT settings where public EV charging data from the same distribution may not be available to the attacker; (c) reconstruction-error-based inference is well-suited to autoencoders, where the model objective is to minimise reconstruction error on training data.
+
+> **Note on shadow model plugin.** A separate shadow-model MIA implementation exists in `src/plugins/attacks/fedmia.py` (Shokri et al., 2017; Nasr et al., 2019) and is integrated with `ChargingIDS` for per-round IDS analysis. However, it is disabled in the current experimental configuration: `ChargingIDS` is instantiated without the `fedmia=` argument in `run_ids()`. The CS1 AUC-ROC results reported in Section 2.6 and the sweep heat map in Section 2.7 all derive from the loss-based evaluator (`run_fedmia()`), not the shadow model plugin.
 
 ### 2.6 First Experimental Result
 
@@ -458,21 +473,27 @@ Ensure the following are installed and configured:
 ### 6.2 Dataset Preparation
 
 ```bash
-# Download ACN-Data JPL 2019+2020 (requires ACN API key in .env)
-make data-download
+# Download ACN-Data JPL 2019+2020 from https://ev.caltech.edu/dataset
+# Place the JSON files in datasets/acn/jpl/:
+#   datasets/acn/jpl/acndata_sessions_2019.json
+#   datasets/acn/jpl/acndata_sessions_2020.json
 
-# Preprocess and split into FL/shadow/eval partitions
-make data-preprocess
-
-# Verify split statistics
-make data-verify
+# Verify dataset presence
+ls -lh datasets/acn/jpl/
 ```
 
-The preprocessing step produces:
-- `data/fl_train.parquet` — 50% FL training split
-- `data/shadow_train.parquet` — 25% shadow model training split
-- `data/mia_eval.parquet` — 25% MIA evaluation split
-- `data/split_stats.json` — per-split feature statistics for audit
+The 80/20 train/hold-out split is performed **automatically at experiment runtime** by `run_experiments.py::main()` with a fixed seed (42). No separate preprocessing step is required. The split logic:
+
+1. Both JSON files are loaded and concatenated (~13,073 sessions after filtering)
+2. `enrich_sessions()` derives `hour_of_day` and `duration_hours` from timestamps
+3. Sessions are shuffled with `random.seed(42)` for reproducibility
+4. Split: `train_sessions = sessions[:80%]`, `holdout_sessions = sessions[20%:]`
+5. Min-max normalization statistics are computed from `train_sessions` only
+6. Both splits are normalized with the same statistics (no leakage)
+
+The split produces:
+- `train_sessions` (~10,458 sessions) — FL training + MIA member labels
+- `holdout_sessions` (~2,615 sessions) — MIA non-member labels (never seen by FL nodes)
 
 ### 6.3 Running Individual Experiments
 

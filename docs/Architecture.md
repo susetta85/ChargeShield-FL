@@ -459,6 +459,12 @@ Both conditions raise `ValueError` with a descriptive message if violated.
 
 **DP Budget Accounting.** The current implementation applies the Gaussian Mechanism independently per round without Rényi DP composition. This simplification is noted as a limitation; future work should integrate a Rényi accountant [Mironov, 2017] or the Opacus library [Yousefpour et al., 2021] for tight per-round composition tracking.
 
+> **Nota:** L'implementazione usa weight perturbation (non DP-SGD).
+> Con 3 epoche di training locale per round, la garanzia (ε,δ)-DP formale
+> non è sound. I valori ε nelle tabelle sono parametri del rumore per round;
+> il budget totale per T round è approssimativamente T×ε (composizione naive).
+> Vedi sezione Limitazioni in CaseStudies.md.
+
 ### 6.5 FedMIA Plugin: Shadow-Model Membership Inference (IDS)
 
 `src/plugins/attacks/fedmia.py` implements the FedMIA attack [Hu et al., 2022] as a `BaseAttack` plugin used by `ChargingIDS` for per-node intrusion detection. It frames membership inference as a binary classification problem: given a data record x and access to the trained global model θ, predict whether x was a member of the FL training set.
