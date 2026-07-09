@@ -185,9 +185,21 @@ where:
 - `delta` is the failure probability (set to 1/n^2 where n is the local dataset size, following standard practice)
 - `epsilon` is the target privacy budget
 
-This formulation is the standard Gaussian Mechanism for (epsilon, delta)-DP [Dwork et al., 2014]. Gradient clipping to `max_grad_norm` before noise addition ensures that the sensitivity of the mechanism is bounded, a prerequisite for the DP guarantee to hold. The clipping threshold is tuned per experiment to balance gradient signal preservation against sensitivity control.
+This formulation follows the calibration formula from the standard Gaussian Mechanism [Dwork et al., 2014]. The noise parameter σ is calibrated so that higher ε values produce less noise (weaker protection) and lower ε values produce stronger noise (stronger protection). The L2 clipping threshold `max_grad_norm` bounds the magnitude of each model update before noise injection.
 
-**Design justification.** The Gaussian Mechanism is chosen over the Laplace Mechanism because it is better suited to high-dimensional gradient spaces: Gaussian noise scales as O(sqrt(d)) in the L2 norm, while Laplace noise scales as O(d) in the L1 norm, making Gaussian noise significantly less destructive to gradient signal in the parameter spaces typical of neural networks.
+**Design justification.** The Gaussian Mechanism is chosen over the Laplace Mechanism because it is better suited to high-dimensional parameter spaces: Gaussian noise scales as O(√d) in the L2 norm, while Laplace noise scales as O(d) in the L1 norm, making Gaussian noise significantly less destructive to gradient signal in the parameter spaces typical of neural networks.
+
+> **⚠ Limitation — Weight Perturbation vs. DP-SGD (Formal Claim)**
+>
+> ChargeShield-FL applies the Gaussian Mechanism to the **aggregated model update after local training** (weight perturbation), not to per-sample gradients during training (DP-SGD [Abadi et al., 2016]). This distinction has implications for the formal DP guarantee:
+>
+> - With `epochs=1` local training per FL round, per-sample sensitivity *can* be bounded by `max_grad_norm`, and a formal (ε,δ)-DP guarantee holds.
+> - With `epochs=3` (current configuration), the sensitivity of the full weight vector to any single training sample is no longer strictly bounded by `max_grad_norm`, because gradients accumulate over multiple passes. The formal (ε,δ)-DP guarantee is therefore **not proven** for the current configuration.
+> - Running T FL rounds compounds the per-round budget: total ε ≈ T × ε\_per\_round under naive composition (without Rényi DP amplification).
+>
+> **How to read ε in this paper.** We report ε as a **noise parameter** calibrated by the Gaussian Mechanism formula. Higher ε = less noise = weaker empirical privacy protection. We evaluate privacy empirically via MIA AUC-ROC rather than deriving a formal composition bound. This approach is consistent with prior work on weight-perturbation FL privacy [Geyer et al., 2017; Wei et al., 2020; Truex et al., 2019].
+>
+> **Path to formal DP.** A strictly formal (ε,δ)-DP guarantee can be achieved by replacing weight perturbation with DP-SGD via the Opacus library [Yousefpour et al., 2021], which performs per-sample gradient clipping during local training. This is left as future work.
 
 ### 2.5 FedMIA: Federated Membership Inference Attack
 
@@ -613,6 +625,12 @@ The `SEED=42` flag sets the global random seed for NVFLARE, PyTorch, and NumPy, 
 [16] OpenCharge Alliance. (2020). **Open Charge Point Protocol (OCPP) 2.0.1.** Open Charge Alliance Specification. https://www.openchargealliance.org/protocols/ocpp-201/
 
 [17] OASIS. (2019). **MQTT Version 5.0.** OASIS Standard. https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html
+
+[18] Wei, K., Li, J., Ding, M., Ma, C., Yang, H. H., Farokhi, F., Jin, S., Quek, T. Q. S., and Poor, H. V. (2020). **Federated Learning with Differential Privacy: Algorithms and Performance Analysis.** *IEEE Transactions on Information Forensics and Security*, 15, pp. 3454–3469. https://doi.org/10.1109/TIFS.2020.2988575
+
+[19] Truex, S., Liu, L., Gursoy, M. E., Yu, L., and Wei, W. (2019). **A Hybrid Approach to Privacy-Preserving Federated Learning.** In *Proceedings of the 12th ACM Workshop on Artificial Intelligence and Security (AISec @ CCS 2019)*, pp. 1–11. ACM. https://doi.org/10.1145/3338501.3357370
+
+[20] Yousefpour, A., Shilov, I., Sablayrolles, A., Testuggine, D., Prasad, K., Malek, M., Nguyen, J., Ghosh, S., Bharadwaj, A., Zhao, J., Cormode, G., and Mironov, I. (2021). **Opacus: User-Friendly Differential Privacy Library in PyTorch.** *arXiv preprint arXiv:2109.12298*. https://arxiv.org/abs/2109.12298
 
 ---
 
