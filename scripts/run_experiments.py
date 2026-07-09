@@ -276,6 +276,20 @@ def run_fedmia(
 
     logger.info(f"FedMIA — members: {len(members)}, non-members: {len(non_members)}")
 
+    # ── Bilanciamento pool MIA ──────────────────────────────────────────────────
+    # ACN-Data: 10,458 members vs 2,615 non-members (split 80/20).
+    # Un pool sbilanciato 4:1 non invalida l'AUC-ROC (che è rank-based) ma produce
+    # soglie di classificazione asimmetriche. Si usa un subsample fisso dei members
+    # per garantire pool identici in dimensione e confrontabilità tra esperimenti.
+    _pool_rng        = random.Random(cfg.get("experiment", {}).get("seed", 42))
+    _n_bal           = min(len(members), len(non_members))
+    members_balanced = _pool_rng.sample(members, _n_bal)
+    logger.info(
+        f"FedMIA pool bilanciato — members: {len(members_balanced)}, "
+        f"non-members: {len(non_members)} "
+        f"(members originali: {len(members)}, campionati con seed fisso)"
+    )
+
     input_dim = cfg["ml"]["input_dim"]
 
     def _score_batch(model: Autoencoder, sess_list: list[dict]) -> list[float]:
@@ -330,7 +344,7 @@ def run_fedmia(
         model.load_state_dict(state, strict=True)
         model.eval()
 
-        member_scores     = _score_batch(model, members)
+        member_scores     = _score_batch(model, members_balanced)
         non_member_scores = _score_batch(model, non_members)
 
         if not member_scores or not non_member_scores:
