@@ -272,6 +272,8 @@ class Autoencoder(nn.Module):
                 optimizer.step()
                 batch_losses.append(loss.item())
 
+            if not batch_losses:
+                continue  # DataLoader vuoto — salta l'epoca senza ZeroDivisionError
             epoch_loss = sum(batch_losses) / len(batch_losses)
             epoch_losses.append(epoch_loss)
 

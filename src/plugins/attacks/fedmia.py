@@ -179,6 +179,9 @@ class FedMIA:
 
         with torch.no_grad():
             for batch in data_loader:
+                # Unpack tuple: DataLoader da TensorDataset restituisce (tensor,)
+                if isinstance(batch, (list, tuple)):
+                    batch = batch[0]
                 batch = batch.to(self._device)
                 reconstruction = self._shadow_model(batch)
                 errors = torch.mean((reconstruction - batch) ** 2, dim=1)

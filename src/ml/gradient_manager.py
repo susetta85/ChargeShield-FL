@@ -155,16 +155,18 @@ class GradientManager(AbstractMLModel):
 
     # ── Helpers ───────────────────────────────────────────────────────────────
     def _compute_sigma(self) -> float:
-        # ATTENZIONE: questo implementa weight perturbation, non DP-SGD.
-# Con epochs > 1 per round, la sensitività del vettore pesi a un singolo
-# campione NON è formalmente bounded da max_grad_norm.
-# La garanzia (epsilon, delta)-DP formale vale solo per epochs=1.
-# Per il paper: descrivere sigma come parametro di rumore sperimentale,
-# non come garanzia DP formale. Il budget totale su T round è ~T*epsilon
-# (composizione naive) — riportarlo nelle tabelle dei risultati.
         """
         Calcola σ per il Gaussian Mechanism.
         σ = max_grad_norm * sqrt(2 * ln(1.25 / δ)) / ε
+
+        ATTENZIONE — weight perturbation, non DP-SGD:
+        Questo implementa rumore sull'intero vettore pesi dopo il training locale,
+        non per-sample gradient clipping (DP-SGD). Con epochs > 1 per round,
+        la sensitività del vettore pesi a un singolo campione NON è formalmente
+        bounded da max_grad_norm. La garanzia (ε,δ)-DP formale vale solo per
+        epochs=1. Per il paper: descrivere ε come parametro di rumore sperimentale,
+        non come garanzia DP formale. Il budget totale su T round sotto composizione
+        naive è ε_tot ≈ T × ε_per_round — riportarlo nelle tabelle dei risultati.
         """
         if self.epsilon <= 0:
             raise ValueError(f"epsilon deve essere > 0, ricevuto: {self.epsilon}")

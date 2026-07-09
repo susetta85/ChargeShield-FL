@@ -138,7 +138,7 @@ All intermediate layers use ReLU activation. The bottleneck layer (dimension 4) 
 
 **Loss function.** Mean Squared Error (MSE) between input and reconstruction is used as the training objective. MSE is appropriate here because all features are continuous and standardised; it penalises reconstruction errors proportionally to their magnitude, which aligns with the intuition that large deviations from normal charging patterns are more anomalous.
 
-**Implementation.** The autoencoder is implemented in PyTorch. Training uses the Adam optimiser with learning rate 1e-3 and weight decay 1e-5. Batch size is 32. Local training runs for a configurable number of epochs per FL round (default: 5 epochs per round).
+**Implementation.** The autoencoder is implemented in PyTorch. Training uses the Adam optimiser with learning rate 1e-3 and weight decay 1e-5. Batch size is 32. Local training runs for a configurable number of epochs per FL round (default: 3 epochs per round, as set in `config/experiment.yaml`).
 
 ### 2.4 Federated Learning Configuration
 
@@ -199,6 +199,23 @@ This formulation follows the calibration formula from the standard Gaussian Mech
 >
 > **How to read ε in this paper.** We report ε as a **noise parameter** calibrated by the Gaussian Mechanism formula. Higher ε = less noise = weaker empirical privacy protection. We evaluate privacy empirically via MIA AUC-ROC rather than deriving a formal composition bound. This approach is consistent with prior work on weight-perturbation FL privacy [Geyer et al., 2017; Wei et al., 2020; Truex et al., 2019].
 >
+> **Epsilon composition across rounds.** The table below reports the naive total ε (ε\_tot = T × ε\_per\_round) for all 20 configurations in the CS1 sweep. These values represent worst-case composition bounds; tighter bounds (e.g., via Rényi DP [Mironov, 2017]) would yield smaller ε\_tot.
+>
+> | Rounds (T) | ε per round | ε\_tot (naive) | δ (per round) | Interpretation |
+> |---|---|---|---|---|
+> | 100 | 0.1 | **10** | 1e-5 | Strong noise per round; moderate total budget |
+> | 100 | 0.5 | **50** | 1e-5 | Moderate noise; high total budget |
+> | 100 | 1.0 | **100** | 1e-5 | Weak noise; very high total budget |
+> | 100 | 2.0 | **200** | 1e-5 | Minimal noise; extreme total budget |
+> | 100 | 5.0 | **500** | 1e-5 | Near-no-DP; nominal DP only |
+> | 1000 | 0.1 | **100** | 1e-5 | Strong per-round protection; high total |
+> | 1000 | 0.5 | **500** | 1e-5 | Moderate noise; extreme total budget |
+> | 1000 | 1.0 | **1000** | 1e-5 | Near-no-DP at 1000 rounds |
+> | 1000 | 2.0 | **2000** | 1e-5 | Nominal DP only |
+> | 1000 | 5.0 | **5000** | 1e-5 | Effectively no DP protection |
+>
+> The large ε\_tot values under naive composition confirm that the per-round ε parameter is the meaningful privacy control variable in this framework, not the composition total. The empirical evaluation via AUC-ROC is the appropriate metric for measuring actual privacy protection rather than the composition bound.
+>
 > **Path to formal DP.** A strictly formal (ε,δ)-DP guarantee can be achieved by replacing weight perturbation with DP-SGD via the Opacus library [Yousefpour et al., 2021], which performs per-sample gradient clipping during local training. This is left as future work.
 
 ### 2.5 FedMIA: Federated Membership Inference Attack
@@ -241,6 +258,8 @@ The first completed data point in the CS1 sweep is:
 
 **Configuration:** 100 rounds, epsilon=1.0, FedAvg, proximal_mu=0.0  
 **Result:** AUC-ROC = 0.5172
+
+> **Reproducibility note.** This result requires the ACN-Data JPL dataset (2019 + 2020 files) to be present in `datasets/acn/jpl/`. The dataset is available at https://ev.caltech.edu/dataset and must be downloaded separately — it is not included in the repository. See Section 6.2 for the complete data setup instructions.
 
 An AUC-ROC of 0.5172 is statistically indistinguishable from random guessing (AUC-ROC = 0.5). This confirms that, under a standard DP budget of epsilon=1.0 and 100 training rounds, the Gaussian Mechanism is effective at suppressing membership information leakage in the ChargeShield-FL pipeline.
 

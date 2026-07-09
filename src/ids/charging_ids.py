@@ -381,8 +381,7 @@ class KrumDetector:
         # Krum richiede almeno 2f+3 nodi per la garanzia teorica.
         # Con meno nodi (tipico in cluster EV piccoli) la Byzantine detection
         # è disabilitata — tutti i score vengono azzerati silenziosamente.
-        import logging as _logging
-        _krum_logger = _logging.getLogger(__name__)
+        _krum_logger = _ids_logger
         if n < 2 * f + 3:
             _krum_logger.warning(
                 "Krum Byzantine detection disabilitato: cluster size %d < %d (2f+3 con f=%d). "

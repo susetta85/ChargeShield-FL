@@ -199,19 +199,21 @@ Four design patterns address these requirements. Each is motivated below not mer
 
 ### 4.3 Strategy Pattern: Aggregation Algorithm Selection
 
+> **Implementation status.** The `AggregationStrategy` interface, `FedAvgStrategy`, and `FedProxStrategy` classes described below are **architectural design goals**, not currently implemented classes. In the present codebase, FedAvg and FedProx are unified in `AutoencoderTrainer.train_step()` via the `proximal_mu` parameter: `proximal_mu=0.0` recovers FedAvg; `proximal_mu>0` activates the FedProx proximal term. `FedAvgAggregator` performs the weighted average in both cases. Introducing a formal `AggregationStrategy` interface is planned for a future sprint to support additional aggregation algorithms (FedNova, Scaffold, FedYogi) without modifying the aggregator.
+
 **Problem Statement.** The framework supports two FL aggregation algorithms: FedAvg [McMahan et al., 2017] and FedProx [Li et al., 2020]. FedAvg performs weighted averaging of client model weights, with the weight proportional to each client's local dataset size. FedProx adds a proximal regularization term `(proximal_mu / 2) × ||w - w_global||²` to each client's local objective function, penalizing local models that deviate excessively from the global model during local training — a critical modification for convergence under statistical heterogeneity (non-IID data distributions across nodes).
 
-**Why the Strategy Pattern Was Selected.** The Strategy pattern encapsulates each algorithm as a concrete `AggregationStrategy` implementation behind an `aggregate(client_updates: List[ModelUpdate]) -> ModelUpdate` interface. The `FedAvgAggregator` holds a reference to an active strategy instance and delegates the aggregation computation entirely to it, enabling runtime or configuration-time algorithm selection via NVFLARE's `config_fed_server.json`. Adding a third algorithm (e.g., FedNova [Wang et al., 2020], Scaffold [Karimireddy et al., 2020]) requires only implementing a new `AggregationStrategy` subclass and referencing it in configuration — no existing aggregator code is modified.
+**Design intent.** The Strategy pattern would encapsulate each algorithm as a concrete `AggregationStrategy` implementation behind an `aggregate(client_updates: List[ModelUpdate]) -> ModelUpdate` interface, enabling runtime algorithm selection via configuration without modifying the aggregator. Adding algorithms (e.g., FedNova [Wang et al., 2020], Scaffold [Karimireddy et al., 2020]) would require only a new subclass.
 
-**Why Not Conditional Branching.** An `if algorithm == "fedavg" / elif algorithm == "fedprox"` branch inside the aggregation loop was rejected because it violates the Open/Closed Principle: adding a new algorithm requires modifying the aggregation loop, which may introduce regressions in existing algorithm implementations and requires re-testing the entire aggregation code path.
-
-**Configuration Details.** `FedAvgStrategy` is instantiated with `proximal_mu=0.0`, which causes the proximal term to vanish identically, recovering pure FedAvg. `FedProxStrategy` is instantiated with `proximal_mu=0.01`, following the recommendation in [Li et al., 2020] for mildly heterogeneous data distributions.
+**Current implementation.** Algorithm selection is controlled by `proximal_mu` in `config/experiment.yaml`. `proximal_mu=0.0` → FedAvg; `proximal_mu=0.01` → FedProx [Li et al., 2020].
 
 ### 4.4 Plugin Pattern: Attack Surface Extensibility
 
+> **Implementation status.** `PluginRegistry` and filesystem-based plugin discovery are **not yet implemented**. In the current codebase, `FedMIA` is instantiated directly in `scripts/run_experiments.py`. The plugin architecture described below is a design goal for a future sprint, intended to support community-contributed attack modules without modifying the evaluation harness.
+
 **Problem Statement.** MIA research is a rapidly evolving field. FedMIA is the primary implemented attack, but the framework must accommodate future attacks — gradient inversion [Geiping et al., 2020], property inference [Ateniese et al., 2015], attribute inference [Zhao et al., 2021] — without requiring modification of the evaluation harness.
 
-**Why the Plugin Pattern Was Selected.** Attack modules placed in the `attacks/` directory are discovered at runtime by a `PluginRegistry` that scans for Python classes implementing the `MIAPlugin` interface, which exposes `train_shadow_model()`, `compute_membership_scores()`, and `evaluate()` methods. New attacks are registered by placing a conforming module in `attacks/`; no existing file is modified. This satisfies the Open/Closed Principle: the framework is open for extension and closed for modification at the evaluation harness level.
+**Design intent.** Attack modules placed in the `attacks/` directory would be discovered at runtime by a `PluginRegistry` that scans for Python classes implementing the `MIAPlugin` interface, which exposes `train_shadow_model()`, `compute_membership_scores()`, and `evaluate()` methods. New attacks would be registered by placing a conforming module in `attacks/`; no existing file is modified.
 
 **Why Not a Subclass Hierarchy.** A subclass hierarchy for attacks would require the evaluation harness to explicitly import and instantiate concrete attack classes, coupling it to specific attack implementations at import time. The plugin approach uses filesystem-based discovery, making it more appropriate for a community research framework where attack contributions may come from external collaborators who should not need to modify any core framework file.
 
@@ -353,10 +355,10 @@ The following table enumerates all primary components in ChargeShield-FL, their 
 
 | Component | Role | Purdue Level | Sprint |
 |---|---|---|---|
-| `ACNDataset` | Loads and enriches raw ACN-Data CSV files; computes derived features `hour_of_day` and `duration_hours` | L2 | Sprint 1 |
-| `AutoencoderTrainer` | Executes local training epochs on session batches using MSE loss; manages model checkpointing | L2 | Sprint 1 |
+| `ACNDataset` | Loads raw ACN-Data JSON files; derived features `hour_of_day` and `duration_hours` are computed by `enrich_sessions()` in `run_experiments.py` | L2 | Sprint 1 |
+| `AutoencoderTrainer` | Executes local training epochs on session batches using MSE loss | L2 | Sprint 1 |
 | `Autoencoder` | 6→16→8→4→8→16→6 symmetric encoder-decoder; MSE reconstruction loss | L2 | Sprint 1 |
-| `GradientManager` | Implements Gaussian Mechanism DP: per-sample gradient clipping + calibrated noise injection | L2 | Sprint 2 |
+| `GradientManager` | Implements Gaussian Mechanism DP: weight-vector L2 norm clipping (weight perturbation) + calibrated noise injection | L2 | Sprint 2 |
 | `OCPP16Adapter` | Protocol adapter for OCPP 1.6 JSON-over-WebSocket (Highway and Urban clusters) | L1/L2 | Sprint 1 |
 | `OCPP201Adapter` | Protocol adapter for OCPP 2.0.1 with mandatory mTLS (Corporate cluster) | L1/L2 | Sprint 3 |
 | `MQTTv5Adapter` | Protocol adapter for MQTT v5 with shared subscriptions (Residential cluster) | L1/L2 | Sprint 2 |
@@ -366,7 +368,7 @@ The following table enumerates all primary components in ChargeShield-FL, their 
 | `ChargingIDS` | IDS baseline: CUSUM anomaly detection, Krum Byzantine resilience, Cosine Similarity gradient drift | L3 | Sprint 3 |
 | `FedMIA` plugin (`src/plugins/attacks/fedmia.py`) | Shadow-model MIA plugin used by `ChargingIDS` for per-node intrusion detection; implements `BaseAttack`; gradient-magnitude and cosine-similarity membership scoring | L3 | Sprint 3 |
 | `FedMIA Evaluator` (`scripts/run_experiments.py::run_fedmia()`) | Loss-based per-round MIA evaluator (Yeom et al., 2018); loads global weights into Autoencoder each round; score = −MSE; AUC-ROC via `sklearn`; outputs `per_round[round]["auc_roc"]` and summary `mean_auc_roc`, `max_auc_roc`, `min_auc_roc` | L3 | Sprint 5 |
-| `PluginRegistry` | Filesystem-based plugin discovery for the `attacks/` directory | L3 | Sprint 2 |
+| `PluginRegistry` | Filesystem-based plugin discovery for the `attacks/` directory **(future work, not yet implemented)** | L3 | Sprint 2 |
 | `NVFLAREServer` | NVFLARE 2.7.2 server process; provisioning orchestration; round lifecycle management | L3 | Sprint 1 |
 | `NVFLAREClient` | NVFLARE 2.7.2 client process; local training execution on each node | L2 | Sprint 1 |
 | `ContainerlabTopology` | Declarative YAML network topology definition; Docker bridge networks per cluster; WAN link emulation | Infrastructure | Sprint 1 |
@@ -401,11 +403,11 @@ flowchart LR
     A[ACN-Data CSV\nJPL 2019+2020\n13073 sessions] --> B[ACNDataset.load\nParse and filter nulls]
     B --> C[enrich_sessions\nhour_of_day\nduration_hours]
     C --> C2[normalize_sessions\nmin-max scaling\ntrain stats only]
-    C --> D[Node Partition\n12 clients\nDirichlet non-IID split]
+    C2 --> D[Node Partition\n12 clients\nDirichlet non-IID split]
     D --> E[AutoencoderTrainer\nLocal epochs\nMSE loss\n6 to 16 to 8 to 4 to 8 to 16 to 6]
     E --> F[GradientManager\nClip to max_grad_norm\nAdd Gaussian noise sigma]
     F --> G[NVFLARE Client\nSerialize ModelUpdate\nmTLS plus WireGuard]
-    G --> H[FedAvgAggregator\nStrategy FedAvg or FedProx\nWeighted average]
+    G --> H[FedAvgAggregator\nFedAvg weighted average\nFedProx via proximal_mu]
     H --> I[Global Model\nDistribute to all clients]
     H --> J[MLPlaneListener\nObserver events]
     J --> K[ChargingIDS\nCUSUM plus Krum\nCosine Similarity]
