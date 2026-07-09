@@ -41,7 +41,7 @@ from core.base_auditor import AuditReport
 @pytest.fixture
 def normal_batch():
     """
-    Batch di dati normali: 32 campioni, 7 feature, valori in [0,1].
+    Batch di dati normali: 32 campioni, 6 feature, valori in [0,1].
     Simula sessioni di ricarica normali normalizzate.
     """
     torch.manual_seed(42)

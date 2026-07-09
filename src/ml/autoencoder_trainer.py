@@ -191,7 +191,19 @@ class AutoencoderTrainer(AbstractMLModel):
 
         mean_loss = sum(epoch_losses) / len(epoch_losses) if epoch_losses else None
         loss_str = f"{mean_loss:.6f}" if mean_loss is not None else "N/A"
-        logger.info(f"[{self.node_id}] Round {round_num} — loss={loss_str}, n={len(sessions)}")
+
+        # Bug fix: se drop_last=True e il cluster ha < batch_size sessioni,
+        # il DataLoader produce 0 batch → epoch_losses è vuota → nessun training.
+        # In quel caso n_samples deve essere 0: i pesi sono stale e non devono
+        # contribuire al FedAvg (FedAvgAggregator filtra n_samples == 0).
+        effective_samples = len(sessions) if epoch_losses else 0
+        if effective_samples == 0 and len(sessions) > 0:
+            logger.warning(
+                f"[{self.node_id}] Round {round_num} — nessun batch prodotto "
+                f"(sessioni={len(sessions)} < batch_size={self.batch_size}). "
+                f"Pesi stale: n_samples impostato a 0 per escludere da FedAvg."
+            )
+        logger.info(f"[{self.node_id}] Round {round_num} — loss={loss_str}, n={effective_samples}")
 
         update = GradientUpdate(
             node_id=self.node_id,
@@ -200,7 +212,7 @@ class AutoencoderTrainer(AbstractMLModel):
             weights=self.get_weights(),
             gradients=None,
             loss=mean_loss,
-            n_samples=len(sessions),
+            n_samples=effective_samples,
             metadata={
                 "epochs": self.epochs,
                 "device": str(self.device),

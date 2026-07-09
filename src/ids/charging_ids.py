@@ -49,19 +49,35 @@ from core.base_auditor import AuditReport
 from plugins.attacks.fedmia import FedMIA, MIAResult
 
 
+import logging as _ids_logging
+_ids_logger = _ids_logging.getLogger(__name__)
+
+# Configurazione di default usata se config/auditor.yaml è assente.
+# Mantiene il sistema operativo anche in ambienti senza il file di config
+# (test unitari, ambienti CI, deploy incompleti).
+_IDS_DEFAULT_CONFIG: dict = {
+    "alert_threshold": 0.7,
+}
+
+
 def _load_ids_config(config_path: str = "config/auditor.yaml") -> dict:
     """
     Carica la configurazione IDS da auditor.yaml.
+    Se il file non esiste, usa _IDS_DEFAULT_CONFIG con un warning.
 
     Args:
         config_path: percorso al file di configurazione
 
-    Raises:
-        FileNotFoundError: se il file non esiste
+    Returns:
+        dizionario di configurazione IDS
     """
     path = Path(config_path)
     if not path.exists():
-        raise FileNotFoundError(f"IDS config not found: {config_path}")
+        _ids_logger.warning(
+            f"IDS config non trovato: {config_path}. "
+            f"Uso configurazione di default: {_IDS_DEFAULT_CONFIG}"
+        )
+        return _IDS_DEFAULT_CONFIG.copy()
     with open(path) as f:
         return yaml.safe_load(f)["auditor"]
 

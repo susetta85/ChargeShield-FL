@@ -110,7 +110,7 @@ experiment-sweep:
 	@for eps in 0.1 0.5 1.0 2.0 5.0; do \
 		echo "=== epsilon=$$eps ==="; \
 		$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
-			--epsilon $$eps --rounds 100; \
+			--config config/experiment.yaml --epsilon $$eps --rounds 100; \
 	done
 	@echo "✓ Sweep completato — risultati in: $(EXPERIMENTS)/"
 
@@ -125,7 +125,7 @@ experiment-full-sweep:
 		for eps in 0.1 0.5 1.0 2.0 5.0; do \
 			echo "=== rounds=$$rounds epsilon=$$eps ==="; \
 			$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
-				--epsilon $$eps --rounds $$rounds; \
+				--config config/experiment.yaml --epsilon $$eps --rounds $$rounds; \
 		done; \
 	done
 	@echo "✓ Full sweep completato — risultati in: $(EXPERIMENTS)/"

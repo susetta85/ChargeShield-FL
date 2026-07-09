@@ -399,7 +399,8 @@ The final feature vector is `[total_energy_kwh, max_power_kw, kwh_requested, min
 ```mermaid
 flowchart LR
     A[ACN-Data CSV\nJPL 2019+2020\n13073 sessions] --> B[ACNDataset.load\nParse and filter nulls]
-    B --> C[enrich_sessions\nhour_of_day\nduration_hours\nnormalization]
+    B --> C[enrich_sessions\nhour_of_day\nduration_hours]
+    C --> C2[normalize_sessions\nmin-max scaling\ntrain stats only]
     C --> D[Node Partition\n12 clients\nDirichlet non-IID split]
     D --> E[AutoencoderTrainer\nLocal epochs\nMSE loss\n6 to 16 to 8 to 4 to 8 to 16 to 6]
     E --> F[GradientManager\nClip to max_grad_norm\nAdd Gaussian noise sigma]
@@ -424,7 +425,7 @@ The choice of an autoencoder as the local model is motivated by the threat model
 
 MSE loss is selected over alternatives (Binary Cross-Entropy, Huber loss) because all six input features are continuous-valued and bounded after normalization. MSE provides an interpretable reconstruction fidelity measure that maps directly to the membership signal used by FedMIA without requiring threshold selection or distribution assumptions.
 
-The local training procedure runs a configurable number of epochs per FL round (default: 5 epochs, consistent with the FedAvg hyperparameter settings in [McMahan et al., 2017]). Batch size is set to 32 sessions, a value compatible with the memory constraints of the edge controller hardware tier.
+The local training procedure runs a configurable number of epochs per FL round (default: 3 epochs, as set in `config/experiment.yaml`; `epochs=5` in [McMahan et al., 2017] is the reference but not the operational default). Batch size is set to 32 sessions, a value compatible with the memory constraints of the edge controller hardware tier.
 
 **`drop_last=True` (`src/ml/autoencoder_trainer.py`, line 178).** The `DataLoader` is constructed with `drop_last=True` to prevent `BatchNorm1d` crashes. If a node's dataset partition produces a tail batch of size 1, `BatchNorm1d` computes zero variance and generates NaN activations, crashing the forward pass. `drop_last=True` discards any sub-batch-size remainder, eliminating this failure mode unconditionally with negligible data loss.
 

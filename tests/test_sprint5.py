@@ -124,10 +124,19 @@ class TestAutoencoderTrainer:
         assert update.loss is None
 
     def test_train_local_none_feature_skipped(self, trainer):
+        # Usa una feature reale (total_energy_kwh) con valore None per testare
+        # effettivamente la logica di skip in _sessions_to_tensor.
+        # Le chiavi precedenti (voltage_v, ecc.) non appartengono a CONTINUOUS_FEATURES
+        # e venivano saltate per chiave mancante, non per valore None — test non valido.
         sessions = [
-            {"voltage_v": None, "current_a": 16.0, "power_kw": 3.7,
-             "energy_kwh": 10.0, "temperature_c": 22.0,
-             "soc_percent": 80.0, "timestamp": 1.0},
+            {
+                "total_energy_kwh": None,  # feature reale ACN con valore None → skip
+                "max_power_kw": 3.7,
+                "kwh_requested": 12.0,
+                "minutes_available": 180.0,
+                "hour_of_day": 9.0,
+                "duration_hours": 3.0,
+            },
         ]
         update = trainer.train_local(sessions, round_num=1)
         assert update.n_samples == 0
@@ -364,3 +373,107 @@ class TestFedAvgAggregator:
         assert len(events) == 1
         assert events[0].event_type == "aggregation"
         assert events[0].purdue_level == 3
+
+
+# ── Normalization Functions ────────────────────────────────────────────────────
+# Testa compute_feature_stats() e normalize_sessions() di run_experiments.py.
+# Queste due funzioni sono critiche: un bug produce valori fuori [0,1] e
+# corrompe il MSE loss senza errori visibili.
+
+import sys
+from pathlib import Path as _Path
+sys.path.insert(0, str(_Path(__file__).parent.parent / "scripts"))
+
+from run_experiments import compute_feature_stats, normalize_sessions
+
+_FEATURES = [
+    "total_energy_kwh", "max_power_kw", "kwh_requested",
+    "minutes_available", "hour_of_day", "duration_hours",
+]
+
+
+@pytest.fixture
+def raw_sessions():
+    return [
+        {"total_energy_kwh": 0.0,  "max_power_kw": 1.0, "kwh_requested": 2.0,
+         "minutes_available": 0.0, "hour_of_day": 0.0,  "duration_hours": 0.0},
+        {"total_energy_kwh": 10.0, "max_power_kw": 5.0, "kwh_requested": 8.0,
+         "minutes_available": 100.0, "hour_of_day": 12.0, "duration_hours": 2.0},
+        {"total_energy_kwh": 20.0, "max_power_kw": 9.0, "kwh_requested": 14.0,
+         "minutes_available": 200.0, "hour_of_day": 23.0, "duration_hours": 4.0},
+    ]
+
+
+class TestNormalization:
+    # compute_feature_stats restituisce {feat: (fmin, fmax)} — tuple, non dict.
+
+    def test_compute_feature_stats_keys(self, raw_sessions):
+        stats = compute_feature_stats(raw_sessions, _FEATURES)
+        for feat in _FEATURES:
+            assert feat in stats, f"Feature '{feat}' mancante da stats"
+            assert isinstance(stats[feat], tuple) and len(stats[feat]) == 2
+
+    def test_compute_feature_stats_values(self, raw_sessions):
+        stats = compute_feature_stats(raw_sessions, _FEATURES)
+        fmin, fmax = stats["total_energy_kwh"]
+        assert fmin == pytest.approx(0.0)
+        assert fmax == pytest.approx(20.0)
+        hmin, hmax = stats["hour_of_day"]
+        assert hmin == pytest.approx(0.0)
+        assert hmax == pytest.approx(23.0)
+
+    def test_normalize_sessions_range(self, raw_sessions):
+        """Tutti i valori normalizzati devono essere in [0, 1]."""
+        stats = compute_feature_stats(raw_sessions, _FEATURES)
+        normalized = normalize_sessions(raw_sessions, stats, _FEATURES)
+        for s in normalized:
+            for feat in _FEATURES:
+                val = s[feat]
+                assert 0.0 - 1e-6 <= val <= 1.0 + 1e-6, (
+                    f"{feat}={val} fuori da [0,1]"
+                )
+
+    def test_normalize_sessions_min_is_zero(self, raw_sessions):
+        """Il minimo (prima sessione) deve essere normalizzato a 0."""
+        stats = compute_feature_stats(raw_sessions, _FEATURES)
+        normalized = normalize_sessions(raw_sessions, stats, _FEATURES)
+        assert normalized[0]["total_energy_kwh"] == pytest.approx(0.0)
+
+    def test_normalize_sessions_max_is_one(self, raw_sessions):
+        """Il massimo (ultima sessione) deve essere normalizzato a 1."""
+        stats = compute_feature_stats(raw_sessions, _FEATURES)
+        normalized = normalize_sessions(raw_sessions, stats, _FEATURES)
+        assert normalized[-1]["total_energy_kwh"] == pytest.approx(1.0)
+
+    def test_normalize_sessions_does_not_mutate_input(self, raw_sessions):
+        """normalize_sessions non deve modificare le sessioni originali."""
+        import copy
+        original = copy.deepcopy(raw_sessions)
+        stats = compute_feature_stats(raw_sessions, _FEATURES)
+        normalize_sessions(raw_sessions, stats, _FEATURES)
+        for orig, current in zip(original, raw_sessions):
+            for feat in _FEATURES:
+                assert orig[feat] == current[feat], (
+                    f"Feature '{feat}' mutata: {orig[feat]} → {current[feat]}"
+                )
+
+    def test_normalize_constant_feature_no_nan(self):
+        """Con min==max (feature costante), compute_feature_stats usa fmin+1.0
+        come fmax per evitare divisione per zero. Il risultato deve essere 0.0
+        e non NaN."""
+        sessions = [
+            {"total_energy_kwh": 5.0, "max_power_kw": 3.0, "kwh_requested": 8.0,
+             "minutes_available": 60.0, "hour_of_day": 8.0, "duration_hours": 1.0},
+            {"total_energy_kwh": 5.0, "max_power_kw": 7.0, "kwh_requested": 10.0,
+             "minutes_available": 120.0, "hour_of_day": 9.0, "duration_hours": 2.0},
+        ]
+        stats = compute_feature_stats(sessions, _FEATURES)
+        # compute_feature_stats gestisce il caso costante: fmax = fmin + 1.0
+        fmin, fmax = stats["total_energy_kwh"]
+        assert fmax == fmin + 1.0  # non divide per zero
+        normalized = normalize_sessions(sessions, stats, _FEATURES)
+        # Valore costante → (5.0 - 5.0) / 1.0 = 0.0, non NaN
+        for s in normalized:
+            val = s["total_energy_kwh"]
+            assert val == val, "NaN rilevato in feature costante normalizzata"
+            assert val == pytest.approx(0.0)

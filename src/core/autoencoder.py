@@ -261,7 +261,10 @@ class Autoencoder(nn.Module):
             batch_losses: list[float] = []
 
             for batch in train_loader:
-                # batch è un tensore di shape (batch_size, input_dim)
+                # Unpack tuple: DataLoader da TensorDataset restituisce (tensor,)
+                # invece di un tensore raw. Supporta entrambi i casi.
+                if isinstance(batch, (list, tuple)):
+                    batch = batch[0]
                 optimizer.zero_grad()
                 reconstruction = self.forward(batch)
                 loss = self._criterion(reconstruction, batch)
@@ -301,6 +304,9 @@ class Autoencoder(nn.Module):
 
         with torch.no_grad():
             for batch in data_loader:
+                # Unpack tuple: DataLoader da TensorDataset restituisce (tensor,)
+                if isinstance(batch, (list, tuple)):
+                    batch = batch[0]
                 reconstruction = self.forward(batch)
                 # Errore per campione (non per batch)
                 batch_errors = torch.mean(

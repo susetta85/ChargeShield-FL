@@ -87,17 +87,22 @@ class FedAvgAggregator(AbstractMLModel):
         updates = self._round_updates[:]
         self._round_updates = []
 
-        if len(updates) < self.min_participants:
-            logger.warning(
-                f"Round {round_num} — partecipanti insufficienti: "
-                f"{len(updates)} < {self.min_participants}"
-            )
-            return None
-
-        # Filtra update senza n_samples valido
+        # Filtra update senza n_samples valido PRIMA del check min_participants.
+        # Bug fix: controllare len(updates) invece di len(valid) permetteva a 3 update
+        # di cui 2 invalidi (n_samples=0) di superare il check min_participants=2,
+        # producendo un'aggregazione su 1 solo nodo e annullando silenziosamente
+        # la Byzantine-tolerance guarantee.
         valid = [u for u in updates if u.n_samples and u.n_samples > 0]
         if not valid:
             logger.warning(f"Round {round_num} — nessun update con n_samples valido")
+            return None
+
+        if len(valid) < self.min_participants:
+            logger.warning(
+                f"Round {round_num} — partecipanti validi insufficienti: "
+                f"{len(valid)} < {self.min_participants} "
+                f"(update raccolti: {len(updates)}, di cui {len(updates)-len(valid)} invalidi)"
+            )
             return None
 
         total_samples = sum(u.n_samples for u in valid)
