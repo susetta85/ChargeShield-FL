@@ -151,9 +151,9 @@ test-sprint5:
 
 .PHONY: install-dev
 install-dev:
-	@echo "→ Installazione dipendenze sviluppo..."
-	pip install pytest pytest-cov --break-system-packages
-	@echo "✓ Dipendenze installate"
+	@echo "→ Installazione dipendenze (runtime + dev)..."
+	pip install -e ".[dev]" --break-system-packages
+	@echo "✓ Installato: torch, numpy, scikit-learn, pandas, openpyxl, pyyaml, pytest, pytest-cov, ruff, mypy"
 
 .PHONY: test-coverage
 test-coverage: install-dev

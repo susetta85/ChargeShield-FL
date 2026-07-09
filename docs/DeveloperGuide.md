@@ -188,8 +188,7 @@ chargeshield-fl/
 ├── workspace/                       # NVFLARE provisioning output; gitignored
 ├── results/                         # Experiment outputs; gitignored
 ├── Makefile
-├── pyproject.toml
-├── requirements.txt
+├── pyproject.toml        ← dipendenze runtime + dev extras (torch, pytest, ruff, ...)
 └── .gitignore
 ```
 
@@ -1125,9 +1124,11 @@ The `Makefile` provides a unified interface for all lifecycle operations. All ta
 
 | Target | Description |
 |---|---|
+| `make install-dev` | Install all Python dependencies (runtime + dev): `torch`, `numpy`, `scikit-learn`, `pandas`, `openpyxl`, `pyyaml`, `pytest`, `pytest-cov`, `ruff`, `mypy`. Runs `pip install -e ".[dev]"` from `pyproject.toml`. **Run this once after cloning the repository before executing any other target.** |
 | `make test` | Run the complete pytest test suite. Exits with a non-zero code if any test fails. |
 | `make test-sprint4` | Run only the tests in `tests/test_sprint4.py` (52 tests). Use during Sprint 4 development to get a fast feedback cycle. |
-| `make test-sprint5` | Run only the tests in `tests/test_sprint5.py` (25 tests). |
+| `make test-sprint5` | Run only the tests in `tests/test_sprint5.py` (~32 tests: AutoencoderTrainer, GradientManager, FedAvgAggregator, normalization). |
+| `make test-coverage` | Run the full test suite with coverage report (`--cov=src`). Depends on `install-dev`. |
 
 ### 7.4 Cleanup
 

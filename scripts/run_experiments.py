@@ -532,18 +532,21 @@ def _update_excel_report(experiments_dir: Path) -> None:
     """
     Rigenera il report Excel a 6 sheet chiamando generate_excel_report.py.
     Produce: Raw Data, Heat Map, Per Rounds, Per Epsilon, Comparison, AUC Progression.
+
+    Usa un import Python standard invece di exec_module() per evitare il rischio
+    di arbitrary code execution se il file fosse modificato da un attacker con accesso
+    al filesystem. Con import standard il modulo viene caricato una sola volta e
+    cachato in sys.modules — sicuro e idempotente.
     """
     try:
-        import importlib.util
         from openpyxl import Workbook
 
-        script_path = Path(__file__).parent / "generate_excel_report.py"
-        spec = importlib.util.spec_from_file_location("gen_xl", script_path)
-        if spec is None or spec.loader is None:
-            logger.warning(f"generate_excel_report.py non trovato o non caricabile: {script_path}")
-            return
-        gen = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(gen)
+        # Import diretto: genera_excel_report.py è nella stessa directory di questo script.
+        # Se il file non esiste, ImportError viene catturato sotto.
+        _scripts_dir = str(Path(__file__).parent)
+        if _scripts_dir not in sys.path:
+            sys.path.insert(0, _scripts_dir)
+        import generate_excel_report as gen  # noqa: PLC0415
 
         records = gen.load_experiments(experiments_dir)
         if not records:
