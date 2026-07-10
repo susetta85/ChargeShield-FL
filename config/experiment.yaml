@@ -10,8 +10,7 @@ experiment:
   epsilon: 1.0
   delta: 1.0e-5
   max_grad_norm: 1.0
-  # FedAvg/FedProx — 0.0 = FedAvg puro, >0 = FedProx
-  proximal_mu: 0.01
+  # proximal_mu: rimosso — il codice legge cfg["ml"]["proximal_mu"], non cfg["experiment"]["proximal_mu"]
 
 datasets:
   jpl_2019: datasets/acn/jpl/acndata_sessions_2019.json

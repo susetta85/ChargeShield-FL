@@ -53,7 +53,14 @@ def _load_auditor_config(config_path: str = "config/auditor.yaml") -> dict:
     if not path.exists():
         raise FileNotFoundError(f"Auditor config not found: {config_path}")
     with open(path) as f:
-        return yaml.safe_load(f)["auditor"]
+        data = yaml.safe_load(f)
+    cfg = (data or {}).get("auditor")
+    if cfg is None:
+        raise KeyError(
+            f"Chiave 'auditor' assente in {config_path}. "
+            "Verificare che il file YAML contenga una sezione 'auditor:'."
+        )
+    return cfg
 
 
 def _compute_l2_norm(values: list[float]) -> float:

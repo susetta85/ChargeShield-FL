@@ -79,7 +79,15 @@ def _load_ids_config(config_path: str = "config/auditor.yaml") -> dict:
         )
         return _IDS_DEFAULT_CONFIG.copy()
     with open(path) as f:
-        return yaml.safe_load(f)["auditor"]
+        data = yaml.safe_load(f)
+    cfg = (data or {}).get("auditor")
+    if cfg is None:
+        _ids_logger.warning(
+            f"Chiave 'auditor' assente in {config_path}. "
+            f"Uso configurazione di default: {_IDS_DEFAULT_CONFIG}"
+        )
+        return _IDS_DEFAULT_CONFIG.copy()
+    return cfg
 
 
 # ─── CUSUM Detector ───────────────────────────────────────────────────────────

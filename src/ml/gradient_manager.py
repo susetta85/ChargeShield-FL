@@ -99,12 +99,22 @@ class GradientManager(AbstractMLModel):
 
     # ── DP API ────────────────────────────────────────────────────────────────
 
-    def privatize(self, update: GradientUpdate) -> GradientUpdate:
+    def privatize(
+        self,
+        update: GradientUpdate,
+        weight_keys: list[str] | None = None,
+    ) -> GradientUpdate:
         """
         Applica gradient clipping + Gaussian noise ai pesi del GradientUpdate.
 
         Args:
-            update: GradientUpdate grezzo da AutoencoderTrainer
+            update:      GradientUpdate grezzo da AutoencoderTrainer
+            weight_keys: chiavi dello state_dict corrispondenti a update.weights.
+                         Se fornite, i buffer BatchNorm (running_mean, running_var,
+                         num_batches_tracked) vengono ESCLUSI dal rumore DP:
+                         aggiungere rumore Gaussiano a running_var la renderebbe
+                         negativa (σ >> var tipica), causando NaN in sqrt durante
+                         la forward pass in eval mode.
 
         Returns:
             GradientUpdate con pesi privatizzati (DP garantita)
@@ -116,8 +126,8 @@ class GradientManager(AbstractMLModel):
         # Step 1: clip norma L2 globale
         clipped = self._clip_weights(update.weights)
 
-        # Step 2: aggiungi rumore Gaussiano
-        noised = self._add_noise(clipped)
+        # Step 2: aggiungi rumore Gaussiano (escludi buffer BN se keys note)
+        noised = self._add_noise(clipped, weight_keys=weight_keys)
 
         privatized = GradientUpdate(
             node_id=update.node_id,
@@ -212,13 +222,39 @@ class GradientManager(AbstractMLModel):
             result.append(next(int_iter) if is_int else next(float_iter))
         return result
 
-    def _add_noise(self, weights: list[torch.Tensor]) -> list[torch.Tensor]:
+    def _add_noise(
+        self,
+        weights: list[torch.Tensor],
+        weight_keys: list[str] | None = None,
+    ) -> list[torch.Tensor]:
         """
-        Aggiunge rumore Gaussiano N(0, σ²) solo ai tensori floating-point.
-        I buffer BatchNorm int64 (num_batches_tracked) vengono restituiti invariati:
+        Aggiunge rumore Gaussiano N(0, σ²) solo ai tensori floating-point,
+        escludendo i buffer BatchNorm quando le chiavi dello state_dict sono note.
+
+        Motivazione dell'esclusione BatchNorm:
+            running_var è una varianza (tipicamente ~0.1–1.0 per dati normalizzati).
+            Aggiungere rumore con σ >> running_var (es. σ=48 per ε=0.1) rende
+            running_var negativa. BatchNorm in eval mode calcola:
+                y = (x - running_mean) / sqrt(running_var + eps)
+            Se running_var + eps < 0, sqrt() → NaN, invalidando tutte le score MIA.
+            I buffer BN (running_mean, running_var, num_batches_tracked) sono
+            statistiche ausiliarie, non parametri DP-perturbabili.
+
+        I buffer int64 (num_batches_tracked) vengono già esclusi perché
         torch.randn_like() su int64 solleva RuntimeError in PyTorch ≥2.0.
         """
-        return [
-            w + torch.randn_like(w) * self.sigma if w.is_floating_point() else w
-            for w in weights
-        ]
+        _BN_BUFFERS = {"running_mean", "running_var", "num_batches_tracked"}
+        result: list[torch.Tensor] = []
+        for i, w in enumerate(weights):
+            if not w.is_floating_point():
+                result.append(w)
+            elif (
+                weight_keys is not None
+                and i < len(weight_keys)
+                and weight_keys[i].split(".")[-1] in _BN_BUFFERS
+            ):
+                # Buffer BatchNorm: restituiti invariati, non sono parametri DP
+                result.append(w)
+            else:
+                result.append(w + torch.randn_like(w) * self.sigma)
+        return result

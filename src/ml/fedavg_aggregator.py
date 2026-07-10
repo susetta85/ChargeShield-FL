@@ -171,7 +171,14 @@ class FedAvgAggregator(AbstractMLModel):
             for w in first_weights
         ]
 
+        n_expected = len(first_weights)
         for update in updates:
+            if len(update.weights) != n_expected:
+                logger.error(
+                    f"[{update.node_id}] Numero di pesi ({len(update.weights)}) "
+                    f"diverso dall'atteso ({n_expected}) — update ignorato nell'aggregazione"
+                )
+                continue
             weight = update.n_samples / total_samples
             for i, w in enumerate(update.weights):
                 t = (w if isinstance(w, torch.Tensor) else torch.tensor(w)).float()

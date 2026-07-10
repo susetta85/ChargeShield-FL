@@ -101,6 +101,12 @@ class AutoencoderTrainer(AbstractMLModel):
         Usare state_dict invece di parameters() per trasferire anche i buffer BatchNorm."""
         return [v.clone().cpu() for v in self.model.state_dict().values()]
 
+    def get_weight_keys(self) -> list[str]:
+        """Restituisce le chiavi dello state_dict nell'ordine usato da get_weights().
+        Passare a GradientManager.privatize(weight_keys=...) per escludere i buffer
+        BatchNorm (running_mean, running_var) dal rumore DP Gaussiano."""
+        return list(self.model.state_dict().keys())
+
     def set_weights(self, weights: list[Any]) -> None:
         """
         Carica i pesi globali nel modello locale via load_state_dict.

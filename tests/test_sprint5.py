@@ -330,9 +330,9 @@ class TestFedAvgAggregator:
 
     def test_min_participants_vs_valid_filter(self, trainer):
         """
-        Anche se len(updates) >= min_participants, se il filtro valid riduce
-        i partecipanti il risultato dovrebbe avere n_participants == len(valid).
-        Con 3 update di cui 2 con n_samples=0, valid=[1 nodo].
+        Se il filtro valid riduce i partecipanti sotto min_participants,
+        aggregate() restituisce None (non aggrega con partecipanti insufficienti).
+        Con 3 update di cui 2 con n_samples=0: valid=[n3], len(valid)=1 < min_participants=2.
         """
         agg = FedAvgAggregator({"min_participants": 2})
         w = trainer.get_weights()
@@ -340,9 +340,22 @@ class TestFedAvgAggregator:
         agg.collect(self._make_update("n2", "B", w, 0,   0.2))  # invalido
         agg.collect(self._make_update("n3", "C", w, 100, 0.3))  # valido
         result = agg.aggregate(round_num=1)
-        # n3 è l'unico valido — aggregazione con 1 solo nodo
+        # 1 solo nodo valido < min_participants=2 → aggregazione rifiutata
+        assert result is None
+
+    def test_min_participants_vs_valid_filter_sufficient(self, trainer):
+        """
+        Se il filtro valid lascia esattamente min_participants nodi, aggregate() ha successo.
+        Con 3 update di cui 1 con n_samples=0: valid=[n1, n2], len(valid)=2 == min_participants=2.
+        """
+        agg = FedAvgAggregator({"min_participants": 2})
+        w = trainer.get_weights()
+        agg.collect(self._make_update("n1", "A", w, 50,  0.1))  # valido
+        agg.collect(self._make_update("n2", "B", w, 50,  0.2))  # valido
+        agg.collect(self._make_update("n3", "C", w, 0,   0.3))  # invalido
+        result = agg.aggregate(round_num=1)
         assert result is not None
-        assert result.n_participants == 1
+        assert result.n_participants == 2
 
     def test_set_weights_bn_buffer_dtype(self, trainer):
         """num_batches_tracked (buffer BN) deve mantenere dtype int64 dopo il round-trip."""

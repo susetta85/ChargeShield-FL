@@ -11,9 +11,9 @@
 #   6. Salva risultati in experiments/
 #
 # Usage:
-#   python scripts/run_experiment.py --config config/experiment.yaml
-#   python scripts/run_experiment.py --epsilon 0.5 --rounds 10
-#   python scripts/run_experiment.py --dry-run
+#   python scripts/run_experiments.py --config config/experiment.yaml
+#   python scripts/run_experiments.py --epsilon 0.5 --rounds 10
+#   python scripts/run_experiments.py --dry-run
 
 from __future__ import annotations
 
@@ -125,7 +125,15 @@ def compute_feature_stats(
     """
     stats: dict[str, tuple[float, float]] = {}
     for feat in features:
-        vals = [float(s[feat]) for s in sessions if s.get(feat) is not None]
+        vals = []
+        for s in sessions:
+            raw = s.get(feat)
+            if raw is None:
+                continue
+            try:
+                vals.append(float(raw))
+            except (ValueError, TypeError):
+                continue  # salta valori non numerici (corrotti o stringhe errate)
         if not vals:
             stats[feat] = (0.0, 1.0)
             continue
@@ -204,8 +212,9 @@ def run_fl_rounds(
         for cid, trainer in trainers.items():
             # Training locale
             update = trainer.train_local(cluster_sessions[cid], round_num)
-            # Applica DP
-            private_update = gm.privatize(update)
+            # Applica DP — passa le chiavi per escludere buffer BatchNorm dal rumore
+            weight_keys    = trainer.get_weight_keys()
+            private_update = gm.privatize(update, weight_keys=weight_keys)
             agg.collect(private_update)
             round_updates.append(private_update)
 
@@ -342,6 +351,14 @@ def run_fedmia(
             for k, w in zip(keys, global_weights)
         }
         model.load_state_dict(state, strict=True)
+        # Clamp BatchNorm running_var a valori positivi: il rumore DP con σ grande
+        # (es. σ=48 per ε=0.1) può rendere running_var negativa, causando NaN in
+        # sqrt(running_var + eps) durante la forward pass in eval mode.
+        # Questo guard è difensivo; con il fix in GradientManager._add_noise() i
+        # buffer BN non ricevono più rumore, quindi running_var sarà già positiva.
+        for buf_name, buf in model.named_buffers():
+            if "running_var" in buf_name:
+                buf.clamp_(min=1e-8)
         model.eval()
 
         member_scores     = _score_batch(model, members_balanced)
@@ -353,13 +370,39 @@ def run_fedmia(
 
         labels = [1] * len(member_scores) + [0] * len(non_member_scores)
         scores = member_scores + non_member_scores
-        auc    = roc_auc_score(labels, scores)
+
+        # Filtra NaN residui (belt-and-suspenders: senza il BN fix potrebbe ancora
+        # verificarsi NaN per epsilon molto piccoli con sigma >> 1)
+        scores_arr = np.array(scores)
+        labels_arr = np.array(labels)
+        valid_mask = ~np.isnan(scores_arr) & ~np.isinf(scores_arr)
+        if valid_mask.sum() < 10:
+            logger.warning(
+                f"Round {round_num}: troppi score NaN/Inf "
+                f"({(~valid_mask).sum()}/{len(scores_arr)}) — probabile corruzione pesi DP "
+                f"(σ grande >> norma pesi). AUC impostato a 0.5 (baseline random)."
+            )
+            mia_results[round_num] = {
+                "auc_roc":               0.5,
+                "member_score_mean":     float("nan"),
+                "non_member_score_mean": float("nan"),
+                "nan_fraction":          float((~valid_mask).sum()) / len(scores_arr),
+            }
+            continue
+        if not valid_mask.all():
+            logger.warning(
+                f"Round {round_num}: {(~valid_mask).sum()} score NaN/Inf filtrati "
+                f"su {len(scores_arr)} totali"
+            )
+        labels_arr = labels_arr[valid_mask]
+        scores_arr = scores_arr[valid_mask]
+        auc = roc_auc_score(labels_arr, scores_arr)
         logger.info(f"Round {round_num} — FedMIA AUC-ROC: {auc:.4f}")
 
         mia_results[round_num] = {
             "auc_roc":               auc,
-            "member_score_mean":     float(np.mean(member_scores)),
-            "non_member_score_mean": float(np.mean(non_member_scores)),
+            "member_score_mean":     float(np.nanmean(member_scores)),
+            "non_member_score_mean": float(np.nanmean(non_member_scores)),
         }
 
     return mia_results
@@ -502,12 +545,18 @@ def save_results(
             ),
         },
         "per_round": {
+            # Itera sull'unione di tutti i round: FL, MIA e IDS.
+            # Se mia_results è vuoto (es. MIA fallita), i round FL sono comunque salvati.
             str(r): {
                 "fl":  {"mean_loss": (fl_results or {}).get(r, {}).get("mean_loss")},
                 "mia": mia_results.get(r, {}),
                 "ids": ids_results.get(r, {}),
             }
-            for r in sorted(mia_results.keys())
+            for r in sorted(
+                set(mia_results.keys())
+                | set((fl_results or {}).keys())
+                | set(ids_results.keys())
+            )
         },
     }
 
@@ -623,8 +672,7 @@ def main() -> None:
 
     # Normalizzazione min-max: calcolata SOLO su train_sessions (no leakage dal hold-out).
     # Stessa trasformazione applicata a holdout_sessions per la FedMIA.
-    from ml.autoencoder_trainer import AutoencoderTrainer
-    _FEATURES = AutoencoderTrainer.CONTINUOUS_FEATURES
+    _FEATURES = AutoencoderTrainer.CONTINUOUS_FEATURES  # importato a livello modulo (riga 41)
     feature_stats    = compute_feature_stats(train_sessions, _FEATURES)
     train_sessions   = normalize_sessions(train_sessions,   feature_stats, _FEATURES)
     holdout_sessions = normalize_sessions(holdout_sessions, feature_stats, _FEATURES)
@@ -633,9 +681,27 @@ def main() -> None:
         logger.info("Dry run completato — uscita.")
         return
 
-    fl_results  = run_fl_rounds(cfg, train_sessions)
-    mia_results = run_fedmia(cfg, train_sessions, holdout_sessions, fl_results)
-    ids_results = {} if args.skip_ids else run_ids(cfg, fl_results)
+    fl_results = run_fl_rounds(cfg, train_sessions)
+
+    # run_fedmia e run_ids non devono impedire il salvataggio dei risultati FL.
+    # Con try/except, save_results() viene sempre chiamato anche in caso di errore.
+    mia_results: dict = {}
+    try:
+        mia_results = run_fedmia(cfg, train_sessions, holdout_sessions, fl_results)
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            f"run_fedmia() fallita: {exc}. "
+            "I risultati FL vengono comunque salvati con mia_results={}. "
+            "Controllare il log per la causa (es. NaN negli score MIA).",
+            exc_info=True,
+        )
+
+    ids_results: dict = {}
+    if not args.skip_ids:
+        try:
+            ids_results = run_ids(cfg, fl_results)
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"run_ids() fallita: {exc}. Continuazione senza risultati IDS.", exc_info=True)
 
     save_results(cfg, mia_results, ids_results, fl_results)
 
