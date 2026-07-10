@@ -205,7 +205,7 @@ A systematic sweep across the following parameter grid is currently in progress:
 | Privacy budget ε | 0.1, 0.5, 1.0, 2.0, 5.0 |
 | FL algorithm | FedAvg, FedProx (proximal_mu = 0.01) |
 
-This yields 40 experimental conditions. The primary hypothesis under evaluation is that AUC-ROC increases monotonically with ε (relaxed privacy) and with the number of training rounds (greater memorisation), with FedProx exhibiting marginally different leakage profiles due to its proximal regularisation term. Results will be reported in the DSN 2027 submission.
+This yields 20 experimental configurations (4 × 5). The primary hypothesis under evaluation is that AUC-ROC increases monotonically with ε (relaxed privacy) and with the number of training rounds (greater memorisation). FedProx regularisation (proximal_mu = 0.01) is active across all configurations; a FedAvg baseline (proximal_mu = 0) will be evaluated in Sprint 8. Results will be reported in the DSN 2027 submission.
 
 ---
 
@@ -213,48 +213,70 @@ This yields 40 experimental conditions. The primary hypothesis under evaluation 
 
 ### Prerequisites
 
-- Docker (OrbStack recommended on macOS)
-- Containerlab >= 0.54
+**Required for experiments (no Docker needed):**
 - Python >= 3.11
 - GNU Make
+- pip
+
+**Optional — for containerised topology emulation (Sprint 7+):**
+- Docker (OrbStack recommended on macOS)
+- Containerlab >= 0.54
 - WireGuard tools (`wg`, `wg-quick`)
 
 ### Installation
 
 ```bash
-git clone https://github.com/your-org/chargeshield-fl.git
-cd chargeshield-fl
+git clone https://github.com/susetta85/ChargeShield-FL.git
+cd ChargeShield-FL
 
-# Build all container images
-make build
+# Install all Python dependencies (runtime + dev)
+pip install -e ".[dev]" --break-system-packages
+```
 
-# Provision the Containerlab topology and WireGuard mesh
-make provision
+### Dataset
 
-# Deploy NVFLARE server and all 12 FL clients
-make deploy
+Download the ACN-Data JPL dataset (2019 and 2020) from https://ev.caltech.edu/dataset and place the JSON files at:
 
-# Run a single experiment (default: 100 rounds, e=1.0, FedAvg)
+```
+datasets/acn/jpl/acndata_sessions_2019.json
+datasets/acn/jpl/acndata_sessions_2020.json
+```
+
+### Running Experiments
+
+```bash
+# Verify config and dataset without training (~5 seconds)
+make experiment-dry
+
+# Single experiment: 100 rounds, ε=1.0, FedProx μ=0.01
 make experiment
+
+# Full sweep: rounds ∈ {100,200,500,1000} × ε ∈ {0.1,0.5,1.0,2.0,5.0}
+# Each run creates a new numbered directory experiments/exp{N}/
+# Estimated runtime: ~36h on CPU (sequential; 20 configs × ~1.8h average)
+nohup make experiment-full-sweep &
+
+# Monitor progress in real time
+tail -f experiments/exp1/sweep_log.txt
 ```
 
-### Running the Full Parameter Sweep
+Results are written to `experiments/exp{N}/`:
+- `experiment_{timestamp}.json` — per-config result (one file per completed config, timestamped)
+- `exp{N}.xlsx` — 6-sheet Excel report (Raw Data, Heat Map, Per Rounds, Per Epsilon, Comparison, AUC Progression), regenerated after each config completes
+
+Running `make experiment-full-sweep` a second time produces `experiments/exp2/` and so on; sweep directories are never mixed.
+
+### Running Tests
 
 ```bash
-# Launch the full 40-condition sweep (long-running; recommended in tmux or screen)
-make experiment-sweep
+make test
 ```
 
-Results are written to `results/` as JSON files keyed by `(rounds, epsilon, algorithm)` and aggregated into `results/summary.csv`.
-
-### Teardown
+### Teardown (container topology only)
 
 ```bash
-# Destroy all containers and network topology
-make destroy
-
-# Remove build artefacts and results
-make clean
+make destroy   # remove Containerlab containers
+make clean     # remove __pycache__ and build artefacts
 ```
 
 ---
@@ -263,37 +285,44 @@ make clean
 
 | Makefile Target | Description |
 |---|---|
-| `make build` | Build all Docker images for FL server, FL clients, and FedMIA attacker |
-| `make provision` | Deploy the Containerlab topology; configure WireGuard tunnels; issue mTLS certificates |
-| `make deploy` | Start NVFLARE server and all 12 FL client processes within their respective containers |
-| `make destroy` | Tear down all containers and remove the Containerlab topology |
-| `make experiment` | Run a single federated experiment with default parameters (100 rounds, ε=1.0, FedProx μ=0.01) |
-| `make experiment-sweep` | Execute the full parameter sweep (rounds × ε × algorithm grid) sequentially |
-| `make test` | Run the unit and integration test suite (pytest, 140 tests across 6 test files) |
-| `make clean` | Remove build artefacts, compiled Python files, and intermediate experiment outputs |
+| `make experiment-dry` | Dry run: loads config and dataset, prints summary, exits without training |
+| `make experiment` | Single experiment with default parameters (100 rounds, ε=1.0, FedProx μ=0.01); result written to `experiments/experiment_{timestamp}.json` |
+| `make experiment-full-sweep` | Full rounds × ε sweep (20 configs); creates `experiments/exp{N}/` with JSON files and `exp{N}.xlsx`; each new run auto-increments N |
+| `make test` | Run the complete unit and integration test suite (pytest) |
+| `make test-sprint4` | Sprint 4 tests only |
+| `make test-sprint5` | Sprint 5 tests only |
+| `make lint` | Static analysis via ruff |
+| `make clean` | Remove `__pycache__`, `.pyc` files, and pytest artefacts |
+| `make build` | Build Docker images for the containerised topology (Sprint 7+; not required for experiments) |
+| `make provision` | Provision Containerlab topology and WireGuard mesh (container topology only) |
+| `make deploy` | Start NVFLARE server and all 12 FL clients in containers (container topology only) |
+| `make destroy` | Tear down the Containerlab topology |
 
 ### Experiment Result Scripts
 
 | Script | Description |
 |---|---|
-| `scripts/run_experiments.py` | Orchestrates a single FL experiment; embeds the loss-based FedMIA evaluator (Yeom 2018) per round; performs 80/20 hold-out split (train sessions → FL, hold-out → non-members); writes per-round `auc_roc`, FL `mean_loss`, and IDS results to experiment JSON; auto-regenerates Excel at completion |
-| `scripts/run_sweep.py` | Runs multiple experiments sequentially for a given list of `--rounds` and `--epsilon` values; logs progress and reports failures; invokes `run_experiments.py` as a subprocess per configuration |
-| `scripts/generate_excel_report.py` | Reads all experiment JSON files from `experiments/` and generates a 6-sheet Excel workbook: **Raw Data** (one row per experiment), **Heat Map** (AUC-ROC matrix: rounds × ε), **Per Rounds** (stats aggregated by round count), **Per Epsilon** (stats aggregated by ε), **Comparison** (side-by-side metrics across all experiments), **AUC Progression** (per-round AUC trajectory for each experiment) |
+| `scripts/run_experiments.py` | Orchestrates a single FL experiment; embeds the loss-based FedMIA evaluator (Yeom 2018) per round; performs 80/20 hold-out split (train → members, hold-out → non-members); writes per-round `auc_roc`, FL `mean_loss`, and IDS results to `experiment_{timestamp}.json`; accepts `--sweep-dir experiments/exp{N}` to write results into a named sweep directory; auto-regenerates `exp{N}.xlsx` at completion |
+| `scripts/run_sweep.py` | Runs multiple experiments sequentially for a given `--rounds` and `--epsilon` grid; auto-detects next `exp{N}` directory if `--sweep-dir` not provided; logs progress per config; invokes `run_experiments.py` as a subprocess |
+| `scripts/generate_excel_report.py` | Standalone tool: reads all `experiment_*.json` files from a given directory and generates a 6-sheet Excel workbook: **Raw Data** (one row per experiment), **Heat Map** (AUC-ROC matrix: rounds × ε), **Per Rounds** (aggregated by round count), **Per Epsilon** (aggregated by ε), **Comparison** (side-by-side metrics), **AUC Progression** (per-round AUC trajectory) |
 
 ### Engineering Fixes
 
 Fixes applied during Sprint 5/6 development (pre-sweep):
 
+- **BatchNorm buffers excluded from DP noise** (`src/ml/gradient_manager.py`): `_add_noise()` now skips `running_mean`, `running_var`, and `num_batches_tracked` when `weight_keys` are provided. With σ ≈ 48 at ε = 0.1, adding Gaussian noise to `running_var` (typically 0.1–1.0) rendered it negative, causing `sqrt(running_var + eps) → NaN` in BatchNorm1d eval mode, which propagated through the entire Autoencoder and made all MIA scores NaN. Root-cause fix: `GradientManager._add_noise()` now receives the state_dict key list from `AutoencoderTrainer.get_weight_keys()` and skips BN buffers. Defensive fix: `running_var` is also clamped to ≥ 1e-8 after `load_state_dict` in `run_fedmia()`.
+- **`save_results()` called unconditionally**: wrapped `run_fedmia()` and `run_ids()` in independent `try/except` blocks in `main()`; `save_results()` is always reached and FL results are persisted even when MIA or IDS phases raise exceptions.
+- **`per_round` union over all result sets**: `save_results()` now iterates `mia_results.keys() | fl_results.keys() | ids_results.keys()`, so FL round data is preserved in the JSON even when MIA produces an empty dict.
+- **NaN/Inf filter before `roc_auc_score`**: `run_fedmia()` filters score arrays with `~np.isnan() & ~np.isinf()` before calling `roc_auc_score`; rounds with fewer than 10 valid scores fall back to AUC = 0.5 with a `nan_fraction` field logged.
 - **`drop_last=True` in DataLoader** (`src/ml/autoencoder_trainer.py`): guard against empty `batch_losses` list prevents `ZeroDivisionError` on small clusters.
 - **`_compute_sigma()` input validation**: enforces `epsilon > 0` and `0 < delta < 1.25`; warning emitted when `delta > 1e-2`.
 - **`_parse_record()` error handling**: per-record `try/except` in `load()` and `load_multiple()`; malformed records skipped with warning instead of aborting the full dataset load. `doneChargingTime` parsing isolated with fallback to `disconnectTime`.
 - **`PrivacyAuditor.audit()` now active** and receives `epsilon` from experiment config (`PrivacyAuditor(config_path=..., epsilon=cfg["experiment"]["epsilon"])`), overriding the YAML default.
-- **Hold-out split**: sessions split 80/20 before `run_fl_rounds()`; hold-out set passed as `non_members` to `run_fedmia()`, ensuring AUC-ROC measures true membership inference (not in-distribution reconstruction error).
-- **`state_dict` / `load_state_dict`**: `get_weights()` and `set_weights()` use `model.state_dict()` to transfer BatchNorm running statistics (`running_mean`, `running_var`) alongside trainable parameters; `FedAvgAggregator._weighted_average()` accumulates in `float32` and restores original dtypes.
-- **FedAvg loss denominator**: weighted mean loss computed only over nodes with `loss is not None`, using their sample counts as the denominator (previously over-divided by total samples).
-- **`_score_batch` None-filtering**: consistent with `_sessions_to_tensor` — sessions with missing features are dropped rather than substituted with zeros.
+- **Hold-out split**: sessions split 80/20 before `run_fl_rounds()`; hold-out set passed as `non_members` to `run_fedmia()`, ensuring AUC-ROC measures true membership inference.
+- **`state_dict` / `load_state_dict`**: `get_weights()` and `set_weights()` use `model.state_dict()` to transfer BatchNorm running statistics alongside trainable parameters; `FedAvgAggregator._weighted_average()` accumulates in `float32` and restores original dtypes.
+- **FedAvg loss denominator**: weighted mean loss computed only over nodes with `loss is not None`, using their sample counts as the denominator.
 - **`roc_auc_score` guard**: skips AUC computation if either member or non-member score list is empty.
-- **Excel report**: extended from 4 to 6 sheets; `Comparison` and `AUC Progression` sheets added; per-round FL `mean_loss` now persisted in experiment JSON.
+- **Sweep directory isolation** (`scripts/run_experiments.py`, `Makefile`): `--sweep-dir experiments/exp{N}` saves JSON and Excel to a numbered per-sweep directory; `make experiment-full-sweep` auto-increments N on each invocation.
 
 ---
 
@@ -347,6 +376,12 @@ Fixes applied during Sprint 5/6 development (pre-sweep):
 14. European Parliament and of the Council, "Regulation (EU) 2023/1804 on the deployment of alternative fuels infrastructure (AFIR)," *Official Journal of the European Union*, L 234, pp. 1–65, 2023.
 
 15. Z. Wang, M. Song, Z. Zhang, Y. Song, Q. Wang, and H. Qi, "Beyond Inferring Class Representatives: User-Level Privacy Leakage From Federated Learning," in *Proceedings of IEEE INFOCOM 2019*, pp. 2512–2520, 2019. https://doi.org/10.1109/INFOCOM.2019.8737416
+
+16. R. C. Geyer, T. Klein, and M. Nabi, "Differentially Private Federated Learning: A Client Level Perspective," *Workshop on Machine Learning in Private Setting*, NeurIPS 2017. https://arxiv.org/abs/1712.07557  
+    *Foundational reference for the weight perturbation approach used in ChargeShield-FL: instead of per-sample gradient clipping (DP-SGD), Gaussian noise is added to the aggregated weight vector before upload, providing client-level DP. Distinguishes this approach from sample-level guarantees of Abadi et al. (ref 7).*
+
+17. K. Wei, J. Li, M. Ding, C. Ma, H. H. Yang, F. Farokhi, S. Jin, T. Q. S. Quek, and H. V. Poor, "Federated Learning with Differential Privacy: Algorithms and Performance Analysis," *IEEE Transactions on Information Forensics and Security*, vol. 15, pp. 3454–3467, 2020. https://doi.org/10.1109/TIFS.2020.2988575  
+    *Comprehensive analysis of DP mechanisms in FL, covering weight perturbation vs. gradient perturbation trade-offs, sigma calibration under composition across rounds, and convergence bounds under non-IID data — directly applicable to ChargeShield-FL's experimental setup.*
 
 ---
 
