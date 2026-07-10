@@ -511,9 +511,19 @@ def save_results(
     mia_results: dict[int, dict[str, Any]],
     ids_results: dict[int, dict[str, Any]],
     fl_results: dict[int, dict[str, Any]] | None = None,
+    sweep_dir: Path | None = None,
 ) -> Path:
-    """Salva risultati in experiments/ con timestamp."""
-    output_dir = PROJECT_ROOT / cfg["output"]["experiments_dir"]
+    """
+    Salva risultati in experiments/ (o sweep_dir) con timestamp.
+
+    Se sweep_dir è fornita, i JSON vengono salvati in quella directory
+    e l'Excel verrà nominato come la directory (es. experiments/exp1/exp1.xlsx).
+    Questo garantisce che ogni sweep abbia il proprio file Excel separato.
+    """
+    if sweep_dir is not None:
+        output_dir = sweep_dir
+    else:
+        output_dir = PROJECT_ROOT / cfg["output"]["experiments_dir"]
     output_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp   = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -571,47 +581,61 @@ def save_results(
         f"Privacy risk: {summary['summary']['privacy_risk']}"
     )
 
-    # Aggiorna automaticamente il report Excel con tutti i risultati accumulati
-    _update_excel_report(output_dir)
+    # Aggiorna automaticamente il report Excel del sweep corrente
+    _update_excel_report(output_dir, named_sweep=(sweep_dir is not None))
 
     return result_file
 
 
-def _update_excel_report(experiments_dir: Path) -> None:
+def _update_excel_report(sweep_dir: Path, named_sweep: bool = False) -> None:
     """
-    Rigenera il report Excel a 6 sheet chiamando generate_excel_report.py.
-    Produce: Raw Data, Heat Map, Per Rounds, Per Epsilon, Comparison, AUC Progression.
+    Rigenera il report Excel a 6 sheet per il sweep corrente.
+
+    Il nome del file Excel dipende dalla modalità:
+    - sweep_dir nominata (es. experiments/exp1) → exp1.xlsx
+    - fallback (experiments/) → ChargeShield_FL_Results.xlsx (retro-compatibilità)
 
     Usa un import Python standard invece di exec_module() per evitare il rischio
     di arbitrary code execution se il file fosse modificato da un attacker con accesso
     al filesystem. Con import standard il modulo viene caricato una sola volta e
     cachato in sys.modules — sicuro e idempotente.
+
+    Args:
+        sweep_dir:   directory dove sono i JSON del sweep (e dove salvare l'Excel)
+        named_sweep: True se sweep_dir è una directory nominata (es. exp1),
+                     False per backward compatibility con experiments/
     """
     try:
         from openpyxl import Workbook
 
-        # Import diretto: genera_excel_report.py è nella stessa directory di questo script.
+        # Import diretto: generate_excel_report.py è nella stessa directory di questo script.
         # Se il file non esiste, ImportError viene catturato sotto.
         _scripts_dir = str(Path(__file__).parent)
         if _scripts_dir not in sys.path:
             sys.path.insert(0, _scripts_dir)
         import generate_excel_report as gen  # noqa: PLC0415
 
-        records = gen.load_experiments(experiments_dir)
+        records = gen.load_experiments(sweep_dir)
         if not records:
             return
 
         wb = Workbook()
         wb.remove(wb.active)
-        gen.build_raw_data(wb.create_sheet("Raw Data"),           records)
-        gen.build_heat_map(wb.create_sheet("Heat Map"),           records)
-        gen.build_per_rounds(wb.create_sheet("Per Rounds"),       records)
-        gen.build_per_epsilon(wb.create_sheet("Per Epsilon"),     records)
-        gen.build_comparison(wb.create_sheet("Comparison"),       records)
+        gen.build_raw_data(wb.create_sheet("Raw Data"),               records)
+        gen.build_heat_map(wb.create_sheet("Heat Map"),               records)
+        gen.build_per_rounds(wb.create_sheet("Per Rounds"),           records)
+        gen.build_per_epsilon(wb.create_sheet("Per Epsilon"),         records)
+        gen.build_comparison(wb.create_sheet("Comparison"),           records)
         gen.build_auc_progression(wb.create_sheet("AUC Progression"), records)
         wb.properties.title   = "ChargeShield-FL Experiment Results"
         wb.properties.subject = "FedMIA vs Differential Privacy — DSN 2027"
-        output_path = experiments_dir / "ChargeShield_FL_Results.xlsx"
+
+        # Nome file Excel: sweep nominato → "{nome}.xlsx", fallback → nome storico
+        if named_sweep:
+            output_path = sweep_dir / f"{sweep_dir.name}.xlsx"
+        else:
+            output_path = sweep_dir / "ChargeShield_FL_Results.xlsx"
+
         wb.save(output_path)
         logger.info(f"Report Excel aggiornato: {output_path.name}")
     except ImportError:
@@ -634,6 +658,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rounds",   type=int,   default=None)
     parser.add_argument("--skip-ids", action="store_true")
     parser.add_argument("--dry-run",  action="store_true")
+    parser.add_argument(
+        "--sweep-dir", type=Path, default=None,
+        help=(
+            "Directory del sweep corrente (es. experiments/exp1). "
+            "Se fornita, JSON e Excel vengono salvati qui con nome del sweep "
+            "(es. exp1.xlsx). Permette di isolare i risultati di sweep distinti."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -703,7 +735,10 @@ def main() -> None:
         except Exception as exc:  # noqa: BLE001
             logger.error(f"run_ids() fallita: {exc}. Continuazione senza risultati IDS.", exc_info=True)
 
-    save_results(cfg, mia_results, ids_results, fl_results)
+    # sweep_dir: se fornita via --sweep-dir, i risultati vanno in quella directory
+    # con Excel nominato come il sweep (es. exp1.xlsx). Altrimenti usa experiments/.
+    sweep_dir = args.sweep_dir.resolve() if args.sweep_dir else None
+    save_results(cfg, mia_results, ids_results, fl_results, sweep_dir=sweep_dir)
 
     logger.info("=" * 60)
     logger.info("Esperimento completato.")

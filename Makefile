@@ -40,8 +40,8 @@ help:
 	@echo "  make status            Stato container"
 	@echo "  make logs              Log server + highway"
 	@echo "  make experiment        Esegui esperimento FedMIA (config default)"
-	@echo "  make experiment-sweep  Sweep epsilon 0.1→5.0 (50 round)"
-	@echo "	 make experiment-full-sweep	Sweep roundxepsilon (100-1000 x 0.1-5.0)"
+	@echo "  make experiment-sweep      Sweep epsilon 0.1→5.0 (100 round)"
+	@echo "  make experiment-full-sweep Sweep rounds×epsilon (100-1000 × 0.1-5.0) — crea experiments/exp{N}/"
 	@echo "  make experiment-dry    Dry run (verifica config e dataset)"
 	@echo "  make test              Tutti i test unitari"
 	@echo "  make test-sprint4      Solo Sprint 4"
@@ -118,17 +118,28 @@ experiment-sweep:
 # rounds ∈ {100, 200, 500, 1000} × epsilon ∈ {0.1, 0.5, 1.0, 2.0, 5.0}
 # Stima: ~8-12 ore su CPU
 .PHONY: experiment-full-sweep
+# Sweep completo rounds × epsilon con directory numerata automatica.
+# Ogni esecuzione crea experiments/exp{N}/ con i JSON e exp{N}.xlsx separati.
+# Non mischia mai risultati di sweep distinti.
 experiment-full-sweep:
-	@echo "→ Full sweep: rounds × epsilon"
-	@mkdir -p $(EXPERIMENTS)
-	@for rounds in 100 200 500 1000; do \
+	@mkdir -p $(EXPERIMENTS); \
+	SWEEP_NUM=$$(find $(EXPERIMENTS) -maxdepth 1 -type d -name 'exp[0-9]*' 2>/dev/null | wc -l | tr -d ' '); \
+	SWEEP_NUM=$$((SWEEP_NUM + 1)); \
+	SWEEP_DIR=$(EXPERIMENTS)/exp$$SWEEP_NUM; \
+	mkdir -p "$$SWEEP_DIR"; \
+	LOG="$$SWEEP_DIR/sweep_log.txt"; \
+	echo "→ Full sweep #$$SWEEP_NUM: rounds × epsilon — $$SWEEP_DIR" | tee "$$LOG"; \
+	for rounds in 100 200 500 1000; do \
 		for eps in 0.1 0.5 1.0 2.0 5.0; do \
-			echo "=== rounds=$$rounds epsilon=$$eps ==="; \
+			echo "=== rounds=$$rounds epsilon=$$eps ===" | tee -a "$$LOG"; \
 			$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
-				--config config/experiment.yaml --epsilon $$eps --rounds $$rounds; \
+				--config config/experiment.yaml \
+				--epsilon $$eps \
+				--rounds $$rounds \
+				--sweep-dir "$$SWEEP_DIR" 2>&1 | tee -a "$$LOG"; \
 		done; \
-	done
-	@echo "✓ Full sweep completato — risultati in: $(EXPERIMENTS)/"
+	done; \
+	echo "✓ Full sweep #$$SWEEP_NUM completato — $$SWEEP_DIR/" | tee -a "$$LOG"
 
 .PHONY: experiment-dry
 experiment-dry:
