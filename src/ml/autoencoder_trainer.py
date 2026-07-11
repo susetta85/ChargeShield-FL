@@ -77,6 +77,9 @@ class AutoencoderTrainer(AbstractMLModel):
         self.proximal_mu: float = config.get("proximal_mu", 0.0)
         self._global_weights: list[Any] | None = None
 
+        # Seed per DataLoader shuffle deterministico (riproducibilità DSN 2027)
+        self._seed: int = config.get("seed", 42)
+
         self.model     = Autoencoder(input_dim=input_dim)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
         self.criterion = torch.nn.MSELoss()
@@ -182,7 +185,14 @@ class AutoencoderTrainer(AbstractMLModel):
             )
 
         dataset    = TensorDataset(tensor)
-        dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True, drop_last=True)
+        # Generator con seed determinístico per riproducibilità dello shuffle tra run.
+        # Il seed dipende da round_num per evitare che tutti i round usino lo stesso shuffle.
+        _dl_gen = torch.Generator()
+        _dl_gen.manual_seed(self._seed + round_num)
+        dataloader = DataLoader(
+            dataset, batch_size=self.batch_size, shuffle=True,
+            drop_last=True, generator=_dl_gen,
+        )
 
         epoch_losses: list[float] = []
         for epoch in range(self.epochs):

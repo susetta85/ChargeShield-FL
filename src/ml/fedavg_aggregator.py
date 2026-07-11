@@ -171,14 +171,19 @@ class FedAvgAggregator(AbstractMLModel):
             for w in first_weights
         ]
 
+        # Filtra subito gli update con struttura incompatibile prima di calcolare
+        # il denominatore, per evitare che n_samples di update scartati finiscano
+        # in total_samples producendo una media pesata sistematicamente sotto-pesata.
         n_expected = len(first_weights)
-        for update in updates:
-            if len(update.weights) != n_expected:
-                logger.error(
-                    f"[{update.node_id}] Numero di pesi ({len(update.weights)}) "
-                    f"diverso dall'atteso ({n_expected}) — update ignorato nell'aggregazione"
-                )
-                continue
+        compatible = [u for u in updates if len(u.weights) == n_expected]
+        if len(compatible) < len(updates):
+            skipped = [u.node_id for u in updates if len(u.weights) != n_expected]
+            logger.error(
+                f"Struttura pesi incompatibile per {skipped} — esclusi dall'aggregazione"
+            )
+        # Ricalcola total_samples sui soli update compatibili
+        total_samples = sum(u.n_samples for u in compatible) or 1
+        for update in compatible:
             weight = update.n_samples / total_samples
             for i, w in enumerate(update.weights):
                 t = (w if isinstance(w, torch.Tensor) else torch.tensor(w)).float()

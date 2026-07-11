@@ -425,8 +425,14 @@ def run_ids(
 
     ids = ChargingIDS(
         config_path=config_path,
-        byzantine_tolerance=1,
-        cosine_threshold=0.85,
+        # byzantine_tolerance=0: con 4 cluster, la condizione Krum (n >= 2f+3) richiede
+        # f=0 per essere soddisfatta (4 >= 3). Con f=0, Krum funziona come outlier
+        # detector geometrico (non Byzantine-tolerant nel senso formale di Blanchard 2017).
+        # Documentato nel paper come limitazione della topologia a 4 cluster.
+        byzantine_tolerance=0,
+        # cosine_threshold=0.3: soglia coerente con la variabilità naturale
+        # dei gradienti nei cluster FL omogenei. 0.85 produceva falsi positivi sistematici.
+        cosine_threshold=0.3,
         # fedmia= non passato: il plugin shadow-model FedMIA (src/plugins/attacks/fedmia.py)
         # è disabilitato in questa configurazione sperimentale. Il MIA è valutato
         # separatamente tramite run_fedmia() che usa l'approccio loss-based (Yeom et al.,
@@ -696,6 +702,10 @@ def main() -> None:
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
+    # Determinismo GPU (no overhead su CPU-only, ignorato silenziosamente se no CUDA)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
     random.shuffle(sessions)
     split = max(1, int(len(sessions) * 0.8))
     train_sessions   = sessions[:split]

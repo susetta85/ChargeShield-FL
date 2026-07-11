@@ -251,6 +251,9 @@ class GradientAnalyzer:
                     float(v) for v in value
                     if isinstance(v, (int, float))
                 )
+            elif hasattr(value, "flatten") and hasattr(value, "tolist"):
+                # torch.Tensor o numpy array: flatten → lista float
+                flat.extend(float(v) for v in value.detach().cpu().flatten().tolist())
         return flat
 
     @staticmethod
@@ -759,9 +762,16 @@ class ChargingIDS(AbstractIDS):
                 # Shadow model non ancora addestrato — skip MIA detection
                 pass
 
-        # Step 5: aggiorna risk scores per tutti i nodi del round
+        # Step 5: aggiorna risk scores solo per i nodi rilevati dai detector geometrici
+        # (Krum e cosine similarity) che NON passano per analyze() — quest'ultimo ha già
+        # aggiornato il risk score per i nodi in `reports` alla riga 610 (analyze()).
+        # Aggiornare di nuovo causerebbe un double-count del penalità (+0.2 due volte
+        # per anomali, -10% due volte per normali).
+        already_updated = set(reports.keys())
         all_detected = set(byzantine_nodes) | set(low_similarity_nodes)
         for node_id in gradients:
+            if node_id in already_updated:
+                continue  # già aggiornato da analyze() in Step 1
             anomalies = 1 if node_id in all_detected else 0
             self._update_risk_score(node_id, anomalies)
 

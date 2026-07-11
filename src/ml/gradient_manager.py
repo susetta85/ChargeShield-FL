@@ -139,7 +139,10 @@ class GradientManager(AbstractMLModel):
             n_samples=update.n_samples,
             metadata={
                 **update.metadata,
-                "dp_applied": True,
+                # "noise_perturbation_applied" (non "dp_applied") riflette che
+                # il meccanismo è weight perturbation (Geyer 2017, Wei 2020), non DP-SGD.
+                # Per claims DP formali vedere le note in _compute_sigma().
+                "noise_perturbation_applied": True,
                 "epsilon": self.epsilon,
                 "delta": self.delta,
                 "sigma": self.sigma,
@@ -180,8 +183,8 @@ class GradientManager(AbstractMLModel):
         """
         if self.epsilon <= 0:
             raise ValueError(f"epsilon deve essere > 0, ricevuto: {self.epsilon}")
-        if not (0 < self.delta < 1.25):
-            raise ValueError(f"delta deve essere in (0, 1.25), ricevuto: {self.delta}")
+        if not (0 < self.delta < 1):
+            raise ValueError(f"delta deve essere in (0, 1), ricevuto: {self.delta}")
         if self.delta > 1e-2:
             logger.warning(
                 f"delta={self.delta} è insolitamente alto per DP — "

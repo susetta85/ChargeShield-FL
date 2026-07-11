@@ -2,9 +2,15 @@ auditor:
   enabled: true
   dp:
     mechanism: Gaussian
+    # epsilon: budget DP per-round (= epsilon configurato nell'esperimento)
     epsilon: 1.0
     delta: 1.0e-5
     max_grad_norm: 1.0
+    # Budget totale di epsilon su tutti i round del sweep.
+    # Usato per budget_ratio = cumulative_epsilon / (epsilon * total_rounds_budget).
+    # Con composizione base: budget_esaurito quando cumulative > epsilon * total_rounds.
+    # Impostare al numero massimo di round del sweep (default = 1000).
+    total_rounds_budget: 1000
   attacks:
     - FedMIA
   alert_threshold: 0.7

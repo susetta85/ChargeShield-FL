@@ -103,6 +103,9 @@ def _flatten_model_update(model_update: dict[str, Any]) -> list[float]:
             flat.extend(float(v) for v in value if isinstance(v, (int, float)))
         elif isinstance(value, dict):
             flat.extend(_flatten_model_update(value))
+        elif hasattr(value, "flatten") and hasattr(value, "tolist"):
+            # torch.Tensor o numpy array
+            flat.extend(float(v) for v in value.detach().cpu().flatten().tolist())
     return flat
 
 
@@ -138,10 +141,15 @@ class PrivacyAuditor(AbstractPrivacyAuditor):
         """
         config = _load_auditor_config(config_path)
 
-        # Budget di privacy differenziale configurato (epsilon CLI ha priorità)
+        # Budget DP per-round (epsilon CLI ha priorità sul valore in config)
         self._epsilon_budget: float = epsilon if epsilon is not None else config["dp"]["epsilon"]
         self._delta: float = config["dp"]["delta"]
         self._max_grad_norm: float = config["dp"]["max_grad_norm"]
+
+        # Numero di round su cui distribuire il budget totale (composizione base).
+        # Budget totale = epsilon_budget * total_rounds_budget.
+        # Con composizione base (Dwork 2014): epsilon_cumulative_max = T * epsilon_per_round.
+        self._total_rounds_budget: int = config["dp"].get("total_rounds_budget", 1000)
 
         # Soglia oltre cui il nodo è considerato a rischio MIA
         self._alert_threshold: float = config["alert_threshold"]
@@ -184,24 +192,25 @@ class PrivacyAuditor(AbstractPrivacyAuditor):
         sensitivity = self._compute_sensitivity(model_update)
 
         # Step 2: epsilon consumato in questo round.
-        # NOTA: questa è una proxy empirica, NON il Gaussian Mechanism formale.
-        # Il Gaussian Mechanism corretto richiede sigma (noise std), non max_grad_norm:
-        #   epsilon = sensitivity * sqrt(2*ln(1.25/delta)) / sigma
-        # Qui usiamo max_grad_norm come denominatore (parametro di clipping).
-        # Delta (self._delta) non entra nel calcolo — è un'approssimazione intenzionale.
-        # Per claim DP formali usare librerie come dp-accounting (Google) o autodp.
-        # NOTA composizione: la garanzia DP si degrada con T round.
-        # Con composizione base: epsilon_tot ≈ T * epsilon_per_round.
-        # Con composizione avanzata (Dwork): epsilon_tot ≈ sqrt(2T*ln(1/delta)) * epsilon.
-        # Questo auditor non contabilizza la composizione — il claim è per-round.
-        round_epsilon = sensitivity / self._max_grad_norm
+        # Approssimazione Gaussian Mechanism per weight perturbation (Geyer 2017, Wei 2020):
+        #   sigma = max_grad_norm * sqrt(2*ln(1.25/delta)) / epsilon_target
+        #   epsilon_round = sensitivity * sqrt(2*ln(1.25/delta)) / sigma
+        #                 = sensitivity * epsilon_target / max_grad_norm
+        # Il rapporto sensitivity/max_grad_norm ∈ [0,1] è la "saturazione del clipping":
+        #   - 1.0: gradiente saturo (noise calibrato esattamente al budget ε)
+        #   - <1.0: gradiente sotto la soglia (consumo effettivo < ε_target)
+        # NOTA composizione: con composizione base (Dwork 2014) il budget totale su T round
+        # è T * epsilon_target. Con composizione avanzata (RDP/zCDP) il costo è √T * ε.
+        # Questo auditor usa composizione base: budget totale = ε * total_rounds_budget.
+        round_epsilon = (sensitivity / self._max_grad_norm) * self._epsilon_budget
 
         # Step 3: aggiorna epsilon cumulativo per questo nodo
         prev_epsilon = self._cumulative_epsilon.get(node_id, 0.0)
         self._cumulative_epsilon[node_id] = prev_epsilon + round_epsilon
 
-        # Step 4: rileva minacce — calcola budget_ratio una sola volta e passalo
-        budget_ratio = self._cumulative_epsilon[node_id] / self._epsilon_budget
+        # Step 4: rileva minacce — budget_ratio rispetto al budget TOTALE (composizione base)
+        total_budget = self._epsilon_budget * self._total_rounds_budget
+        budget_ratio = self._cumulative_epsilon[node_id] / total_budget
         threats = self._detect_threats(sensitivity, self._cumulative_epsilon[node_id], budget_ratio)
 
         # Step 5: privacy score residuo
@@ -216,12 +225,12 @@ class PrivacyAuditor(AbstractPrivacyAuditor):
             threats_detected=threats,
             metadata={
                 "sensitivity": round(sensitivity, 6),
-                "cumulative_epsilon": round(
-                    self._cumulative_epsilon[node_id], 6
-                ),
-                "epsilon_budget": self._epsilon_budget,
+                "cumulative_epsilon": round(self._cumulative_epsilon[node_id], 6),
+                "epsilon_per_round": self._epsilon_budget,
+                "total_budget": round(total_budget, 4),
+                "budget_ratio": round(budget_ratio, 6),
                 "budget_exhausted": (
-                    self._cumulative_epsilon[node_id] >= self._epsilon_budget
+                    self._cumulative_epsilon[node_id] >= total_budget
                 ),
             },
         )
