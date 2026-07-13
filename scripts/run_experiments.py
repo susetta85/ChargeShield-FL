@@ -407,7 +407,234 @@ def run_fedmia(
 
     return mia_results
 
-# ── IDS Evaluation ─────────────────────────────────────────────────────────────
+
+# ── Shadow Model MIA Attack ────────────────────────────────────────────────────
+
+def run_fedmia_shadow(
+    cfg: dict,
+    train_sessions: list[dict[str, Any]],
+    holdout_sessions: list[dict[str, Any]],
+    fl_results: dict[int, dict[str, Any]],
+) -> dict[int, dict[str, Any]]:
+    """
+    Calibrated Shadow-Model MIA Attack (ispirato a LiRA, Carlini et al. 2022).
+
+    Motivazione:
+        L'attacco Yeom (loss-based) fallisce quando il modello FL generalizza bene:
+        la loss su membro e non-membro è simile → AUC ≈ 0.5. Il shadow attack
+        controlla per la "difficoltà intrinseca" di ogni campione confrontando
+        il modello FL target con un modello shadow addestrato su dati simili ma
+        diversi: il segnale di membership emerge dalla *differenza* di loss, non
+        dal valore assoluto.
+
+    Setup:
+        - shadow_train (50% di train_sessions) → addestra shadow model (no FL, no DP)
+        - eval_members (50% di train_sessions) → valutazione membro:
+            * FL ha visto questi campioni → loss_target bassa
+            * shadow NON li ha visti     → loss_shadow alta
+            * score = loss_shadow - loss_target > 0  ✓
+        - holdout_sessions → valutazione non-membro:
+            * né FL né shadow li hanno visti
+            * score = loss_shadow - loss_target ≈ 0  ✓
+
+    Score di membership:
+        score(x) = MSE(shadow_model, x) − MSE(target_model, x)
+        Maggiore score → più probabile che x sia stato nel training FL.
+
+    Riferimenti:
+        Carlini et al., "Membership Inference Attacks From First Principles",
+        IEEE S&P 2022. https://arxiv.org/abs/2112.03570
+
+    Args:
+        cfg:              configurazione esperimento
+        train_sessions:   sessioni usate nel FL training (tutti i membri)
+        holdout_sessions: sessioni mai viste durante FL (non-membri)
+        fl_results:       dict round → {"global_weights": [...], ...}
+
+    Returns:
+        {round_num: {
+            "shadow_auc_roc": float,
+            "shadow_member_score_mean": float,
+            "shadow_non_member_score_mean": float,
+            "shadow_score_gap": float,   # differenza media membro - non-membro
+            "n_eval_members": int,
+            "n_non_members": int,
+        }}
+    """
+    from sklearn.metrics import roc_auc_score
+
+    seed       = cfg.get("experiment", {}).get("seed", 42)
+    input_dim  = cfg["ml"]["input_dim"]
+    ml_cfg     = cfg["ml"]
+    local_epochs = ml_cfg.get("epochs", 3)
+    total_rounds = cfg.get("experiment", {}).get("fl_rounds", 100)
+
+    # ── Step 1: split train → shadow_train (50%) + eval_members (50%) ──────────
+    rng = random.Random(seed + 999)       # seed diverso da quello del pool Yeom
+    shuffled = list(train_sessions)
+    rng.shuffle(shuffled)
+    mid           = max(1, len(shuffled) // 2)
+    shadow_train  = shuffled[:mid]
+    eval_members  = shuffled[mid:]
+
+    logger.info(
+        f"Shadow MIA — shadow_train: {len(shadow_train)}, "
+        f"eval_members: {len(eval_members)}, non-members: {len(holdout_sessions)}"
+    )
+
+    # ── Step 2: addestra il shadow model ──────────────────────────────────────
+    # Autoencoder locale (non FL, no DP) addestrato sul shadow_train.
+    # Epoche totali = local_epochs × total_rounds (equivalente al training FL),
+    # capped a 500 per non rallentare troppo il sweep.
+    shadow_epochs = min(local_epochs * total_rounds, 500)
+
+    def _build_tensor(sess_list: list[dict]) -> torch.Tensor | None:
+        rows = []
+        for s in sess_list:
+            try:
+                rows.append([float(s[f]) for f in _MIA_FEATURES])
+            except (KeyError, TypeError, ValueError):
+                continue
+        return torch.tensor(rows, dtype=torch.float32) if rows else None
+
+    shadow_tensor = _build_tensor(shadow_train)
+    if shadow_tensor is None or len(shadow_tensor) == 0:
+        logger.warning("Shadow MIA: shadow_train vuoto dopo feature extraction — skip")
+        return {}
+
+    shadow_model = Autoencoder(input_dim=input_dim)
+    shadow_optimizer = torch.optim.Adam(shadow_model.parameters(), lr=ml_cfg.get("lr", 1e-3))
+    shadow_criterion = torch.nn.MSELoss()
+    batch_size = ml_cfg.get("batch_size", 32)
+
+    shadow_model.train()
+    torch.manual_seed(seed + 999)
+    shadow_ds = torch.utils.data.TensorDataset(shadow_tensor)
+    shadow_loader_gen = torch.Generator()
+    shadow_loader_gen.manual_seed(seed + 999)
+    shadow_loader = torch.utils.data.DataLoader(
+        shadow_ds, batch_size=batch_size, shuffle=True,
+        drop_last=True, generator=shadow_loader_gen,
+    )
+
+    for epoch in range(shadow_epochs):
+        for (batch,) in shadow_loader:
+            shadow_optimizer.zero_grad()
+            recon = shadow_model(batch)
+            loss  = shadow_criterion(recon, batch)
+            loss.backward()
+            shadow_optimizer.step()
+
+    shadow_model.eval()
+    logger.info(f"Shadow model addestrato — {shadow_epochs} epoche su {len(shadow_train)} sessioni")
+
+    # ── Step 3: compute scores per-sample con entrambi i modelli ───────────────
+
+    def _mse_batch(model: Autoencoder, sess_list: list[dict]) -> list[float]:
+        """Calcola MSE per sessione (non negato: valore grezzo per calibrazione)."""
+        tensor = _build_tensor(sess_list)
+        if tensor is None:
+            return []
+        scores: list[float] = []
+        with torch.no_grad():
+            for i in range(0, len(tensor), 256):
+                batch = tensor[i : i + 256]
+                recon  = model(batch)
+                errors = torch.mean((recon - batch) ** 2, dim=1)
+                scores.extend(e.item() for e in errors)
+        return scores
+
+    # Pre-computa shadow scores una volta sola (non dipende dal round FL)
+    shadow_scores_members     = _mse_batch(shadow_model, eval_members)
+    shadow_scores_nonmembers  = _mse_batch(shadow_model, holdout_sessions)
+
+    # Bilanciamento: stessa dimensione per eval_members e non-members
+    _bal_rng       = random.Random(seed + 999)
+    _n_bal         = min(len(shadow_scores_members), len(shadow_scores_nonmembers))
+    shadow_scores_members    = _bal_rng.sample(shadow_scores_members, _n_bal)
+    shadow_scores_nonmembers = _bal_rng.sample(shadow_scores_nonmembers, _n_bal)
+
+    # ── Step 4: per ogni round FL, calcola score calibrato ─────────────────────
+    shadow_results: dict[int, dict[str, Any]] = {}
+
+    for round_num, round_data in sorted(fl_results.items()):
+        global_weights = round_data.get("global_weights")
+        if global_weights is None:
+            continue
+
+        # Carica pesi globali FL nel target model
+        target_model = Autoencoder(input_dim=input_dim)
+        orig_state   = target_model.state_dict()
+        keys         = list(orig_state.keys())
+        if len(global_weights) != len(keys):
+            logger.error(
+                f"Shadow MIA round {round_num}: global_weights {len(global_weights)} "
+                f"!= state_dict {len(keys)} — skip"
+            )
+            continue
+        state = {
+            k: (w if isinstance(w, torch.Tensor) else torch.tensor(w)).to(orig_state[k].dtype)
+            for k, w in zip(keys, global_weights)
+        }
+        target_model.load_state_dict(state, strict=True)
+        for buf_name, buf in target_model.named_buffers():
+            if "running_var" in buf_name:
+                buf.clamp_(min=1e-8)
+        target_model.eval()
+
+        # Scores target model
+        target_scores_members    = _mse_batch(target_model, eval_members)
+        target_scores_nonmembers = _mse_batch(target_model, holdout_sessions)
+
+        # Bilancia anche i target scores allo stesso indice del shadow
+        _bal_rng2 = random.Random(seed + 999)
+        target_scores_members    = _bal_rng2.sample(target_scores_members, _n_bal)
+        target_scores_nonmembers = _bal_rng2.sample(target_scores_nonmembers, _n_bal)
+
+        # score calibrato = loss_shadow − loss_target
+        # Positivo → target conosce il campione meglio del shadow → membro
+        calibrated_members    = [
+            s - t for s, t in zip(shadow_scores_members,    target_scores_members)
+        ]
+        calibrated_nonmembers = [
+            s - t for s, t in zip(shadow_scores_nonmembers, target_scores_nonmembers)
+        ]
+
+        labels = [1] * len(calibrated_members) + [0] * len(calibrated_nonmembers)
+        scores = calibrated_members + calibrated_nonmembers
+
+        scores_arr = np.array(scores)
+        labels_arr = np.array(labels)
+        valid_mask = ~np.isnan(scores_arr) & ~np.isinf(scores_arr)
+        if valid_mask.sum() < 10:
+            logger.warning(f"Shadow MIA round {round_num}: troppi NaN — skip")
+            continue
+        scores_arr = scores_arr[valid_mask]
+        labels_arr = labels_arr[valid_mask]
+
+        try:
+            auc = roc_auc_score(labels_arr, scores_arr)
+        except ValueError:
+            auc = 0.5
+
+        score_gap = float(np.mean(calibrated_members) - np.mean(calibrated_nonmembers))
+        logger.info(
+            f"Round {round_num} — Shadow MIA AUC: {auc:.4f} "
+            f"(gap={score_gap:.6f})"
+        )
+
+        shadow_results[round_num] = {
+            "shadow_auc_roc":               round(auc, 6),
+            "shadow_member_score_mean":     round(float(np.nanmean(calibrated_members)), 6),
+            "shadow_non_member_score_mean": round(float(np.nanmean(calibrated_nonmembers)), 6),
+            "shadow_score_gap":             round(score_gap, 6),
+            "n_eval_members":               _n_bal,
+            "n_non_members":                _n_bal,
+        }
+
+    return shadow_results
+
+
 # ── IDS Evaluation ─────────────────────────────────────────────────────────────
 
 def run_ids(
@@ -751,7 +978,7 @@ def main() -> None:
 
     fl_results = run_fl_rounds(cfg, train_sessions)
 
-    # run_fedmia e run_ids non devono impedire il salvataggio dei risultati FL.
+    # run_fedmia, run_fedmia_shadow e run_ids non devono impedire il salvataggio.
     # Con try/except, save_results() viene sempre chiamato anche in caso di errore.
     mia_results: dict = {}
     try:
@@ -761,6 +988,25 @@ def main() -> None:
             f"run_fedmia() fallita: {exc}. "
             "I risultati FL vengono comunque salvati con mia_results={}. "
             "Controllare il log per la causa (es. NaN negli score MIA).",
+            exc_info=True,
+        )
+
+    # Shadow MIA (Carlini 2022) — attacco calibrato più potente di Yeom 2018.
+    # Affianca run_fedmia() senza sostituirlo: entrambe le metriche vengono salvate.
+    shadow_mia_results: dict = {}
+    try:
+        shadow_mia_results = run_fedmia_shadow(
+            cfg, train_sessions, holdout_sessions, fl_results
+        )
+        # Merge nei mia_results per round: aggiunge campi shadow_* al dict esistente
+        for rnd, shadow_data in shadow_mia_results.items():
+            if rnd in mia_results:
+                mia_results[rnd].update(shadow_data)
+            else:
+                mia_results[rnd] = shadow_data
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            f"run_fedmia_shadow() fallita: {exc}. Continuazione senza shadow MIA.",
             exc_info=True,
         )
 
