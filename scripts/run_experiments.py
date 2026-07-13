@@ -507,6 +507,14 @@ def run_fedmia_shadow(
     shadow_criterion = torch.nn.MSELoss()
     batch_size = ml_cfg.get("batch_size", 32)
 
+    if len(shadow_tensor) < batch_size:
+        logger.warning(
+            f"Shadow MIA: shadow_train ({len(shadow_tensor)} sessioni) < "
+            f"batch_size ({batch_size}) — shadow model non addestrato con drop_last=True. "
+            "shadow_auc_roc non significativo. Aumentare il dataset o ridurre batch_size."
+        )
+        return {}
+
     shadow_model.train()
     torch.manual_seed(seed + 999)
     shadow_ds = torch.utils.data.TensorDataset(shadow_tensor)
@@ -793,6 +801,16 @@ def save_results(
         for r in mia_results.values()
         if r.get("auc_roc") is not None
     ]
+    shadow_auc_values = [
+        r["shadow_auc_roc"]
+        for r in mia_results.values()
+        if r.get("shadow_auc_roc") is not None
+    ]
+
+    # Privacy risk basato sull'attacco più forte disponibile:
+    # se shadow AUC è disponibile usa quello, altrimenti Yeom.
+    _primary_auc = shadow_auc_values if shadow_auc_values else auc_values
+    _primary_mean = float(np.mean(_primary_auc)) if _primary_auc else None
 
     summary = {
         "experiment_name": cfg["experiment"]["name"],
@@ -804,12 +822,18 @@ def save_results(
             "proximal_mu": cfg["ml"]["proximal_mu"],
         },
         "summary": {
+            # Yeom 2018 loss-based MIA
             "mean_auc_roc": float(np.mean(auc_values)) if auc_values else None,
             "max_auc_roc":  float(np.max(auc_values))  if auc_values else None,
             "min_auc_roc":  float(np.min(auc_values))  if auc_values else None,
+            # Carlini 2022 shadow/calibrated MIA (attacco più forte)
+            "mean_shadow_auc_roc": float(np.mean(shadow_auc_values)) if shadow_auc_values else None,
+            "max_shadow_auc_roc":  float(np.max(shadow_auc_values))  if shadow_auc_values else None,
+            "min_shadow_auc_roc":  float(np.min(shadow_auc_values))  if shadow_auc_values else None,
+            # Privacy risk basato sull'attacco primario (shadow se disponibile)
             "privacy_risk": (
-                "HIGH"   if auc_values and np.mean(auc_values) > 0.7 else
-                "MEDIUM" if auc_values and np.mean(auc_values) > 0.6 else
+                "HIGH"   if _primary_mean is not None and _primary_mean > 0.7 else
+                "MEDIUM" if _primary_mean is not None and _primary_mean > 0.6 else
                 "LOW"
             ),
         },

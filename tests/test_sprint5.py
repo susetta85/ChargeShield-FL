@@ -201,7 +201,7 @@ class TestGradientManager:
         gm = GradientManager(dp_config)
         private = gm.privatize(gradient_update)
         assert isinstance(private, GradientUpdate)
-        assert private.metadata.get("dp_applied") is True
+        assert private.metadata.get("noise_perturbation_applied") is True
 
     def test_privatize_changes_weights(self, dp_config, gradient_update):
         torch.manual_seed(42)

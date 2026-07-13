@@ -103,9 +103,10 @@ experiment:
 		--config config/experiment.yaml
 	@echo "✓ Risultati salvati in: $(EXPERIMENTS)/"
 
+# LEGACY: non isola i sweep (nessuna --sweep-dir). Usare experiment-full-sweep.
 .PHONY: experiment-sweep
 experiment-sweep:
-	@echo "→ Epsilon sweep: 0.1, 0.5, 1.0, 2.0, 5.0"
+	@echo "→ Epsilon sweep (legacy): 0.1, 0.5, 1.0, 2.0, 5.0 — usa experiment-full-sweep per sweep isolati"
 	@mkdir -p $(EXPERIMENTS)
 	@for eps in 0.1 0.5 1.0 2.0 5.0; do \
 		echo "=== epsilon=$$eps ==="; \
@@ -116,7 +117,7 @@ experiment-sweep:
 
 # Sweep completo: rounds × epsilon → heat map per il paper
 # rounds ∈ {100, 200, 500, 1000} × epsilon ∈ {0.1, 0.5, 1.0, 2.0, 5.0}
-# Stima: ~8-12 ore su CPU
+# Stima: ~36h su CPU sequenziale (20 config × ~1.8h media; molto più veloce su Mac M-series nativo)
 .PHONY: experiment-full-sweep
 # Sweep completo rounds × epsilon con directory numerata automatica.
 # Ogni esecuzione crea experiments/exp{N}/ con i JSON e exp{N}.xlsx separati.
