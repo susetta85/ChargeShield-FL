@@ -142,6 +142,35 @@ experiment-full-sweep:
 	done; \
 	echo "✓ Full sweep #$$SWEEP_NUM completato — $$SWEEP_DIR/" | tee -a "$$LOG"
 
+# Sprint 8: Byzantine attack sweep — gradient scaling su nodo highway.
+# Eseguito su 5 seed × 5 epsilon (25 run) per confronto con baseline.
+# Ogni run crea experiments/exp{N}/ separato (sweep numerato automaticamente).
+# Attacco: highway moltiplica pesi ×10 → Krum score >1.5 → alert reale.
+.PHONY: experiment-byzantine-sweep
+experiment-byzantine-sweep:
+	@mkdir -p $(EXPERIMENTS); \
+	SWEEP_NUM=$$(find $(EXPERIMENTS) -maxdepth 1 -type d -name 'exp[0-9]*' 2>/dev/null | wc -l | tr -d ' '); \
+	SWEEP_NUM=$$((SWEEP_NUM + 1)); \
+	SWEEP_DIR=$(EXPERIMENTS)/exp$$SWEEP_NUM; \
+	mkdir -p "$$SWEEP_DIR"; \
+	LOG="$$SWEEP_DIR/sweep_log.txt"; \
+	echo "→ Byzantine sweep #$$SWEEP_NUM (highway ×10) — $$SWEEP_DIR" | tee "$$LOG"; \
+	for seed in 42 123 456 789 1234; do \
+		for eps in 0.1 0.5 1.0 2.0 5.0; do \
+			echo "=== seed=$$seed epsilon=$$eps ===" | tee -a "$$LOG"; \
+			$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
+				--config config/experiment.yaml \
+				--epsilon $$eps \
+				--rounds 100 \
+				--seed $$seed \
+				--byzantine \
+				--byzantine-node highway \
+				--scale-factor 10 \
+				--sweep-dir "$$SWEEP_DIR" 2>&1 | tee -a "$$LOG"; \
+		done; \
+	done; \
+	echo "✓ Byzantine sweep #$$SWEEP_NUM completato — $$SWEEP_DIR/" | tee -a "$$LOG"
+
 .PHONY: experiment-dry
 experiment-dry:
 	$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \

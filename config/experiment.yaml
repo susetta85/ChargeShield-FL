@@ -32,3 +32,21 @@ ml:
 
 output:
   experiments_dir: experiments
+
+# ── Sprint 8: Byzantine Attack Simulation ─────────────────────────────────────
+# Inietta un gradient scaling attack su un nodo per validare l'IDS.
+# L'attaccante moltiplica i propri pesi per scale_factor prima dell'invio
+# all'aggregatore. Con scale_factor=10, il nodo è ~10× più "lontano"
+# geometricamente dagli altri → Krum score >1.5 → alert reale.
+#
+# attack_type:
+#   none            → baseline (nessun attacco, default)
+#   gradient_scaling → moltiplica pesi attaccante × scale_factor
+#
+# byzantine_node: nome del cluster attaccante (highway, urban, residential, corporate)
+# scale_factor:   intensità attacco (10 = forte, 3 = moderato, 50 = devastante)
+byzantine_attack:
+  enabled: false          # true = attiva attacco; false = baseline normale
+  attack_type: gradient_scaling
+  byzantine_node: highway  # cluster attaccante
+  scale_factor: 10         # intensità: 10× → rilevabile da Krum; 3× → borderline

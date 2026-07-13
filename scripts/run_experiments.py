@@ -208,13 +208,24 @@ def run_fl_rounds(
 
     results: dict[int, dict[str, Any]] = {}
 
+    # ── Byzantine attack config ────────────────────────────────────────────────
+    # Legge la sezione byzantine_attack dal config. Se assente o disabled, nessun attacco.
+    _byz_cfg      = cfg.get("byzantine_attack", {})
+    _byz_enabled  = _byz_cfg.get("enabled", False)
+    _byz_node     = _byz_cfg.get("byzantine_node", "highway")   # cluster attaccante
+    _byz_type     = _byz_cfg.get("attack_type", "gradient_scaling")
+    _byz_scale    = float(_byz_cfg.get("scale_factor", 10.0))
+
+    if _byz_enabled:
+        logger.warning(
+            f"[BYZANTINE ATTACK] abilitato — nodo={_byz_node}, "
+            f"tipo={_byz_type}, scale={_byz_scale}"
+        )
+
     # Baseline per IDS al round 1: pesi del modello inizializzato (prima del training).
     # Consente di calcolare il delta round 1 = post_training - init_model invece di
     # usare pesi assoluti (che causano GRADIENT_EXPLOSION falso per L2 >> max_grad_norm).
-    # Tutti i trainer partono dallo stesso modello iniziale (stesso seed) → un solo trainer.
     _init_weights = trainers[cluster_ids[0]].get_weights() if cluster_ids else None
-
-    # Aggiungi pesi iniziali come "round 0" per IDS (non viene iterato nel loop FL)
     results[0] = {"raw_global_weights": _init_weights}
 
     for round_num in range(1, fl_rounds + 1):
@@ -225,6 +236,36 @@ def run_fl_rounds(
         for cid, trainer in trainers.items():
             # Training locale
             update = trainer.train_local(cluster_sessions[cid], round_num)
+
+            # ── Gradient scaling attack ──────────────────────────────────────
+            # Se questo cluster è il nodo Byzantine e l'attacco è abilitato,
+            # moltiplica tutti i pesi per scale_factor.
+            # Effetto: l'update è geometricamente ~scale_factor× più distante
+            # dagli altri nodi → Krum score >> 1.5 → alert reale.
+            # L'attacco avviene sui pesi raw (pre-DP), che è ciò che l'IDS analizza;
+            # poi passa anche nella privatizzazione → distorce FedAvg.
+            if _byz_enabled and cid == _byz_node and _byz_type == "gradient_scaling":
+                scaled_weights = [
+                    (w if isinstance(w, torch.Tensor) else torch.tensor(float(w))) * _byz_scale
+                    for w in (update.weights or [])
+                ]
+                from ml.base_ml import GradientUpdate as _GU
+                update = _GU(
+                    node_id=update.node_id,
+                    cluster_id=update.cluster_id,
+                    round_num=update.round_num,
+                    weights=scaled_weights,
+                    gradients=update.gradients,
+                    loss=update.loss,
+                    n_samples=update.n_samples,
+                    metadata={**update.metadata, "byzantine_attack": True,
+                               "scale_factor": _byz_scale},
+                )
+                logger.warning(
+                    f"[BYZANTINE] Round {round_num}: {cid} — "
+                    f"gradient scaling ×{_byz_scale} applicato"
+                )
+
             raw_updates.append(update)          # conserva pre-DP per IDS
             # Applica DP — passa le chiavi per escludere buffer BatchNorm dal rumore
             weight_keys    = trainer.get_weight_keys()
@@ -996,6 +1037,26 @@ def parse_args() -> argparse.Namespace:
             "(es. exp1.xlsx). Permette di isolare i risultati di sweep distinti."
         ),
     )
+    parser.add_argument(
+        "--seed", type=int, default=None,
+        help=(
+            "Seed riproducibilità (override experiment.yaml). "
+            "Usato per: shuffle sessioni, DataLoader, init modello. "
+            "Valori consigliati per sweep: 42 123 456 789 1234."
+        ),
+    )
+    parser.add_argument(
+        "--byzantine", action="store_true", default=False,
+        help="Abilita Byzantine attack (gradient scaling) sul nodo configurato in experiment.yaml.",
+    )
+    parser.add_argument(
+        "--byzantine-node", type=str, default=None,
+        help="Override cluster attaccante (es. highway, urban). Default: valore da config.",
+    )
+    parser.add_argument(
+        "--scale-factor", type=float, default=None,
+        help="Override scale_factor dell'attacco. Default: valore da config (10.0).",
+    )
     return parser.parse_args()
 
 
@@ -1009,6 +1070,18 @@ def main() -> None:
     logger.info("=" * 60)
 
     cfg = load_config(args.config, {"epsilon": args.epsilon, "rounds": args.rounds})
+
+    # Override seed da CLI (--seed)
+    if args.seed is not None:
+        cfg["experiment"]["seed"] = args.seed
+
+    # Override Byzantine attack da CLI (--byzantine, --byzantine-node, --scale-factor)
+    if args.byzantine:
+        cfg.setdefault("byzantine_attack", {})["enabled"] = True
+    if args.byzantine_node:
+        cfg.setdefault("byzantine_attack", {})["byzantine_node"] = args.byzantine_node
+    if args.scale_factor is not None:
+        cfg.setdefault("byzantine_attack", {})["scale_factor"] = args.scale_factor
     exp_cfg = cfg["experiment"]
     logger.info(
         f"Config: epsilon={exp_cfg['epsilon']}, "
