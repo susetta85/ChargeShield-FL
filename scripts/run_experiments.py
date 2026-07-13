@@ -185,8 +185,11 @@ def run_fl_rounds(
     trainers: dict[str, AutoencoderTrainer] = {}
     cluster_sessions: dict[str, list] = {}
     for i, cid in enumerate(cluster_ids):
+        # Propaga il seed sperimentale nella config ml così AutoencoderTrainer
+        # lo usa per il DataLoader generator → shuffle deterministico per seed.
+        trainer_cfg = {**ml_cfg, "seed": exp_cfg.get("seed", 42)}
         trainers[cid] = AutoencoderTrainer(
-            config=ml_cfg,
+            config=trainer_cfg,
             node_id=f"{cid}-01",
             cluster_id=cid,
         )
@@ -625,7 +628,7 @@ def run_fedmia_shadow(
         except ValueError:
             auc = 0.5
 
-        score_gap = float(np.mean(calibrated_members) - np.mean(calibrated_nonmembers))
+        score_gap = float(np.nanmean(calibrated_members) - np.nanmean(calibrated_nonmembers))
         logger.info(
             f"Round {round_num} — Shadow MIA AUC: {auc:.4f} "
             f"(gap={score_gap:.6f})"
