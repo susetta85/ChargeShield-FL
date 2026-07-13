@@ -208,18 +208,46 @@ def run_fl_rounds(
 
     results: dict[int, dict[str, Any]] = {}
 
+    # Baseline per IDS al round 1: pesi del modello inizializzato (prima del training).
+    # Consente di calcolare il delta round 1 = post_training - init_model invece di
+    # usare pesi assoluti (che causano GRADIENT_EXPLOSION falso per L2 >> max_grad_norm).
+    # Tutti i trainer partono dallo stesso modello iniziale (stesso seed) → un solo trainer.
+    _init_weights = trainers[cluster_ids[0]].get_weights() if cluster_ids else None
+
+    # Aggiungi pesi iniziali come "round 0" per IDS (non viene iterato nel loop FL)
+    results[0] = {"raw_global_weights": _init_weights}
+
     for round_num in range(1, fl_rounds + 1):
         logger.info(f"=== FL Round {round_num}/{fl_rounds} ===")
 
         round_updates = []
+        raw_updates   = []  # pre-DP: usati da IDS per analisi non distorta dal rumore
         for cid, trainer in trainers.items():
             # Training locale
             update = trainer.train_local(cluster_sessions[cid], round_num)
+            raw_updates.append(update)          # conserva pre-DP per IDS
             # Applica DP — passa le chiavi per escludere buffer BatchNorm dal rumore
             weight_keys    = trainer.get_weight_keys()
             private_update = gm.privatize(update, weight_keys=weight_keys)
             agg.collect(private_update)
             round_updates.append(private_update)
+
+        # Calcola raw_global_weights: media semplice dei pesi pre-DP.
+        # Usato da IDS come riferimento per i delta (evita che il rumore DP
+        # del global aggregato inquini l'analisi degli update locali).
+        raw_global_weights: list[Any] | None = None
+        if raw_updates and raw_updates[0].weights:
+            n_w    = len(raw_updates[0].weights)
+            total  = sum(u.n_samples for u in raw_updates) or len(raw_updates)
+            raw_global_weights = []
+            for i in range(n_w):
+                wavg = sum(
+                    (u.weights[i] if isinstance(u.weights[i], torch.Tensor)
+                     else torch.tensor(float(u.weights[i])))
+                    * (u.n_samples / total)
+                    for u in raw_updates
+                )
+                raw_global_weights.append(wavg)
 
         # FedAvg
         aggregated = agg.aggregate(round_num)
@@ -236,10 +264,12 @@ def run_fl_rounds(
         logger.info(f"Round {round_num} — loss globale: {loss_str}")
 
         results[round_num] = {
-            "mean_loss":      aggregated.mean_loss,
-            "n_participants": aggregated.n_participants,
-            "updates":        round_updates,
-            "global_weights": aggregated.global_weights,
+            "mean_loss":         aggregated.mean_loss,
+            "n_participants":    aggregated.n_participants,
+            "updates":           round_updates,      # privatized — usati da FedMIA
+            "raw_updates":       raw_updates,         # pre-DP — usati da IDS
+            "raw_global_weights": raw_global_weights, # media raw — riferimento IDS
+            "global_weights":    aggregated.global_weights,
         }
 
     return results
@@ -682,20 +712,31 @@ def run_ids(
 
     ids_results: dict[int, dict[str, Any]] = {}
 
-    # Pesi globali del round precedente — usati per calcolare i delta.
-    # I delta (update.weights - prev_global_weights) sono l'effettivo "gradiente
-    # equivalente" che l'IDS deve analizzare: i pesi assoluti post-DP sono sempre
-    # >> max_grad_norm causando GRADIENT_EXPLOSION e cosine ≈ 0 sistematici.
-    prev_global_weights: list[Any] | None = None
+    # IDS usa pesi PRE-DP (raw_updates) e raw_global_weights come baseline.
+    # Motivazione: con ε=0.1, σ ≈ 48×max_grad_norm. I pesi post-DP hanno
+    # L2-norm >> max_grad_norm (rumore domina), causando GRADIENT_EXPLOSION
+    # e BUDGET_EXHAUSTED falsi sistematici in ogni round.
+    # In un sistema reale, il server/IDS vede gli update raw dai client PRIMA
+    # che il rumore DP venga applicato → analisi corretta delle anomalie.
+    # Delta = raw_local - raw_global_prev: rappresenta la deriva locale netta,
+    # bounded dalla clipping norm × local epochs × lr (in pratica << max_grad_norm).
 
-    for round_num, round_data in sorted(fl_results.items()):
-        updates = round_data.get("updates", [])
+    # Inizializza prev_raw_global con i pesi del modello iniziale (round 0),
+    # salvati in run_fl_rounds() prima dell'inizio del training loop.
+    # Questo elimina il falso GRADIENT_EXPLOSION al round 1 dovuto ai pesi
+    # assoluti del modello non ancora aggiornato.
+    prev_raw_global: list[Any] | None = (fl_results.get(0) or {}).get("raw_global_weights")
 
-        # Aggiorna prev_global_weights con il globale di questo round
-        current_global = round_data.get("global_weights")
+    for round_num, round_data in sorted(
+        (item for item in fl_results.items() if item[0] > 0), key=lambda x: x[0]
+    ):
+        # Preferisci raw_updates (pre-DP). Fallback su updates per retrocompatibilità.
+        updates = round_data.get("raw_updates") or round_data.get("updates", [])
+        # raw_global_weights di questo round (media raw, usato come prev al prossimo)
+        current_raw_global = round_data.get("raw_global_weights")
 
         if not updates:
-            prev_global_weights = current_global
+            prev_raw_global = current_raw_global
             ids_results[round_num] = {
                 "alerts": [], "byzantine_detected": False, "drift_detected": False,
             }
@@ -710,13 +751,14 @@ def run_ids(
 
             weights = update.weights or []
 
-            # Calcola delta pesi: update.weights − prev_global_weights.
-            # Se non abbiamo un round precedente (round 1), usiamo i pesi assoluti.
-            if prev_global_weights is not None and len(prev_global_weights) == len(weights):
+            # delta = raw_local_weights - raw_global_prev_round.
+            # Al round 1 (prev_raw_global=None) usiamo pesi assoluti — GRADIENT_EXPLOSION
+            # round 1 può essere legittimo (modello non ancora normalizzato).
+            if prev_raw_global is not None and len(prev_raw_global) == len(weights):
                 delta_weights = [
                     (w if isinstance(w, torch.Tensor) else torch.tensor(float(w)))
                     - (g if isinstance(g, torch.Tensor) else torch.tensor(float(g)))
-                    for w, g in zip(weights, prev_global_weights)
+                    for w, g in zip(weights, prev_raw_global)
                 ]
             else:
                 delta_weights = [
@@ -724,10 +766,6 @@ def run_ids(
                     for w in weights
                 ]
 
-            # Converti delta in dict[layer → Tensor] per PrivacyAuditor e IDS.
-            # I delta rappresentano la variazione locale del nodo in questo round:
-            # la loro L2-norm è bounded da max_grad_norm (per costruzione in GradientManager),
-            # quindi GRADIENT_EXPLOSION e cosine similarity sono ora significativi.
             model_update: dict[str, Any] = {
                 f"layer_{i}": dw for i, dw in enumerate(delta_weights)
             }
@@ -739,10 +777,10 @@ def run_ids(
                 model_update=model_update,
             )
 
-            # Gradient dict per Krum / cosine analysis dell'IDS (usa i delta)
+            # Gradient dict per Krum / cosine analysis dell'IDS
             gradients[update.node_id] = model_update
 
-        prev_global_weights = current_global
+        prev_raw_global = current_raw_global
 
         if not reports:
             ids_results[round_num] = {
@@ -842,7 +880,7 @@ def save_results(
         },
         "per_round": {
             # Itera sull'unione di tutti i round: FL, MIA e IDS.
-            # Se mia_results è vuoto (es. MIA fallita), i round FL sono comunque salvati.
+            # round 0 è escluso: contiene solo raw_global_weights (init model) per IDS.
             str(r): {
                 "fl":  {"mean_loss": (fl_results or {}).get(r, {}).get("mean_loss")},
                 "mia": mia_results.get(r, {}),
@@ -850,7 +888,7 @@ def save_results(
             }
             for r in sorted(
                 set(mia_results.keys())
-                | set((fl_results or {}).keys())
+                | {k for k in (fl_results or {}).keys() if k > 0}
                 | set(ids_results.keys())
             )
         },
