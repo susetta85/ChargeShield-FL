@@ -701,6 +701,12 @@ def run_ids(
         # cosine_threshold=0.3: soglia coerente con la variabilità naturale
         # dei gradienti nei cluster FL omogenei. 0.85 produceva falsi positivi sistematici.
         cosine_threshold=0.3,
+        # krum_threshold=1.5: dopo fix normalizzazione (mean invece di max),
+        # nodi legittimi hanno score≈1.0, Byzantine≈2.5–3.0.
+        # Soglia 1.5 è conservativa: non spara per variazioni naturali (≤1.1)
+        # ma rileva outlier reali (>1.5). La soglia default 0.8 dava FP sistematici
+        # perché con normalizzazione per max tutti i nodi hanno score≈1.0.
+        krum_threshold=1.5,
         # fedmia= non passato: il plugin shadow-model FedMIA (src/plugins/attacks/fedmia.py)
         # è disabilitato in questa configurazione sperimentale. Il MIA è valutato
         # separatamente tramite run_fedmia() che usa l'approccio loss-based (Yeom et al.,

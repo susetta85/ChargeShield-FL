@@ -426,11 +426,19 @@ class KrumDetector:
             sorted_dists = sorted(distances[node_id].values())
             krum_scores[node_id] = sum(sorted_dists[:neighbors])
 
-        # Normalizza in [0.0, 1.0]
-        max_score = max(krum_scores.values()) if krum_scores else 1.0
-        if max_score > 0:
+        # Normalizza per la media: score_i / mean(scores).
+        # Con normalizzazione per media:
+        #   - Tutti nodi legittimi (equidistanti): score ≈ 1.0 per tutti
+        #   - Nodo Byzantine (update 10× più grande): score ≈ 2.5–3.0
+        #     (gli altri scendono a ≈ 0.3–0.4)
+        # Questo rende la soglia interpretabile: score > 1.5 → outlier reale.
+        # Con normalizzazione per max (precedente): il nodo col max ha sempre
+        # score=1.0 e gli altri ≈0.97 → tutti sopra soglia 0.8 → FP sistematici.
+        scores_list = list(krum_scores.values())
+        mean_score = sum(scores_list) / len(scores_list) if scores_list else 1.0
+        if mean_score > 0:
             krum_scores = {
-                node_id: round(score / max_score, 4)
+                node_id: round(score / mean_score, 4)
                 for node_id, score in krum_scores.items()
             }
 
