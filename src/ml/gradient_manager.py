@@ -156,7 +156,7 @@ class GradientManager(AbstractMLModel):
             purdue_level=2,
             payload=privatized,
             round_num=update.round_num,
-            metadata={"dp_applied": True},
+            metadata={"noise_perturbation_applied": True},
         ))
 
         logger.debug(

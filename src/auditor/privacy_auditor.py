@@ -272,7 +272,8 @@ class PrivacyAuditor(AbstractPrivacyAuditor):
         Args:
             sensitivity:        norma L2 del model update corrente
             cumulative_epsilon: epsilon totale consumato dal nodo
-            budget_ratio:       rapporto cumulative_epsilon / epsilon_budget
+            budget_ratio:       rapporto cumulative_epsilon / total_budget
+                                dove total_budget = epsilon_per_round × total_rounds_budget
                                 (calcolato in audit() per evitare inconsistenze)
 
         Returns:
@@ -289,7 +290,9 @@ class PrivacyAuditor(AbstractPrivacyAuditor):
             threats.append("PRIVACY_BUDGET_NEAR_EXHAUSTION")
 
         # Budget completamente esaurito → nodo ad alto rischio MIA
-        if cumulative_epsilon >= self._epsilon_budget:
+        # Usa budget_ratio (già normalizzato su total_budget = ε × total_rounds) per
+        # evitare falsi positivi sistematici dalla soglia assoluta epsilon_budget.
+        if budget_ratio >= 1.0:
             threats.append("PRIVACY_BUDGET_EXHAUSTED")
 
         # Pattern FedMIA: sensitivity sospettamente bassa

@@ -444,9 +444,20 @@ def run_ids(
 
     ids_results: dict[int, dict[str, Any]] = {}
 
-    for round_num, round_data in fl_results.items():
+    # Pesi globali del round precedente — usati per calcolare i delta.
+    # I delta (update.weights - prev_global_weights) sono l'effettivo "gradiente
+    # equivalente" che l'IDS deve analizzare: i pesi assoluti post-DP sono sempre
+    # >> max_grad_norm causando GRADIENT_EXPLOSION e cosine ≈ 0 sistematici.
+    prev_global_weights: list[Any] | None = None
+
+    for round_num, round_data in sorted(fl_results.items()):
         updates = round_data.get("updates", [])
+
+        # Aggiorna prev_global_weights con il globale di questo round
+        current_global = round_data.get("global_weights")
+
         if not updates:
+            prev_global_weights = current_global
             ids_results[round_num] = {
                 "alerts": [], "byzantine_detected": False, "drift_detected": False,
             }
@@ -459,13 +470,29 @@ def run_ids(
             if not update or not update.node_id:
                 continue
 
-            # Converti pesi in dict[layer → list[float]] per PrivacyAuditor
-            model_update: dict[str, Any] = {}
-            for i, w in enumerate(update.weights or []):
-                if isinstance(w, torch.Tensor):
-                    model_update[f"layer_{i}"] = w.flatten().tolist()
-                else:
-                    model_update[f"layer_{i}"] = float(w) if isinstance(w, (int, float)) else w
+            weights = update.weights or []
+
+            # Calcola delta pesi: update.weights − prev_global_weights.
+            # Se non abbiamo un round precedente (round 1), usiamo i pesi assoluti.
+            if prev_global_weights is not None and len(prev_global_weights) == len(weights):
+                delta_weights = [
+                    (w if isinstance(w, torch.Tensor) else torch.tensor(float(w)))
+                    - (g if isinstance(g, torch.Tensor) else torch.tensor(float(g)))
+                    for w, g in zip(weights, prev_global_weights)
+                ]
+            else:
+                delta_weights = [
+                    (w if isinstance(w, torch.Tensor) else torch.tensor(float(w)))
+                    for w in weights
+                ]
+
+            # Converti delta in dict[layer → Tensor] per PrivacyAuditor e IDS.
+            # I delta rappresentano la variazione locale del nodo in questo round:
+            # la loro L2-norm è bounded da max_grad_norm (per costruzione in GradientManager),
+            # quindi GRADIENT_EXPLOSION e cosine similarity sono ora significativi.
+            model_update: dict[str, Any] = {
+                f"layer_{i}": dw for i, dw in enumerate(delta_weights)
+            }
 
             # AuditReport con threats_detected reali (GRADIENT_EXPLOSION, ecc.)
             reports[update.node_id] = auditor.audit(
@@ -474,11 +501,10 @@ def run_ids(
                 model_update=model_update,
             )
 
-            # Gradient dict per Krum / cosine analysis dell'IDS
-            gradients[update.node_id] = {
-                f"layer_{i}": w
-                for i, w in enumerate(update.weights or [])
-            }
+            # Gradient dict per Krum / cosine analysis dell'IDS (usa i delta)
+            gradients[update.node_id] = model_update
+
+        prev_global_weights = current_global
 
         if not reports:
             ids_results[round_num] = {
