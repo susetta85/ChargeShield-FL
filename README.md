@@ -254,12 +254,57 @@ make experiment
 
 # Full sweep: rounds ∈ {100,200,500,1000} × ε ∈ {0.1,0.5,1.0,2.0,5.0}
 # Each run creates a new numbered directory experiments/exp{N}/
-# Estimated runtime: ~36h on CPU (sequential; 20 configs × ~1.8h average)
-nohup make experiment-full-sweep &
+# Estimated runtime: ~2-4h on Mac M-series (sequential; 20 configs)
+caffeinate -s nohup make experiment-full-sweep > /tmp/sweep.log 2>&1 &
 
 # Monitor progress in real time
-tail -f experiments/exp1/sweep_log.txt
+tail -f /tmp/sweep.log
+
+# Byzantine attack sweep (Sprint 8): 5 seeds × 5 epsilon = 25 runs
+# highway cluster sends gradient-scaled updates (×10); validates IDS Krum + cosine detection
+caffeinate -s nohup make experiment-byzantine-sweep > /tmp/byz_sweep.log 2>&1 &
+tail -f /tmp/byz_sweep.log
 ```
+
+#### CLI arguments
+
+`scripts/run_experiments.py` supports the following arguments:
+
+| Argument | Type | Default | Description |
+|---|---|---|---|
+| `--config` | path | `config/experiment.yaml` | Config file path |
+| `--epsilon` | float | from config | Override DP budget ε |
+| `--rounds` | int | from config | Override FL rounds |
+| `--seed` | int | from config (42) | Reproducibility seed — affects session shuffle, DataLoader, model init. Use values 42, 123, 456, 789, 1234 for multi-seed validation |
+| `--byzantine` | flag | false | Enable Byzantine gradient scaling attack |
+| `--byzantine-node` | str | from config (highway) | Attacking cluster name |
+| `--scale-factor` | float | from config (10.0) | Attack intensity multiplier |
+| `--sweep-dir` | path | None | Output directory for sweep isolation (e.g. `experiments/exp2`) |
+| `--dry-run` | flag | false | Validate config and dataset; no training |
+| `--skip-ids` | flag | false | Skip IDS analysis (faster, for MIA-only evaluation) |
+
+**Example: manual multi-seed run**
+
+```bash
+# Baseline: 5 seeds, ε=1.0, 100 rounds (sequential — do NOT run in parallel)
+for seed in 42 123 456 789 1234; do
+  python3 scripts/run_experiments.py \
+    --epsilon 1.0 --rounds 100 --seed $seed \
+    --sweep-dir experiments/exp_baseline
+done
+
+# Byzantine: same seeds, with attack enabled
+for seed in 42 123 456 789 1234; do
+  python3 scripts/run_experiments.py \
+    --epsilon 1.0 --rounds 100 --seed $seed \
+    --byzantine --byzantine-node highway --scale-factor 10 \
+    --sweep-dir experiments/exp_byzantine
+done
+```
+
+> **Note on parallelism**: run experiments **sequentially**, not in parallel. Two concurrent FL experiments contend for CPU/memory and produce slower, less reproducible results on Apple Silicon. The Makefile targets are sequential by design.
+
+> **Note on seed choice**: any integer works. The values 42, 123, 456, 789, 1234 are conventional and already embedded in the Makefile sweep targets. 5 seeds is the minimum for reporting `mean ± std`; 10 seeds for Wilcoxon significance testing.
 
 Results are written to `experiments/exp{N}/`:
 - `experiment_{timestamp}.json` — per-config result (one file per completed config, timestamped)
@@ -287,14 +332,15 @@ make clean     # remove __pycache__ and build artefacts
 | Makefile Target | Description |
 |---|---|
 | `make experiment-dry` | Dry run: loads config and dataset, prints summary, exits without training |
-| `make experiment` | Single experiment with default parameters (100 rounds, ε=1.0, FedProx μ=0.01); result written to `experiments/experiment_{timestamp}.json` |
-| `make experiment-full-sweep` | Full rounds × ε sweep (20 configs); creates `experiments/exp{N}/` with JSON files and `exp{N}.xlsx`; each new run auto-increments N |
+| `make experiment` | Single experiment with default parameters (100 rounds, ε=1.0, FedProx μ=0.01) |
+| `make experiment-full-sweep` | Full rounds × ε sweep (20 configs); creates `experiments/exp{N}/`; auto-increments N |
+| `make experiment-byzantine-sweep` | Sprint 8: Byzantine gradient scaling sweep — 5 seeds × 5 ε (25 runs); highway cluster ×10; validates IDS Krum + cosine detection |
 | `make test` | Run the complete unit and integration test suite (pytest) |
 | `make test-sprint4` | Sprint 4 tests only |
 | `make test-sprint5` | Sprint 5 tests only |
 | `make lint` | Static analysis via ruff |
 | `make clean` | Remove `__pycache__`, `.pyc` files, and pytest artefacts |
-| `make build` | Build Docker images for the containerised topology (Sprint 7+; not required for experiments) |
+| `make build` | Build Docker images for the containerised topology (not required for experiments) |
 | `make provision` | Provision Containerlab topology and WireGuard mesh (container topology only) |
 | `make deploy` | Start NVFLARE server and all 12 FL clients in containers (container topology only) |
 | `make destroy` | Tear down the Containerlab topology |
@@ -308,6 +354,12 @@ make clean     # remove __pycache__ and build artefacts
 | `scripts/generate_excel_report.py` | Standalone tool: reads all `experiment_*.json` files from a given directory and generates a 6-sheet Excel workbook: **Raw Data** (one row per experiment), **Heat Map** (AUC-ROC matrix: rounds × ε), **Per Rounds** (aggregated by round count), **Per Epsilon** (aggregated by ε), **Comparison** (side-by-side metrics), **AUC Progression** (per-round AUC trajectory) |
 
 ### Engineering Fixes
+
+Fixes applied during Sprint 8 (post-exp1 verification):
+
+- **IDS receives pre-DP raw weights** (`scripts/run_experiments.py`): `run_fl_rounds()` now stores `raw_updates` (pre-`gm.privatize()`) and `raw_global_weights` (FedAvg of raw, noise-free) alongside the privatised updates. `run_ids()` uses raw weights to compute deltas. Root cause: with ε=0.1, σ ≈ 48×`max_grad_norm`; post-DP weight L2-norm ≈ 1157 >> 1.0, causing `GRADIENT_EXPLOSION` and `BUDGET_EXHAUSTED` on every node every round. A "round 0" entry with the initial model weights eliminates the round-1 false positive. In a real FL deployment the server-side IDS sees raw client updates before DP noise is applied — this fix aligns the simulation with the real threat model.
+- **Krum normalisation fixed** (`src/ids/charging_ids.py`): `KrumDetector.compute_scores()` now normalises by `mean(scores)` instead of `max(scores)`. With max-normalisation, all legitimate nodes had score ≈ 1.0 (equidistant) → all above threshold 0.8 → 400 false positives per 100-round experiment. With mean-normalisation: legitimate ≈ 1.0, Byzantine (×10 update) ≈ 2.7 → threshold 1.5 discriminates correctly.
+- **Krum threshold raised to 1.5** (`scripts/run_experiments.py`): `ChargingIDS` now instantiated with `krum_threshold=1.5` (was 0.8 default). Validated by simulation: legitimate max score ≈ 1.01, Byzantine score ≈ 2.7 across 100 simulated rounds.
 
 Fixes applied during Sprint 7 (code review v6/v7, post-sweep):
 
@@ -350,8 +402,8 @@ Fixes applied during Sprint 5/6 development (pre-sweep):
 | Sprint 4 | Complete | FedAvg and FedProx aggregation via NVFLARE 2.7.2; proximal_mu configuration; multi-round orchestration |
 | Sprint 5 | Complete | Gaussian Mechanism DP integration; gradient clipping; σ calibration; DP accounting (ε, δ tracking per round) |
 | Sprint 6 | Complete | FedMIA loss-based evaluator (Yeom 2018); full 20-config sweep (rounds × ε); first results: AUC-ROC ≈ 0.503 all configs — loss-based attack below noise floor; 10 code review fixes applied (HIGH×3, MEDIUM×5, LOW×2) including IDS delta-weights, DP budget formula, FedAvg denominator, Krum config |
-| Sprint 7 | In Progress | Calibrated shadow MIA attack (Carlini 2022) implemented: `run_fedmia_shadow()` trains a local shadow model on 50% of training data, computes per-sample calibrated score = MSE(shadow)−MSE(target); shadow `auc_roc` and `score_gap` added to all experiment JSONs; new sweep to validate attack strength |
-| Sprint 8 | Planned | FedProx sweep (proximal_mu sweep); statistical analysis of shadow AUC-ROC vs. ε; confidence intervals across 5 seeds; comparison FedAvg vs FedProx; Byzantine injection experiments to validate Krum/cosine IDS |
+| Sprint 7 | Complete | Calibrated shadow MIA attack (Carlini 2022) implemented: `run_fedmia_shadow()` trains a local shadow model on 50% of training data, computes per-sample calibrated score = MSE(shadow)−MSE(target); shadow AUC-ROC ≈ 0.499 across all ε — model generalises well, MIA-resistant; IDS false-positive bugs found and fixed |
+| Sprint 8 | In Progress | Byzantine gradient scaling attack simulation: highway cluster sends weights ×10; `make experiment-byzantine-sweep` runs 5 seeds × 5 ε (25 runs); validates Krum (score >1.5) and cosine similarity IDS detection; `--seed`, `--byzantine`, `--scale-factor` CLI args added; Krum normalisation and threshold fixed |
 | Sprint 9 | Planned | Protocol-level experiments: OCPP 1.6 vs. OCPP 2.0.1 vs. MQTT v5 leakage differential; non-IID severity analysis |
 | Sprint 10 | Planned | DSN 2027 paper writing; results consolidation; reproducibility packaging; artefact evaluation preparation |
 
