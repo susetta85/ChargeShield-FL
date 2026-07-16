@@ -4,10 +4,16 @@ scripts/generate_excel_report.py
 ChargeShield-FL — Genera report Excel da tutti i risultati in experiments/
 
 Legge tutti i file experiment_*.json e produce:
-  Sheet "Raw Data"   — ogni esperimento su una riga
-  Sheet "Heat Map"   — matrice AUC-ROC: righe=round, colonne=epsilon
-  Sheet "Per Rounds" — AUC-ROC medio, min, max per numero di round
-  Sheet "Per Epsilon"— AUC-ROC medio, min, max per valore di epsilon
+  Sheet 1  "Raw Data"          — ogni esperimento su una riga (Yeom + Shadow + LiRA)
+  Sheet 2  "Heat Map"          — matrice AUC-ROC: righe=round, colonne=epsilon
+  Sheet 3  "Per Rounds"        — AUC-ROC medio, min, max per numero di round
+  Sheet 4  "Per Epsilon"       — AUC-ROC medio, min, max per valore di epsilon
+  Sheet 5  "Comparison"        — confronto diretto fra configurazioni
+  Sheet 6  "AUC Progression"   — AUC Yeom per round (convergenza FL)
+  Sheet 7  "Attack Comparison" — Yeom vs Shadow vs LiRA sintetico per esperimento
+  Sheet 8  "Yeom Per Round"    — AUC Yeom round-by-round per ogni esperimento
+  Sheet 9  "Shadow Per Round"  — AUC Shadow round-by-round per ogni esperimento
+  Sheet 10 "LiRA Per Round"    — AUC LiRA round-by-round per ogni esperimento (★ PRIMARY)
 
 Usage:
   python scripts/generate_excel_report.py
@@ -99,16 +105,26 @@ def load_experiments(experiments_dir: Path | None = None) -> list[dict]:
             summ  = data.get("summary", {})
             per_round_raw = data.get("per_round", {})
             records.append({
-                "timestamp":   data.get("timestamp", path.stem.replace("experiment_", "")),
-                "file":        path.name,
-                "rounds":      int(cfg.get("fl_rounds", 0)),
-                "epsilon":     float(cfg.get("epsilon", 0)),
-                "delta":       float(cfg.get("delta", 1e-5)),
-                "proximal_mu": float(cfg.get("proximal_mu", 0)),
-                "auc_roc":     float(summ["mean_auc_roc"]) if summ.get("mean_auc_roc") is not None else None,
-                "auc_max":     float(summ["max_auc_roc"])  if summ.get("max_auc_roc")  is not None else None,
-                "auc_min":     float(summ["min_auc_roc"])  if summ.get("min_auc_roc")  is not None else None,
-                "privacy_risk":summ.get("privacy_risk", ""),
+                "timestamp":    data.get("timestamp", path.stem.replace("experiment_", "")),
+                "file":         path.name,
+                "rounds":       int(cfg.get("fl_rounds", 0)),
+                "epsilon":      float(cfg.get("epsilon", 0)),
+                "delta":        float(cfg.get("delta", 1e-5)),
+                "proximal_mu":  float(cfg.get("proximal_mu", 0)),
+                "no_dp":        bool(cfg.get("no_dp", False)),
+                # Yeom 2018 — loss-based MIA sul modello globale (baseline debole)
+                "auc_roc":      float(summ["mean_auc_roc"]) if summ.get("mean_auc_roc") is not None else None,
+                "auc_max":      float(summ["max_auc_roc"])  if summ.get("max_auc_roc")  is not None else None,
+                "auc_min":      float(summ["min_auc_roc"])  if summ.get("min_auc_roc")  is not None else None,
+                # Shadow MIA calibrated — Carlini 2022 style, modello globale
+                "shadow_auc":   float(summ["mean_shadow_auc_roc"]) if summ.get("mean_shadow_auc_roc") is not None else None,
+                "shadow_max":   float(summ["max_shadow_auc_roc"])  if summ.get("max_shadow_auc_roc")  is not None else None,
+                # LiRA — Carlini 2022, server-side su raw_updates PRE-aggregazione
+                "lira_auc":     float(summ["mean_lira_auc_roc"]) if summ.get("mean_lira_auc_roc") is not None else None,
+                "lira_max":     float(summ["max_lira_auc_roc"])  if summ.get("max_lira_auc_roc")  is not None else None,
+                # Metrica primaria: LiRA > Shadow > Yeom (attacco più forte)
+                "primary_attack": summ.get("primary_attack", "Yeom"),
+                "privacy_risk": summ.get("privacy_risk", ""),
                 # IDS: conta gli alert totali nei round
                 "total_alerts": sum(
                     len(v.get("ids", {}).get("alerts", []))
@@ -118,11 +134,23 @@ def load_experiments(experiments_dir: Path | None = None) -> list[dict]:
                     1 for v in per_round_raw.values()
                     if v.get("ids", {}).get("byzantine_detected")
                 ),
-                # AUC-ROC per round (per progression chart)
+                # AUC-ROC per round (per progression chart) — Yeom
                 "per_round_auc": {
                     int(k): v["mia"]["auc_roc"]
                     for k, v in per_round_raw.items()
                     if v.get("mia", {}).get("auc_roc") is not None
+                },
+                # Shadow AUC per round
+                "per_round_shadow_auc": {
+                    int(k): v["mia"]["shadow_auc_roc"]
+                    for k, v in per_round_raw.items()
+                    if v.get("mia", {}).get("shadow_auc_roc") is not None
+                },
+                # LiRA AUC per round
+                "per_round_lira_auc": {
+                    int(k): v["mia"]["lira_auc_roc"]
+                    for k, v in per_round_raw.items()
+                    if v.get("mia", {}).get("lira_auc_roc") is not None
                 },
                 # FL training loss per round (andamento convergenza)
                 "per_round_loss": {
@@ -142,7 +170,7 @@ def build_raw_data(ws, records: list[dict]) -> None:
     ws.title = "Raw Data"
 
     # Titolo
-    ws.merge_cells("A1:K1")
+    ws.merge_cells("A1:O1")
     title = ws["A1"]
     title.value = "ChargeShield-FL — Experiment Results (Full Sweep)"
     title.font = _font(bold=True, color=COLOR_HEADER_FG, size=12)
@@ -150,34 +178,56 @@ def build_raw_data(ws, records: list[dict]) -> None:
     title.alignment = _center()
 
     headers = [
-        "Timestamp", "FL Rounds", "Epsilon (ε)", "Delta (δ)", "Proximal μ",
-        "AUC-ROC (mean)", "AUC-ROC (max)", "AUC-ROC (min)",
-        "Privacy Risk", "IDS Alerts", "Byzantine Rounds",
+        "Timestamp", "FL Rounds", "Epsilon (ε)", "Delta (δ)", "Proximal μ", "No-DP",
+        # Yeom
+        "Yeom AUC (mean)", "Yeom AUC (max)", "Yeom AUC (min)",
+        # Shadow
+        "Shadow AUC (mean)", "Shadow AUC (max)",
+        # LiRA (primary)
+        "LiRA AUC (mean)", "LiRA AUC (max)",
+        # Sintesi
+        "Privacy Risk", "IDS Alerts",
     ]
     for col, h in enumerate(headers, 1):
         _header_cell(ws.cell(2, col), h, bg=COLOR_SUBHDR_BG)
+    # Colora i gruppi di header per distinguere gli attacchi
+    for col in [7, 8, 9]:   # Yeom
+        _header_cell(ws.cell(2, col), headers[col - 1], bg="4472C4")
+    for col in [10, 11]:    # Shadow
+        _header_cell(ws.cell(2, col), headers[col - 1], bg="ED7D31")
+    for col in [12, 13]:    # LiRA (primary)
+        _header_cell(ws.cell(2, col), headers[col - 1], bg="70AD47")
+
+    def _auc_cell(cell, val, alt_row):
+        _data_cell(cell, val, fmt="0.0000", alt_row=alt_row)
+        if val is not None:
+            if val > 0.60:
+                cell.font = _font(bold=True, color=COLOR_BAD)
+            elif val > 0.52:
+                cell.font = _font(bold=True, color=COLOR_WARN)
+            else:
+                cell.font = _font(bold=True, color=COLOR_GOOD)
 
     for row_idx, rec in enumerate(records, 3):
         alt = (row_idx % 2 == 0)
-        _data_cell(ws.cell(row_idx, 1),  rec["timestamp"],    alt_row=alt)
-        _data_cell(ws.cell(row_idx, 2),  rec["rounds"],       alt_row=alt)
-        _data_cell(ws.cell(row_idx, 3),  rec["epsilon"],      fmt="0.0#", alt_row=alt)
-        _data_cell(ws.cell(row_idx, 4),  rec["delta"],        fmt="0.00E+00", alt_row=alt)
-        _data_cell(ws.cell(row_idx, 5),  rec["proximal_mu"],  fmt="0.00", alt_row=alt)
-
-        # AUC-ROC colorato
-        for col, key in zip([6, 7, 8], ["auc_roc", "auc_max", "auc_min"]):
-            c = ws.cell(row_idx, col)
-            val = rec[key]
-            _data_cell(c, val, fmt="0.0000", alt_row=alt)
-            if val is not None:
-                if val > 0.55:
-                    c.font = _font(bold=True, color=COLOR_BAD)
-                elif val > 0.50:
-                    c.font = _font(bold=True, color=COLOR_WARN)
-
+        _data_cell(ws.cell(row_idx, 1),  rec["timestamp"],           alt_row=alt)
+        _data_cell(ws.cell(row_idx, 2),  rec["rounds"],              alt_row=alt)
+        _data_cell(ws.cell(row_idx, 3),  rec["epsilon"],             fmt="0.0#", alt_row=alt)
+        _data_cell(ws.cell(row_idx, 4),  rec["delta"],               fmt="0.00E+00", alt_row=alt)
+        _data_cell(ws.cell(row_idx, 5),  rec["proximal_mu"],         fmt="0.00", alt_row=alt)
+        _data_cell(ws.cell(row_idx, 6),  "YES" if rec.get("no_dp") else "no", alt_row=alt)
+        # Yeom
+        _auc_cell(ws.cell(row_idx, 7),  rec.get("auc_roc"),    alt)
+        _auc_cell(ws.cell(row_idx, 8),  rec.get("auc_max"),    alt)
+        _auc_cell(ws.cell(row_idx, 9),  rec.get("auc_min"),    alt)
+        # Shadow
+        _auc_cell(ws.cell(row_idx, 10), rec.get("shadow_auc"), alt)
+        _auc_cell(ws.cell(row_idx, 11), rec.get("shadow_max"), alt)
+        # LiRA
+        _auc_cell(ws.cell(row_idx, 12), rec.get("lira_auc"),   alt)
+        _auc_cell(ws.cell(row_idx, 13), rec.get("lira_max"),   alt)
         # Privacy risk con colore
-        risk_cell = ws.cell(row_idx, 9)
+        risk_cell = ws.cell(row_idx, 14)
         risk = rec["privacy_risk"]
         _data_cell(risk_cell, risk, alt_row=alt, bold=True)
         if risk == "HIGH":
@@ -186,12 +236,9 @@ def build_raw_data(ws, records: list[dict]) -> None:
             risk_cell.font = _font(bold=True, color=COLOR_WARN)
         else:
             risk_cell.font = _font(bold=True, color=COLOR_GOOD)
+        _data_cell(ws.cell(row_idx, 15), rec["total_alerts"], alt_row=alt)
 
-        _data_cell(ws.cell(row_idx, 10), rec["total_alerts"],    alt_row=alt)
-        _data_cell(ws.cell(row_idx, 11), rec["byzantine_rounds"], alt_row=alt)
-
-    # Larghezze colonne
-    widths = [20, 12, 12, 14, 12, 16, 14, 14, 14, 12, 18]
+    widths = [20, 10, 10, 12, 10, 7, 16, 14, 14, 18, 16, 16, 14, 14, 12]
     for i, w in enumerate(widths, 1):
         _set_col_width(ws, get_column_letter(i), w)
 
@@ -452,16 +499,24 @@ def build_comparison(ws, records: list[dict]) -> None:
 
     # Righe metriche
     metrics = [
-        ("FL Rounds",          "rounds",          None),
-        ("Epsilon (ε)",        "epsilon",          "0.0#"),
-        ("Delta (δ)",          "delta",            "0.00E+00"),
-        ("Proximal μ",         "proximal_mu",      "0.00"),
-        ("AUC-ROC Mean",       "auc_roc",          "0.0000"),
-        ("AUC-ROC Max",        "auc_max",          "0.0000"),
-        ("AUC-ROC Min",        "auc_min",          "0.0000"),
-        ("Privacy Risk",       "privacy_risk",     None),
-        ("IDS Alerts (total)", "total_alerts",     None),
-        ("Byzantine Rounds",   "byzantine_rounds", None),
+        ("FL Rounds",              "rounds",          None),
+        ("Epsilon (ε)",            "epsilon",          "0.0#"),
+        ("No-DP baseline",         "no_dp",            None),
+        # ── Yeom 2018 (baseline debole) ──
+        ("Yeom AUC (mean)",        "auc_roc",          "0.0000"),
+        ("Yeom AUC (max)",         "auc_max",          "0.0000"),
+        ("Yeom AUC (min)",         "auc_min",          "0.0000"),
+        # ── Shadow calibrated (Carlini 2022, modello globale) ──
+        ("Shadow AUC (mean)",      "shadow_auc",       "0.0000"),
+        ("Shadow AUC (max)",       "shadow_max",       "0.0000"),
+        # ── LiRA (Carlini 2022, raw_updates, PRIMARY) ──
+        ("LiRA AUC (mean) ★",     "lira_auc",         "0.0000"),
+        ("LiRA AUC (max)",         "lira_max",         "0.0000"),
+        # ── Sintesi ──
+        ("Primary Attack",         "primary_attack",   None),
+        ("Privacy Risk",           "privacy_risk",     None),
+        ("IDS Alerts (total)",     "total_alerts",     None),
+        ("Byzantine Rounds",       "byzantine_rounds", None),
     ]
 
     for row_idx, (label, key, fmt) in enumerate(metrics, 3):
@@ -579,6 +634,313 @@ def build_auc_progression(ws, records: list[dict]) -> None:
     ws.row_dimensions[4].height = 16
 
 
+# ── Sheet 7: Attack Comparison ────────────────────────────────────────────────
+
+def build_attack_comparison(ws, records: list[dict]) -> None:
+    """
+    Tabella di confronto diretto Yeom vs Shadow vs LiRA per ogni esperimento.
+    Scopo: capire immediatamente quale attacco funziona meglio e quanto DP aiuta.
+    Layout: ogni riga = un esperimento; colonne = metriche per ciascun attacco.
+    """
+    ws.title = "Attack Comparison"
+
+    n_exp = len(records)
+    n_cols = 12
+
+    ws.merge_cells(f"A1:{get_column_letter(n_cols)}1")
+    t = ws["A1"]
+    t.value = "Attack Comparison — Yeom (2018) vs Shadow (Carlini) vs LiRA (Carlini 2022, PRIMARY)"
+    t.font = _font(bold=True, color=COLOR_HEADER_FG, size=12)
+    t.fill = _fill(COLOR_HEADER_BG)
+    t.alignment = _center()
+
+    ws.merge_cells(f"A2:{get_column_letter(n_cols)}2")
+    sub = ws["A2"]
+    sub.value = (
+        "★ LiRA = attacco primario del paper (server intercetta raw_updates pre-FedProx).  "
+        "Yeom = baseline debole (modello globale).  "
+        "Shadow = calibrated (modello globale).  "
+        "AUC > 0.55 → membership signal presente  |  AUC ≈ 0.50 → DP efficace."
+    )
+    sub.font = _font(size=9, color="404040")
+    sub.fill = _fill("EBF3FB")
+    sub.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ws.row_dimensions[2].height = 30
+
+    # Gruppi di header: identificazione + 3 colonne per attacco
+    # Row 3: label gruppi
+    _header_cell(ws.cell(3, 1), "Experiment", bg=COLOR_HEADER_BG)
+    _header_cell(ws.cell(3, 2), "ε",          bg=COLOR_HEADER_BG)
+    _header_cell(ws.cell(3, 3), "Rounds",     bg=COLOR_HEADER_BG)
+    _header_cell(ws.cell(3, 4), "No-DP",      bg=COLOR_HEADER_BG)
+
+    # Yeom group (blu)
+    ws.merge_cells("E3:F3")
+    _header_cell(ws.cell(3, 5), "Yeom 2018 (debole)", bg="4472C4")
+    # Shadow group (arancione)
+    ws.merge_cells("G3:H3")
+    _header_cell(ws.cell(3, 7), "Shadow MIA (medio)", bg="ED7D31")
+    # LiRA group (verde) — primary
+    ws.merge_cells("I3:J3")
+    _header_cell(ws.cell(3, 9), "★ LiRA (primario)", bg="375623")
+    # Delta columns
+    ws.merge_cells("K3:L3")
+    _header_cell(ws.cell(3, 11), "Δ (LiRA − Yeom)", bg="7030A0")
+
+    # Row 4: sub-header
+    for col in [1, 2, 3, 4]:
+        _header_cell(ws.cell(4, col), "", bg=COLOR_HEADER_BG)
+    for col, label in zip([5, 6, 7, 8, 9, 10, 11, 12],
+                          ["Mean", "Max", "Mean", "Max", "Mean", "Max", "Δ mean", "Δ max"]):
+        bgs = {5: "4472C4", 6: "4472C4", 7: "ED7D31", 8: "ED7D31",
+               9: "70AD47", 10: "70AD47", 11: "7030A0", 12: "7030A0"}
+        _header_cell(ws.cell(4, col), label, bg=bgs[col])
+
+    ws.row_dimensions[3].height = 20
+    ws.row_dimensions[4].height = 16
+
+    def _auc_col(cell, val, alt_row, bold=False):
+        _data_cell(cell, val, fmt="0.0000", alt_row=alt_row, bold=bold)
+        if val is None:
+            cell.value = "—"
+            return
+        if val > 0.60:
+            cell.fill = _fill("FFCCCC")
+            cell.font = _font(bold=True, color=COLOR_BAD)
+        elif val > 0.55:
+            cell.fill = _fill("FFE5B4")
+            cell.font = _font(bold=True, color="8B4513")
+        elif val > 0.52:
+            cell.fill = _fill("FFF2CC")
+            cell.font = _font(color="8B4513")
+        else:
+            cell.fill = _fill("D5E8D4")
+            cell.font = _font(color="2D6A2D")
+
+    def _delta_col(cell, val, alt_row):
+        _data_cell(cell, val, fmt="+0.0000;-0.0000;0.0000", alt_row=alt_row)
+        if val is None:
+            cell.value = "—"
+            return
+        if val > 0.05:
+            cell.fill = _fill("FFCCCC")
+            cell.font = _font(bold=True, color=COLOR_BAD)
+        elif val > 0.01:
+            cell.fill = _fill("FFE5B4")
+            cell.font = _font(color="8B4513")
+        else:
+            cell.fill = _fill("D5E8D4")
+            cell.font = _font(color="2D6A2D")
+
+    for row_idx, rec in enumerate(records, 5):
+        alt = (row_idx % 2 == 0)
+        _data_cell(ws.cell(row_idx, 1), rec["timestamp"][:15],    alt_row=alt)
+        _data_cell(ws.cell(row_idx, 2), rec["epsilon"], fmt="0.0#", alt_row=alt)
+        _data_cell(ws.cell(row_idx, 3), rec["rounds"],             alt_row=alt)
+        _data_cell(ws.cell(row_idx, 4), "YES" if rec.get("no_dp") else "no", alt_row=alt)
+
+        yeom_mean  = rec.get("auc_roc")
+        yeom_max   = rec.get("auc_max")
+        shadow_mean = rec.get("shadow_auc")
+        shadow_max  = rec.get("shadow_max")
+        lira_mean   = rec.get("lira_auc")
+        lira_max    = rec.get("lira_max")
+
+        _auc_col(ws.cell(row_idx, 5),  yeom_mean,  alt)
+        _auc_col(ws.cell(row_idx, 6),  yeom_max,   alt)
+        _auc_col(ws.cell(row_idx, 7),  shadow_mean, alt)
+        _auc_col(ws.cell(row_idx, 8),  shadow_max,  alt)
+        _auc_col(ws.cell(row_idx, 9),  lira_mean,  alt, bold=True)
+        _auc_col(ws.cell(row_idx, 10), lira_max,   alt)
+
+        # Δ = LiRA − Yeom: positivo = LiRA vede più segnale (attacco più forte)
+        delta_mean = (lira_mean - yeom_mean) if lira_mean is not None and yeom_mean is not None else None
+        delta_max  = (lira_max  - yeom_max)  if lira_max  is not None and yeom_max  is not None else None
+        _delta_col(ws.cell(row_idx, 11), delta_mean, alt)
+        _delta_col(ws.cell(row_idx, 12), delta_max,  alt)
+
+    # Widths
+    widths = [18, 8, 8, 8, 12, 12, 12, 12, 14, 12, 12, 12]
+    for i, w in enumerate(widths, 1):
+        _set_col_width(ws, get_column_letter(i), w)
+
+    # Legenda
+    leg_row = n_exp + 7
+    ws.cell(leg_row, 1).value = "Legenda:"
+    ws.cell(leg_row, 1).font = _font(bold=True)
+    for i, (bg, fg, label) in enumerate([
+        ("D5E8D4", "2D6A2D", "AUC ≤ 0.52 — DP efficace"),
+        ("FFF2CC", "8B4513", "0.52 < AUC ≤ 0.55 — leakage debole"),
+        ("FFE5B4", "8B4513", "0.55 < AUC ≤ 0.60 — leakage moderato"),
+        ("FFCCCC", COLOR_BAD, "AUC > 0.60 — MIA efficace, HIGH risk"),
+    ]):
+        c = ws.cell(leg_row + 1 + i, 2)
+        c.value = label
+        c.fill = _fill(bg)
+        c.font = _font(color=fg, bold=True)
+        c.border = _border()
+        ws.merge_cells(
+            start_row=leg_row + 1 + i, start_column=2,
+            end_row=leg_row + 1 + i, end_column=6,
+        )
+
+    ws.freeze_panes = "A5"
+
+
+# ── Sheets 8-10: Per-Attack Round-by-Round ─────────────────────────────────────
+
+def _build_per_round_sheet(
+    ws,
+    records: list[dict],
+    data_key: str,
+    attack_name: str,
+    accent_bg: str,
+    description: str,
+) -> None:
+    """
+    Sheet generico per un singolo attacco: righe=round, colonne=esperimento.
+    Mostra come l'AUC di quell'attacco evolve round-by-round al variare delle config.
+    Usato per Yeom, Shadow MIA e LiRA — tre sheet separati, stesso layout.
+
+    Args:
+        data_key:    chiave nel record con il dict {round → AUC}
+        attack_name: nome visualizzato nel titolo e nell'intestazione
+        accent_bg:   colore hex degli header di colonna (diverso per attacco)
+        description: testo del sottotitolo
+    """
+    ws.title = f"{attack_name} Per Round"
+    n_exp  = len(records)
+    n_cols = n_exp + 1  # col1=Round #, poi una colonna AUC per esperimento
+
+    # ── Titolo ─────────────────────────────────────────────────────────────────
+    ws.merge_cells(f"A1:{get_column_letter(n_cols)}1")
+    t = ws["A1"]
+    t.value = f"AUC-ROC per Round — {attack_name}"
+    t.font  = _font(bold=True, color=COLOR_HEADER_FG, size=12)
+    t.fill  = _fill(COLOR_HEADER_BG)
+    t.alignment = _center()
+
+    ws.merge_cells(f"A2:{get_column_letter(n_cols)}2")
+    sub = ws["A2"]
+    sub.value = description
+    sub.font  = _font(size=9, color="404040")
+    sub.fill  = _fill("EBF3FB")
+    sub.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ws.row_dimensions[2].height = 28
+
+    # ── Header riga 3 ──────────────────────────────────────────────────────────
+    _header_cell(ws.cell(3, 1), "Round #", bg=COLOR_HEADER_BG)
+    for i, rec in enumerate(records):
+        col    = i + 2
+        no_dp  = rec.get("no_dp", False)
+        eps_str = "no-DP" if no_dp else f"ε={rec['epsilon']}"
+        label  = f"{rec['rounds']}r / {eps_str}"
+        _header_cell(ws.cell(3, col), label, bg=accent_bg)
+
+    # ── Dati ───────────────────────────────────────────────────────────────────
+    all_rounds: set[int] = set()
+    for rec in records:
+        all_rounds.update(rec.get(data_key, {}).keys())
+    sorted_rounds = sorted(all_rounds)
+
+    for row_idx, rnd in enumerate(sorted_rounds, 4):
+        alt = row_idx % 2 == 0
+        _data_cell(ws.cell(row_idx, 1), rnd, alt_row=alt, bold=True)
+        for i, rec in enumerate(records):
+            col     = i + 2
+            auc_val = rec.get(data_key, {}).get(rnd)
+            cell    = ws.cell(row_idx, col)
+            _data_cell(cell, auc_val, fmt="0.0000", alt_row=alt)
+            if auc_val is not None:
+                if auc_val > 0.60:
+                    cell.fill = _fill("FFCCCC")
+                    cell.font = _font(bold=True, color=COLOR_BAD)
+                elif auc_val > 0.55:
+                    cell.fill = _fill("FFE5B4")
+                    cell.font = _font(bold=True, color="8B4513")
+                elif auc_val > 0.52:
+                    cell.fill = _fill("FFF2CC")
+                    cell.font = _font(color="8B4513")
+                else:
+                    cell.fill = _fill("D5E8D4")
+                    cell.font = _font(color="2D6A2D")
+
+    # ── Colonne ────────────────────────────────────────────────────────────────
+    _set_col_width(ws, "A", 10)
+    for i in range(n_exp):
+        _set_col_width(ws, get_column_letter(i + 2), 16)
+
+    ws.freeze_panes = "B4"
+
+    # ── Legenda ────────────────────────────────────────────────────────────────
+    leg_row = len(sorted_rounds) + 6
+    ws.cell(leg_row, 1).value = "Legenda:"
+    ws.cell(leg_row, 1).font  = _font(bold=True)
+    merge_end = min(n_cols, 6)
+    for j, (bg, fg, label) in enumerate([
+        ("D5E8D4", "2D6A2D", "AUC ≤ 0.52 — DP efficace / no leakage"),
+        ("FFF2CC", "8B4513", "0.52 < AUC ≤ 0.55 — leakage debole"),
+        ("FFE5B4", "8B4513", "0.55 < AUC ≤ 0.60 — leakage moderato"),
+        ("FFCCCC", COLOR_BAD, "AUC > 0.60 — MIA efficace, HIGH risk"),
+    ]):
+        c = ws.cell(leg_row + 1 + j, 2)
+        c.value  = label
+        c.fill   = _fill(bg)
+        c.font   = _font(color=fg, bold=True)
+        c.border = _border()
+        if merge_end >= 3:
+            ws.merge_cells(
+                start_row=leg_row + 1 + j, start_column=2,
+                end_row=leg_row + 1 + j,   end_column=merge_end,
+            )
+
+
+def build_yeom_per_round(ws, records: list[dict]) -> None:
+    """Sheet 8 — Yeom 2018 AUC per round, per ogni esperimento."""
+    _build_per_round_sheet(
+        ws, records,
+        data_key    = "per_round_auc",
+        attack_name = "Yeom 2018",
+        accent_bg   = "1F4E79",   # blu ChargeShield
+        description = (
+            "Yeom 2018 — loss-based MIA sul modello globale (baseline debole). "
+            "Confonde 'campioni facili' con non-membri. "
+            "AUC > 0.55 → leakage rilevabile; AUC ≈ 0.50 → DP efficace."
+        ),
+    )
+
+
+def build_shadow_per_round(ws, records: list[dict]) -> None:
+    """Sheet 9 — Shadow MIA AUC per round, per ogni esperimento."""
+    _build_per_round_sheet(
+        ws, records,
+        data_key    = "per_round_shadow_auc",
+        attack_name = "Shadow MIA",
+        accent_bg   = "375623",   # verde scuro
+        description = (
+            "Shadow MIA — calibrated attack sul modello globale (baseline medio). "
+            "Score = MSE(shadow) − MSE(target): corregge il bias dei campioni facili di Yeom. "
+            "Più preciso di Yeom, ma comunque limitato al modello globale post-FedProx."
+        ),
+    )
+
+
+def build_lira_per_round(ws, records: list[dict]) -> None:
+    """Sheet 10 — LiRA AUC per round, per ogni esperimento (attacco primario ★)."""
+    _build_per_round_sheet(
+        ws, records,
+        data_key    = "per_round_lira_auc",
+        attack_name = "LiRA (★ PRIMARY)",
+        accent_bg   = "7B2C2C",   # rosso scuro
+        description = (
+            "LiRA (Carlini et al. 2022) — attacco PRIMARIO ★. "
+            "Server-side: intercetta raw_updates PRE-aggregazione FedProx. "
+            "Score = log P(loss|IN) − log P(loss|OUT) via shadow models locali. "
+            "AUC > 0.55 → DP NON protegge; AUC ≈ 0.50 → DP efficace → claim DSN 2027 validato."
+        ),
+    )
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -599,12 +961,16 @@ def main() -> None:
     wb = Workbook()
     wb.remove(wb.active)  # rimuovi sheet vuoto di default
 
-    ws_raw   = wb.create_sheet("Raw Data")
-    ws_heat  = wb.create_sheet("Heat Map")
-    ws_round = wb.create_sheet("Per Rounds")
-    ws_eps   = wb.create_sheet("Per Epsilon")
-    ws_comp  = wb.create_sheet("Comparison")
-    ws_prog  = wb.create_sheet("AUC Progression")
+    ws_raw    = wb.create_sheet("Raw Data")
+    ws_heat   = wb.create_sheet("Heat Map")
+    ws_round  = wb.create_sheet("Per Rounds")
+    ws_eps    = wb.create_sheet("Per Epsilon")
+    ws_comp   = wb.create_sheet("Comparison")
+    ws_prog   = wb.create_sheet("AUC Progression")
+    ws_atk    = wb.create_sheet("Attack Comparison")
+    ws_yeom   = wb.create_sheet("Yeom Per Round")
+    ws_shadow = wb.create_sheet("Shadow Per Round")
+    ws_lira   = wb.create_sheet("LiRA Per Round")
 
     build_raw_data(ws_raw, records)
     build_heat_map(ws_heat, records)
@@ -612,6 +978,10 @@ def main() -> None:
     build_per_epsilon(ws_eps, records)
     build_comparison(ws_comp, records)
     build_auc_progression(ws_prog, records)
+    build_attack_comparison(ws_atk, records)
+    build_yeom_per_round(ws_yeom, records)
+    build_shadow_per_round(ws_shadow, records)
+    build_lira_per_round(ws_lira, records)
 
     # Proprietà workbook
     wb.properties.title   = "ChargeShield-FL Experiment Results"

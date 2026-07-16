@@ -40,7 +40,10 @@ help:
 	@echo "  make status            Stato container"
 	@echo "  make logs              Log server + highway"
 	@echo "  make experiment            Esegui esperimento FedMIA (config default)"
-	@echo "  make experiment-nodp       No-DP baseline (σ=0, 5 round) — critico per disambiguare AUC≈0.5"
+	@echo "  make experiment-smoke      Smoke test (5 round, no-DP, n_shadow=4) — verifica pipeline"
+	@echo "  make experiment-nodp       Baseline no-DP (10 round, n_shadow=8) — Yeom+Shadow+LiRA"
+	@echo "  make experiment-dp         Con DP (10 round, ε=EPS, n_shadow=8) — Yeom+Shadow+LiRA"
+	@echo "  [Confronto automatico in foglio 'Attack Comparison' dell'Excel]"
 	@echo "  make experiment-sweep      Sweep epsilon 0.1→5.0 (100 round) [legacy]"
 	@echo "  make experiment-full-sweep Sweep rounds×epsilon (100-1000 × 0.1-5.0) — crea experiments/exp{N}/"
 	@echo "  make experiment-byzantine-sweep Byzantine sweep (5 seed × 5 epsilon) — IDS validation"
@@ -179,19 +182,68 @@ experiment-byzantine-sweep:
 	done; \
 	echo "✓ IDS validation sweep completato — $(IDS_VALIDATION_DIR)/" | tee -a "$$LOG"
 
-# No-DP baseline: CRITICO per DSN 2027 — confirma Scenario A (memorizzazione).
-# Con epochs=50 e 10 round: 500 epoche totali per cluster → overfitting → AUC > 0.5.
-# Se AUC > 0.55 senza DP → Scenario A confermato → DP sweep è significativo.
-# Se AUC ≈ 0.5 anche qui → aumentare ulteriormente epochs o ridurre dataset.
-.PHONY: experiment-nodp
-experiment-nodp:
-	@echo "→ No-DP baseline (σ=0, 10 round, 50 epochs) — verifica memorizzazione..."
+# ─── Sequenza sperimentale raccomandata per DSN 2027 ─────────────────────────
+#
+# IMPORTANTE: ogni run esegue SEMPRE tutti e tre gli attacchi in parallelo:
+#   • Yeom 2018         (loss-based MIA sul modello globale — baseline debole)
+#   • Shadow MIA        (calibrated attack sul modello globale — medio)
+#   • LiRA              (server-side, raw_updates PRE-aggregazione — primario ★)
+# Il confronto avviene automaticamente nel foglio "Attack Comparison" dell'Excel.
+# Non serve eseguire run separati per Yeom vs LiRA: stesse condizioni, stesso JSON.
+#
+# Sequenza raccomandata:
+#   Passo 1: make experiment-smoke    → verifica pipeline (5 round)
+#   Passo 2: make experiment-nodp     → baseline no-DP (10 round): AUC > 0.55?
+#   Passo 3: make experiment-dp       → con DP (10 round, ε=1.0): DP sopprime l'AUC?
+#   Passo 4: make experiment-full-sweep → sweep completo rounds × epsilon (paper)
+#
+# EPS ?= 1.0   — override epsilon: make experiment-dp EPS=0.5
+
+EPS ?= 1.0
+N_SHADOW ?= 8
+
+# Smoke test: 5 round, no-DP, n_shadow=4 — solo per verificare che la pipeline giri.
+# AUC non interpretabile con 5 round (troppo poco training).
+.PHONY: experiment-smoke
+experiment-smoke:
+	@echo "→ Smoke test: 5 round, no-DP, n_shadow=4 (Yeom + Shadow + LiRA)..."
 	@mkdir -p $(EXPERIMENTS)
 	$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
 		--config config/experiment.yaml \
 		--no-dp \
-		--rounds 10
-	@echo "✓ No-DP baseline completato — AUC > 0.55 = Scenario A confermato"
+		--rounds 5 \
+		--n-shadow 4
+	@echo "✓ Smoke test completato — se nessun errore, pipeline OK"
+
+# Baseline no-DP: esegue Yeom + Shadow + LiRA senza rumore DP (σ=0).
+# Obiettivo: verificare che ALMENO UN attacco (preferibilmente LiRA) ottenga AUC > 0.55.
+# AUC > 0.55 → Scenario A confermato → il segnale di membership esiste → ha senso testare DP.
+# Se AUC ≈ 0.5 anche qui → modello non memorizza → serve più training o dati diversi.
+.PHONY: experiment-nodp
+experiment-nodp:
+	@echo "→ Baseline no-DP (σ=0, 10 round, n_shadow=$(N_SHADOW)) — Yeom + Shadow + LiRA..."
+	@mkdir -p $(EXPERIMENTS)
+	$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
+		--config config/experiment.yaml \
+		--no-dp \
+		--rounds 10 \
+		--n-shadow $(N_SHADOW)
+	@echo "✓ Baseline no-DP completato — controlla Attack Comparison nell'Excel"
+
+# Baseline con DP: esegue Yeom + Shadow + LiRA con DP attivo (ε=EPS, default 1.0).
+# Confrontare ogni attacco (Yeom, Shadow, LiRA) con il corrispondente no-DP.
+# Se LiRA no-DP > 0.55 ma LiRA DP ≈ 0.50 → DP sopprime LiRA → claim paper valido.
+.PHONY: experiment-dp
+experiment-dp:
+	@echo "→ Esperimento con DP (ε=$(EPS), 10 round, n_shadow=$(N_SHADOW)) — Yeom + Shadow + LiRA..."
+	@mkdir -p $(EXPERIMENTS)
+	$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
+		--config config/experiment.yaml \
+		--epsilon $(EPS) \
+		--rounds 10 \
+		--n-shadow $(N_SHADOW)
+	@echo "✓ Esperimento DP completato — confronta con no-DP nel foglio Attack Comparison"
+
 
 .PHONY: experiment-dry
 experiment-dry:

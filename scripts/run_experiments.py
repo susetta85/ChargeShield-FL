@@ -739,11 +739,324 @@ def run_fedmia_shadow(
     return shadow_results
 
 
+# ── LiRA Attack (Carlini et al. 2022) ──────────────────────────────────────────
+
+def run_lira(
+    cfg: dict,
+    train_sessions: list[dict[str, Any]],
+    holdout_sessions: list[dict[str, Any]],
+    fl_results: dict[int, dict[str, Any]],
+    n_shadow: int = 8,
+) -> dict[int, dict[str, Any]]:
+    """
+    LiRA — Likelihood Ratio Attack, server-side intercept of raw client updates
+    BEFORE FedProx aggregation (Carlini et al., IEEE S&P 2022).
+
+    Threat model: semi-honest aggregator receives each client's local model weights
+    (raw_updates in fl_results) and runs MIA before aggregating them. This is
+    stronger than attacking the global model, because FedProx averaging destroys
+    per-cluster memorisation that is still present in the local raw updates.
+
+    Attack flow:
+        1. Reconstruct per-cluster session assignment (deterministic — must match
+           run_fl_rounds() to identify which sessions each client trained on).
+        2. Train n_shadow shadow LOCAL models on random 50% subsets of train_sessions
+           (no FL, no DP) — simulates attacker's auxiliary knowledge.
+        3. For each round and each client's raw_update:
+           a. Load client's local model weights.
+           b. Compute target_loss = MSE(client_model, x) for every eval sample.
+           c. Split shadow losses into IN (shadow saw x) and OUT (didn't see x).
+           d. score(x) = log P(loss | IN dist) − log P(loss | OUT dist)  [Gaussian log-LR]
+        4. Pool scores across all clients per round → AUC-ROC.
+
+    Non-member handling:
+        Non-members are NEVER in any shadow model's training set → in_losses is always
+        empty. We fall back to the GLOBAL IN distribution (pooled from all members'
+        IN shadow losses) as the IN reference. Non-members' target_loss is typically
+        high (model never saw them), so log_p_in << log_p_out → negative score → correct.
+
+    Why this differs from run_fedmia / run_fedmia_shadow:
+        Both previous attacks use the GLOBAL aggregated model. LiRA uses each
+        CLIENT's LOCAL model from raw_updates — the signal before FedProx averaging.
+
+    Args:
+        cfg:             experiment configuration dict
+        train_sessions:  sessions used in FL training (members)
+        holdout_sessions: hold-out sessions never seen by FL (non-members)
+        fl_results:      per-round FL data, must contain "raw_updates"
+        n_shadow:        number of shadow models (8 = fast demo; ≥32 = paper quality)
+
+    Returns:
+        {round_num: {
+            "lira_auc_roc":               float,
+            "lira_member_score_mean":     float,
+            "lira_non_member_score_mean": float,
+            "lira_score_gap":             float,
+            "n_shadow":                   int,
+        }}
+    """
+    from sklearn.metrics import roc_auc_score
+
+    seed         = cfg.get("experiment", {}).get("seed", 42)
+    input_dim    = cfg["ml"]["input_dim"]
+    ml_cfg       = cfg["ml"]
+    lr           = ml_cfg.get("lr", 1e-3)
+    batch_size   = ml_cfg.get("batch_size", 32)
+    local_epochs = ml_cfg.get("epochs", 50)
+    total_rounds = cfg.get("experiment", {}).get("fl_rounds", 100)
+
+    # ── Step 1: Reconstruct per-cluster membership — must match run_fl_rounds() ─
+    _CLUSTER_IDS = ["highway", "urban", "residential", "corporate"]
+    cluster_size = max(1, len(train_sessions) // len(_CLUSTER_IDS))
+    cluster_members: dict[str, list[dict[str, Any]]] = {}
+    for i, cid in enumerate(_CLUSTER_IDS):
+        start = i * cluster_size
+        end   = None if i == len(_CLUSTER_IDS) - 1 else start + cluster_size
+        cluster_members[cid] = train_sessions[start:end]
+
+    # Balanced eval pool: subsample members to match hold-out size
+    _pool_rng      = random.Random(seed + 31415)
+    _n_bal         = min(len(train_sessions), len(holdout_sessions))
+    members_bal    = _pool_rng.sample(train_sessions, _n_bal)
+    nonmembers_bal = _pool_rng.sample(holdout_sessions, min(_n_bal, len(holdout_sessions)))
+
+    logger.info(
+        f"LiRA — n_shadow={n_shadow}, "
+        f"eval pool: {len(members_bal)} members, {len(nonmembers_bal)} non-members"
+    )
+
+    # Concatenate into a single ordered list: members first, then non-members.
+    # Index j < len(members_bal) → member; j >= len(members_bal) → non-member.
+    eval_samples = members_bal + nonmembers_bal
+    n_eval       = len(eval_samples)
+
+    # Map each eval member to its index in train_sessions (for IN/OUT tracking).
+    # Members were sampled from train_sessions without copying → id() is valid.
+    _train_idx: dict[int, int] = {id(s): i for i, s in enumerate(train_sessions)}
+
+    # ── Step 2: Train n_shadow shadow local models ────────────────────────────
+    # Shadow epochs: approximate FL convergence without being too slow.
+    shadow_epochs = min(local_epochs * max(total_rounds // 4, 5), 300)
+
+    def _build_tensor(sess_list: list[dict]) -> torch.Tensor | None:
+        rows = []
+        for s in sess_list:
+            try:
+                rows.append([float(s[f]) for f in _MIA_FEATURES])
+            except (KeyError, TypeError, ValueError):
+                continue
+        return torch.tensor(rows, dtype=torch.float32) if rows else None
+
+    # shadow_mse_matrix[shadow_idx][j] = MSE of shadow_idx on eval_samples[j]; None if unavail.
+    shadow_mse_matrix: list[list[float | None]] = []
+    # shadow_in_idx_sets[shadow_idx] = set of train_sessions indices that were IN this shadow
+    shadow_in_idx_sets: list[set[int]] = []
+
+    for shadow_idx in range(n_shadow):
+        shadow_rng = random.Random(seed + shadow_idx * 31337)
+        n_in       = max(batch_size + 1, len(train_sessions) // 2)
+        in_indices = set(shadow_rng.sample(range(len(train_sessions)), n_in))
+        shadow_in_idx_sets.append(in_indices)
+
+        in_sessions   = [train_sessions[i] for i in sorted(in_indices)]
+        shadow_tensor = _build_tensor(in_sessions)
+        if shadow_tensor is None or len(shadow_tensor) < batch_size:
+            logger.warning(
+                f"LiRA shadow {shadow_idx}: {len(in_sessions)} sessioni < "
+                f"batch_size={batch_size} — shadow skippato"
+            )
+            shadow_mse_matrix.append([None] * n_eval)
+            continue
+
+        shadow_model = Autoencoder(input_dim=input_dim)
+        shadow_opt   = torch.optim.Adam(shadow_model.parameters(), lr=lr)
+        shadow_crit  = torch.nn.MSELoss()
+        torch.manual_seed(seed + shadow_idx * 31337)
+        shadow_ds  = torch.utils.data.TensorDataset(shadow_tensor)
+        shadow_gen = torch.Generator()
+        shadow_gen.manual_seed(seed + shadow_idx * 31337)
+        shadow_loader = torch.utils.data.DataLoader(
+            shadow_ds, batch_size=batch_size, shuffle=True,
+            drop_last=True, generator=shadow_gen,
+        )
+
+        shadow_model.train()
+        for _ in range(shadow_epochs):
+            for (batch,) in shadow_loader:
+                shadow_opt.zero_grad()
+                recon = shadow_model(batch)
+                loss  = shadow_crit(recon, batch)
+                loss.backward()
+                shadow_opt.step()
+        shadow_model.eval()
+
+        mse_row: list[float | None] = []
+        for sample in eval_samples:
+            try:
+                row    = [float(sample[f]) for f in _MIA_FEATURES]
+                tensor = torch.tensor([row], dtype=torch.float32)
+                with torch.no_grad():
+                    recon = shadow_model(tensor)
+                    mse_row.append(float(torch.mean((recon - tensor) ** 2).item()))
+            except (KeyError, TypeError, ValueError):
+                mse_row.append(None)
+        shadow_mse_matrix.append(mse_row)
+        logger.debug(f"LiRA shadow {shadow_idx + 1}/{n_shadow} addestrato ({shadow_epochs} epoche)")
+
+    logger.info(f"LiRA: {n_shadow} shadow models addestrati ({shadow_epochs} epoche/shadow)")
+
+    # ── Global IN distribution — fallback for non-members (always OUT in shadows) ─
+    # Non-members have no IN shadow losses → use pooled IN losses from members as proxy.
+    # Rationale: the IN distribution represents "what loss a model gives on data it saw";
+    # non-members' target_loss should differ from this → negative LiRA score.
+    all_global_in_losses: list[float] = []
+    for j in range(len(members_bal)):
+        train_idx = _train_idx.get(id(eval_samples[j]))
+        if train_idx is None:
+            continue
+        for si, in_set in enumerate(shadow_in_idx_sets):
+            if train_idx in in_set:
+                mse = shadow_mse_matrix[si][j]
+                if mse is not None:
+                    all_global_in_losses.append(mse)
+
+    global_μ_in = float(np.mean(all_global_in_losses)) if all_global_in_losses else 0.05
+    global_σ_in = float(np.std(all_global_in_losses) + 1e-8) if all_global_in_losses else 0.01
+    logger.info(
+        f"LiRA global IN distribution — μ={global_μ_in:.5f}, σ={global_σ_in:.5f} "
+        f"({len(all_global_in_losses)} campioni)"
+    )
+
+    # ── Step 3 & 4: For each round, load each client's local model (raw_updates) ─
+    lira_results: dict[int, dict[str, Any]] = {}
+
+    for round_num, round_data in sorted(
+        (item for item in fl_results.items() if item[0] > 0), key=lambda x: x[0]
+    ):
+        raw_updates = round_data.get("raw_updates", [])
+        if not raw_updates:
+            logger.warning(f"LiRA round {round_num}: nessun raw_update — skip")
+            continue
+
+        round_member_scores:    list[float] = []
+        round_nonmember_scores: list[float] = []
+
+        for update in raw_updates:
+            if update is None or not update.weights:
+                continue
+
+            # Load client's LOCAL model (pre-aggregation, pre-DP)
+            client_model = Autoencoder(input_dim=input_dim)
+            orig_state   = client_model.state_dict()
+            keys         = list(orig_state.keys())
+            weights      = update.weights
+            if len(weights) != len(keys):
+                logger.warning(
+                    f"LiRA round {round_num} {update.cluster_id}: "
+                    f"weights {len(weights)} != state_dict {len(keys)} — skip client"
+                )
+                continue
+            state = {
+                k: (w if isinstance(w, torch.Tensor) else torch.tensor(w)).to(orig_state[k].dtype)
+                for k, w in zip(keys, weights)
+            }
+            client_model.load_state_dict(state, strict=True)
+            for buf_name, buf in client_model.named_buffers():
+                if "running_var" in buf_name:
+                    buf.clamp_(min=1e-8)
+            client_model.eval()
+
+            for j, sample in enumerate(eval_samples):
+                try:
+                    row         = [float(sample[f]) for f in _MIA_FEATURES]
+                    tensor      = torch.tensor([row], dtype=torch.float32)
+                    with torch.no_grad():
+                        recon       = client_model(tensor)
+                        target_loss = float(torch.mean((recon - tensor) ** 2).item())
+                except (KeyError, TypeError, ValueError):
+                    continue
+
+                is_member       = (j < len(members_bal))
+                sample_train_idx = _train_idx.get(id(sample)) if is_member else None
+
+                # Split shadow losses: IN = shadows that trained on this sample; OUT = rest
+                in_losses:  list[float] = []
+                out_losses: list[float] = []
+                for si, in_set in enumerate(shadow_in_idx_sets):
+                    mse = shadow_mse_matrix[si][j]
+                    if mse is None:
+                        continue
+                    if is_member and sample_train_idx is not None and sample_train_idx in in_set:
+                        in_losses.append(mse)
+                    else:
+                        out_losses.append(mse)  # non-members always go here
+
+                if len(out_losses) < 2:
+                    continue  # insufficient calibration data
+
+                μ_out = float(np.mean(out_losses))
+                σ_out = float(np.std(out_losses) + 1e-8)
+
+                # Use per-sample IN distribution if available; fall back to global IN.
+                if len(in_losses) >= 2:
+                    μ_in = float(np.mean(in_losses))
+                    σ_in = float(np.std(in_losses) + 1e-8)
+                else:
+                    μ_in = global_μ_in
+                    σ_in = global_σ_in
+
+                # Gaussian log-likelihood ratio (Carlini 2022, Eq. 2):
+                # score > 0 → loss matches IN distribution → member
+                log_p_in  = (-0.5 * ((target_loss - μ_in)  / σ_in)  ** 2) - np.log(σ_in)
+                log_p_out = (-0.5 * ((target_loss - μ_out) / σ_out) ** 2) - np.log(σ_out)
+                lira_score = float(log_p_in - log_p_out)
+
+                if np.isnan(lira_score) or np.isinf(lira_score):
+                    continue
+
+                if is_member:
+                    round_member_scores.append(lira_score)
+                else:
+                    round_nonmember_scores.append(lira_score)
+
+        if not round_member_scores or not round_nonmember_scores:
+            logger.warning(
+                f"LiRA round {round_num}: score pool vuoto "
+                f"(m={len(round_member_scores)}, nm={len(round_nonmember_scores)}) — skip"
+            )
+            continue
+
+        labels = [1] * len(round_member_scores) + [0] * len(round_nonmember_scores)
+        scores = round_member_scores + round_nonmember_scores
+
+        try:
+            auc = roc_auc_score(labels, scores)
+        except ValueError:
+            auc = 0.5
+
+        score_gap = float(np.mean(round_member_scores) - np.mean(round_nonmember_scores))
+        logger.info(
+            f"Round {round_num} — LiRA AUC: {auc:.4f} "
+            f"(gap={score_gap:.6f}, n_shadow={n_shadow})"
+        )
+
+        lira_results[round_num] = {
+            "lira_auc_roc":               round(auc, 6),
+            "lira_member_score_mean":     round(float(np.mean(round_member_scores)),    6),
+            "lira_non_member_score_mean": round(float(np.mean(round_nonmember_scores)), 6),
+            "lira_score_gap":             round(score_gap, 6),
+            "n_shadow":                   n_shadow,
+        }
+
+    return lira_results
+
+
 # ── IDS Evaluation ─────────────────────────────────────────────────────────────
 
 def run_ids(
     cfg: dict,
     fl_results: dict[int, dict[str, Any]],
+    no_dp: bool = False,
 ) -> dict[int, dict[str, Any]]:
     """
     Valuta ChargingIDS su ogni round FL.
@@ -751,33 +1064,38 @@ def run_ids(
     Usa PrivacyAuditor per generare AuditReport reali con threats_detected
     popolato (GRADIENT_EXPLOSION, PRIVACY_BUDGET_EXHAUSTED, ecc.).
     Un singolo auditor persiste tra i round per tracciare l'epsilon cumulativo.
+
+    Fix IDS (Sprint 9, 2026-07-16):
+      1. GRADIENT_EXPLOSION — normalizzazione peer-relative:
+         Con 50 epoch di training locale, la norma L2 delle differenze di peso
+         supera sempre la soglia assoluta (max_grad_norm + 3σ ≈ 15.5).
+         Fix: normalizza ogni delta per la norma mediana dei peer nello stesso round,
+         portando la mediana = max_grad_norm. In questo modo solo gli outlier
+         statistici (incl. Byzantine ×10) superano la soglia.
+      2. Krum false positive — soglia calibrata per 50 epoch:
+         Con 50 epoch, la varianza naturale inter-cluster produce score Krum fino a
+         3.3 anche senza attacco. L'attacco Byzantine (scale_factor=10) dà score ≈4.0.
+         Fix: soglia = 3.5 (Byzantine ≥ 4.0 > soglia > max FP osservato 3.27).
+      3. Budget esaurito con no_dp=True — falso allarme:
+         Quando DP è disabilitato (no_dp=True), il budget non viene consumato.
+         Fix: passa epsilon=1000.0 all'auditor per eliminare i BUDGET_EXHAUSTED alert.
     """
     config_path = str(PROJECT_ROOT / "config" / "auditor.yaml")
+    max_grad_norm = cfg["experiment"]["max_grad_norm"]
 
     ids = ChargingIDS(
         config_path=config_path,
-        # byzantine_tolerance=0: con 4 cluster, la condizione Krum (n >= 2f+3) richiede
-        # f=0 per essere soddisfatta (4 >= 3). Con f=0, Krum funziona come outlier
-        # detector geometrico (non Byzantine-tolerant nel senso formale di Blanchard 2017).
-        # Documentato nel paper come limitazione della topologia a 4 cluster.
         byzantine_tolerance=0,
-        # cosine_threshold=0.3: soglia coerente con la variabilità naturale
-        # dei gradienti nei cluster FL omogenei. 0.85 produceva falsi positivi sistematici.
         cosine_threshold=0.3,
-        # krum_threshold=1.5: dopo fix normalizzazione (mean invece di max),
-        # nodi legittimi hanno score≈1.0, Byzantine≈2.5–3.0.
-        # Soglia 1.5 è conservativa: non spara per variazioni naturali (≤1.1)
-        # ma rileva outlier reali (>1.5). La soglia default 0.8 dava FP sistematici
-        # perché con normalizzazione per max tutti i nodi hanno score≈1.0.
-        krum_threshold=1.5,
-        # fedmia= non passato: il plugin shadow-model FedMIA (src/plugins/attacks/fedmia.py)
-        # è disabilitato in questa configurazione sperimentale. Il MIA è valutato
-        # separatamente tramite run_fedmia() che usa l'approccio loss-based (Yeom et al.,
-        # 2018): membership score = -MSE(global_model, session).
-        # Per attivare il plugin shadow-model nell'IDS, passare: fedmia=FedMIA(cfg)
+        # krum_threshold=3.5: calibrato per 50 epoch di training locale.
+        # Con 50 epoch, varianza naturale → score Krum fino a ~3.3 (FP osservato).
+        # Attacco Byzantine ×10 → score ≈4.0. Soglia 3.5: rileva Byzantine, non FP.
+        # Precedente 1.5 era calibrato per 3 epoch (varianza bassa, score legittimi ≤1.1).
+        krum_threshold=3.5,
     )
-    # Un'unica istanza traccia l'epsilon cumulativo per nodo su tutti i round
-    auditor = PrivacyAuditor(config_path=config_path, epsilon=cfg["experiment"]["epsilon"])
+    # Fix 3: se no_dp=True, il budget DP non viene consumato → epsilon grande = no alert budget.
+    _auditor_epsilon = 1000.0 if no_dp else cfg["experiment"]["epsilon"]
+    auditor = PrivacyAuditor(config_path=config_path, epsilon=_auditor_epsilon)
 
     ids_results: dict[int, dict[str, Any]] = {}
 
@@ -811,18 +1129,17 @@ def run_ids(
             }
             continue
 
-        reports: dict[str, Any] = {}
-        gradients: dict[str, dict[str, Any]] = {}
+        # ── Pass 1: calcola delta e norme L2 per tutti i client del round ────────
+        # Necessario per la normalizzazione peer-relative (Fix 1 GRADIENT_EXPLOSION).
+        _client_deltas: dict[str, list] = {}
+        _client_norms:  dict[str, float] = {}
 
         for update in updates:
             if not update or not update.node_id:
                 continue
-
             weights = update.weights or []
 
             # delta = raw_local_weights - raw_global_prev_round.
-            # Al round 1 (prev_raw_global=None) usiamo pesi assoluti — GRADIENT_EXPLOSION
-            # round 1 può essere legittimo (modello non ancora normalizzato).
             if prev_raw_global is not None and len(prev_raw_global) == len(weights):
                 delta_weights = [
                     (w if isinstance(w, torch.Tensor) else torch.tensor(float(w)))
@@ -835,19 +1152,60 @@ def run_ids(
                     for w in weights
                 ]
 
+            # L2 norm del delta (somma di norme al quadrato di tutti i layer)
+            l2_sq = sum(
+                float(dw.norm() ** 2) if isinstance(dw, torch.Tensor)
+                else float(dw) ** 2
+                for dw in delta_weights
+            )
+            _client_deltas[update.node_id] = delta_weights
+            _client_norms[update.node_id]  = float(np.sqrt(max(l2_sq, 1e-12)))
+
+        # ── Normalizzazione peer-relative ─────────────────────────────────────
+        # Fix 1: porta la norma mediana = max_grad_norm.
+        # Risultato: nodi normali → norma ≈ max_grad_norm (no explosion);
+        #            nodi Byzantine (×10) → norma >> max_grad_norm (explosion rilevata).
+        # Perché mediana (non media): un nodo Byzantine estremo non sposta la mediana,
+        # mentre sposta la media rendendo il riferimento instabile.
+        if _client_norms:
+            _sorted_norms = sorted(_client_norms.values())
+            # Lower-middle per N pari (es. 4 client): evita che un Byzantine outlier
+            # sposti la mediana upward, riducendo la sensibilità al rilevamento.
+            _median_norm  = _sorted_norms[(len(_sorted_norms) - 1) // 2]
+            # Guard: se la mediana è degenere (< 1e-4) tutti i client hanno delta ≈ 0
+            # → nessun training significativo → skip normalizzazione (scale=1.0).
+            # Senza questo guard, _scale = max_grad_norm/1e-8 = 1e8, che causa
+            # GRADIENT_EXPLOSION falso su qualsiasi client con norma non-nulla.
+            _scale = max_grad_norm / _median_norm if _median_norm >= 1e-4 else 1.0
+        else:
+            _scale = 1.0
+
+        # ── Pass 2: audit con delta normalizzati + Krum analysis ─────────────
+        reports:   dict[str, Any] = {}
+        gradients: dict[str, dict[str, Any]] = {}
+
+        for node_id, delta_weights in _client_deltas.items():
+            # Normalizzazione peer-relative: scala in modo che la mediana = max_grad_norm
             model_update: dict[str, Any] = {
-                f"layer_{i}": dw for i, dw in enumerate(delta_weights)
+                f"layer_{i}": (
+                    dw * _scale if isinstance(dw, torch.Tensor)
+                    else torch.tensor(float(dw) * _scale)
+                )
+                for i, dw in enumerate(delta_weights)
             }
 
-            # AuditReport con threats_detected reali (GRADIENT_EXPLOSION, ecc.)
-            reports[update.node_id] = auditor.audit(
-                node_id=update.node_id,
+            # AuditReport: GRADIENT_EXPLOSION ora usa delta normalizzati → no FP sistematici
+            reports[node_id] = auditor.audit(
+                node_id=node_id,
                 round_id=round_num,
                 model_update=model_update,
             )
 
-            # Gradient dict per Krum / cosine analysis dell'IDS
-            gradients[update.node_id] = model_update
+            # Gradient dict per Krum / cosine analysis (usa delta NON normalizzati:
+            # Krum è già una misura geometrica relativa, non assoluta)
+            gradients[node_id] = {
+                f"layer_{i}": dw for i, dw in enumerate(delta_weights)
+            }
 
         prev_raw_global = current_raw_global
 
@@ -916,10 +1274,16 @@ def save_results(
         for r in mia_results.values()
         if r.get("shadow_auc_roc") is not None
     ]
+    lira_auc_values = [
+        r["lira_auc_roc"]
+        for r in mia_results.values()
+        if r.get("lira_auc_roc") is not None
+    ]
 
     # Privacy risk basato sull'attacco più forte disponibile:
-    # se shadow AUC è disponibile usa quello, altrimenti Yeom.
-    _primary_auc = shadow_auc_values if shadow_auc_values else auc_values
+    # priority: LiRA (intercepts raw local models, strongest) > Shadow > Yeom.
+    _primary_auc  = lira_auc_values if lira_auc_values else (
+                    shadow_auc_values if shadow_auc_values else auc_values)
     _primary_mean = float(np.mean(_primary_auc)) if _primary_auc else None
 
     summary = {
@@ -934,15 +1298,24 @@ def save_results(
             "no_dp":      cfg["experiment"].get("no_dp", False),
         },
         "summary": {
-            # Yeom 2018 loss-based MIA
+            # Yeom 2018 — loss-based MIA sul modello globale (baseline debole)
             "mean_auc_roc": float(np.mean(auc_values)) if auc_values else None,
             "max_auc_roc":  float(np.max(auc_values))  if auc_values else None,
             "min_auc_roc":  float(np.min(auc_values))  if auc_values else None,
-            # Carlini 2022 shadow/calibrated MIA (attacco più forte)
+            # Shadow calibrated — Carlini 2022 stile, modello globale
             "mean_shadow_auc_roc": float(np.mean(shadow_auc_values)) if shadow_auc_values else None,
             "max_shadow_auc_roc":  float(np.max(shadow_auc_values))  if shadow_auc_values else None,
             "min_shadow_auc_roc":  float(np.min(shadow_auc_values))  if shadow_auc_values else None,
-            # Privacy risk basato sull'attacco primario (shadow se disponibile)
+            # LiRA — Carlini 2022, server-side su raw_updates PRE-aggregazione (attacco primario)
+            "mean_lira_auc_roc": float(np.mean(lira_auc_values)) if lira_auc_values else None,
+            "max_lira_auc_roc":  float(np.max(lira_auc_values))  if lira_auc_values else None,
+            "min_lira_auc_roc":  float(np.min(lira_auc_values))  if lira_auc_values else None,
+            # Privacy risk: usa l'attacco più forte (LiRA > Shadow > Yeom)
+            "primary_attack": (
+                "LiRA"   if lira_auc_values else
+                "Shadow" if shadow_auc_values else
+                "Yeom"
+            ),
             "privacy_risk": (
                 "HIGH"   if _primary_mean is not None and _primary_mean > 0.7 else
                 "MEDIUM" if _primary_mean is not None and _primary_mean > 0.6 else
@@ -1016,12 +1389,16 @@ def _update_excel_report(sweep_dir: Path, named_sweep: bool = False) -> None:
 
         wb = Workbook()
         wb.remove(wb.active)
-        gen.build_raw_data(wb.create_sheet("Raw Data"),               records)
-        gen.build_heat_map(wb.create_sheet("Heat Map"),               records)
-        gen.build_per_rounds(wb.create_sheet("Per Rounds"),           records)
-        gen.build_per_epsilon(wb.create_sheet("Per Epsilon"),         records)
-        gen.build_comparison(wb.create_sheet("Comparison"),           records)
-        gen.build_auc_progression(wb.create_sheet("AUC Progression"), records)
+        gen.build_raw_data(wb.create_sheet("Raw Data"),                   records)
+        gen.build_heat_map(wb.create_sheet("Heat Map"),                   records)
+        gen.build_per_rounds(wb.create_sheet("Per Rounds"),               records)
+        gen.build_per_epsilon(wb.create_sheet("Per Epsilon"),             records)
+        gen.build_comparison(wb.create_sheet("Comparison"),               records)
+        gen.build_auc_progression(wb.create_sheet("AUC Progression"),     records)
+        gen.build_attack_comparison(wb.create_sheet("Attack Comparison"), records)
+        gen.build_yeom_per_round(wb.create_sheet("Yeom Per Round"),       records)
+        gen.build_shadow_per_round(wb.create_sheet("Shadow Per Round"),   records)
+        gen.build_lira_per_round(wb.create_sheet("LiRA Per Round"),       records)
         wb.properties.title   = "ChargeShield-FL Experiment Results"
         wb.properties.subject = "FedMIA vs Differential Privacy — DSN 2027"
 
@@ -1089,6 +1466,14 @@ def parse_args() -> argparse.Namespace:
             "Scenario A (DP sopprime MIA → AUC>0.5 senza DP) da "
             "Scenario B (modello non memorizza → AUC≈0.5 anche senza DP). "
             "Usare sempre prima del full sweep per capire in quale scenario siamo."
+        ),
+    )
+    parser.add_argument(
+        "--n-shadow", type=int, default=None,
+        help=(
+            "Numero di shadow models per LiRA (override config lira.n_shadow). "
+            "8 = fast demo (~10 min CPU); 16 = buona qualità; ≥32 = paper quality. "
+            "Più shadow = IN/OUT distributions più stabili → AUC più affidabile."
         ),
     )
     return parser.parse_args()
@@ -1219,10 +1604,30 @@ def main() -> None:
             exc_info=True,
         )
 
+    # LiRA (Carlini 2022, Eq. 2) — server-side attack su raw_updates PRE-aggregazione.
+    # Threat model: aggregatore semi-onesto intercetta gli update locali prima di FedProx.
+    # Più forte di Yeom e shadow-global perché usa i modelli locali (segnale non ancora
+    # distrutto dall'averaging FedProx). Documentato nel paper come attacco primario.
+    n_shadow = args.n_shadow if args.n_shadow is not None else cfg.get("lira", {}).get("n_shadow", 8)
+    try:
+        lira_results = run_lira(
+            cfg, train_sessions, holdout_sessions, fl_results, n_shadow=n_shadow
+        )
+        for rnd, lira_data in lira_results.items():
+            if rnd in mia_results:
+                mia_results[rnd].update(lira_data)
+            else:
+                mia_results[rnd] = lira_data
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            f"run_lira() fallita: {exc}. Continuazione senza LiRA.",
+            exc_info=True,
+        )
+
     ids_results: dict = {}
     if not args.skip_ids:
         try:
-            ids_results = run_ids(cfg, fl_results)
+            ids_results = run_ids(cfg, fl_results, no_dp=args.no_dp)
         except Exception as exc:  # noqa: BLE001
             logger.error(f"run_ids() fallita: {exc}. Continuazione senza risultati IDS.", exc_info=True)
 

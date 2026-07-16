@@ -107,6 +107,7 @@ ChargeShield-FL fills this gap by providing a fully reproducible, containerised 
 | FedMIA Plugin (`src/plugins/attacks/fedmia.py`) | Shadow model on public ACN split | Trains a reference autoencoder on held-out public data; uses reconstruction error gap between members and non-members to produce per-node membership scores; used by ChargingIDS for IDS scoring |
 | FedMIA Evaluator — Loss-based (`scripts/run_experiments.py`) | Loss-based per-round evaluator (Yeom et al. 2018) | At each FL round loads global weights into the Autoencoder; computes membership score as −MSE; measures AUC-ROC via scikit-learn per round; JSON output includes `per_round[round]["auc_roc"]` and summary `mean_auc_roc`, `max_auc_roc`, `min_auc_roc` |
 | FedMIA Evaluator — Shadow/Calibrated (`scripts/run_experiments.py`) | Calibrated shadow-model attack (Carlini et al. 2022) | Trains a local shadow autoencoder on 50% of the training set; for each FL round computes calibrated score = MSE(shadow, x) − MSE(target, x); controls for per-sample reconstruction difficulty; JSON output includes `shadow_auc_roc`, `shadow_score_gap` per round |
+| FedMIA Evaluator — LiRA ★ PRIMARY (`scripts/run_experiments.py`) | LiRA (Carlini et al. 2022, IEEE S&P) | **Server-side attack**: intercepts `raw_updates` (local client weights) BEFORE FedProx aggregation and DP noise. Trains n_shadow local shadow models on random 50% subsets of training sessions. Score = log P(loss\|IN) − log P(loss\|OUT) via Gaussian log-likelihood ratio. Stronger than Yeom/Shadow because FedProx averaging destroys per-cluster memorisation in the global model. JSON output includes `lira_auc_roc`, `lira_member_score_mean`, `lira_non_member_score_mean`, `lira_score_gap` per round |
 | CUSUM IDS Baseline | Sequential CUSUM statistic | Detects distributional drift in incoming gradient magnitudes; triggers alert when cumulative sum exceeds threshold |
 | Krum IDS Baseline | Multi-Krum filter | Rejects client updates that are Euclidean outliers relative to the median neighbourhood; provides Byzantine resilience baseline |
 | Cosine Similarity IDS | Pairwise cosine distance | Flags updates that deviate in direction from the running aggregate; identifies gradient inversion style anomalies |
@@ -121,7 +122,7 @@ ChargeShield-FL fills this gap by providing a fully reproducible, containerised 
 
 | Threat | Attacker Type | Defence | Metric |
 |---|---|---|---|
-| Membership Inference on training sessions | Honest-but-curious FL server; external adversary with model access | Gaussian Mechanism DP (ε ∈ {0.1–5.0}, δ = 1e-5) | Two parallel evaluators: (1) loss-based (Yeom 2018): mean AUC-ROC per round; (2) calibrated shadow attack (Carlini 2022): `shadow_auc_roc` and `shadow_score_gap` per round. Loss-based AUC ≈ 0.50 at all tested ε indicates the attack is too weak relative to the model generalisation level; shadow attack is the primary signal for DSN 2027 |
+| Membership Inference on training sessions | Honest-but-curious FL server; external adversary with model access | Gaussian Mechanism DP (ε ∈ {0.1–5.0}, δ = 1e-5) | Three-tier attack hierarchy: (1) **Yeom 2018** (baseline, loss-based, global model); (2) **Shadow MIA** (calibrated, global model, Carlini 2022); (3) **LiRA ★ PRIMARY** (server-side, `raw_updates` PRE-aggregation, Carlini 2022). LiRA is the primary attack for DSN 2027: intercepts per-client local weights before FedProx merging — FedProx averaging destroys cluster-level memorisation in the global model, making LiRA on raw_updates the only reliable signal. Score = log P(loss\|IN) − log P(loss\|OUT) via Gaussian log-LR over n_shadow shadow models. AUC > 0.55 no-DP + AUC ≈ 0.50 with DP → DP suppresses LiRA → claim validated |
 | Gradient Inversion (reconstruction of raw session data) | Active server-side attacker | DP noise injection; mTLS transport integrity | Reconstruction MSE on held-out sessions |
 | Byzantine update poisoning | Malicious FL client submitting corrupted updates | Krum aggregation filter; Cosine Similarity anomaly detection | Attack detection rate; model accuracy degradation |
 | Distributional shift / concept drift exploitation | Compromised client inflating local loss | CUSUM sequential monitoring | False positive rate; detection latency in rounds |
@@ -134,8 +135,9 @@ ChargeShield-FL fills this gap by providing a fully reproducible, containerised 
 
 **Source:** ACN-Data, Adaptive Charging Network, Caltech / JPL Campus  
 **URL:** https://ev.caltech.edu/dataset  
-**Coverage:** 2019 and 2020 calendar years  
-**Sessions:** 13,073 real EV charging sessions  
+**Primary training coverage:** 2019 and 2020 calendar years (default config)  
+**Cross-dataset validation coverage:** 2018 and 2021 (available for reproducibility, enabled via `experiment.yaml`)  
+**Sessions:** 13,073 real EV charging sessions (2019+2020); 2018 and 2021 datasets available for cross-year reproducibility validation  
 **Licence:** Caltech ACN-Data research licence (non-commercial academic use)
 
 ### Feature Schema
@@ -181,24 +183,37 @@ All FL client-to-server communication is protected by two layers:
 
 ## Key Results
 
-### Experiment 1: Baseline DP Effectiveness (100 rounds, ε = 1.0)
+> **Note (Sprint 9, 2026-07-16):** All results from exp1–exp6 have been invalidated and deleted. They were obtained with: (a) `epochs=3` (Scenario B — model does not memorise), (b) no LiRA attack, (c) IDS false positives that skewed the results. New experiments must be run with `epochs=50` and the Sprint 9 codebase. The sections below document the pre-Sprint-9 baseline for historical context only.
 
-The first completed experiment ran 100 federated rounds with FedAvg aggregation and Gaussian Mechanism DP at ε = 1.0, δ = 1e-5, across all 12 nodes. MIA evaluation used the loss-based per-round evaluator (Yeom et al. 2018): at each round the global weights were loaded into the Autoencoder, membership scores were computed as −MSE, and AUC-ROC was measured via scikit-learn. The reported AUC-ROC is the mean across all 100 rounds.
+### Historical Baseline: Pre-Sprint-9 (epochs=3, no LiRA) — INVALIDATED
+
+The first completed experiment ran 100 federated rounds at ε = 1.0 with `epochs=3`. Results are kept here only to document the Scenario B discovery.
 
 | Parameter | Value |
 |---|---|
 | FL algorithm | FedProx (proximal_mu = 0.01) |
 | Rounds | 100 |
+| Local epochs | 3 (too few — model does not memorise) |
 | Privacy budget ε | 1.0 |
-| Privacy budget δ | 1e-5 |
-| FedMIA mean AUC-ROC (per-round, Yeom 2018) | **0.5030** |
-| Interpretation | Loss-based attack at noise floor; model generalises too well for raw-MSE signal |
+| Yeom mean AUC-ROC | 0.5030 |
+| Shadow mean AUC-ROC | 0.4970 |
+| LiRA | Not implemented yet |
+| Interpretation | **Scenario B** — model does not memorise with 15 total training epochs; DP has nothing to suppress |
 
-A mean AUC-ROC of ~0.503 across all tested configurations (ε ∈ {0.1, 0.5, 1.0, 2.0, 5.0}, rounds ∈ {100, 200, 500, 1000}) — near the theoretical random-guess baseline of 0.50 — indicates that the loss-based MIA (Yeom 2018) is insufficient to extract a membership signal from this model. The Autoencoder on 6 normalised EV features with 4 clusters of ≈2,600 sessions each generalises well without overfitting individual records; the loss-based signal (−MSE) is too coarse to detect the small member/non-member gap that DP further suppresses. This is a known limitation of threshold attacks on well-regularised models (Carlini et al. 2022, §3). Accordingly, the primary MIA evaluator for DSN 2027 is the calibrated shadow attack (`run_fedmia_shadow()`), which controls for per-sample reconstruction difficulty and is expected to produce non-trivial AUC-ROC where the loss-based approach fails.
+**Scenario B explanation:** With only 3 local epochs × 5 rounds = 15 total training epochs per cluster, the autoencoder (570 parameters) learned a general EV pattern but not individual session details. Reconstruction error was nearly identical for members and non-members. Scenario B is not a valid test of DP effectiveness — it must be ruled out first via the no-DP baseline with `epochs=50`.
 
-### Ongoing: Full Parameter Sweep
+### Sprint 9 Target: Full Parameter Sweep (epochs=50, Yeom+Shadow+LiRA)
 
-A systematic sweep across the following parameter grid is currently in progress:
+**Hypothesis:** With `epochs=50`, LiRA (raw_updates, server-side) should achieve AUC > 0.55 without DP, and AUC ≈ 0.50 with DP. This is the DSN 2027 core claim.
+
+**Experimental sequence:**
+1. `make experiment-smoke` — pipeline OK (5 round, no-DP, n_shadow=4)
+2. `make experiment-nodp` — Scenario A confirmation (LiRA AUC > 0.55?)
+3. `make experiment-dp EPS=1.0` — DP suppresses LiRA? (AUC → 0.50?)
+4. `make experiment-full-sweep` — full rounds × ε grid for paper figures
+5. Enable `jpl_2018` and `jpl_2021` in config → cross-dataset reproducibility
+
+A systematic sweep across the following parameter grid is planned:
 
 | Axis | Values |
 |---|---|
@@ -249,19 +264,27 @@ datasets/acn/jpl/acndata_sessions_2020.json
 # Verify config and dataset without training (~5 seconds)
 make experiment-dry
 
-# Single experiment: 100 rounds, ε=1.0, FedProx μ=0.01
-make experiment
+# ── Sequenza raccomandata Sprint 9 ────────────────────────────────────────────
+# Ogni run esegue SEMPRE Yeom + Shadow + LiRA insieme — stesso JSON, stesse condizioni.
 
-# Full sweep: rounds ∈ {100,200,500,1000} × ε ∈ {0.1,0.5,1.0,2.0,5.0}
-# Each run creates a new numbered directory experiments/exp{N}/
-# Estimated runtime: ~2-4h on Mac M-series (sequential; 20 configs)
+# Passo 1: verifica pipeline (5 round, no-DP, n_shadow=4, ~5 min CPU)
+make experiment-smoke
+
+# Passo 2: baseline no-DP (10 round, n_shadow=8) — LiRA AUC > 0.55?
+make experiment-nodp
+
+# Passo 3: con DP (10 round, ε=1.0) — LiRA AUC → 0.50?
+make experiment-dp
+
+# Override epsilon o n_shadow:
+make experiment-dp EPS=0.5
+make experiment-dp EPS=0.1 N_SHADOW=16
+
+# Full sweep: rounds × ε (20 configs), tutti gli attacchi
 caffeinate -s nohup make experiment-full-sweep > /tmp/sweep.log 2>&1 &
-
-# Monitor progress in real time
 tail -f /tmp/sweep.log
 
-# Byzantine attack sweep (Sprint 8): 5 seeds × 5 epsilon = 25 runs
-# highway cluster sends gradient-scaled updates (×10); validates IDS Krum + cosine detection
+# IDS validation (Byzantine sweep): 5 seeds × 5 ε = 25 run
 caffeinate -s nohup make experiment-byzantine-sweep > /tmp/byz_sweep.log 2>&1 &
 tail -f /tmp/byz_sweep.log
 ```
@@ -281,6 +304,8 @@ tail -f /tmp/byz_sweep.log
 | `--scale-factor` | float | from config (10.0) | Attack intensity multiplier |
 | `--sweep-dir` | path | None | Output directory for sweep isolation (e.g. `experiments/exp2`) |
 | `--dry-run` | flag | false | Validate config and dataset; no training |
+| `--no-dp` | flag | false | Disable DP (σ=0, no clipping) — baseline for Scenario A/B disambiguation |
+| `--n-shadow` | int | from config (8) | Number of shadow models for LiRA (4=smoke, 8=default, 16=paper quality, 32+=high confidence) |
 | `--skip-ids` | flag | false | Skip IDS analysis (faster, for MIA-only evaluation) |
 
 **Example: manual multi-seed run**
@@ -351,9 +376,17 @@ make clean     # remove __pycache__ and build artefacts
 |---|---|
 | `scripts/run_experiments.py` | Orchestrates a single FL experiment; runs two parallel MIA evaluators per round — loss-based (Yeom 2018, `auc_roc`) and calibrated shadow attack (Carlini 2022, `shadow_auc_roc`); performs 80/20 hold-out split; writes per-round MIA scores, FL `mean_loss`, and IDS delta-weight analysis to `experiment_{timestamp}.json`; accepts `--sweep-dir experiments/exp{N}`; auto-regenerates `exp{N}.xlsx` at completion |
 | `scripts/run_sweep.py` | Runs multiple experiments sequentially for a given `--rounds` and `--epsilon` grid; auto-detects next `exp{N}` directory if `--sweep-dir` not provided; logs progress per config; invokes `run_experiments.py` as a subprocess |
-| `scripts/generate_excel_report.py` | Standalone tool: reads all `experiment_*.json` files from a given directory and generates a 6-sheet Excel workbook: **Raw Data** (one row per experiment), **Heat Map** (AUC-ROC matrix: rounds × ε), **Per Rounds** (aggregated by round count), **Per Epsilon** (aggregated by ε), **Comparison** (side-by-side metrics), **AUC Progression** (per-round AUC trajectory) |
+| `scripts/generate_excel_report.py` | Standalone tool: reads all `experiment_*.json` files from a given directory and generates a 10-sheet Excel workbook: **Raw Data** (one row per experiment, Yeom+Shadow+LiRA columns), **Heat Map** (AUC-ROC matrix: rounds × ε), **Per Rounds** (aggregated by round count), **Per Epsilon** (aggregated by ε), **Comparison** (side-by-side metrics), **AUC Progression** (Yeom per-round trajectory), **Attack Comparison** (Yeom vs Shadow vs LiRA synthetic, with Δ column), **Yeom Per Round** (round-by-round AUC per experiment), **Shadow Per Round** (idem, Shadow MIA), **LiRA Per Round** (idem, LiRA — ★ PRIMARY) |
 
 ### Engineering Fixes
+
+Fixes applied during Sprint 9 (LiRA + IDS false-positive elimination):
+
+- **GRADIENT_EXPLOSION systematic false positives with 50 local epochs** (`scripts/run_experiments.py`): With 50 epochs per round, accumulated weight deltas always exceeded the absolute adaptive threshold (`max_grad_norm + 3σ ≈ 15.5`). Fixed with **peer-relative normalisation**: compute L2-norm of each client's delta; scale by `max_grad_norm / median_norm` before passing to the auditor. Guard: if `median_norm < 1e-4` (round 1, sparse deltas) use `scale=1.0` to avoid `inf` scaling. Median uses lower-middle index `(len-1)//2` to avoid inflating the reference when a Byzantine outlier is present. Krum analysis continues on non-normalised deltas (geometric, scale-independent).
+- **Krum false positives with 50 local epochs** (`scripts/run_experiments.py`): With 50 epochs, legitimate cluster divergence produces Krum scores up to 3.27. Threshold raised from 1.5 to **3.5**. Validated: Byzantine score ≈ 4.0, max legitimate FP = 3.27 → gap = 0.73.
+- **Budget exhausted alert with `--no-dp`** (`scripts/run_experiments.py`): `PrivacyAuditor` tracked `epsilon=cfg["epsilon"]` even when DP was disabled. Fixed by passing `epsilon=1000.0` when `no_dp=True` → budget ratio stays near 0 for any realistic number of rounds.
+- **Three per-attack Excel sheets added** (`scripts/generate_excel_report.py`): `build_yeom_per_round()`, `build_shadow_per_round()`, `build_lira_per_round()` — each shows round-by-round AUC for one attack across all experiments, color-coded by risk level. Added via shared `_build_per_round_sheet()` helper. `main()` and `_update_excel_report()` both create all 10 sheets.
+- **Excel merge crash on `build_raw_data()`** (`scripts/generate_excel_report.py`): old `ws.merge_cells("A1:K1")` left from 10-column layout conflicted with new `ws.merge_cells("A1:O1")` (15 columns). openpyxl 3.x raises `ValueError` when merging a range that includes already-merged cells. Fixed by removing the duplicate old call.
 
 Fixes applied during Sprint 8 (post-exp1 verification):
 
@@ -403,9 +436,11 @@ These are the primary experiments for DSN 2027. All runs are **clean**: no Byzan
 
 | Target | Purpose |
 |---|---|
-| `make experiment-nodp` | No-DP baseline (σ=0, 5 rounds) — disambiguates AUC≈0.5 |
-| `make experiment-full-sweep` | Full sweep: rounds × ε (20 configs) → paper figures |
-| `make experiment` | Single run with default params |
+| `make experiment-smoke` | Pipeline verification (5 round, no-DP, n_shadow=4, ~5 min) |
+| `make experiment-nodp` | No-DP baseline (10 round, n_shadow=8) — Yeom+Shadow+LiRA; LiRA AUC>0.55 → Scenario A |
+| `make experiment-dp` | With DP (10 round, ε=EPS, n_shadow=8) — Yeom+Shadow+LiRA; compare with no-DP |
+| `make experiment-full-sweep` | Full sweep: rounds × ε (20 configs), all attacks → paper figures |
+| `make experiment` | Single run with default params (100 rounds, ε=1.0) |
 
 ### Track 2 — IDS Validation Experiments
 
@@ -505,9 +540,11 @@ If Scenario B is confirmed, the claim must be reframed: the current autoencoder 
 | Sprint 6 | Complete | FedMIA loss-based evaluator (Yeom 2018); full 20-config sweep (rounds × ε); first results: AUC-ROC ≈ 0.503 all configs — loss-based attack below noise floor; 10 code review fixes applied (HIGH×3, MEDIUM×5, LOW×2) including IDS delta-weights, DP budget formula, FedAvg denominator, Krum config |
 | Sprint 7 | Complete | Calibrated shadow MIA attack (Carlini 2022): `run_fedmia_shadow()` computes per-sample calibrated score = MSE(shadow)−MSE(target); shadow AUC-ROC ≈ 0.499 across all ε; IDS false-positive bugs fixed (raw_updates, Krum normalisation) |
 | Sprint 8 | Complete | Byzantine gradient scaling IDS validation: highway ×10 → Krum score 4.0 vs 1.0 legitimate; zero false positives; GRADIENT_EXPLOSION adaptive threshold (max_grad_norm + 3σ); `--seed`, `--byzantine`, `--scale-factor`, `--no-dp` CLI args; exp1 regenerated with corrected code |
-| Sprint 9 | In Progress | **No-DP baseline** run → Scenario B confirmed (AUC=0.497 with epochs=3, 5 rounds — model does not memorise); **fix: epochs 3→50** to force local overfitting and establish membership signal; re-run no-DP baseline to confirm Scenario A (AUC>0.5); then full DP sweep for DSN 2027 privacy/utility curve |
-| Sprint 10 | Planned | **Interactive demo GUI** (Streamlit): real-time FL training visualisation, AUC-ROC per-round curve, IDS alert timeline, DP noise/utility tradeoff slider; artifact for DSN 2027 evaluation |
-| Sprint 11 | Planned | DSN 2027 paper writing; results consolidation; reproducibility packaging; artefact evaluation preparation |
+| Sprint 9 | Complete | **LiRA attack** (Carlini et al. 2022): server-side MIA on `raw_updates` PRE-FedProx aggregation — strongest attack; **attack hierarchy** Yeom (weak) → Shadow (medium) → LiRA (★ primary); **IDS fixes**: peer-relative normalisation for GRADIENT_EXPLOSION FPs, Krum threshold 3.5 for 50-epoch training, DP budget guard for no-DP runs; **Excel**: 10-sheet report (Attack Comparison + 3 per-attack sheets); **epochs 3→50** forces memorisation (Scenario A); **datasets 2018+2021** added for cross-dataset reproducibility validation; `--n-shadow` CLI arg; all old results (exp1–exp6, pre-LiRA) invalidated and deleted; Makefile unified: `experiment-smoke`, `experiment-nodp`, `experiment-dp` each run Yeom+Shadow+LiRA together |
+| Sprint 10 | Planned | **Cross-dataset validation**: enable jpl_2018 and jpl_2021 in config; run `experiment-nodp` and `experiment-dp` on all four datasets; verify LiRA AUC reproducibility across years |
+| Sprint 11 | Planned | **Gradient inversion attack** (after LiRA validated): reconstruct raw EV session features from weight updates; measures reconstruction quality on held-out sessions |
+| Sprint 12 | Planned | **Interactive demo GUI** (Streamlit): real-time FL training visualisation, per-round AUC curve for all three attacks, IDS alert timeline, DP noise/utility tradeoff slider; artefact for DSN 2027 evaluation |
+| Sprint 13 | Planned | DSN 2027 paper writing; results consolidation; reproducibility packaging; artefact evaluation preparation |
 
 ---
 

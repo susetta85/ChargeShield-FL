@@ -15,6 +15,10 @@ experiment:
 datasets:
   jpl_2019: datasets/acn/jpl/acndata_sessions_2019.json
   jpl_2020: datasets/acn/jpl/acndata_sessions_2020.json
+  # Dataset aggiuntivi per validazione cross-dataset (Sprint 9).
+  # Abilitare quando pronti per i run di riproducibilità:
+  # jpl_2018: datasets/acn/jpl/acndata_sessions_2018.json
+  # jpl_2021: datasets/acn/jpl/acndata_sessions_2021.json
 
 # fedmia: shadow-model parameters — NON USATI
 # L'implementazione usa loss-based MIA (Yeom et al. 2018), non shadow models.
@@ -39,6 +43,17 @@ ml:
 
 output:
   experiments_dir: experiments
+
+# ── Sprint 9: LiRA Attack ─────────────────────────────────────────────────────
+# LiRA (Carlini et al., IEEE S&P 2022) — attacco più forte del paper.
+# Threat model: aggregatore semi-onesto intercetta raw_updates prima di FedProx.
+# n_shadow: numero shadow models locali (no FL, no DP) per calibrare IN/OUT distributions.
+#   8  = fast demo (~10-15 min CPU, sufficiente per validare il codice)
+#   16 = buona qualità (consigliato per il paper submission)
+#   32 = paper quality (slow ma risultati statisticamente solidi)
+# shadow_epochs vengono calcolati automaticamente: min(epochs * rounds/4, 300)
+lira:
+  n_shadow: 8
 
 # ── Sprint 8: Byzantine Attack Simulation ─────────────────────────────────────
 # Inietta un gradient scaling attack su un nodo per validare l'IDS.
