@@ -403,6 +403,55 @@ IDS correctness is validated via a controlled Byzantine gradient scaling attack 
 
 ---
 
+## No-DP Baseline Experiment
+
+### Motivation
+
+The primary experimental claim of ChargeShield-FL is that Differential Privacy (specifically, the Gaussian Mechanism applied via weight perturbation) suppresses membership inference signals in federated EV charging models. This claim is operationalised as: *AUC-ROC of FedMIA attacks drops toward 0.5 (random-guess baseline) as ε decreases.*
+
+However, AUC ≈ 0.5 is ambiguous without a control condition. It may arise from two distinct scenarios:
+
+**Scenario A — DP works as intended.** The model learns a non-trivial representation of the training data (members have lower reconstruction error than non-members), but the Gaussian noise added per round obscures this signal. Without noise, a MIA attacker could recover meaningful membership information (AUC > 0.5); with noise, the signal is suppressed (AUC → 0.5). This is the desired outcome: DP provides genuine privacy protection.
+
+**Scenario B — The model does not memorise.** The autoencoder generalises sufficiently well that reconstruction error is nearly identical for members and non-members regardless of DP. Even without any privacy noise (σ = 0), AUC ≈ 0.5. This can happen when the model is too small relative to the dataset size, when training converges to a flat minimum, or when the data distribution is too homogeneous. In this scenario, DP is providing no additional protection beyond what the model's natural generalisation already provides — the claim that DP *causes* AUC ≈ 0.5 would be incorrect.
+
+Without a no-DP control, these two scenarios are indistinguishable from AUC results alone.
+
+### Methodology
+
+The no-DP baseline runs the identical FL pipeline (same dataset split, same seed, same model architecture, same FedAvg aggregation) with σ = 0: the `GradientManager.privatize()` step is bypassed and raw local weights are sent directly to the aggregator. Gradient clipping (`max_grad_norm`) is also skipped, removing the only source of regularisation introduced by the DP mechanism. All other hyperparameters (lr, epochs, batch size, proximal_mu) are unchanged.
+
+The comparison is:
+
+| Condition | σ | Expected AUC if Scenario A | Expected AUC if Scenario B |
+|---|---|---|---|
+| No-DP baseline | 0 | **> 0.55** (MIA signal visible) | ≈ 0.5 (model does not memorise) |
+| DP ε = 5.0 | ≈ 0.97 | ≈ 0.5 (noise suppresses signal) | ≈ 0.5 |
+| DP ε = 1.0 | ≈ 4.84 | ≈ 0.5 | ≈ 0.5 |
+| DP ε = 0.1 | ≈ 48.4 | ≈ 0.5 | ≈ 0.5 |
+
+A no-DP AUC significantly above 0.5 confirms Scenario A and validates the DP claim. A no-DP AUC ≈ 0.5 indicates Scenario B and requires either a larger/more expressive model, a richer feature set, or additional training rounds before the DP sweep is meaningful.
+
+### Running the Experiment
+
+```bash
+# Quick validation (5 rounds, ~1 minute on Mac M-series)
+python scripts/run_experiments.py --config config/experiment.yaml --no-dp --rounds 5
+
+# Or via Makefile
+make experiment-nodp
+```
+
+The JSON output is written to `experiments/` with `"name": "..._nodp_baseline"` and `"no_dp": true` in the config section, making it unambiguously distinguishable from DP runs.
+
+### Implications for DSN 2027
+
+If Scenario A is confirmed, the paper can make the strong claim: *"The Gaussian Mechanism at ε = 1.0 reduces FedMIA AUC from X to 0.50, demonstrating that DP suppresses membership signals in EV FL models."* The ε vs AUC curve becomes the central figure.
+
+If Scenario B is confirmed, the claim must be reframed: the current autoencoder architecture (570 parameters, 6 input features) does not memorise individual sessions. The paper should either (a) increase model expressiveness (larger hidden layers, more features), or (b) reframe the contribution as a negative result — demonstrating that standard EV charging autoencoders are naturally resistant to MIA, with DP providing defence-in-depth against stronger future attacks.
+
+---
+
 ## Sprint Roadmap
 
 | Sprint | Status | Deliverables |

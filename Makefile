@@ -45,6 +45,8 @@ help:
 	@echo "  make experiment-full-sweep Sweep rounds×epsilon (100-1000 × 0.1-5.0) — crea experiments/exp{N}/"
 	@echo "  make experiment-byzantine-sweep Byzantine sweep (5 seed × 5 epsilon) — IDS validation"
 	@echo "  make experiment-dry        Dry run (verifica config e dataset)"
+	@echo "  make install           Installa dipendenze runtime (torch, numpy, ecc.) — nuovo ambiente"
+	@echo "  make install-dev       Installa runtime + dev tools (pytest, ruff, mypy)"
 	@echo "  make test              Tutti i test unitari"
 	@echo "  make test-sprint4      Solo Sprint 4"
 	@echo "  make test-sprint5      Solo Sprint 5"
@@ -206,6 +208,17 @@ test-sprint4:
 test-sprint5:
 	$(PYTEST) tests/test_sprint5.py -v --tb=short
 
+# Installa SOLO le dipendenze runtime (torch, numpy, sklearn, ecc.)
+# Usare su Mac nativo o in nuovi ambienti prima di eseguire esperimenti.
+# torch>=2.0 è dichiarato in pyproject.toml [project.dependencies].
+.PHONY: install
+install:
+	@echo "→ Installazione dipendenze runtime (torch, numpy, sklearn, pandas, openpyxl, pyyaml)..."
+	pip install -e "." --break-system-packages
+	@echo "✓ Runtime installato. Per dev tools (pytest, ruff, mypy): make install-dev"
+
+# Installa dipendenze runtime + dev tools (pytest, ruff, mypy).
+# Equivale a: pip install -e ".[dev]"  (include torch e tutti i runtime deps).
 .PHONY: install-dev
 install-dev:
 	@echo "→ Installazione dipendenze (runtime + dev)..."
