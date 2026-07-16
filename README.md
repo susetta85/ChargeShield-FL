@@ -393,6 +393,16 @@ Fixes applied during Sprint 5/6 development (pre-sweep):
 
 ---
 
+## IDS Validation
+
+IDS correctness is validated via a controlled Byzantine gradient scaling attack (Sprint 8). The highway cluster multiplies its local model weights by a scale factor of 10 before sending them to the aggregator. This creates a geometrically anomalous update that Krum — the primary Byzantine detector — should identify.
+
+**Result (5-round dry run, seed=42, ε=1.0):** Krum score for the highway-01 Byzantine node ≈ 4.0; Krum scores for all three legitimate nodes (urban-01, residential-01, corporate-01) ≈ 1.0. With threshold 1.5, the IDS correctly issues a CRITICAL alert on highway-01 at every round with zero false positives. A `GRADIENT_EXPLOSION` alert is also emitted on all nodes in Byzantine rounds — this is expected behaviour: the contaminated raw global weights shift the delta baseline for legitimate nodes, causing sensitivity to briefly exceed the adaptive threshold `max_grad_norm + 3σ`. This finding motivates Krum as the primary Byzantine detector over simple threshold-based alarms.
+
+**IDS validation scope:** the Byzantine experiment validates IDS detection capability (true positive rate), complementing the false positive analysis from clean-run experiments. It is not a primary privacy claim for DSN 2027; it appears as a secondary "IDS robustness" subsection in the paper.
+
+---
+
 ## Sprint Roadmap
 
 | Sprint | Status | Deliverables |
@@ -403,10 +413,11 @@ Fixes applied during Sprint 5/6 development (pre-sweep):
 | Sprint 4 | Complete | FedAvg and FedProx aggregation via NVFLARE 2.7.2; proximal_mu configuration; multi-round orchestration |
 | Sprint 5 | Complete | Gaussian Mechanism DP integration; gradient clipping; σ calibration; DP accounting (ε, δ tracking per round) |
 | Sprint 6 | Complete | FedMIA loss-based evaluator (Yeom 2018); full 20-config sweep (rounds × ε); first results: AUC-ROC ≈ 0.503 all configs — loss-based attack below noise floor; 10 code review fixes applied (HIGH×3, MEDIUM×5, LOW×2) including IDS delta-weights, DP budget formula, FedAvg denominator, Krum config |
-| Sprint 7 | Complete | Calibrated shadow MIA attack (Carlini 2022) implemented: `run_fedmia_shadow()` trains a local shadow model on 50% of training data, computes per-sample calibrated score = MSE(shadow)−MSE(target); shadow AUC-ROC ≈ 0.499 across all ε — model generalises well, MIA-resistant; IDS false-positive bugs found and fixed |
-| Sprint 8 | In Progress | Byzantine gradient scaling attack simulation: highway cluster sends weights ×10; `make experiment-byzantine-sweep` runs 5 seeds × 5 ε (25 runs); validates Krum (score >1.5) and cosine similarity IDS detection; `--seed`, `--byzantine`, `--scale-factor` CLI args added; Krum normalisation and threshold fixed |
-| Sprint 9 | Planned | Protocol-level experiments: OCPP 1.6 vs. OCPP 2.0.1 vs. MQTT v5 leakage differential; non-IID severity analysis |
-| Sprint 10 | Planned | DSN 2027 paper writing; results consolidation; reproducibility packaging; artefact evaluation preparation |
+| Sprint 7 | Complete | Calibrated shadow MIA attack (Carlini 2022): `run_fedmia_shadow()` computes per-sample calibrated score = MSE(shadow)−MSE(target); shadow AUC-ROC ≈ 0.499 across all ε; IDS false-positive bugs fixed (raw_updates, Krum normalisation) |
+| Sprint 8 | Complete | Byzantine gradient scaling IDS validation: highway ×10 → Krum score 4.0 vs 1.0 legitimate; zero false positives; GRADIENT_EXPLOSION adaptive threshold (max_grad_norm + 3σ); `--seed`, `--byzantine`, `--scale-factor`, `--no-dp` CLI args; exp1 regenerated with corrected code |
+| Sprint 9 | In Progress | **No-DP baseline** (`make experiment-nodp`): disambiguates AUC≈0.5 (Scenario A: DP suppresses MIA vs Scenario B: model does not memorise); FL convergence fix (lr, epochs) for ε≤2.0; 5-fold cross-validation; statistical validation (5 seeds, mean±std, Wilcoxon test) |
+| Sprint 10 | Planned | **Interactive demo GUI** (Streamlit): real-time FL training visualisation, AUC-ROC per-round curve, IDS alert timeline, DP noise/utility tradeoff slider; artifact for DSN 2027 evaluation |
+| Sprint 11 | Planned | DSN 2027 paper writing; results consolidation; reproducibility packaging; artefact evaluation preparation |
 
 ---
 

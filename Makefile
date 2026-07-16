@@ -39,10 +39,12 @@ help:
 	@echo "  make destroy           Rimuovi topologia"
 	@echo "  make status            Stato container"
 	@echo "  make logs              Log server + highway"
-	@echo "  make experiment        Esegui esperimento FedMIA (config default)"
-	@echo "  make experiment-sweep      Sweep epsilon 0.1→5.0 (100 round)"
+	@echo "  make experiment            Esegui esperimento FedMIA (config default)"
+	@echo "  make experiment-nodp       No-DP baseline (σ=0, 5 round) — critico per disambiguare AUC≈0.5"
+	@echo "  make experiment-sweep      Sweep epsilon 0.1→5.0 (100 round) [legacy]"
 	@echo "  make experiment-full-sweep Sweep rounds×epsilon (100-1000 × 0.1-5.0) — crea experiments/exp{N}/"
-	@echo "  make experiment-dry    Dry run (verifica config e dataset)"
+	@echo "  make experiment-byzantine-sweep Byzantine sweep (5 seed × 5 epsilon) — IDS validation"
+	@echo "  make experiment-dry        Dry run (verifica config e dataset)"
 	@echo "  make test              Tutti i test unitari"
 	@echo "  make test-sprint4      Solo Sprint 4"
 	@echo "  make test-sprint5      Solo Sprint 5"
@@ -170,6 +172,20 @@ experiment-byzantine-sweep:
 		done; \
 	done; \
 	echo "✓ Byzantine sweep #$$SWEEP_NUM completato — $$SWEEP_DIR/" | tee -a "$$LOG"
+
+# No-DP baseline: CRITICO per DSN 2027 — disambigua AUC≈0.5.
+# Scenario A (DP funziona): AUC>0.5 senza DP, ≈0.5 con DP → DP sopprime MIA ✓
+# Scenario B (no memorization): AUC≈0.5 in entrambi → claim DP da rivedere.
+# Eseguire PRIMA del full sweep. 5 round è sufficiente per la stima.
+.PHONY: experiment-nodp
+experiment-nodp:
+	@echo "→ No-DP baseline (σ=0, 5 round) — disambiguazione AUC..."
+	@mkdir -p $(EXPERIMENTS)
+	$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
+		--config config/experiment.yaml \
+		--no-dp \
+		--rounds 5
+	@echo "✓ No-DP baseline — confronta AUC con DP in experiments/"
 
 .PHONY: experiment-dry
 experiment-dry:

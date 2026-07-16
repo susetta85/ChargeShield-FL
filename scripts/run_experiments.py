@@ -168,11 +168,20 @@ def normalize_sessions(
 def run_fl_rounds(
     cfg: dict,
     sessions: list[dict[str, Any]],
+    no_dp: bool = False,
 ) -> dict[int, dict[str, Any]]:
     """
     Esegue FL rounds via ML Plane.
-    Ogni round: train locale → DP → FedAvg → global model.
+    Ogni round: train locale → [DP opzionale] → FedAvg → global model.
     Restituisce gradient history per round.
+
+    Args:
+        cfg:     configurazione esperimento
+        sessions: sessioni di training
+        no_dp:   se True, salta il rumore DP (σ=0) — usato per baseline experiment.
+                 Permette di distinguere:
+                   Scenario A: DP funziona → AUC > 0.5 senza DP, ≈0.5 con DP
+                   Scenario B: modello non memorizza → AUC ≈ 0.5 in entrambi i casi
     """
     exp_cfg  = cfg["experiment"]
     ml_cfg   = cfg["ml"]
@@ -222,6 +231,15 @@ def run_fl_rounds(
             f"tipo={_byz_type}, scale={_byz_scale}"
         )
 
+    if no_dp:
+        logger.warning(
+            "[NO-DP BASELINE] Rumore Differential Privacy DISABILITATO (σ=0). "
+            "Il modello si addestra senza privacy noise. "
+            "Confronta AUC con esperimento DP per disambiguare: "
+            "AUC>0.5 → Scenario A (DP sopprime MIA); "
+            "AUC≈0.5 → Scenario B (modello non memorizza)."
+        )
+
     # Baseline per IDS al round 1: pesi del modello inizializzato (prima del training).
     # Consente di calcolare il delta round 1 = post_training - init_model invece di
     # usare pesi assoluti (che causano GRADIENT_EXPLOSION falso per L2 >> max_grad_norm).
@@ -267,9 +285,13 @@ def run_fl_rounds(
                 )
 
             raw_updates.append(update)          # conserva pre-DP per IDS
-            # Applica DP — passa le chiavi per escludere buffer BatchNorm dal rumore
-            weight_keys    = trainer.get_weight_keys()
-            private_update = gm.privatize(update, weight_keys=weight_keys)
+            # Applica DP — passa le chiavi per escludere buffer BatchNorm dal rumore.
+            # Con --no-dp, usa l'update raw direttamente (σ=0, nessun rumore).
+            weight_keys = trainer.get_weight_keys()
+            if no_dp:
+                private_update = update  # baseline: nessuna privacy noise
+            else:
+                private_update = gm.privatize(update, weight_keys=weight_keys)
             agg.collect(private_update)
             round_updates.append(private_update)
 
@@ -908,6 +930,8 @@ def save_results(
             "delta":      cfg["experiment"]["delta"],
             "fl_rounds":  cfg["experiment"]["fl_rounds"],
             "proximal_mu": cfg["ml"]["proximal_mu"],
+            # no_dp=True → baseline senza rumore DP; usato per disambiguare AUC≈0.5
+            "no_dp":      cfg["experiment"].get("no_dp", False),
         },
         "summary": {
             # Yeom 2018 loss-based MIA
@@ -1057,6 +1081,16 @@ def parse_args() -> argparse.Namespace:
         "--scale-factor", type=float, default=None,
         help="Override scale_factor dell'attacco. Default: valore da config (10.0).",
     )
+    parser.add_argument(
+        "--no-dp", action="store_true", default=False,
+        help=(
+            "Disabilita rumore Differential Privacy (σ=0). "
+            "BASELINE CRITICO per DSN 2027: distingue "
+            "Scenario A (DP sopprime MIA → AUC>0.5 senza DP) da "
+            "Scenario B (modello non memorizza → AUC≈0.5 anche senza DP). "
+            "Usare sempre prima del full sweep per capire in quale scenario siamo."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -1082,6 +1116,12 @@ def main() -> None:
         cfg.setdefault("byzantine_attack", {})["byzantine_node"] = args.byzantine_node
     if args.scale_factor is not None:
         cfg.setdefault("byzantine_attack", {})["scale_factor"] = args.scale_factor
+
+    # No-DP baseline flag: disabilita rumore DP, rinomina esperimento per distinzione
+    if args.no_dp:
+        cfg["experiment"]["no_dp"] = True
+        cfg["experiment"]["name"] = cfg["experiment"]["name"] + "_nodp_baseline"
+
     exp_cfg = cfg["experiment"]
     logger.info(
         f"Config: epsilon={exp_cfg['epsilon']}, "
@@ -1120,7 +1160,7 @@ def main() -> None:
         logger.info("Dry run completato — uscita.")
         return
 
-    fl_results = run_fl_rounds(cfg, train_sessions)
+    fl_results = run_fl_rounds(cfg, train_sessions, no_dp=args.no_dp)
 
     # run_fedmia, run_fedmia_shadow e run_ids non devono impedire il salvataggio.
     # Con try/except, save_results() viene sempre chiamato anche in caso di errore.
