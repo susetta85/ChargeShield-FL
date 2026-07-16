@@ -456,11 +456,28 @@ The comparison is:
 
 A no-DP AUC significantly above 0.5 confirms Scenario A and validates the DP claim. A no-DP AUC ≈ 0.5 indicates Scenario B and requires either a larger/more expressive model, a richer feature set, or additional training rounds before the DP sweep is meaningful.
 
+### First Run Result (epochs=3, 5 rounds) — Scenario B
+
+The first no-DP baseline run with the original configuration (3 local epochs, 5 FL rounds = 15 total training epochs per cluster) produced:
+
+```
+Shadow MIA AUC rounds 1–5: 0.495, 0.495, 0.496, 0.496, 0.496
+Mean AUC-ROC: 0.4970 — Privacy risk: LOW
+```
+
+**Interpretation — Scenario B confirmed:** AUC ≈ 0.5 even without DP. The model never memorised the training data. With only 15 total training epochs on ~2,615 sessions per cluster, the autoencoder (570 parameters) learned a general EV charging pattern but not individual session details. Reconstruction error was nearly identical for members and non-members. DP is providing no measurable privacy protection because there is no membership signal to suppress.
+
+### Fix: Increasing Local Epochs (3 → 50)
+
+To establish Scenario A — a prerequisite for demonstrating that DP suppresses MIA — local training epochs are increased from 3 to 50. This gives each FL round 50 gradient epochs on the local dataset, producing 10 × 50 = 500 total training epochs per cluster in the no-DP validation run. At this training depth, the autoencoder is expected to overfit: training reconstruction error drops significantly below hold-out error, creating a measurable membership signal (AUC > 0.5 without DP).
+
+Only after confirming AUC > 0.5 without DP does the full DP sweep become scientifically meaningful. The shadow model cap (`shadow_epochs = min(50 × fl_rounds, 500)`) is unchanged.
+
 ### Running the Experiment
 
 ```bash
-# Quick validation (5 rounds, ~1 minute on Mac M-series)
-python scripts/run_experiments.py --config config/experiment.yaml --no-dp --rounds 5
+# No-DP baseline with corrected epochs (10 rounds × 50 epochs = 500 total per cluster)
+python3 scripts/run_experiments.py --config config/experiment.yaml --no-dp --rounds 10
 
 # Or via Makefile
 make experiment-nodp
@@ -488,7 +505,7 @@ If Scenario B is confirmed, the claim must be reframed: the current autoencoder 
 | Sprint 6 | Complete | FedMIA loss-based evaluator (Yeom 2018); full 20-config sweep (rounds × ε); first results: AUC-ROC ≈ 0.503 all configs — loss-based attack below noise floor; 10 code review fixes applied (HIGH×3, MEDIUM×5, LOW×2) including IDS delta-weights, DP budget formula, FedAvg denominator, Krum config |
 | Sprint 7 | Complete | Calibrated shadow MIA attack (Carlini 2022): `run_fedmia_shadow()` computes per-sample calibrated score = MSE(shadow)−MSE(target); shadow AUC-ROC ≈ 0.499 across all ε; IDS false-positive bugs fixed (raw_updates, Krum normalisation) |
 | Sprint 8 | Complete | Byzantine gradient scaling IDS validation: highway ×10 → Krum score 4.0 vs 1.0 legitimate; zero false positives; GRADIENT_EXPLOSION adaptive threshold (max_grad_norm + 3σ); `--seed`, `--byzantine`, `--scale-factor`, `--no-dp` CLI args; exp1 regenerated with corrected code |
-| Sprint 9 | In Progress | **No-DP baseline** (`make experiment-nodp`): disambiguates AUC≈0.5 (Scenario A: DP suppresses MIA vs Scenario B: model does not memorise); FL convergence fix (lr, epochs) for ε≤2.0; 5-fold cross-validation; statistical validation (5 seeds, mean±std, Wilcoxon test) |
+| Sprint 9 | In Progress | **No-DP baseline** run → Scenario B confirmed (AUC=0.497 with epochs=3, 5 rounds — model does not memorise); **fix: epochs 3→50** to force local overfitting and establish membership signal; re-run no-DP baseline to confirm Scenario A (AUC>0.5); then full DP sweep for DSN 2027 privacy/utility curve |
 | Sprint 10 | Planned | **Interactive demo GUI** (Streamlit): real-time FL training visualisation, AUC-ROC per-round curve, IDS alert timeline, DP noise/utility tradeoff slider; artifact for DSN 2027 evaluation |
 | Sprint 11 | Planned | DSN 2027 paper writing; results consolidation; reproducibility packaging; artefact evaluation preparation |
 

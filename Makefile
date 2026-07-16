@@ -179,19 +179,19 @@ experiment-byzantine-sweep:
 	done; \
 	echo "✓ IDS validation sweep completato — $(IDS_VALIDATION_DIR)/" | tee -a "$$LOG"
 
-# No-DP baseline: CRITICO per DSN 2027 — disambigua AUC≈0.5.
-# Scenario A (DP funziona): AUC>0.5 senza DP, ≈0.5 con DP → DP sopprime MIA ✓
-# Scenario B (no memorization): AUC≈0.5 in entrambi → claim DP da rivedere.
-# Eseguire PRIMA del full sweep. 5 round è sufficiente per la stima.
+# No-DP baseline: CRITICO per DSN 2027 — confirma Scenario A (memorizzazione).
+# Con epochs=50 e 10 round: 500 epoche totali per cluster → overfitting → AUC > 0.5.
+# Se AUC > 0.55 senza DP → Scenario A confermato → DP sweep è significativo.
+# Se AUC ≈ 0.5 anche qui → aumentare ulteriormente epochs o ridurre dataset.
 .PHONY: experiment-nodp
 experiment-nodp:
-	@echo "→ No-DP baseline (σ=0, 5 round) — disambiguazione AUC..."
+	@echo "→ No-DP baseline (σ=0, 10 round, 50 epochs) — verifica memorizzazione..."
 	@mkdir -p $(EXPERIMENTS)
 	$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
 		--config config/experiment.yaml \
 		--no-dp \
-		--rounds 5
-	@echo "✓ No-DP baseline — confronta AUC con DP in experiments/"
+		--rounds 10
+	@echo "✓ No-DP baseline completato — AUC > 0.55 = Scenario A confermato"
 
 .PHONY: experiment-dry
 experiment-dry:

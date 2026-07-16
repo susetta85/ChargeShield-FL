@@ -26,7 +26,14 @@ datasets:
 ml:
   input_dim: 6
   lr: 0.001
-  epochs: 3
+  # epochs: aumentato da 3 → 50 (Sprint 9, 2026-07-16).
+  # Motivazione: no-DP baseline (5 round × 3 epochs = 15 epoche totali) ha prodotto
+  # AUC=0.497 senza DP → Scenario B: il modello non memorizza con training insufficiente.
+  # Con 50 epoche/round il modello overfita sui dati locali (~2615 sessioni per cluster),
+  # creando il segnale di membership necessario per dimostrare che DP lo sopprime.
+  # Il claim DSN 2027 "DP riduce AUC da X a 0.5" richiede prima X > 0.5 (Scenario A).
+  # shadow_epochs = min(50 × fl_rounds, 500) → capped a 500 per il shadow model.
+  epochs: 50
   batch_size: 32
   proximal_mu: 0.01
 
