@@ -146,19 +146,23 @@ experiment-full-sweep:
 	done; \
 	echo "✓ Full sweep #$$SWEEP_NUM completato — $$SWEEP_DIR/" | tee -a "$$LOG"
 
-# Sprint 8: Byzantine attack sweep — gradient scaling su nodo highway.
-# Eseguito su 5 seed × 5 epsilon (25 run) per confronto con baseline.
-# Ogni run crea experiments/exp{N}/ separato (sweep numerato automaticamente).
-# Attacco: highway moltiplica pesi ×10 → Krum score >1.5 → alert reale.
+# IDS Validation: Byzantine gradient scaling sweep — SEPARATO dai test MIA.
+#
+# IMPORTANTE: questo sweep NON è un test di privacy risk.
+# Serve SOLO a validare che l'IDS (Krum) rilevi correttamente nodi malevoli.
+# I risultati vanno in experiments/ids_validation/ — MAI in experiments/exp{N}/.
+# La sequenza exp{N} è riservata esclusivamente agli esperimenti MIA puliti
+# (nessun attacco attivo, DP variabile, per misurare AUC-ROC vs epsilon).
+#
+# Attacco: highway moltiplica pesi ×10 → Krum score ≈4.0 > threshold 1.5 → alert.
+# 25 run: 5 seed × 5 epsilon per robustezza statistica della detection.
+IDS_VALIDATION_DIR := $(EXPERIMENTS)/ids_validation
 .PHONY: experiment-byzantine-sweep
 experiment-byzantine-sweep:
-	@mkdir -p $(EXPERIMENTS); \
-	SWEEP_NUM=$$(find $(EXPERIMENTS) -maxdepth 1 -type d -name 'exp[0-9]*' 2>/dev/null | wc -l | tr -d ' '); \
-	SWEEP_NUM=$$((SWEEP_NUM + 1)); \
-	SWEEP_DIR=$(EXPERIMENTS)/exp$$SWEEP_NUM; \
-	mkdir -p "$$SWEEP_DIR"; \
-	LOG="$$SWEEP_DIR/sweep_log.txt"; \
-	echo "→ Byzantine sweep #$$SWEEP_NUM (highway ×10) — $$SWEEP_DIR" | tee "$$LOG"; \
+	@mkdir -p $(IDS_VALIDATION_DIR); \
+	LOG="$(IDS_VALIDATION_DIR)/sweep_log.txt"; \
+	echo "→ IDS validation sweep (highway ×10, 5 seed × 5 epsilon)" | tee "$$LOG"; \
+	echo "  NOTA: risultati in experiments/ids_validation/ — separati da exp{N} (MIA)" | tee -a "$$LOG"; \
 	for seed in 42 123 456 789 1234; do \
 		for eps in 0.1 0.5 1.0 2.0 5.0; do \
 			echo "=== seed=$$seed epsilon=$$eps ===" | tee -a "$$LOG"; \
@@ -170,10 +174,10 @@ experiment-byzantine-sweep:
 				--byzantine \
 				--byzantine-node highway \
 				--scale-factor 10 \
-				--sweep-dir "$$SWEEP_DIR" 2>&1 | tee -a "$$LOG"; \
+				--sweep-dir "$(IDS_VALIDATION_DIR)" 2>&1 | tee -a "$$LOG"; \
 		done; \
 	done; \
-	echo "✓ Byzantine sweep #$$SWEEP_NUM completato — $$SWEEP_DIR/" | tee -a "$$LOG"
+	echo "✓ IDS validation sweep completato — $(IDS_VALIDATION_DIR)/" | tee -a "$$LOG"
 
 # No-DP baseline: CRITICO per DSN 2027 — disambigua AUC≈0.5.
 # Scenario A (DP funziona): AUC>0.5 senza DP, ≈0.5 con DP → DP sopprime MIA ✓

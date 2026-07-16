@@ -393,13 +393,37 @@ Fixes applied during Sprint 5/6 development (pre-sweep):
 
 ---
 
-## IDS Validation
+## Experiment Types and Directory Structure
+
+ChargeShield-FL uses two completely separate experiment tracks. **Never mix results between them.**
+
+### Track 1 — Privacy Risk (MIA) Experiments
+
+These are the primary experiments for DSN 2027. All runs are **clean**: no Byzantine attack active (`byzantine_attack.enabled: false`). Results go in `experiments/exp{N}/` (auto-incremented).
+
+| Target | Purpose |
+|---|---|
+| `make experiment-nodp` | No-DP baseline (σ=0, 5 rounds) — disambiguates AUC≈0.5 |
+| `make experiment-full-sweep` | Full sweep: rounds × ε (20 configs) → paper figures |
+| `make experiment` | Single run with default params |
+
+### Track 2 — IDS Validation Experiments
+
+These runs have **Byzantine attack active** and measure IDS detection capability. Results go in `experiments/ids_validation/` — a fixed, dedicated directory that is never mixed into the `exp{N}` sequence.
+
+| Target | Purpose |
+|---|---|
+| `make experiment-byzantine-sweep` | 5 seed × 5 ε (25 runs) — validates Krum detection |
+
+The code enforces this separation: `--byzantine` and `--no-dp` cannot be used together (hard error); running with `--byzantine` without `--sweep-dir` emits a warning.
+
+### IDS Validation Results
 
 IDS correctness is validated via a controlled Byzantine gradient scaling attack (Sprint 8). The highway cluster multiplies its local model weights by a scale factor of 10 before sending them to the aggregator. This creates a geometrically anomalous update that Krum — the primary Byzantine detector — should identify.
 
-**Result (5-round dry run, seed=42, ε=1.0):** Krum score for the highway-01 Byzantine node ≈ 4.0; Krum scores for all three legitimate nodes (urban-01, residential-01, corporate-01) ≈ 1.0. With threshold 1.5, the IDS correctly issues a CRITICAL alert on highway-01 at every round with zero false positives. A `GRADIENT_EXPLOSION` alert is also emitted on all nodes in Byzantine rounds — this is expected behaviour: the contaminated raw global weights shift the delta baseline for legitimate nodes, causing sensitivity to briefly exceed the adaptive threshold `max_grad_norm + 3σ`. This finding motivates Krum as the primary Byzantine detector over simple threshold-based alarms.
+**Result (5-round validation, seed=42, ε=1.0):** Krum score for the highway-01 Byzantine node ≈ 4.0; Krum scores for all three legitimate nodes (urban-01, residential-01, corporate-01) ≈ 1.0. With threshold 1.5, the IDS correctly issues a CRITICAL alert on highway-01 at every round with zero false positives. A `GRADIENT_EXPLOSION` alert fires on all nodes in Byzantine rounds — expected behaviour: the contaminated raw global weights shift the delta baseline for legitimate nodes, causing sensitivity to briefly exceed `max_grad_norm + 3σ`. This motivates Krum as the primary Byzantine detector over simple threshold-based alarms.
 
-**IDS validation scope:** the Byzantine experiment validates IDS detection capability (true positive rate), complementing the false positive analysis from clean-run experiments. It is not a primary privacy claim for DSN 2027; it appears as a secondary "IDS robustness" subsection in the paper.
+**IDS validation scope:** IDS validation is secondary to the privacy risk claim in DSN 2027. It appears as a subsection demonstrating that the system can detect gradient-based attacks while remaining unaffected by them in the clean MIA sweep.
 
 ---
 

@@ -1117,10 +1117,35 @@ def main() -> None:
     if args.scale_factor is not None:
         cfg.setdefault("byzantine_attack", {})["scale_factor"] = args.scale_factor
 
+    # Guard: --byzantine e --no-dp sono esperimenti concettualmente separati.
+    # --no-dp = baseline MIA pulito (nessun attacco, nessun rumore DP).
+    # --byzantine = validazione IDS (attacco attivo, non misura di privacy risk).
+    # Combinarli produce un risultato privo di significato per entrambi gli obiettivi.
+    if args.byzantine and args.no_dp:
+        logger.error(
+            "Combinazione non valida: --byzantine e --no-dp non possono essere usati insieme.\n"
+            "  --no-dp   = baseline MIA pulito (solo per misurare privacy risk senza DP)\n"
+            "  --byzantine = validazione IDS (solo per testare rilevamento attacchi)\n"
+            "Eseguirli come esperimenti separati:\n"
+            "  Privacy baseline: make experiment-nodp\n"
+            "  IDS validation:   make experiment-byzantine-sweep"
+        )
+        sys.exit(1)
+
     # No-DP baseline flag: disabilita rumore DP, rinomina esperimento per distinzione
     if args.no_dp:
         cfg["experiment"]["no_dp"] = True
         cfg["experiment"]["name"] = cfg["experiment"]["name"] + "_nodp_baseline"
+
+    # Warning esplicito se Byzantine è attivo senza --sweep-dir: rischio di mischiare
+    # risultati IDS con risultati MIA nella directory experiments/ principale.
+    if args.byzantine and not args.sweep_dir:
+        logger.warning(
+            "[BYZANTINE] Attacco attivo senza --sweep-dir esplicita. "
+            "I risultati Byzantine andrebbero in experiments/ids_validation/ "
+            "(usa 'make experiment-byzantine-sweep' per garantire la separazione). "
+            "I risultati MIA in questa run NON sono validi per il privacy sweep."
+        )
 
     exp_cfg = cfg["experiment"]
     logger.info(
