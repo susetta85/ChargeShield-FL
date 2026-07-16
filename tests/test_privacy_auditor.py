@@ -154,23 +154,76 @@ def test_no_threats_for_normal_update(auditor, normal_update):
 def test_gradient_explosion_detected(auditor, exploding_update):
     """
     Un update con gradienti enormi deve generare GRADIENT_EXPLOSION.
+
+    Soglia adattiva (Fix 3, Sprint 8):
+        threshold = max_grad_norm + 3×sigma  (Gaussian mechanism, ε=1.0)
+        sigma ≈ 4.84 → threshold ≈ 15.5
+
+    exploding_update L2 ≈ 1735 >> 15.5 → GRADIENT_EXPLOSION atteso.
+    La soglia adattiva sostituisce max_grad_norm×10 (=10.0) che era calibrata
+    su pesi post-DP e causava falsi positivi sistematici con ε piccoli.
     """
     report = auditor.audit("highway-01", round_id=1, model_update=exploding_update)
     assert "GRADIENT_EXPLOSION" in report.threats_detected
+    # Verifica che la soglia adattiva sia esposta nel metadata
+    assert "explosion_threshold" in report.metadata
+    assert report.metadata["explosion_threshold"] > 0.0
 
 
-def test_budget_exhaustion_detected(auditor, normal_update):
+def test_gradient_explosion_threshold_adapts_to_epsilon():
     """
-    Dopo molti round, il budget epsilon deve esaurirsi
-    e il threat PRIVACY_BUDGET_EXHAUSTED deve comparire.
+    La soglia GRADIENT_EXPLOSION deve scalare con epsilon (inversamente):
+    epsilon più grande → sigma più piccola → soglia più stringente.
+    epsilon più piccolo → sigma più grande → soglia più permissiva.
     """
+    import math
+    auditor_low_eps = PrivacyAuditor(config_path="config/auditor.yaml", epsilon=0.1)
+    auditor_high_eps = PrivacyAuditor(config_path="config/auditor.yaml", epsilon=5.0)
+    # epsilon=0.1: sigma≈48.4, threshold≈146
+    # epsilon=5.0: sigma≈0.97, threshold≈3.9
+    assert auditor_low_eps._explosion_threshold > auditor_high_eps._explosion_threshold, (
+        "threshold deve essere maggiore per epsilon più piccolo "
+        f"(eps=0.1: {auditor_low_eps._explosion_threshold:.2f}, "
+        f"eps=5.0: {auditor_high_eps._explosion_threshold:.2f})"
+    )
+
+
+def test_metadata_contains_explosion_threshold(auditor, normal_update):
+    """
+    L'AuditReport deve esporre explosion_threshold nel metadata
+    per permettere debug e confronto con la sensitivity nel JSON di output.
+    """
+    report = auditor.audit("highway-01", round_id=1, model_update=normal_update)
+    assert "explosion_threshold" in report.metadata
+    assert report.metadata["explosion_threshold"] > report.metadata["sensitivity"], (
+        "Per un update normale, sensitivity deve essere < explosion_threshold "
+        "(altrimenti GRADIENT_EXPLOSION sarebbe un falso positivo)"
+    )
+
+
+def test_budget_exhaustion_detected(auditor):
+    """
+    Dopo abbastanza round con un update ad alta sensitivity, PRIVACY_BUDGET_EXHAUSTED compare.
+
+    Formula (post Fix H-03):
+        budget_ratio = cumulative_epsilon / (epsilon_per_round × total_rounds_budget)
+                     = n × (sensitivity / max_grad_norm) / total_rounds_budget
+    Con max_grad_norm=1.0, total_rounds_budget=1000, sensitivity=1.0:
+        budget_ratio = n / 1000 → esaurimento al round 1001.
+
+    Nota: budget_ratio è epsilon-indipendente (epsilon si cancella tra
+    round_epsilon e total_budget) — esaurimento dipende solo da
+    sensitivity / max_grad_norm relativa.
+    """
+    # Update con sensitivity ≈ max_grad_norm=1.0 → budget_ratio = n/1000
+    high_sensitivity_update = {"layer1": [1.0]}  # L2 = 1.0 = max_grad_norm
     threats_found = False
-    for i in range(1000):
-        report = auditor.audit("highway-01", round_id=i, model_update=normal_update)
+    for i in range(1, 1100):  # margine su 1000 round (= total_rounds_budget)
+        report = auditor.audit("highway-01", round_id=i, model_update=high_sensitivity_update)
         if "PRIVACY_BUDGET_EXHAUSTED" in report.threats_detected:
             threats_found = True
             break
-    assert threats_found
+    assert threats_found, f"PRIVACY_BUDGET_EXHAUSTED non rilevato dopo 1100 round"
 
 
 # --- Test reset ---
@@ -254,19 +307,30 @@ def test_epsilon_override_takes_priority():
     )
 
 
-def test_epsilon_override_exhausts_faster(normal_update):
+def test_epsilon_override_exhausts_budget(normal_update):
     """
-    Con un budget molto piccolo (epsilon=0.001), il budget deve esaurirsi
-    prima rispetto alla config YAML standard.
+    Il budget DP deve esaurirsi dopo abbastanza round, indipendentemente da epsilon.
+
+    Nota (post Fix H-03): budget_ratio = n × sensitivity / (max_grad_norm × total_rounds_budget),
+    che è epsilon-indipendente (epsilon si cancella in round_epsilon / total_budget).
+    L'esaurimento avviene quando n ≥ total_rounds_budget × max_grad_norm / sensitivity.
+    Con normal_update (sensitivity≈0.39), max_grad_norm=1.0, total_rounds=1000:
+        n_exhaust ≈ 1000 / 0.39 ≈ 2564 round.
+
+    Questo test verifica che l'esaurimento avvenga entro un numero di round ragionevole,
+    usando un update ad alta sensitivity per contenere il loop.
     """
     auditor_tight = PrivacyAuditor(config_path="config/auditor.yaml", epsilon=0.001)
+    high_sensitivity_update = {"layer1": [1.0]}  # sensitivity = max_grad_norm → esaurimento in 1000 round
     exhausted_round = None
-    for i in range(200):
-        report = auditor_tight.audit("test-node", round_id=i, model_update=normal_update)
+    for i in range(1, 1100):
+        report = auditor_tight.audit("test-node", round_id=i, model_update=high_sensitivity_update)
         if "PRIVACY_BUDGET_EXHAUSTED" in report.threats_detected:
             exhausted_round = i
             break
-    assert exhausted_round is not None, "Budget epsilon=0.001 non si è mai esaurito"
+    assert exhausted_round is not None, (
+        "Budget non esaurito dopo 1100 round con sensitivity=max_grad_norm"
+    )
 
 
 def test_epsilon_none_uses_yaml_default():

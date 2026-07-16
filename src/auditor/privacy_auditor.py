@@ -151,6 +151,26 @@ class PrivacyAuditor(AbstractPrivacyAuditor):
         # Con composizione base (Dwork 2014): epsilon_cumulative_max = T * epsilon_per_round.
         self._total_rounds_budget: int = config["dp"].get("total_rounds_budget", 1000)
 
+        # Soglia adattiva GRADIENT_EXPLOSION (Gaussian mechanism, 3-sigma rule).
+        # sigma: deviazione standard del rumore DP per dimensione di peso.
+        #   sigma = max_grad_norm × sqrt(2×ln(1.25/delta)) / epsilon
+        # threshold = max_grad_norm + 3×sigma.
+        # Motivazione:
+        # - La soglia fissa (max_grad_norm×10) era calibrata su pesi post-DP e
+        #   causava falsi positivi sistematici (sensitivity≈1157 per ε=0.1 con σ≈48).
+        # - Con il fix raw_updates (IDS analizza pesi pre-DP), sensitivity≈0.036
+        #   per nodi legittimi — molto sotto qualsiasi soglia ragionevole.
+        # - La soglia adattiva scala con ε: alta noise (piccolo ε) → soglia permissiva;
+        #   bassa noise (grande ε) → soglia più stringente. Utile nel sweep ε.
+        # - Il GRADIENT_EXPLOSION rimane attivo in caso di Byzantine contamination
+        #   della raw_global baseline (documentato come expected behavior).
+        _sigma: float = (
+            self._max_grad_norm
+            * math.sqrt(2.0 * math.log(1.25 / self._delta))
+            / self._epsilon_budget
+        )
+        self._explosion_threshold: float = self._max_grad_norm + 3.0 * _sigma
+
         # Soglia oltre cui il nodo è considerato a rischio MIA
         self._alert_threshold: float = config["alert_threshold"]
 
@@ -232,6 +252,9 @@ class PrivacyAuditor(AbstractPrivacyAuditor):
                 "budget_exhausted": (
                     self._cumulative_epsilon[node_id] >= total_budget
                 ),
+                # Soglia adattiva usata per GRADIENT_EXPLOSION in questo round.
+                # Utile per debug e confronto con la sensitivity nel JSON di output.
+                "explosion_threshold": round(self._explosion_threshold, 4),
             },
         )
 
@@ -281,8 +304,13 @@ class PrivacyAuditor(AbstractPrivacyAuditor):
         """
         threats: list[str] = []
 
-        # Gradient explosion: possibile model poisoning attack
-        if sensitivity > self._max_grad_norm * 10:
+        # Gradient explosion: possibile model poisoning attack.
+        # Soglia adattiva: max_grad_norm + 3×sigma (Gaussian mechanism, vedi __init__).
+        # Esempio ε=1.0: soglia≈15.5; ε=5.0: soglia≈3.9; ε=0.1: soglia≈146.
+        # Con il fix raw_updates, sensitivity legittima≈0.036 → nessun falso positivo
+        # in condizioni normali. Può attivarsi se la raw_global baseline è contaminata
+        # da un nodo Byzantine (expected behavior — Krum rimane il rilevatore primario).
+        if sensitivity > self._explosion_threshold:
             threats.append("GRADIENT_EXPLOSION")
 
         # Budget di privacy quasi esaurito
