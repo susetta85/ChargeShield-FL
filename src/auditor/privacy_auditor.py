@@ -131,13 +131,22 @@ class PrivacyAuditor(AbstractPrivacyAuditor):
             pass
     """
 
-    def __init__(self, config_path: str = "config/auditor.yaml", epsilon: float | None = None):
+    def __init__(
+        self,
+        config_path: str = "config/auditor.yaml",
+        epsilon: float | None = None,
+        explosion_threshold: float | None = None,
+    ):
         """
         Inizializza il Privacy Auditor dalla configurazione YAML.
 
         Args:
-            config_path: percorso al file auditor.yaml
-            epsilon:     se fornito, sovrascrive il budget DP da config (usato negli sweep)
+            config_path:         percorso al file auditor.yaml
+            epsilon:             se fornito, sovrascrive il budget DP da config (usato negli sweep)
+            explosion_threshold: se fornito, sovrascrive la soglia GRADIENT_EXPLOSION calcolata
+                                 dalla formula Gaussian 3-sigma. Usare float("inf") per disabilitare
+                                 il check (es. baseline no-DP dove σ=0 rende la soglia inutilmente
+                                 vicina a max_grad_norm). Se None, viene calcolata dalla formula.
         """
         config = _load_auditor_config(config_path)
 
@@ -164,12 +173,19 @@ class PrivacyAuditor(AbstractPrivacyAuditor):
         #   bassa noise (grande ε) → soglia più stringente. Utile nel sweep ε.
         # - Il GRADIENT_EXPLOSION rimane attivo in caso di Byzantine contamination
         #   della raw_global baseline (documentato come expected behavior).
-        _sigma: float = (
-            self._max_grad_norm
-            * math.sqrt(2.0 * math.log(1.25 / self._delta))
-            / self._epsilon_budget
-        )
-        self._explosion_threshold: float = self._max_grad_norm + 3.0 * _sigma
+        if explosion_threshold is not None:
+            # Override esplicito: usato quando la formula Gaussian non è applicabile.
+            # Caso principale: baseline no-DP (sigma=0) → soglia collassa a max_grad_norm
+            # ≈ 1.015 con la formula, causando GRADIENT_EXPLOSION falsi su ~50% dei client
+            # dopo la peer-relative normalisation. Con override=inf il check è disabilitato.
+            self._explosion_threshold: float = explosion_threshold
+        else:
+            _sigma: float = (
+                self._max_grad_norm
+                * math.sqrt(2.0 * math.log(1.25 / self._delta))
+                / self._epsilon_budget
+            )
+            self._explosion_threshold = self._max_grad_norm + 3.0 * _sigma
 
         # Soglia oltre cui il nodo è considerato a rischio MIA
         self._alert_threshold: float = config["alert_threshold"]

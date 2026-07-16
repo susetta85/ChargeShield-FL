@@ -1093,9 +1093,19 @@ def run_ids(
         # Precedente 1.5 era calibrato per 3 epoch (varianza bassa, score legittimi ≤1.1).
         krum_threshold=3.5,
     )
-    # Fix 3: se no_dp=True, il budget DP non viene consumato → epsilon grande = no alert budget.
-    _auditor_epsilon = 1000.0 if no_dp else cfg["experiment"]["epsilon"]
-    auditor = PrivacyAuditor(config_path=config_path, epsilon=_auditor_epsilon)
+    # Fix 3a: budget — se no_dp=True, epsilon enorme → budget_ratio resta ~0 (no BUDGET_EXHAUSTED).
+    # Fix 3b: explosion threshold — con epsilon=1000, sigma≈0.005 → threshold≈1.015.
+    #   Dopo peer-relative normalisation, median_norm=max_grad_norm=1.0 → ~50% client sopra 1.015
+    #   → GRADIENT_EXPLOSION falsi in OGNI round della baseline no-DP.
+    #   Con float("inf") il check è disabilitato: sensato perché senza DP non c'è sigma di rumore
+    #   su cui basare la soglia; il Byzantine check rimane affidato a Krum.
+    _auditor_epsilon    = 1000.0       if no_dp else cfg["experiment"]["epsilon"]
+    _explosion_thresh   = float("inf") if no_dp else None   # None → formula Gaussian 3-sigma
+    auditor = PrivacyAuditor(
+        config_path=config_path,
+        epsilon=_auditor_epsilon,
+        explosion_threshold=_explosion_thresh,
+    )
 
     ids_results: dict[int, dict[str, Any]] = {}
 
@@ -1296,6 +1306,8 @@ def save_results(
             "proximal_mu": cfg["ml"]["proximal_mu"],
             # no_dp=True → baseline senza rumore DP; usato per disambiguare AUC≈0.5
             "no_dp":      cfg["experiment"].get("no_dp", False),
+            # seed: necessario per multi-seed aggregation (mean±std) — fix M1
+            "seed":       cfg["experiment"].get("seed", 42),
         },
         "summary": {
             # Yeom 2018 — loss-based MIA sul modello globale (baseline debole)
@@ -1396,9 +1408,10 @@ def _update_excel_report(sweep_dir: Path, named_sweep: bool = False) -> None:
         gen.build_comparison(wb.create_sheet("Comparison"),               records)
         gen.build_auc_progression(wb.create_sheet("AUC Progression"),     records)
         gen.build_attack_comparison(wb.create_sheet("Attack Comparison"), records)
-        gen.build_yeom_per_round(wb.create_sheet("Yeom Per Round"),       records)
+        gen.build_yeom_per_round(wb.create_sheet("Yeom Per Round"),         records)
         gen.build_shadow_per_round(wb.create_sheet("Shadow Per Round"),   records)
         gen.build_lira_per_round(wb.create_sheet("LiRA Per Round"),       records)
+        gen.build_seed_aggregation(wb.create_sheet("Seed Aggregation"),   records)
         wb.properties.title   = "ChargeShield-FL Experiment Results"
         wb.properties.subject = "FedMIA vs Differential Privacy — DSN 2027"
 

@@ -122,6 +122,9 @@ def load_experiments(experiments_dir: Path | None = None) -> list[dict]:
                 # LiRA — Carlini 2022, server-side su raw_updates PRE-aggregazione
                 "lira_auc":     float(summ["mean_lira_auc_roc"]) if summ.get("mean_lira_auc_roc") is not None else None,
                 "lira_max":     float(summ["max_lira_auc_roc"])  if summ.get("max_lira_auc_roc")  is not None else None,
+                "lira_min":     float(summ["min_lira_auc_roc"])  if summ.get("min_lira_auc_roc")  is not None else None,
+                # Seed: necessario per multi-seed aggregation (mean±std) — fix M1
+                "seed":         int(cfg.get("seed", 42)),
                 # Metrica primaria: LiRA > Shadow > Yeom (attacco più forte)
                 "primary_attack": summ.get("primary_attack", "Yeom"),
                 "privacy_risk": summ.get("privacy_risk", ""),
@@ -941,6 +944,200 @@ def build_lira_per_round(ws, records: list[dict]) -> None:
     )
 
 
+# ── Sheet 11: Seed Aggregation — mean±std per gruppo (rounds, ε, no_dp) ────────
+
+def build_seed_aggregation(ws, records: list[dict]) -> None:
+    """
+    Sheet 11 — Aggrega tutti i run con lo stesso (rounds, epsilon, no_dp) e
+    calcola mean ± std per Yeom / Shadow / LiRA.
+
+    Scopo: riportare i risultati del paper DSN 2027 con errore statistico.
+    Il foglio è vuoto se ci sono solo 1 seed per configurazione — in quel caso
+    usa prima 'make experiment-nodp-sweep' o 'make experiment-dp-sweep'.
+
+    Raggruppa per (fl_rounds, epsilon, no_dp).  Ogni gruppo diventa una riga.
+    Ordine: prima no-DP, poi DP crescente per ε; round crescenti.
+    """
+    import statistics
+
+    ws.title = "Seed Aggregation"
+
+    n_cols = 13  # vedi headers sotto
+
+    # ── Titolo ─────────────────────────────────────────────────────────────────
+    ws.merge_cells(f"A1:{get_column_letter(n_cols)}1")
+    t = ws["A1"]
+    t.value = "Seed Aggregation — mean ± std AUC-ROC per (rounds, ε, no-DP)  [DSN 2027]"
+    t.font  = _font(bold=True, color=COLOR_HEADER_FG, size=12)
+    t.fill  = _fill(COLOR_HEADER_BG)
+    t.alignment = _center()
+
+    ws.merge_cells(f"A2:{get_column_letter(n_cols)}2")
+    sub = ws["A2"]
+    sub.value = (
+        "Ogni riga = media su N seed con la stessa configurazione (rounds, ε, no-DP).  "
+        "N ≥ 5 per riportare mean±std nel paper (minimo DSN 2027).  "
+        "Std = None con N=1 (aumenta seed con experiment-nodp-sweep / experiment-dp-sweep)."
+    )
+    sub.font  = _font(size=9, color="404040")
+    sub.fill  = _fill("EBF3FB")
+    sub.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ws.row_dimensions[2].height = 28
+
+    # ── Headers ────────────────────────────────────────────────────────────────
+    headers = [
+        ("Rounds",       "1F4E79"),
+        ("ε / no-DP",    "1F4E79"),
+        ("N Seed",       "1F4E79"),
+        ("Seeds usati",  "1F4E79"),
+        ("Yeom mean",    "2E75B6"),
+        ("Yeom std",     "2E75B6"),
+        ("Shadow mean",  "375623"),
+        ("Shadow std",   "375623"),
+        ("LiRA mean ★",  "7B2C2C"),
+        ("LiRA std",     "7B2C2C"),
+        ("LiRA min",     "7B2C2C"),
+        ("LiRA max",     "7B2C2C"),
+        ("Δ LiRA−Yeom",  "4A4A4A"),
+    ]
+    for col_idx, (label, bg) in enumerate(headers, 1):
+        _header_cell(ws.cell(3, col_idx), label, bg=bg)
+
+    # ── Raggruppa records ──────────────────────────────────────────────────────
+    groups: dict[tuple, list[dict]] = {}
+    for rec in records:
+        key = (rec["rounds"], rec["epsilon"], rec.get("no_dp", False))
+        groups.setdefault(key, []).append(rec)
+
+    # Ordine: no-DP prima, poi DP crescente per ε; round crescenti per parità
+    def _sort_key(k):
+        rounds, eps, no_dp = k
+        return (0 if no_dp else 1, rounds, eps)
+
+    sorted_keys = sorted(groups.keys(), key=_sort_key)
+
+    def _mean_or_none(vals):
+        vals = [v for v in vals if v is not None]
+        return statistics.mean(vals) if vals else None
+
+    def _std_or_none(vals):
+        vals = [v for v in vals if v is not None]
+        if len(vals) < 2:
+            return None
+        return statistics.stdev(vals)
+
+    def _auc_fill(cell, val, bold=False):
+        """Colora la cella AUC per livello di rischio."""
+        if val is None:
+            cell.value = "—"
+            return
+        cell.value       = val
+        cell.number_format = "0.0000"
+        cell.font        = _font(bold=bold)
+        cell.border      = _border()
+        cell.alignment   = _center()
+        if val > 0.60:
+            cell.fill = _fill("FFCCCC"); cell.font = _font(bold=True, color=COLOR_BAD)
+        elif val > 0.55:
+            cell.fill = _fill("FFE5B4"); cell.font = _font(bold=True, color="8B4513")
+        elif val > 0.52:
+            cell.fill = _fill("FFF2CC"); cell.font = _font(color="8B4513")
+        else:
+            cell.fill = _fill("D5E8D4"); cell.font = _font(color="2D6A2D", bold=bold)
+
+    for row_idx, key in enumerate(sorted_keys, 4):
+        rounds, eps, no_dp = key
+        recs = groups[key]
+        alt  = row_idx % 2 == 0
+
+        seeds_used = sorted(rec.get("seed", 42) for rec in recs)
+        n_seeds    = len(recs)
+        eps_label  = "no-DP" if no_dp else str(eps)
+
+        yeom_vals   = [r.get("auc_roc")    for r in recs]
+        shadow_vals = [r.get("shadow_auc") for r in recs]
+        lira_vals   = [r.get("lira_auc")   for r in recs]
+        lira_min_v  = [r.get("lira_min")   for r in recs]
+        lira_max_v  = [r.get("lira_max")   for r in recs]
+
+        yeom_mean   = _mean_or_none(yeom_vals)
+        yeom_std    = _std_or_none(yeom_vals)
+        shadow_mean = _mean_or_none(shadow_vals)
+        shadow_std  = _std_or_none(shadow_vals)
+        lira_mean   = _mean_or_none(lira_vals)
+        lira_std    = _std_or_none(lira_vals)
+        lira_min_m  = _mean_or_none(lira_min_v)
+        lira_max_m  = _mean_or_none(lira_max_v)
+        delta       = (lira_mean - yeom_mean) if (lira_mean is not None and yeom_mean is not None) else None
+
+        _data_cell(ws.cell(row_idx, 1), rounds,    alt_row=alt, bold=True)
+        _data_cell(ws.cell(row_idx, 2), eps_label, alt_row=alt)
+        _data_cell(ws.cell(row_idx, 3), n_seeds,   alt_row=alt, bold=(n_seeds >= 5))
+        _data_cell(ws.cell(row_idx, 4), ", ".join(str(s) for s in seeds_used), alt_row=alt)
+
+        _auc_fill(ws.cell(row_idx, 5),  yeom_mean)
+        if yeom_std is not None:
+            _data_cell(ws.cell(row_idx, 6), yeom_std, fmt="0.0000", alt_row=alt)
+        else:
+            _data_cell(ws.cell(row_idx, 6), "—", alt_row=alt)
+
+        _auc_fill(ws.cell(row_idx, 7),  shadow_mean)
+        if shadow_std is not None:
+            _data_cell(ws.cell(row_idx, 8), shadow_std, fmt="0.0000", alt_row=alt)
+        else:
+            _data_cell(ws.cell(row_idx, 8), "—", alt_row=alt)
+
+        _auc_fill(ws.cell(row_idx, 9),  lira_mean, bold=True)
+        if lira_std is not None:
+            _data_cell(ws.cell(row_idx, 10), lira_std, fmt="0.0000", alt_row=alt)
+        else:
+            _data_cell(ws.cell(row_idx, 10), "—", alt_row=alt)
+        _data_cell(ws.cell(row_idx, 11), lira_min_m, fmt="0.0000", alt_row=alt)
+        _data_cell(ws.cell(row_idx, 12), lira_max_m, fmt="0.0000", alt_row=alt)
+
+        # Δ = LiRA_mean − Yeom_mean
+        d_cell = ws.cell(row_idx, 13)
+        _data_cell(d_cell, delta, fmt="+0.0000;-0.0000;0.0000", alt_row=alt)
+        if delta is not None:
+            if delta > 0.05:
+                d_cell.fill = _fill("FFCCCC"); d_cell.font = _font(bold=True, color=COLOR_BAD)
+            elif delta > 0.01:
+                d_cell.fill = _fill("FFE5B4"); d_cell.font = _font(color="8B4513")
+            else:
+                d_cell.fill = _fill("D5E8D4"); d_cell.font = _font(color="2D6A2D")
+
+        # N seed < 5 → cella gialla (warning: non sufficiente per paper)
+        n_cell = ws.cell(row_idx, 3)
+        if n_seeds < 5:
+            n_cell.fill = _fill("FFF2CC")
+            n_cell.font = _font(color="8B4513", bold=True)
+
+    # ── Widths ─────────────────────────────────────────────────────────────────
+    widths = [8, 10, 8, 22, 12, 10, 12, 10, 14, 10, 10, 10, 14]
+    for i, w in enumerate(widths, 1):
+        _set_col_width(ws, get_column_letter(i), w)
+    ws.freeze_panes = "A4"
+
+    # ── Legenda N-seed ─────────────────────────────────────────────────────────
+    leg_row = len(sorted_keys) + 6
+    ws.cell(leg_row, 1).value = "Legenda N Seed:"
+    ws.cell(leg_row, 1).font  = _font(bold=True)
+    for j, (bg, fg, label) in enumerate([
+        ("FFF2CC", "8B4513", "N < 5  — non sufficiente per paper (aumenta con experiment-nodp-sweep)"),
+        (COLOR_ROW_PLAIN, "000000", "N ≥ 5  — minimo DSN 2027 (mean±std)"),
+        (COLOR_ROW_PLAIN, "000000", "N ≥ 10 — sufficiente per Wilcoxon significance test"),
+    ]):
+        c = ws.cell(leg_row + 1 + j, 2)
+        c.value  = label
+        c.fill   = _fill(bg)
+        c.font   = _font(color=fg)
+        c.border = _border()
+        ws.merge_cells(
+            start_row=leg_row + 1 + j, start_column=2,
+            end_row=leg_row + 1 + j,   end_column=8,
+        )
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -971,6 +1168,7 @@ def main() -> None:
     ws_yeom   = wb.create_sheet("Yeom Per Round")
     ws_shadow = wb.create_sheet("Shadow Per Round")
     ws_lira   = wb.create_sheet("LiRA Per Round")
+    ws_sagg   = wb.create_sheet("Seed Aggregation")
 
     build_raw_data(ws_raw, records)
     build_heat_map(ws_heat, records)
@@ -982,6 +1180,7 @@ def main() -> None:
     build_yeom_per_round(ws_yeom, records)
     build_shadow_per_round(ws_shadow, records)
     build_lira_per_round(ws_lira, records)
+    build_seed_aggregation(ws_sagg, records)
 
     # Proprietà workbook
     wb.properties.title   = "ChargeShield-FL Experiment Results"

@@ -40,10 +40,12 @@ help:
 	@echo "  make status            Stato container"
 	@echo "  make logs              Log server + highway"
 	@echo "  make experiment            Esegui esperimento FedMIA (config default)"
-	@echo "  make experiment-smoke      Smoke test (5 round, no-DP, n_shadow=4) — verifica pipeline"
-	@echo "  make experiment-nodp       Baseline no-DP (10 round, n_shadow=8) — Yeom+Shadow+LiRA"
-	@echo "  make experiment-dp         Con DP (10 round, ε=EPS, n_shadow=8) — Yeom+Shadow+LiRA"
-	@echo "  [Confronto automatico in foglio 'Attack Comparison' dell'Excel]"
+	@echo "  make experiment-smoke       Smoke test (5 round, no-DP, seed=SEED, n_shadow=4)"
+	@echo "  make experiment-nodp        Baseline no-DP singolo seed (10 round)"
+	@echo "  make experiment-dp          Con DP singolo seed (10 round, ε=EPS)"
+	@echo "  make experiment-nodp-sweep  no-DP multi-seed (SEEDS='42 123 456 789 1234') → mean±std"
+	@echo "  make experiment-dp-sweep    DP multi-seed (ε=EPS, SEEDS) → mean±std vs no-DP"
+	@echo "  [Excel 11 sheet: Attack Comparison + per-attacco + Seed Aggregation mean±std]"
 	@echo "  make experiment-sweep      Sweep epsilon 0.1→5.0 (100 round) [legacy]"
 	@echo "  make experiment-full-sweep Sweep rounds×epsilon (100-1000 × 0.1-5.0) — crea experiments/exp{N}/"
 	@echo "  make experiment-byzantine-sweep Byzantine sweep (5 seed × 5 epsilon) — IDS validation"
@@ -199,50 +201,110 @@ experiment-byzantine-sweep:
 #
 # EPS ?= 1.0   — override epsilon: make experiment-dp EPS=0.5
 
-EPS ?= 1.0
+EPS      ?= 1.0
 N_SHADOW ?= 8
+SEED     ?= 42
+# SEEDS: 5 seed per mean±std (minimo DSN 2027); 10 seed per test Wilcoxon di significatività.
+# Override: make experiment-nodp-sweep SEEDS="42 123 456"
+SEEDS    ?= 42 123 456 789 1234
 
 # Smoke test: 5 round, no-DP, n_shadow=4 — solo per verificare che la pipeline giri.
 # AUC non interpretabile con 5 round (troppo poco training).
 .PHONY: experiment-smoke
 experiment-smoke:
-	@echo "→ Smoke test: 5 round, no-DP, n_shadow=4 (Yeom + Shadow + LiRA)..."
+	@echo "→ Smoke test: 5 round, no-DP, seed=$(SEED), n_shadow=4 (Yeom + Shadow + LiRA)..."
 	@mkdir -p $(EXPERIMENTS)
 	$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
 		--config config/experiment.yaml \
 		--no-dp \
 		--rounds 5 \
+		--seed $(SEED) \
 		--n-shadow 4
 	@echo "✓ Smoke test completato — se nessun errore, pipeline OK"
 
-# Baseline no-DP: esegue Yeom + Shadow + LiRA senza rumore DP (σ=0).
-# Obiettivo: verificare che ALMENO UN attacco (preferibilmente LiRA) ottenga AUC > 0.55.
-# AUC > 0.55 → Scenario A confermato → il segnale di membership esiste → ha senso testare DP.
-# Se AUC ≈ 0.5 anche qui → modello non memorizza → serve più training o dati diversi.
+# Baseline no-DP: seed singolo. Usare experiment-nodp-sweep per 5 seed (mean±std).
 .PHONY: experiment-nodp
 experiment-nodp:
-	@echo "→ Baseline no-DP (σ=0, 10 round, n_shadow=$(N_SHADOW)) — Yeom + Shadow + LiRA..."
+	@echo "→ Baseline no-DP (σ=0, 10 round, seed=$(SEED), n_shadow=$(N_SHADOW)) — Yeom + Shadow + LiRA..."
 	@mkdir -p $(EXPERIMENTS)
 	$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
 		--config config/experiment.yaml \
 		--no-dp \
 		--rounds 10 \
+		--seed $(SEED) \
 		--n-shadow $(N_SHADOW)
 	@echo "✓ Baseline no-DP completato — controlla Attack Comparison nell'Excel"
 
-# Baseline con DP: esegue Yeom + Shadow + LiRA con DP attivo (ε=EPS, default 1.0).
-# Confrontare ogni attacco (Yeom, Shadow, LiRA) con il corrispondente no-DP.
-# Se LiRA no-DP > 0.55 ma LiRA DP ≈ 0.50 → DP sopprime LiRA → claim paper valido.
+# Con DP: seed singolo. Usare experiment-dp-sweep per 5 seed (mean±std).
 .PHONY: experiment-dp
 experiment-dp:
-	@echo "→ Esperimento con DP (ε=$(EPS), 10 round, n_shadow=$(N_SHADOW)) — Yeom + Shadow + LiRA..."
+	@echo "→ Esperimento con DP (ε=$(EPS), 10 round, seed=$(SEED), n_shadow=$(N_SHADOW)) — Yeom + Shadow + LiRA..."
 	@mkdir -p $(EXPERIMENTS)
 	$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
 		--config config/experiment.yaml \
 		--epsilon $(EPS) \
 		--rounds 10 \
+		--seed $(SEED) \
 		--n-shadow $(N_SHADOW)
 	@echo "✓ Esperimento DP completato — confronta con no-DP nel foglio Attack Comparison"
+
+# ─── Multi-seed sweep per DSN 2027 ───────────────────────────────────────────
+#
+# METODOLOGIA: ogni attacco (Yeom, Shadow, LiRA) deve essere riportato come
+#   mean ± std su ≥5 seed indipendenti (minimo accettato dalle venue ML top-tier).
+# Tutti i seed girano nella STESSA sweep-dir → Excel aggrega mean±std per (ε, rounds, no_dp).
+#
+# Passo tipico DSN 2027:
+#   1. make experiment-nodp-sweep   → Scenario A confermato? (LiRA mean AUC > 0.55?)
+#   2. make experiment-dp-sweep     → DP sopprime LiRA? (mean AUC → 0.50?)
+#   3. make experiment-full-sweep   → sweep completo rounds × ε per le figure del paper
+#
+# SEEDS override: make experiment-nodp-sweep SEEDS="42 123 456"  (3 seed per test rapido)
+# SEED deve restare in every-run single target; SEEDS è per il loop multi-seed.
+
+.PHONY: experiment-nodp-sweep
+experiment-nodp-sweep:
+	@mkdir -p $(EXPERIMENTS); \
+	SWEEP_NUM=$$(find $(EXPERIMENTS) -maxdepth 1 -type d -name 'exp[0-9]*' 2>/dev/null | wc -l | tr -d ' '); \
+	SWEEP_NUM=$$((SWEEP_NUM + 1)); \
+	SWEEP_DIR=$(EXPERIMENTS)/exp$$SWEEP_NUM; \
+	mkdir -p "$$SWEEP_DIR"; \
+	LOG="$$SWEEP_DIR/sweep_log.txt"; \
+	echo "→ no-DP multi-seed sweep #$$SWEEP_NUM — seeds: $(SEEDS)" | tee "$$LOG"; \
+	echo "  n_shadow=$(N_SHADOW), rounds=10, no-DP" | tee -a "$$LOG"; \
+	for seed in $(SEEDS); do \
+		echo "=== seed=$$seed ===" | tee -a "$$LOG"; \
+		$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
+			--config config/experiment.yaml \
+			--no-dp \
+			--rounds 10 \
+			--seed $$seed \
+			--n-shadow $(N_SHADOW) \
+			--sweep-dir "$$SWEEP_DIR" 2>&1 | tee -a "$$LOG"; \
+	done; \
+	echo "✓ no-DP sweep #$$SWEEP_NUM completato — controlla Seed Aggregation nell'Excel" | tee -a "$$LOG"
+
+.PHONY: experiment-dp-sweep
+experiment-dp-sweep:
+	@mkdir -p $(EXPERIMENTS); \
+	SWEEP_NUM=$$(find $(EXPERIMENTS) -maxdepth 1 -type d -name 'exp[0-9]*' 2>/dev/null | wc -l | tr -d ' '); \
+	SWEEP_NUM=$$((SWEEP_NUM + 1)); \
+	SWEEP_DIR=$(EXPERIMENTS)/exp$$SWEEP_NUM; \
+	mkdir -p "$$SWEEP_DIR"; \
+	LOG="$$SWEEP_DIR/sweep_log.txt"; \
+	echo "→ DP multi-seed sweep #$$SWEEP_NUM — ε=$(EPS), seeds: $(SEEDS)" | tee "$$LOG"; \
+	echo "  n_shadow=$(N_SHADOW), rounds=10, DP ε=$(EPS)" | tee -a "$$LOG"; \
+	for seed in $(SEEDS); do \
+		echo "=== seed=$$seed ===" | tee -a "$$LOG"; \
+		$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
+			--config config/experiment.yaml \
+			--epsilon $(EPS) \
+			--rounds 10 \
+			--seed $$seed \
+			--n-shadow $(N_SHADOW) \
+			--sweep-dir "$$SWEEP_DIR" 2>&1 | tee -a "$$LOG"; \
+	done; \
+	echo "✓ DP sweep #$$SWEEP_NUM completato (ε=$(EPS)) — confronta con no-DP in Seed Aggregation" | tee -a "$$LOG"
 
 
 .PHONY: experiment-dry

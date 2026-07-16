@@ -20,12 +20,16 @@ datasets:
   # jpl_2018: datasets/acn/jpl/acndata_sessions_2018.json
   # jpl_2021: datasets/acn/jpl/acndata_sessions_2021.json
 
-# fedmia: shadow-model parameters — NON USATI
-# L'implementazione usa loss-based MIA (Yeom et al. 2018), non shadow models.
+# fedmia: parametri legacy — sezione mantenuta per compatibilità con codice meno recente.
+# Il pipeline sperimentale (run_experiments.py) esegue tre attacchi separati:
+#   Yeom 2018      → run_fedmia()          (loss-based, globale)
+#   Shadow MIA     → run_fedmia_shadow()   (calibrated, globale)
+#   LiRA ★ PRIMARY → run_lira()            (server-side, raw_updates pre-FedProx)
+# I parametri shadow/lira sono letti da cfg["ml"]["epochs"] e cfg["lira"]["n_shadow"].
 # fedmia:
-#   shadow_epochs: 5
+#   shadow_epochs: 5     # non usato: shadow_epochs calcolato automaticamente
 #   attack_threshold: 0.5
-#   n_shadow_models: 4
+#   n_shadow_models: 4   # non usato: usare lira.n_shadow
 
 ml:
   input_dim: 6
