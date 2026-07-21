@@ -29,7 +29,8 @@
 5. [Running the Test Suites](#5-running-the-test-suites)
 6. [Coverage Report](#6-coverage-report)
 7. [Integration Test Strategy](#7-integration-test-strategy)
-8. [References](#8-references)
+8. [Sprint 9 Integration Tests — `scripts/run_experiments.py` Pipeline (10 tests)](#8-sprint-9-integration-tests--scriptsrun_experimentspy-pipeline-10-tests)
+9. [References](#9-references)
 
 ---
 
@@ -385,7 +386,7 @@ The following files are excluded from coverage measurement via `.coveragerc`:
 - `tests/` — test code itself is not measured.
 - `chargeshield/config_defaults.py` — contains only constant definitions; no logic to test.
 - `chargeshield/nvflare_stubs.py` — thin shims used only when NVFLARE is not installed; exercised only in integration tests.
-- `scripts/` — experiment runner scripts; not part of the library.
+- `scripts/` — experiment runner scripts; not part of the library. (`run_fl_rounds`/`run_fedmia`/`run_lira`/`run_ids` gained integration test coverage in Sprint 9 — see §8 — but are still excluded from the `--cov=src` line-coverage figures above, which only measure `src/`.)
 
 ---
 
@@ -438,7 +439,41 @@ Each configuration is repeated with 5 different random seeds for variance estima
 
 ---
 
-## 8. References
+## 8. Sprint 9 Integration Tests — `scripts/run_experiments.py` Pipeline (10 tests)
+
+**File:** `tests/test_run_experiments_integration.py`
+**Added:** 2026-07-21, alongside the LiRA shadow/target mismatch fixes described in the README's Engineering Fixes log.
+
+`scripts/run_experiments.py` was explicitly excluded from unit-level coverage (§6.3: "`scripts/` — experiment runner scripts; not part of the library") because it orchestrates real `AutoencoderTrainer` + `GradientManager` + `FedAvgAggregator` objects end-to-end rather than exercising a single class in isolation — the concern Section 7 calls "system-level properties." This left the four functions that constitute the actual experimental pipeline — `run_fl_rounds`, `run_fedmia`, `run_lira`, `run_ids` — with no automated coverage at all, unit or integration, despite being the functions that produce every number in the paper.
+
+This test file closes that gap with a small-scale but REAL execution of the pipeline (synthetic sessions, `fl_rounds=3`, `epochs=2`, `n_shadow=2` — no mocking of `AutoencoderTrainer`/`GradientManager`/`FedAvgAggregator`/`ChargingIDS`/`PrivacyAuditor`), which is a partial, automatable fulfilment of the acceptance criteria sketched in §7.1/§7.2 without requiring a live NVFLARE federation or Containerlab topology (both still out of scope — see §7).
+
+| # | Test name | Function tested | Description |
+|---|-----------|-----------------|-------------|
+| 1 | `test_structure_and_participants` | `run_fl_rounds` | Runs 3 FL rounds on synthetic 4-cluster data and asserts every round has 4 participants, non-`None` global weights, and non-negative mean loss. |
+| 2 | `test_no_dp_updates_match_raw_updates` | `run_fl_rounds` | With `no_dp=True`, asserts `updates` (post-privatize) is bit-for-bit identical to `raw_updates` (pre-privatize) — no noise leaks in when DP is off. |
+| 3 | `test_dp_perturbs_updates_vs_raw` | `run_fl_rounds` | With `no_dp=False`, asserts `updates` DIFFERS from `raw_updates` in at least one weight — regression guard for the LiRA bug 2026-07-21c root cause (DP noise never reaching the attacked tensor). |
+| 4 | `test_auc_in_valid_range` | `run_fedmia` | Asserts every round's `auc_roc` lies in [0, 1]. |
+| 5 | `test_members_and_non_members_must_differ` | `run_fedmia` (precondition) | Asserts the member/non-member session-ID pools used by the fixtures are disjoint, per the function's own documented precondition. |
+| 6 | `test_auc_in_valid_range_and_covers_all_rounds` | `run_lira` | Asserts LiRA produces an AUC in [0, 1] for every FL round, not just a subset. |
+| 7 | `test_lira_attacks_post_dp_updates_not_raw` | `run_lira` | **Regression test for Fix 2026-07-21c.** Builds two copies of `fl_results` that are identical except `updates` is scaled ×1000 in one of them (`raw_updates` untouched in both), and asserts `run_lira()`'s output changes — i.e. that the function is actually reading `updates`, not silently falling back to `raw_updates` as it did before the fix. |
+| 8 | `test_no_false_positive_without_attack` | `run_ids` | Asserts `byzantine_detected` is `False` in every round when no Byzantine attack is configured — regression guard for the Krum threshold calibration (Sprint 9). |
+| 9 | `test_detects_byzantine_gradient_scaling` | `run_ids` | Enables a ×10 gradient-scaling attack on the `highway` cluster and asserts at least one round flags `byzantine_detected=True`. |
+| 10 | `test_no_dp_disables_budget_exhausted_alerts` | `run_ids` | With `no_dp=True`, asserts no alert contains `BUDGET_EXHAUSTED` in its reasons — regression guard for Fix 3a (`epsilon=1000.0` override when DP is off). |
+
+**Running:**
+
+```bash
+make test-integration
+# or directly:
+pytest tests/test_run_experiments_integration.py -v --tb=short
+```
+
+**Known limitation.** This file was authored and syntax-checked (`python3 -m py_compile`) in a review sandbox that cannot install `torch` (the environment's outbound proxy blocks `download.pytorch.org`, and a plain-PyPI torch install is too large to complete within the sandbox's 45-second tool-call timeout). Every function signature, dataclass field name, and config key referenced in the test file was verified by direct inspection of `scripts/run_experiments.py` and `src/ml/base_ml.py`, but the tests have **not actually been executed** as of this writing — run `make test-integration` locally (where torch is already installed, since the real experiment sweeps run there) to confirm they pass, and report back any failures for a fix.
+
+---
+
+## 9. References
 
 Blanchard, P., El Mhamdi, E. M., Guerraoui, R., and Stainer, J. (2017). Machine learning with adversaries: Byzantine tolerant gradient descent. *Advances in Neural Information Processing Systems*, 30.
 

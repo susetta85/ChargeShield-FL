@@ -351,6 +351,15 @@ test-sprint4:
 test-sprint5:
 	$(PYTEST) tests/test_sprint5.py -v --tb=short
 
+# Test di integrazione sulla pipeline reale (run_fl_rounds/run_fedmia/run_lira/run_ids),
+# con dati sintetici e round/epoche/shadow ridotti (~secondi, non minuti).
+# A differenza di test_sprint4.py/test_sprint5.py (che mockano NVFLARE), questi test
+# eseguono il codice reale di scripts/run_experiments.py end-to-end.
+.PHONY: test-integration
+test-integration:
+	@echo "→ Esecuzione test di integrazione (pipeline run_experiments.py)..."
+	$(PYTEST) tests/test_run_experiments_integration.py -v --tb=short
+
 # Installa SOLO le dipendenze runtime (torch, numpy, sklearn, ecc.)
 # Usare su Mac nativo o in nuovi ambienti prima di eseguire esperimenti.
 # torch>=2.0 è dichiarato in pyproject.toml [project.dependencies].
