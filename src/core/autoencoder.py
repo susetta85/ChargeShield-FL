@@ -316,6 +316,16 @@ class Autoencoder(nn.Module):
                 )
                 errors.extend(batch_errors.tolist())
 
+        if not errors:
+            # data_loader interamente vuoto (0 batch in ogni epoca) — torch.quantile()
+            # su un tensore vuoto solleva RuntimeError ("quantile() input tensor must
+            # be non-empty"). Riportato nella review v4 (2026-07-09) come residuo del
+            # fix ZeroDivisionError in fit(): quel guard evita il crash nel training
+            # loop, ma _calibrate_threshold() veniva chiamata comunque subito dopo con
+            # lo stesso DataLoader vuoto. Fallback: mantieni la soglia corrente
+            # (invariata rispetto a prima della chiamata) invece di far crashare fit().
+            return self.threshold
+
         # Calcola il percentile degli errori
         errors_tensor = torch.tensor(errors)
         threshold = float(torch.quantile(errors_tensor, percentile / 100.0))

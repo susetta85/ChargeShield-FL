@@ -255,6 +255,25 @@ class TestAutoencoder:
         autoencoder.fit(train_loader_plain, epochs=3)
         assert autoencoder.threshold > 0.0
 
+    def test_fit_with_empty_loader_does_not_crash(self, autoencoder):
+        """
+        Regressione (2026-07-21): con un DataLoader completamente vuoto (0 batch
+        in ogni epoca), fit() già gestiva lo ZeroDivisionError nel training loop
+        (skip dell'epoca — vedi commento "salta l'epoca senza ZeroDivisionError"
+        in autoencoder.py), ma chiamava comunque _calibrate_threshold() sullo
+        stesso loader vuoto subito dopo, che a sua volta produceva errors=[] e
+        torch.quantile() su un tensore vuoto solleva RuntimeError. fit() deve
+        restituire una lista di loss vuota e lasciare threshold invariata,
+        non crashare.
+        """
+        empty_loader = DataLoader(TensorDataset(torch.empty(0, INPUT_DIM)), batch_size=8)
+        original_threshold = autoencoder.threshold
+
+        losses = autoencoder.fit(empty_loader, epochs=2)
+
+        assert losses == []
+        assert autoencoder.threshold == original_threshold
+
 
 # ─── Test CUSUMDetector ───────────────────────────────────────────────────────
 
