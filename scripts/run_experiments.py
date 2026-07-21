@@ -1509,6 +1509,16 @@ def save_results(
     _primary_auc  = lira_auc_values if lira_auc_values else (
                     shadow_auc_values if shadow_auc_values else auc_values)
     _primary_mean = float(np.mean(_primary_auc)) if _primary_auc else None
+    _primary_min  = float(np.min(_primary_auc))  if _primary_auc else None
+
+    # Fix 2026-07-21 (review Excel/privacy_risk): un AUC-ROC molto SOTTO 0.5 non
+    # è "privacy sicura" — è quasi sempre il sintomo di un attacco rotto/invertito
+    # (visto in experiments/exp3 pre-fix: lira_auc_roc fino a 0.14, classificato
+    # "LOW risk" dalla logica precedente). Controlliamo il MINIMO per round, non
+    # solo la media: un'inversione isolata in pochi round può restare nascosta
+    # nella media ma è comunque un segnale di bug da investigare, non da ignorare.
+    _ANOMALY_LOW_AUC = 0.40
+    _is_anomalous = _primary_min is not None and _primary_min < _ANOMALY_LOW_AUC
 
     summary = {
         "experiment_name": cfg["experiment"]["name"],
@@ -1543,9 +1553,13 @@ def save_results(
                 "Shadow" if shadow_auc_values else
                 "Yeom"
             ),
+            # ANOMALY ha priorità su tutto il resto: un min_*_auc_roc < 0.40 indica
+            # quasi certamente un bug nell'attacco (score invertito), non un dato
+            # di privacy risk affidabile — va investigato, non riportato come LOW.
             "privacy_risk": (
-                "HIGH"   if _primary_mean is not None and _primary_mean > 0.7 else
-                "MEDIUM" if _primary_mean is not None and _primary_mean > 0.6 else
+                "ANOMALY" if _is_anomalous else
+                "HIGH"    if _primary_mean is not None and _primary_mean > 0.7 else
+                "MEDIUM"  if _primary_mean is not None and _primary_mean > 0.6 else
                 "LOW"
             ),
         },
@@ -1575,6 +1589,13 @@ def save_results(
         f"AUC-ROC medio: {mean_str} — "
         f"Privacy risk: {summary['summary']['privacy_risk']}"
     )
+    if summary["summary"]["privacy_risk"] == "ANOMALY":
+        logger.warning(
+            f"[ANOMALY] {summary['summary']['primary_attack']} ha un min AUC-ROC "
+            f"< {_ANOMALY_LOW_AUC} in almeno un round — probabile bug nell'attacco "
+            "(score sistematicamente invertito), NON privacy sicura. "
+            "Controllare per_round prima di usare questi risultati nel paper."
+        )
 
     # Aggiorna automaticamente il report Excel del sweep corrente
     _update_excel_report(output_dir, named_sweep=(sweep_dir is not None))

@@ -51,6 +51,17 @@ COLOR_GOOD       = "70AD47"   # verde (LOW risk)
 COLOR_WARN       = "FFC000"   # giallo (MEDIUM risk)
 COLOR_BAD        = "FF0000"   # rosso (HIGH risk)
 COLOR_RANDOM     = "BDD7EE"   # celeste (≈ random, AUC ≈ 0.5)
+COLOR_ANOMALY    = "7030A0"   # viola (AUC anomalo — probabile attacco rotto, non "DP sicura")
+
+# Soglia sotto la quale un AUC-ROC va trattato come anomalia da investigare,
+# non come "privacy sicura". Fix 2026-07-21 (review): prima di questo fix,
+# QUALSIASI AUC <= 0.52 veniva colorato di verde/"LOW risk" indistintamente —
+# un lira_auc_roc di 0.14-0.32 (visto in experiments/exp3 prima dei fix a/b/c
+# a run_lira()) veniva quindi presentato come "sicuro", mentre in realtà
+# segnalava un attacco sistematicamente invertito (bug), non DP efficace.
+# Un vero AUC ≈ 0.5 (DP che funziona) resta nel range [ANOMALY_LOW_AUC, 0.52];
+# sotto ANOMALY_LOW_AUC è quasi certamente un problema di implementazione.
+ANOMALY_LOW_AUC  = 0.40
 
 FONT_NAME = "Arial"
 
@@ -58,6 +69,43 @@ FONT_NAME = "Arial"
 
 def _font(bold=False, color="000000", size=10):
     return Font(name=FONT_NAME, bold=bold, color=color, size=size)
+
+
+def _auc_risk_color(val: float | None) -> str:
+    """
+    Classifica un AUC-ROC in un colore di rischio, DISTINGUENDO un AUC vicino
+    a 0.5 (DP efficace / attacco al livello del caso) da un AUC anomalmente
+    BASSO (probabile bug nell'attacco, non privacy sicura — vedi ANOMALY_LOW_AUC).
+
+    Bande:
+        val is None        → nero (nessun dato)
+        val > 0.60          → BAD (rosso)      — MIA efficace, rischio alto
+        val > 0.52          → WARN (giallo)    — segnale debole ma presente
+        val >= ANOMALY_LOW_AUC → GOOD (verde)  — ≈ random, DP verosimilmente efficace
+        val <  ANOMALY_LOW_AUC → ANOMALY (viola) — sospetto bug, non "sicuro"
+    """
+    if val is None:
+        return "000000"
+    if val > 0.60:
+        return COLOR_BAD
+    if val > 0.52:
+        return COLOR_WARN
+    if val < ANOMALY_LOW_AUC:
+        return COLOR_ANOMALY
+    return COLOR_GOOD
+
+
+def _risk_label_color(risk: str | None) -> str:
+    """Colora la stringa privacy_risk ("HIGH"/"MEDIUM"/"LOW"/"ANOMALY") coerentemente
+    con _auc_risk_color(). "ANOMALY" ha priorità visiva (viola) — non va MAI
+    confuso con "LOW" (verde), anche se compaiono entrambi come "basso rischio"."""
+    if risk == "ANOMALY":
+        return COLOR_ANOMALY
+    if risk == "HIGH":
+        return COLOR_BAD
+    if risk == "MEDIUM":
+        return COLOR_WARN
+    return COLOR_GOOD
 
 def _fill(hex_color):
     return PatternFill("solid", fgColor=hex_color)
@@ -204,12 +252,7 @@ def build_raw_data(ws, records: list[dict]) -> None:
     def _auc_cell(cell, val, alt_row):
         _data_cell(cell, val, fmt="0.0000", alt_row=alt_row)
         if val is not None:
-            if val > 0.60:
-                cell.font = _font(bold=True, color=COLOR_BAD)
-            elif val > 0.52:
-                cell.font = _font(bold=True, color=COLOR_WARN)
-            else:
-                cell.font = _font(bold=True, color=COLOR_GOOD)
+            cell.font = _font(bold=True, color=_auc_risk_color(val))
 
     for row_idx, rec in enumerate(records, 3):
         alt = (row_idx % 2 == 0)
@@ -233,12 +276,7 @@ def build_raw_data(ws, records: list[dict]) -> None:
         risk_cell = ws.cell(row_idx, 14)
         risk = rec["privacy_risk"]
         _data_cell(risk_cell, risk, alt_row=alt, bold=True)
-        if risk == "HIGH":
-            risk_cell.font = _font(bold=True, color=COLOR_BAD)
-        elif risk == "MEDIUM":
-            risk_cell.font = _font(bold=True, color=COLOR_WARN)
-        else:
-            risk_cell.font = _font(bold=True, color=COLOR_GOOD)
+        risk_cell.font = _font(bold=True, color=_risk_label_color(risk))
         _data_cell(ws.cell(row_idx, 15), rec["total_alerts"], alt_row=alt)
 
     widths = [20, 10, 10, 12, 10, 7, 16, 14, 14, 18, 16, 16, 14, 14, 12]
@@ -311,8 +349,11 @@ def build_heat_map(ws, records: list[dict]) -> None:
             c.number_format = "0.0000"
             if val is not None:
                 row_values.append(val)
-                # Colora AUC: verde→giallo→rosso
-                if val > 0.60:
+                # Colora AUC: viola (anomalo) → verde → giallo → rosso
+                if val < ANOMALY_LOW_AUC:
+                    c.fill = _fill("E1D5E7")   # viola chiaro — probabile bug, non DP efficace
+                    c.font = _font(bold=True, color=COLOR_ANOMALY)
+                elif val > 0.60:
                     c.fill = _fill("FFCCCC")   # rosso chiaro
                     c.font = _font(bold=True, color=COLOR_BAD)
                 elif val > 0.52:
@@ -362,7 +403,8 @@ def build_heat_map(ws, records: list[dict]) -> None:
     ws.cell(legend_row, 1).value = "Legenda:"
     ws.cell(legend_row, 1).font = _font(bold=True)
     legends = [
-        ("D5E8D4", "2D6A2D", "AUC ≤ 0.52 — DP efficace, MIA ≈ random"),
+        ("E1D5E7", COLOR_ANOMALY, f"AUC < {ANOMALY_LOW_AUC} — ANOMALO: probabile bug nell'attacco, non DP efficace"),
+        ("D5E8D4", "2D6A2D", f"{ANOMALY_LOW_AUC} ≤ AUC ≤ 0.52 — DP efficace, MIA ≈ random"),
         ("FFE5B4", "8B4513", "0.52 < AUC ≤ 0.60 — leakage parziale"),
         ("FFCCCC", COLOR_BAD, "AUC > 0.60 — MIA efficace, rischio HIGH"),
     ]
@@ -456,7 +498,12 @@ def build_per_epsilon(ws, records: list[dict]) -> None:
         _data_cell(ws.cell(row_idx, 2), len(group),     alt_row=alt)
         auc_cell = ws.cell(row_idx, 3)
         _data_cell(auc_cell, avg, fmt="0.0000", alt_row=alt)
-        if avg is not None and avg > 0.55:
+        # Fix 2026-07-21: un AUC medio anomalmente basso (< ANOMALY_LOW_AUC) segnala
+        # un probabile bug nell'attacco (score invertito), non "privacy sicura" —
+        # va colorato in modo distinto da un vero AUC≈0.5 (DP efficace).
+        if avg is not None and avg < ANOMALY_LOW_AUC:
+            auc_cell.font = _font(bold=True, color=COLOR_ANOMALY)
+        elif avg is not None and avg > 0.55:
             auc_cell.font = _font(bold=True, color=COLOR_BAD)
         elif avg is not None and avg > 0.51:
             auc_cell.font = _font(bold=True, color=COLOR_WARN)
@@ -531,19 +578,9 @@ def build_comparison(ws, records: list[dict]) -> None:
             _data_cell(c, val, fmt=fmt, alt_row=alt)
             # Colora AUC-ROC e Privacy Risk
             if key in ("auc_roc", "auc_max", "auc_min") and val is not None:
-                if val > 0.60:
-                    c.font = _font(bold=True, color=COLOR_BAD)
-                elif val > 0.52:
-                    c.font = _font(bold=True, color=COLOR_WARN)
-                else:
-                    c.font = _font(bold=True, color=COLOR_GOOD)
+                c.font = _font(bold=True, color=_auc_risk_color(val))
             elif key == "privacy_risk":
-                if val == "HIGH":
-                    c.font = _font(bold=True, color=COLOR_BAD)
-                elif val == "MEDIUM":
-                    c.font = _font(bold=True, color=COLOR_WARN)
-                else:
-                    c.font = _font(bold=True, color=COLOR_GOOD)
+                c.font = _font(bold=True, color=_risk_label_color(val))
 
     _set_col_width(ws, "A", 22)
     for col_idx in range(2, n_cols + 1):
@@ -620,6 +657,9 @@ def build_auc_progression(ws, records: list[dict]) -> None:
                 elif auc_val > 0.52:
                     auc_cell.fill = _fill("FFE5B4")
                     auc_cell.font = _font(color="8B4513")
+                elif auc_val < ANOMALY_LOW_AUC:
+                    auc_cell.fill = _fill("E1D5E7")
+                    auc_cell.font = _font(bold=True, color=COLOR_ANOMALY)
                 else:
                     auc_cell.fill = _fill("D5E8D4")
                     auc_cell.font = _font(color="2D6A2D")
@@ -707,7 +747,12 @@ def build_attack_comparison(ws, records: list[dict]) -> None:
         if val is None:
             cell.value = "—"
             return
-        if val > 0.60:
+        if val < ANOMALY_LOW_AUC:
+            # Fix 2026-07-21: AUC anomalmente basso — probabile attacco rotto,
+            # non "DP efficace". Va distinto visivamente dal verde "sicuro".
+            cell.fill = _fill("E1D5E7")
+            cell.font = _font(bold=True, color=COLOR_ANOMALY)
+        elif val > 0.60:
             cell.fill = _fill("FFCCCC")
             cell.font = _font(bold=True, color=COLOR_BAD)
         elif val > 0.55:
@@ -772,7 +817,8 @@ def build_attack_comparison(ws, records: list[dict]) -> None:
     ws.cell(leg_row, 1).value = "Legenda:"
     ws.cell(leg_row, 1).font = _font(bold=True)
     for i, (bg, fg, label) in enumerate([
-        ("D5E8D4", "2D6A2D", "AUC ≤ 0.52 — DP efficace"),
+        ("E1D5E7", COLOR_ANOMALY, f"AUC < {ANOMALY_LOW_AUC} — ANOMALO: probabile bug, non DP efficace"),
+        ("D5E8D4", "2D6A2D", f"{ANOMALY_LOW_AUC} ≤ AUC ≤ 0.52 — DP efficace"),
         ("FFF2CC", "8B4513", "0.52 < AUC ≤ 0.55 — leakage debole"),
         ("FFE5B4", "8B4513", "0.55 < AUC ≤ 0.60 — leakage moderato"),
         ("FFCCCC", COLOR_BAD, "AUC > 0.60 — MIA efficace, HIGH risk"),
@@ -855,7 +901,10 @@ def _build_per_round_sheet(
             cell    = ws.cell(row_idx, col)
             _data_cell(cell, auc_val, fmt="0.0000", alt_row=alt)
             if auc_val is not None:
-                if auc_val > 0.60:
+                if auc_val < ANOMALY_LOW_AUC:
+                    cell.fill = _fill("E1D5E7")
+                    cell.font = _font(bold=True, color=COLOR_ANOMALY)
+                elif auc_val > 0.60:
                     cell.fill = _fill("FFCCCC")
                     cell.font = _font(bold=True, color=COLOR_BAD)
                 elif auc_val > 0.55:
@@ -881,7 +930,8 @@ def _build_per_round_sheet(
     ws.cell(leg_row, 1).font  = _font(bold=True)
     merge_end = min(n_cols, 6)
     for j, (bg, fg, label) in enumerate([
-        ("D5E8D4", "2D6A2D", "AUC ≤ 0.52 — DP efficace / no leakage"),
+        ("E1D5E7", COLOR_ANOMALY, f"AUC < {ANOMALY_LOW_AUC} — ANOMALO: probabile bug, non DP efficace"),
+        ("D5E8D4", "2D6A2D", f"{ANOMALY_LOW_AUC} ≤ AUC ≤ 0.52 — DP efficace / no leakage"),
         ("FFF2CC", "8B4513", "0.52 < AUC ≤ 0.55 — leakage debole"),
         ("FFE5B4", "8B4513", "0.55 < AUC ≤ 0.60 — leakage moderato"),
         ("FFCCCC", COLOR_BAD, "AUC > 0.60 — MIA efficace, HIGH risk"),
@@ -1036,7 +1086,12 @@ def build_seed_aggregation(ws, records: list[dict]) -> None:
         cell.font        = _font(bold=bold)
         cell.border      = _border()
         cell.alignment   = _center()
-        if val > 0.60:
+        if val < ANOMALY_LOW_AUC:
+            # Fix 2026-07-21: questa e' la stessa riga che prima mostrava un
+            # lira_auc_roc di 0.14-0.32 (experiments/exp3, pre-fix run_lira())
+            # in VERDE come "LOW risk" — era un attacco rotto, non DP efficace.
+            cell.fill = _fill("E1D5E7"); cell.font = _font(bold=True, color=COLOR_ANOMALY)
+        elif val > 0.60:
             cell.fill = _fill("FFCCCC"); cell.font = _font(bold=True, color=COLOR_BAD)
         elif val > 0.55:
             cell.fill = _fill("FFE5B4"); cell.font = _font(bold=True, color="8B4513")
