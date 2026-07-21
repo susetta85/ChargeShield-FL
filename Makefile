@@ -103,9 +103,26 @@ logs:
 	@echo "=== highway ==="
 	docker logs clab-chargeshield-fl-highway --tail 20
 
+# ─── Controllo dipendenze ─────────────────────────────────────────────────────
+# _check-deps: verifica che torch (e le altre dipendenze) siano installate.
+# Se mancano, suggerisce 'make install' invece di crashare con un errore criptico.
+# Tutti i target sperimentali dipendono da questo.
+.PHONY: _check-deps
+_check-deps:
+	@$(PYTHON) -c "import torch, numpy, sklearn, openpyxl, yaml" 2>/dev/null || \
+		(echo ""; \
+		 echo "╔══════════════════════════════════════════════════════╗"; \
+		 echo "║  DIPENDENZE MANCANTI — esegui prima:                 ║"; \
+		 echo "║                                                      ║"; \
+		 echo "║    make install                                      ║"; \
+		 echo "║                                                      ║"; \
+		 echo "║  Installa: torch, numpy, scikit-learn, openpyxl...  ║"; \
+		 echo "╚══════════════════════════════════════════════════════╝"; \
+		 echo ""; exit 1)
+
 # ─── Esperimento FL ───────────────────────────────────────────────────────────
 .PHONY: experiment
-experiment:
+experiment: _check-deps
 	@echo "→ Avvio esperimento FedMIA..."
 	@mkdir -p $(EXPERIMENTS)
 	$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
@@ -131,7 +148,7 @@ experiment-sweep:
 # Sweep completo rounds × epsilon con directory numerata automatica.
 # Ogni esecuzione crea experiments/exp{N}/ con i JSON e exp{N}.xlsx separati.
 # Non mischia mai risultati di sweep distinti.
-experiment-full-sweep:
+experiment-full-sweep: _check-deps
 	@mkdir -p $(EXPERIMENTS); \
 	SWEEP_NUM=$$(find $(EXPERIMENTS) -maxdepth 1 -type d -name 'exp[0-9]*' 2>/dev/null | wc -l | tr -d ' '); \
 	SWEEP_NUM=$$((SWEEP_NUM + 1)); \
@@ -163,7 +180,7 @@ experiment-full-sweep:
 # 25 run: 5 seed × 5 epsilon per robustezza statistica della detection.
 IDS_VALIDATION_DIR := $(EXPERIMENTS)/ids_validation
 .PHONY: experiment-byzantine-sweep
-experiment-byzantine-sweep:
+experiment-byzantine-sweep: _check-deps
 	@mkdir -p $(IDS_VALIDATION_DIR); \
 	LOG="$(IDS_VALIDATION_DIR)/sweep_log.txt"; \
 	echo "→ IDS validation sweep (highway ×10, 5 seed × 5 epsilon)" | tee "$$LOG"; \
@@ -215,7 +232,7 @@ SEEDS    ?= 42 123 456 789 1234
 # AUC non interpretabile (troppo poco training + shadow sottoadatti) — solo "la pipeline gira?".
 SMOKE_DIR := $(EXPERIMENTS)/smoke
 .PHONY: experiment-smoke
-experiment-smoke:
+experiment-smoke: _check-deps
 	@echo "→ Smoke test: 5 round, no-DP, seed=$(SEED), n_shadow=2, shadow-cap=20..."
 	@mkdir -p $(SMOKE_DIR)
 	$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
@@ -230,7 +247,7 @@ experiment-smoke:
 
 # Baseline no-DP: seed singolo. Usare experiment-nodp-sweep per 5 seed (mean±std).
 .PHONY: experiment-nodp
-experiment-nodp:
+experiment-nodp: _check-deps
 	@echo "→ Baseline no-DP (σ=0, 10 round, seed=$(SEED), n_shadow=$(N_SHADOW)) — Yeom + Shadow + LiRA..."
 	@mkdir -p $(EXPERIMENTS)
 	$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
@@ -243,7 +260,7 @@ experiment-nodp:
 
 # Con DP: seed singolo. Usare experiment-dp-sweep per 5 seed (mean±std).
 .PHONY: experiment-dp
-experiment-dp:
+experiment-dp: _check-deps
 	@echo "→ Esperimento con DP (ε=$(EPS), 10 round, seed=$(SEED), n_shadow=$(N_SHADOW)) — Yeom + Shadow + LiRA..."
 	@mkdir -p $(EXPERIMENTS)
 	$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
@@ -269,7 +286,7 @@ experiment-dp:
 # SEED deve restare in every-run single target; SEEDS è per il loop multi-seed.
 
 .PHONY: experiment-nodp-sweep
-experiment-nodp-sweep:
+experiment-nodp-sweep: _check-deps
 	@mkdir -p $(EXPERIMENTS); \
 	SWEEP_NUM=$$(find $(EXPERIMENTS) -maxdepth 1 -type d -name 'exp[0-9]*' 2>/dev/null | wc -l | tr -d ' '); \
 	SWEEP_NUM=$$((SWEEP_NUM + 1)); \
@@ -291,7 +308,7 @@ experiment-nodp-sweep:
 	echo "✓ no-DP sweep #$$SWEEP_NUM completato — controlla Seed Aggregation nell'Excel" | tee -a "$$LOG"
 
 .PHONY: experiment-dp-sweep
-experiment-dp-sweep:
+experiment-dp-sweep: _check-deps
 	@mkdir -p $(EXPERIMENTS); \
 	SWEEP_NUM=$$(find $(EXPERIMENTS) -maxdepth 1 -type d -name 'exp[0-9]*' 2>/dev/null | wc -l | tr -d ' '); \
 	SWEEP_NUM=$$((SWEEP_NUM + 1)); \
