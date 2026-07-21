@@ -218,6 +218,41 @@ This formulation follows the calibration formula from the standard Gaussian Mech
 >
 > **Path to formal DP.** A strictly formal (ε,δ)-DP guarantee can be achieved by replacing weight perturbation with DP-SGD via the Opacus library [Yousefpour et al., 2021], which performs per-sample gradient clipping during local training. This is left as future work.
 
+> **⚠ Limitation — DP-FedAvg (server-side, per-client) vs. Local DP vs. Central DP (found 2026-07-21, terminology corrected 2026-07-21)**
+>
+> There are three distinct DP placements in the FL literature, and it matters which one a given mechanism actually is:
+>
+> - **Local DP**: each client adds noise **on its own device**, before anything is transmitted. The raw value never reaches the server, not even transiently.
+> - **Central DP**: a *trusted* server receives raw (clean) updates from all clients, computes the FedAvg average, and adds a *single* noise draw to the resulting aggregate (benefiting from 1/n summation). Individual raw updates are never noised or persisted past the aggregation step — but the server does see them in the clear.
+> - **DP-FedAvg** [McMahan et al., 2017 — already cited, §2 references]: the server receives each client's raw update and immediately clips + noises it **per client**, before combining. This is what `GradientManager.privatize()` implements (`run_fl_rounds()`: `private_update = gm.privatize(update, ...)` inside the per-client loop, then `agg.collect(private_update)`).
+>
+> ChargeShield-FL implements **DP-FedAvg, not local DP and not central DP**. This was previously mislabeled in this document as "per-client / distributed-style DP" — "distributed DP" is a distinct term reserved for cryptographic protocols (e.g. secure aggregation with secret-shared noise) where no single party ever observes another party's raw contribution; that is not what is implemented here. Confirming this is DP-FedAvg and not local DP matters because the server-side code explicitly handles the **raw, pre-noise** update for a brief window before privatising it (`run_ids()`'s docstring: "in un sistema reale, il server/IDS vede gli update raw dai client PRIMA che il rumore DP venga applicato") — this is precisely the transient exposure window a real local-DP client would never create, and it is exactly the window the LiRA fix (2026-07-21c, `run_lira()`) had to account for: attacking `raw_updates` (the pre-noise value the server/IDS already had documented access to) meant DP could never be observed by the attack at all.
+>
+> This distinction matters for what each attack can and cannot show:
+> - **Yeom and Shadow MIA** attack the released **global** model — under any of the three DP placements above, the global model the attacker sees does carry noise, so these two attacks can validly demonstrate DP suppression.
+> - **LiRA** attacks each **client's own submitted update**. Under DP-FedAvg (current implementation) that update does carry noise (fixed 2026-07-21c — see `run_lira()` docstring, `scripts/run_experiments.py`), so LiRA can show suppression too. But under **true central DP**, individual client updates are, by construction, never noised — only the released aggregate is. In that regime, LiRA-on-individual-updates would show **no suppression whatsoever, at any ε**, because the attack surface it targets sits entirely outside what central DP protects. That is not a bug in the attack; it is the textbook argument for why central DP requires a trusted aggregator, and why an untrusted/semi-honest aggregator needs secure aggregation or local DP as a complementary defence.
+>
+> **Proposed next step (not yet implemented) — explicit DP-FedAvg-vs-central-DP comparison.** To make this distinction an empirical result rather than a footnote, add a third DP mode alongside the existing no-DP and DP-FedAvg baselines:
+> 1. **No DP** (current `--no-dp`) — baseline, no noise anywhere.
+> 2. **DP-FedAvg** (current default) — noise added to every client update before aggregation.
+> 3. **Central DP** (new) — clients submit raw updates; the aggregator computes the clean FedAvg average, then adds a single Gaussian noise draw to that aggregate before broadcasting it as the new global model. Individual client updates are never noised.
+>
+> Running Yeom, Shadow, and LiRA against all three modes would let the paper report, with real numbers: under central DP, do Yeom/Shadow degrade toward 0.5 while LiRA stays high (demonstrating the aggregator-side gap this section describes)? This is a natural CS4 candidate and directly motivates secure aggregation as future work (§2.4.3 already flags DP-SGD as a path to a formal per-round guarantee; this would be the complementary path for the aggregator-trust assumption).
+
+> **⚠ Limitation — the privacy pipeline does not run on the containerised network; "100+ nodes" is not true today (found 2026-07-21)**
+>
+> `scripts/run_experiments.py` — the script that produces every number in this document and in the README — is a single-process Python simulation. It never touches the Containerlab/Docker/NVFLARE infrastructure that also exists in this repository (`containerlab/`, `docker/`, `nvflare/`, `topology.clab.yml`). A read-only audit of that infrastructure found:
+>
+> - `src/flare/flare_connector.py` is an explicit placeholder (its own docstring: *"Nota Sprint 3: Questa è una implementazione simulata — non richiede un server FLARE attivo. L'integrazione reale con nvflare arriva nella Sprint 4"*), still unmodified; it never imports `nvflare` and simulates gradients with `random.gauss()` rather than real training.
+> - `nvflare/project.yml` provisions PKI/network participants only — there is no NVFLARE job/app (no `Executor`/`Controller` referencing `AutoencoderTrainer`, `GradientManager`, `PrivacyAuditor`, or `ChargingIDS`), so even a successful `make deploy` would bring up empty containers with nothing to run.
+> - `clab-chargeshield-fl/` (topology metadata from a 2026-06-25 deploy) shows containers were created, but there is no evidence any FL round, MIA attack, or IDS check has ever executed inside that topology.
+> - `docker/{aggregator,charging-node,ids,auditor,fl-admin}/Dockerfile` are a second, orphaned Dockerfile set (unreferenced by `topology.clab.yml` or the `Makefile` `build` target) whose `CMD`s invoke Python modules with no `if __name__ == "__main__"` block — these containers would crash on start.
+> - Two independent, never-reconciled PKI trees exist (`certs/` vs. the NVFLARE-provisioned workspace).
+>
+> **Consequence for the "100+ nodes" and "real OT constraints" claims** (`ChargeShield-FL_Decisions.txt`): today's experiments simulate exactly **4 FL clients** (one per cluster, `run_fl_rounds()`), with sessions split into **equal contiguous blocks** rather than realistic per-station volumes, in a single process with no network latency, bandwidth limits, or client dropout. This is common practice in FL research (most privacy/MIA papers use pure simulation) and does not invalidate the DP-vs-MIA results themselves, but it should either be stated explicitly as a limitation, or the pipeline should be wired into the containerised topology before claiming to "reproduce real environments with real constraints."
+>
+> **Scope if pursued**: wiring the privacy pipeline into the real topology is a multi-week effort, not a quick fix — it requires a real NVFLARE Executor/app wrapping the existing training/DP/audit code, a way to extract per-client raw updates through NVFLARE's server-side aggregation (needed for LiRA/Shadow, which NVFLARE's normal flow hides), fixing the orphaned Dockerfiles, and reconciling the two PKI trees.
+
 ### 2.5 FedMIA: Federated Membership Inference Attack
 
 #### 2.5.1 Attack Model

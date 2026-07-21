@@ -47,7 +47,7 @@ help:
 	@echo "  make experiment-dp-sweep    DP multi-seed (ε=EPS, SEEDS) → mean±std vs no-DP"
 	@echo "  [Excel 11 sheet: Attack Comparison + per-attacco + Seed Aggregation mean±std]"
 	@echo "  make experiment-sweep      Sweep epsilon 0.1→5.0 (100 round) [legacy]"
-	@echo "  make experiment-full-sweep Sweep rounds×epsilon (100-1000 × 0.1-5.0) — crea experiments/exp{N}/"
+	@echo "  make experiment-full-sweep Sweep rounds×epsilon (100-1000 × 0.1-5.0) — crea experiments/full-sweep{N}/"
 	@echo "  make experiment-byzantine-sweep Byzantine sweep (5 seed × 5 epsilon) — IDS validation"
 	@echo "  make experiment-dry        Dry run (verifica config e dataset)"
 	@echo "  make install           Installa dipendenze runtime (torch, numpy, ecc.) — nuovo ambiente"
@@ -146,13 +146,15 @@ experiment-sweep:
 # Stima: ~36h su CPU sequenziale (20 config × ~1.8h media; molto più veloce su Mac M-series nativo)
 .PHONY: experiment-full-sweep
 # Sweep completo rounds × epsilon con directory numerata automatica.
-# Ogni esecuzione crea experiments/exp{N}/ con i JSON e exp{N}.xlsx separati.
-# Non mischia mai risultati di sweep distinti.
+# Ogni esecuzione crea experiments/full-sweep{N}/ con i JSON e full-sweep{N}.xlsx separati.
+# Nome prefissato per tipo (full-sweep / nodp-sweep / dp-sweep) — contatori indipendenti,
+# così i nomi restano leggibili anche mescolando i tre tipi di sweep (fix 2026-07-21,
+# prima tutti e tre condividevano lo stesso contatore generico exp{N}, ambiguo).
 experiment-full-sweep: _check-deps
 	@mkdir -p $(EXPERIMENTS); \
-	SWEEP_NUM=$$(find $(EXPERIMENTS) -maxdepth 1 -type d -name 'exp[0-9]*' 2>/dev/null | wc -l | tr -d ' '); \
+	SWEEP_NUM=$$(find $(EXPERIMENTS) -maxdepth 1 -type d -name 'full-sweep[0-9]*' 2>/dev/null | wc -l | tr -d ' '); \
 	SWEEP_NUM=$$((SWEEP_NUM + 1)); \
-	SWEEP_DIR=$(EXPERIMENTS)/exp$$SWEEP_NUM; \
+	SWEEP_DIR=$(EXPERIMENTS)/full-sweep$$SWEEP_NUM; \
 	mkdir -p "$$SWEEP_DIR"; \
 	LOG="$$SWEEP_DIR/sweep_log.txt"; \
 	echo "→ Full sweep #$$SWEEP_NUM: rounds × epsilon — $$SWEEP_DIR" | tee "$$LOG"; \
@@ -288,9 +290,9 @@ experiment-dp: _check-deps
 .PHONY: experiment-nodp-sweep
 experiment-nodp-sweep: _check-deps
 	@mkdir -p $(EXPERIMENTS); \
-	SWEEP_NUM=$$(find $(EXPERIMENTS) -maxdepth 1 -type d -name 'exp[0-9]*' 2>/dev/null | wc -l | tr -d ' '); \
+	SWEEP_NUM=$$(find $(EXPERIMENTS) -maxdepth 1 -type d -name 'nodp-sweep[0-9]*' 2>/dev/null | wc -l | tr -d ' '); \
 	SWEEP_NUM=$$((SWEEP_NUM + 1)); \
-	SWEEP_DIR=$(EXPERIMENTS)/exp$$SWEEP_NUM; \
+	SWEEP_DIR=$(EXPERIMENTS)/nodp-sweep$$SWEEP_NUM; \
 	mkdir -p "$$SWEEP_DIR"; \
 	LOG="$$SWEEP_DIR/sweep_log.txt"; \
 	echo "→ no-DP multi-seed sweep #$$SWEEP_NUM — seeds: $(SEEDS)" | tee "$$LOG"; \
@@ -310,9 +312,9 @@ experiment-nodp-sweep: _check-deps
 .PHONY: experiment-dp-sweep
 experiment-dp-sweep: _check-deps
 	@mkdir -p $(EXPERIMENTS); \
-	SWEEP_NUM=$$(find $(EXPERIMENTS) -maxdepth 1 -type d -name 'exp[0-9]*' 2>/dev/null | wc -l | tr -d ' '); \
+	SWEEP_NUM=$$(find $(EXPERIMENTS) -maxdepth 1 -type d -name 'dp-sweep[0-9]*' 2>/dev/null | wc -l | tr -d ' '); \
 	SWEEP_NUM=$$((SWEEP_NUM + 1)); \
-	SWEEP_DIR=$(EXPERIMENTS)/exp$$SWEEP_NUM; \
+	SWEEP_DIR=$(EXPERIMENTS)/dp-sweep$$SWEEP_NUM; \
 	mkdir -p "$$SWEEP_DIR"; \
 	LOG="$$SWEEP_DIR/sweep_log.txt"; \
 	echo "→ DP multi-seed sweep #$$SWEEP_NUM — ε=$(EPS), seeds: $(SEEDS)" | tee "$$LOG"; \
