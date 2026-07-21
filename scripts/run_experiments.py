@@ -761,24 +761,55 @@ def run_lira(
     Attack flow:
         1. Reconstruct per-cluster session assignment (deterministic — must match
            run_fl_rounds() to identify which sessions each client trained on).
-        2. Train n_shadow shadow LOCAL models on random 50% subsets of train_sessions
-           (no FL, no DP) — simulates attacker's auxiliary knowledge.
+        2. Train n_shadow PER-CLUSTER shadow LOCAL models — one ensemble of n_shadow
+           models per cluster, each trained on a random 50% subset of THAT cluster's
+           own sessions only (no FL, no DP). This mirrors the attacked model: each
+           client's raw_update is itself trained only on its home cluster's data, so
+           the shadow ensemble used to calibrate IN/OUT distributions for that client
+           must be trained under the same per-cluster regime (see "Fix — shadow/target
+           distribution mismatch" below).
         3. For each round and each client's raw_update:
            a. Load client's local model weights.
            b. Compute target_loss = MSE(client_model, x) for every eval sample.
-           c. Split shadow losses into IN (shadow saw x) and OUT (didn't see x).
+           c. Split THAT CLIENT'S CLUSTER shadow losses into IN (shadow saw x) and
+              OUT (didn't see x).
            d. score(x) = log P(loss | IN dist) − log P(loss | OUT dist)  [Gaussian log-LR]
         4. Pool scores across all clients per round → AUC-ROC.
 
+    Fix — shadow/target distribution mismatch (2026-07-21):
+        Until this fix, shadow models were trained on random 50% subsets drawn from
+        ALL train_sessions (all 4 clusters mixed), while the attacked model (client
+        raw_update) is a per-cluster specialist trained only on its own cluster's
+        ~2600 sessions. This is a violation of LiRA's core assumption — the shadow
+        ensemble must approximate the target's actual training distribution — and it
+        produced a systematically INVERTED score: non-member target_loss looked more
+        "IN-like" than genuine members' (observed lira_auc_roc as low as 0.14–0.32,
+        with lira_non_member_score_mean saturating near the +20 clip). Symptom
+        confirmed empirically in experiments/exp3 (seed=42, post cross-cluster-eval
+        fix, pre this fix): AUC crashes at round 2 then drifts back toward 0.5 over
+        rounds as FedProx repeatedly re-anchors each client to the shared global
+        average, shrinking (but never eliminating) the mismatch.
+        Fix: train one full shadow ensemble PER CLUSTER, sampling only from that
+        cluster's own index range. A client's raw_update is now scored against the
+        shadow ensemble of its OWN cluster, so the reference distribution actually
+        matches the regime the attacked model was trained under. Total shadow count
+        becomes n_shadow × 4 clusters, but each shadow trains on ~1/4 the data, so
+        total training compute is essentially unchanged.
+
     Non-member handling:
         Non-members are NEVER in any shadow model's training set → in_losses is always
-        empty. We fall back to the GLOBAL IN distribution (pooled from all members'
-        IN shadow losses) as the IN reference. Non-members' target_loss is typically
-        high (model never saw them), so log_p_in << log_p_out → negative score → correct.
+        empty. We fall back to the PER-CLUSTER GLOBAL IN distribution (pooled from that
+        cluster's members' IN shadow losses) as the IN reference — using the same
+        cluster ensemble as the client currently being evaluated. Non-members'
+        target_loss is typically high (model never saw them), so log_p_in << log_p_out
+        → negative score → correct.
 
     Why this differs from run_fedmia / run_fedmia_shadow:
-        Both previous attacks use the GLOBAL aggregated model. LiRA uses each
-        CLIENT's LOCAL model from raw_updates — the signal before FedProx averaging.
+        Both previous attacks use the GLOBAL aggregated model, which is itself a
+        cross-cluster blend — so a cross-cluster shadow ensemble is the CORRECT
+        reference for those two attacks (no mismatch there; this fix only applies to
+        LiRA). LiRA uses each CLIENT's LOCAL model from raw_updates — the signal
+        before FedProx averaging — which is why its shadows must be per-cluster.
 
     Args:
         cfg:             experiment configuration dict
@@ -810,10 +841,15 @@ def run_lira(
     _CLUSTER_IDS = ["highway", "urban", "residential", "corporate"]
     cluster_size = max(1, len(train_sessions) // len(_CLUSTER_IDS))
     cluster_members: dict[str, list[dict[str, Any]]] = {}
+    # cluster_index_ranges: (start, end) in GLOBAL train_sessions index space — usato
+    # per campionare gli shadow SOLO dal pool di indici del proprio cluster (fix
+    # shadow/target mismatch, vedi docstring).
+    cluster_index_ranges: dict[str, tuple[int, int]] = {}
     for i, cid in enumerate(_CLUSTER_IDS):
         start = i * cluster_size
-        end   = None if i == len(_CLUSTER_IDS) - 1 else start + cluster_size
+        end   = len(train_sessions) if i == len(_CLUSTER_IDS) - 1 else start + cluster_size
         cluster_members[cid] = train_sessions[start:end]
+        cluster_index_ranges[cid] = (start, end)
 
     # Reverse map: sample Python id → cluster (for correct client-member matching).
     # Members must be evaluated ONLY against their home cluster's client.
@@ -846,7 +882,13 @@ def run_lira(
     # Members were sampled from train_sessions without copying → id() is valid.
     _train_idx: dict[int, int] = {id(s): i for i, s in enumerate(train_sessions)}
 
-    # ── Step 2: Train n_shadow shadow local models ────────────────────────────
+    # ── Step 2: Train n_shadow shadow local models — ONE ENSEMBLE PER CLUSTER ──
+    # Fix (2026-07-21): shadow ensembles must be trained under the SAME per-cluster
+    # regime as the attacked client model, otherwise the IN/OUT calibration doesn't
+    # match the target's actual training distribution (see docstring). Each cluster
+    # gets its own n_shadow-model ensemble, sampled ONLY from that cluster's own
+    # index range in train_sessions.
+    #
     # Shadow epochs: approximate FL convergence without being too slow.
     # Formula: min(local_epochs × max(rounds//4, 5), 300).
     # Con epochs=50, rounds≤20 → shadow_epochs=250 (indipendente dai round a causa del max(...,5)).
@@ -865,85 +907,115 @@ def run_lira(
                 continue
         return torch.tensor(rows, dtype=torch.float32) if rows else None
 
-    # shadow_mse_matrix[shadow_idx][j] = MSE of shadow_idx on eval_samples[j]; None if unavail.
-    shadow_mse_matrix: list[list[float | None]] = []
-    # shadow_in_idx_sets[shadow_idx] = set of train_sessions indices that were IN this shadow
-    shadow_in_idx_sets: list[set[int]] = []
+    # shadow_mse_matrix_per_cluster[cid][shadow_idx][j] = MSE of that shadow on
+    # eval_samples[j]; None if unavailable.
+    shadow_mse_matrix_per_cluster: dict[str, list[list[float | None]]] = {}
+    # shadow_in_idx_sets_per_cluster[cid][shadow_idx] = set of GLOBAL train_sessions
+    # indices (restricted to cid's own range) that were IN this shadow's training set.
+    shadow_in_idx_sets_per_cluster: dict[str, list[set[int]]] = {}
 
-    for shadow_idx in range(n_shadow):
-        shadow_rng = random.Random(seed + shadow_idx * 31337)
-        n_in       = max(batch_size + 1, len(train_sessions) // 2)
-        in_indices = set(shadow_rng.sample(range(len(train_sessions)), n_in))
-        shadow_in_idx_sets.append(in_indices)
+    # Offset grande e primo per cluster, per garantire seed distinti tra cluster senza
+    # usare hash(str) (non deterministico tra processi Python — PYTHONHASHSEED random).
+    _CLUSTER_SEED_OFFSET = 104729
 
-        in_sessions   = [train_sessions[i] for i in sorted(in_indices)]
-        shadow_tensor = _build_tensor(in_sessions)
-        if shadow_tensor is None or len(shadow_tensor) < batch_size:
-            logger.warning(
-                f"LiRA shadow {shadow_idx}: {len(in_sessions)} sessioni < "
-                f"batch_size={batch_size} — shadow skippato"
+    for cluster_idx, cid in enumerate(_CLUSTER_IDS):
+        start, end = cluster_index_ranges[cid]
+        cluster_idx_pool = list(range(start, end))
+
+        cluster_mse_matrix: list[list[float | None]] = []
+        cluster_in_idx_sets: list[set[int]] = []
+
+        for shadow_idx in range(n_shadow):
+            _s = seed + cluster_idx * _CLUSTER_SEED_OFFSET + shadow_idx * 31337
+            shadow_rng = random.Random(_s)
+            n_in       = max(batch_size + 1, len(cluster_idx_pool) // 2)
+            n_in       = min(n_in, len(cluster_idx_pool))
+            in_indices = set(shadow_rng.sample(cluster_idx_pool, n_in))
+            cluster_in_idx_sets.append(in_indices)
+
+            in_sessions   = [train_sessions[i] for i in sorted(in_indices)]
+            shadow_tensor = _build_tensor(in_sessions)
+            if shadow_tensor is None or len(shadow_tensor) < batch_size:
+                logger.warning(
+                    f"LiRA[{cid}] shadow {shadow_idx}: {len(in_sessions)} sessioni < "
+                    f"batch_size={batch_size} — shadow skippato"
+                )
+                cluster_mse_matrix.append([None] * n_eval)
+                continue
+
+            shadow_model = Autoencoder(input_dim=input_dim)
+            shadow_opt   = torch.optim.Adam(shadow_model.parameters(), lr=lr)
+            shadow_crit  = torch.nn.MSELoss()
+            torch.manual_seed(_s)
+            shadow_ds  = torch.utils.data.TensorDataset(shadow_tensor)
+            shadow_gen = torch.Generator()
+            shadow_gen.manual_seed(_s)
+            shadow_loader = torch.utils.data.DataLoader(
+                shadow_ds, batch_size=batch_size, shuffle=True,
+                drop_last=True, generator=shadow_gen,
             )
-            shadow_mse_matrix.append([None] * n_eval)
-            continue
 
-        shadow_model = Autoencoder(input_dim=input_dim)
-        shadow_opt   = torch.optim.Adam(shadow_model.parameters(), lr=lr)
-        shadow_crit  = torch.nn.MSELoss()
-        torch.manual_seed(seed + shadow_idx * 31337)
-        shadow_ds  = torch.utils.data.TensorDataset(shadow_tensor)
-        shadow_gen = torch.Generator()
-        shadow_gen.manual_seed(seed + shadow_idx * 31337)
-        shadow_loader = torch.utils.data.DataLoader(
-            shadow_ds, batch_size=batch_size, shuffle=True,
-            drop_last=True, generator=shadow_gen,
+            shadow_model.train()
+            for _ in range(shadow_epochs):
+                for (batch,) in shadow_loader:
+                    shadow_opt.zero_grad()
+                    recon = shadow_model(batch)
+                    loss  = shadow_crit(recon, batch)
+                    loss.backward()
+                    shadow_opt.step()
+            shadow_model.eval()
+
+            mse_row: list[float | None] = []
+            for sample in eval_samples:
+                try:
+                    row    = [float(sample[f]) for f in _MIA_FEATURES]
+                    tensor = torch.tensor([row], dtype=torch.float32)
+                    with torch.no_grad():
+                        recon = shadow_model(tensor)
+                        mse_row.append(float(torch.mean((recon - tensor) ** 2).item()))
+                except (KeyError, TypeError, ValueError):
+                    mse_row.append(None)
+            cluster_mse_matrix.append(mse_row)
+            logger.debug(
+                f"LiRA[{cid}] shadow {shadow_idx + 1}/{n_shadow} addestrato "
+                f"({shadow_epochs} epoche, {len(in_sessions)} sessioni)"
+            )
+
+        shadow_mse_matrix_per_cluster[cid]  = cluster_mse_matrix
+        shadow_in_idx_sets_per_cluster[cid] = cluster_in_idx_sets
+        logger.info(
+            f"LiRA[{cid}]: {n_shadow} shadow models addestrati "
+            f"({shadow_epochs} epoche/shadow, pool cluster={len(cluster_idx_pool)} sessioni)"
         )
 
-        shadow_model.train()
-        for _ in range(shadow_epochs):
-            for (batch,) in shadow_loader:
-                shadow_opt.zero_grad()
-                recon = shadow_model(batch)
-                loss  = shadow_crit(recon, batch)
-                loss.backward()
-                shadow_opt.step()
-        shadow_model.eval()
+    # ── Per-cluster global IN distribution — fallback for non-members ─────────
+    # Non-members have no IN shadow losses in ANY cluster's ensemble → use pooled IN
+    # losses from that SAME cluster's members as proxy (matching the ensemble used
+    # to score the client currently being evaluated — see Step 3&4).
+    # Rationale: the IN distribution represents "what loss a model gives on data it
+    # saw"; non-members' target_loss should differ from this → negative LiRA score.
+    global_in_stats_per_cluster: dict[str, tuple[float, float]] = {}
+    for cid in _CLUSTER_IDS:
+        in_sets     = shadow_in_idx_sets_per_cluster.get(cid, [])
+        mse_matrix  = shadow_mse_matrix_per_cluster.get(cid, [])
+        pooled: list[float] = []
+        for j in range(len(members_bal)):
+            train_idx = _train_idx.get(id(eval_samples[j]))
+            if train_idx is None:
+                continue
+            for si, in_set in enumerate(in_sets):
+                if train_idx in in_set:
+                    mse = mse_matrix[si][j]
+                    if mse is not None:
+                        pooled.append(mse)
 
-        mse_row: list[float | None] = []
-        for sample in eval_samples:
-            try:
-                row    = [float(sample[f]) for f in _MIA_FEATURES]
-                tensor = torch.tensor([row], dtype=torch.float32)
-                with torch.no_grad():
-                    recon = shadow_model(tensor)
-                    mse_row.append(float(torch.mean((recon - tensor) ** 2).item()))
-            except (KeyError, TypeError, ValueError):
-                mse_row.append(None)
-        shadow_mse_matrix.append(mse_row)
-        logger.debug(f"LiRA shadow {shadow_idx + 1}/{n_shadow} addestrato ({shadow_epochs} epoche)")
-
-    logger.info(f"LiRA: {n_shadow} shadow models addestrati ({shadow_epochs} epoche/shadow)")
-
-    # ── Global IN distribution — fallback for non-members (always OUT in shadows) ─
-    # Non-members have no IN shadow losses → use pooled IN losses from members as proxy.
-    # Rationale: the IN distribution represents "what loss a model gives on data it saw";
-    # non-members' target_loss should differ from this → negative LiRA score.
-    all_global_in_losses: list[float] = []
-    for j in range(len(members_bal)):
-        train_idx = _train_idx.get(id(eval_samples[j]))
-        if train_idx is None:
-            continue
-        for si, in_set in enumerate(shadow_in_idx_sets):
-            if train_idx in in_set:
-                mse = shadow_mse_matrix[si][j]
-                if mse is not None:
-                    all_global_in_losses.append(mse)
-
-    global_μ_in = float(np.mean(all_global_in_losses)) if all_global_in_losses else 0.05
-    global_σ_in = max(float(np.std(all_global_in_losses)), max(global_μ_in * 0.05, 1e-4)) if all_global_in_losses else 0.01
-    logger.info(
-        f"LiRA global IN distribution — μ={global_μ_in:.5f}, σ={global_σ_in:.5f} "
-        f"({len(all_global_in_losses)} campioni)"
-    )
+        mu    = float(np.mean(pooled)) if pooled else 0.05
+        sigma = max(float(np.std(pooled)), max(mu * 0.05, 1e-4)) if pooled else 0.01
+        global_in_stats_per_cluster[cid] = (mu, sigma)
+        logger.info(
+            f"LiRA[{cid}] global IN distribution — μ={mu:.5f}, σ={sigma:.5f} "
+            f"({len(pooled)} campioni)"
+        )
 
     # ── Step 3 & 4: For each round, load each client's local model (raw_updates) ─
     lira_results: dict[int, dict[str, Any]] = {}
@@ -984,6 +1056,22 @@ def run_lira(
                     buf.clamp_(min=1e-8)
             client_model.eval()
 
+            # Fix: usa l'ensemble shadow del cluster di QUESTO client — non un ensemble
+            # cross-cluster globale — per calibrare IN/OUT sotto lo stesso regime di
+            # training del modello attaccato (vedi docstring "shadow/target mismatch").
+            _client_cluster_id = getattr(update, "cluster_id", None)
+            _cluster_shadow_mse     = shadow_mse_matrix_per_cluster.get(_client_cluster_id, [])
+            _cluster_shadow_in_sets = shadow_in_idx_sets_per_cluster.get(_client_cluster_id, [])
+            _cluster_mu_in_fb, _cluster_sigma_in_fb = global_in_stats_per_cluster.get(
+                _client_cluster_id, (0.05, 0.01)
+            )
+            if not _cluster_shadow_mse:
+                logger.warning(
+                    f"LiRA round {round_num} {_client_cluster_id}: nessun ensemble shadow "
+                    "per questo cluster — skip client"
+                )
+                continue
+
             for j, sample in enumerate(eval_samples):
                 try:
                     row         = [float(sample[f]) for f in _MIA_FEATURES]
@@ -1007,11 +1095,12 @@ def run_lira(
                     if _member_cluster is not None and _member_cluster != _client_cluster:
                         continue
 
-                # Split shadow losses: IN = shadows that trained on this sample; OUT = rest
+                # Split shadow losses: IN = shadows (di QUESTO cluster) che hanno
+                # visto il campione; OUT = resto. Ensemble per-cluster (fix mismatch).
                 in_losses:  list[float] = []
                 out_losses: list[float] = []
-                for si, in_set in enumerate(shadow_in_idx_sets):
-                    mse = shadow_mse_matrix[si][j]
+                for si, in_set in enumerate(_cluster_shadow_in_sets):
+                    mse = _cluster_shadow_mse[si][j]
                     if mse is None:
                         continue
                     if is_member and sample_train_idx is not None and sample_train_idx in in_set:
@@ -1027,13 +1116,14 @@ def run_lira(
                 # models converge to similar outputs, which causes ±10^8 score explosion.
                 σ_out = max(float(np.std(out_losses)), max(μ_out * 0.05, 1e-4))
 
-                # Use per-sample IN distribution if available; fall back to global IN.
+                # Use per-sample IN distribution if available; fall back to this
+                # client's cluster-specific global IN stats (not a cross-cluster global).
                 if len(in_losses) >= 2:
                     μ_in = float(np.mean(in_losses))
                     σ_in = max(float(np.std(in_losses)), max(μ_in * 0.05, 1e-4))
                 else:
-                    μ_in = global_μ_in
-                    σ_in = global_σ_in
+                    μ_in = _cluster_mu_in_fb
+                    σ_in = _cluster_sigma_in_fb
 
                 # Gaussian log-likelihood ratio (Carlini 2022, Eq. 2):
                 # score > 0 → loss matches IN distribution → member
