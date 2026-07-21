@@ -815,6 +815,17 @@ def run_lira(
         end   = None if i == len(_CLUSTER_IDS) - 1 else start + cluster_size
         cluster_members[cid] = train_sessions[start:end]
 
+    # Reverse map: sample Python id → cluster (for correct client-member matching).
+    # Members must be evaluated ONLY against their home cluster's client.
+    # Cross-cluster evaluation (highway sample vs urban client) gives high target_loss
+    # → looks like a non-member → contaminates member pool with false negatives
+    # → AUC drops below 0.5 when 3/4 of evaluations are cross-cluster (4 clusters).
+    _sample_to_cluster: dict[int, str] = {
+        id(s): cid
+        for cid, sessions in cluster_members.items()
+        for s in sessions
+    }
+
     # Balanced eval pool: subsample members to match hold-out size
     _pool_rng      = random.Random(seed + 31415)
     _n_bal         = min(len(train_sessions), len(holdout_sessions))
@@ -928,7 +939,7 @@ def run_lira(
                     all_global_in_losses.append(mse)
 
     global_μ_in = float(np.mean(all_global_in_losses)) if all_global_in_losses else 0.05
-    global_σ_in = float(np.std(all_global_in_losses) + 1e-8) if all_global_in_losses else 0.01
+    global_σ_in = max(float(np.std(all_global_in_losses)), max(global_μ_in * 0.05, 1e-4)) if all_global_in_losses else 0.01
     logger.info(
         f"LiRA global IN distribution — μ={global_μ_in:.5f}, σ={global_σ_in:.5f} "
         f"({len(all_global_in_losses)} campioni)"
@@ -986,6 +997,16 @@ def run_lira(
                 is_member       = (j < len(members_bal))
                 sample_train_idx = _train_idx.get(id(sample)) if is_member else None
 
+                # Cross-cluster guard: only evaluate a member against its home cluster's client.
+                # A highway sample vs an urban client always gives high target_loss (never seen)
+                # → looks like a non-member → 3/4 of member evaluations are false negatives
+                # → AUC < 0.5 even without DP. Skip mismatched (sample, client) pairs.
+                if is_member:
+                    _member_cluster = _sample_to_cluster.get(id(sample))
+                    _client_cluster = getattr(update, "cluster_id", None)
+                    if _member_cluster is not None and _member_cluster != _client_cluster:
+                        continue
+
                 # Split shadow losses: IN = shadows that trained on this sample; OUT = rest
                 in_losses:  list[float] = []
                 out_losses: list[float] = []
@@ -1002,12 +1023,14 @@ def run_lira(
                     continue  # insufficient calibration data
 
                 μ_out = float(np.mean(out_losses))
-                σ_out = float(np.std(out_losses) + 1e-8)
+                # σ_min = 5% of μ (scale-adaptive): prevents collapse to 1e-8 when shadow
+                # models converge to similar outputs, which causes ±10^8 score explosion.
+                σ_out = max(float(np.std(out_losses)), max(μ_out * 0.05, 1e-4))
 
                 # Use per-sample IN distribution if available; fall back to global IN.
                 if len(in_losses) >= 2:
                     μ_in = float(np.mean(in_losses))
-                    σ_in = float(np.std(in_losses) + 1e-8)
+                    σ_in = max(float(np.std(in_losses)), max(μ_in * 0.05, 1e-4))
                 else:
                     μ_in = global_μ_in
                     σ_in = global_σ_in
@@ -1016,7 +1039,9 @@ def run_lira(
                 # score > 0 → loss matches IN distribution → member
                 log_p_in  = (-0.5 * ((target_loss - μ_in)  / σ_in)  ** 2) - np.log(σ_in)
                 log_p_out = (-0.5 * ((target_loss - μ_out) / σ_out) ** 2) - np.log(σ_out)
-                lira_score = float(log_p_in - log_p_out)
+                # Clip to ±20: log-LR beyond this range has no practical discriminative
+                # value and only amplifies numerical instabilities in edge cases.
+                lira_score = float(np.clip(log_p_in - log_p_out, -20.0, 20.0))
 
                 if np.isnan(lira_score) or np.isinf(lira_score):
                     continue
@@ -1159,19 +1184,19 @@ def run_ids(
             # delta = raw_local_weights - raw_global_prev_round.
             if prev_raw_global is not None and len(prev_raw_global) == len(weights):
                 delta_weights = [
-                    (w if isinstance(w, torch.Tensor) else torch.tensor(float(w)))
-                    - (g if isinstance(g, torch.Tensor) else torch.tensor(float(g)))
+                    (w.float() if isinstance(w, torch.Tensor) else torch.tensor(float(w)))
+                    - (g.float() if isinstance(g, torch.Tensor) else torch.tensor(float(g)))
                     for w, g in zip(weights, prev_raw_global)
                 ]
             else:
                 delta_weights = [
-                    (w if isinstance(w, torch.Tensor) else torch.tensor(float(w)))
+                    (w.float() if isinstance(w, torch.Tensor) else torch.tensor(float(w)))
                     for w in weights
                 ]
 
             # L2 norm del delta (somma di norme al quadrato di tutti i layer)
             l2_sq = sum(
-                float(dw.norm() ** 2) if isinstance(dw, torch.Tensor)
+                float(dw.float().norm() ** 2) if isinstance(dw, torch.Tensor)
                 else float(dw) ** 2
                 for dw in delta_weights
             )
