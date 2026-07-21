@@ -747,6 +747,7 @@ def run_lira(
     holdout_sessions: list[dict[str, Any]],
     fl_results: dict[int, dict[str, Any]],
     n_shadow: int = 8,
+    shadow_epochs_cap: int | None = None,
 ) -> dict[int, dict[str, Any]]:
     """
     LiRA — Likelihood Ratio Attack, server-side intercept of raw client updates
@@ -836,7 +837,13 @@ def run_lira(
 
     # ── Step 2: Train n_shadow shadow local models ────────────────────────────
     # Shadow epochs: approximate FL convergence without being too slow.
-    shadow_epochs = min(local_epochs * max(total_rounds // 4, 5), 300)
+    # Formula: min(local_epochs × max(rounds//4, 5), 300).
+    # Con epochs=50, rounds≤20 → shadow_epochs=250 (indipendente dai round a causa del max(...,5)).
+    # shadow_epochs_cap sovrascrive il cap di 300 → usare solo per smoke test (es. 20 epoche).
+    # NON usare nei run sperimentali reali: shadow models sottoadatti → LiRA AUC sottostimato.
+    _default_cap = 300
+    _effective_cap = shadow_epochs_cap if shadow_epochs_cap is not None else _default_cap
+    shadow_epochs = min(local_epochs * max(total_rounds // 4, 5), _effective_cap)
 
     def _build_tensor(sess_list: list[dict]) -> torch.Tensor | None:
         rows = []
@@ -1489,6 +1496,16 @@ def parse_args() -> argparse.Namespace:
             "Più shadow = IN/OUT distributions più stabili → AUC più affidabile."
         ),
     )
+    parser.add_argument(
+        "--shadow-epochs-cap", type=int, default=None,
+        help=(
+            "Cap massimo per shadow_epochs in LiRA (override formula automatica). "
+            "Formula default: min(local_epochs × max(rounds//4, 5), 300). "
+            "Usare un valore basso (es. 20) nel smoke test per ridurre il tempo: "
+            "con epochs=50 e rounds=5, la formula darebbe 250 — troppo per un test rapido. "
+            "Non usare nei run sperimentali reali: i shadow models sarebbero sottoadatti."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -1622,9 +1639,11 @@ def main() -> None:
     # Più forte di Yeom e shadow-global perché usa i modelli locali (segnale non ancora
     # distrutto dall'averaging FedProx). Documentato nel paper come attacco primario.
     n_shadow = args.n_shadow if args.n_shadow is not None else cfg.get("lira", {}).get("n_shadow", 8)
+    shadow_cap = args.shadow_epochs_cap  # None → formula automatica; int → override per smoke
     try:
         lira_results = run_lira(
-            cfg, train_sessions, holdout_sessions, fl_results, n_shadow=n_shadow
+            cfg, train_sessions, holdout_sessions, fl_results,
+            n_shadow=n_shadow, shadow_epochs_cap=shadow_cap,
         )
         for rnd, lira_data in lira_results.items():
             if rnd in mia_results:

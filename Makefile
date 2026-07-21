@@ -208,19 +208,25 @@ SEED     ?= 42
 # Override: make experiment-nodp-sweep SEEDS="42 123 456"
 SEEDS    ?= 42 123 456 789 1234
 
-# Smoke test: 5 round, no-DP, n_shadow=4 — solo per verificare che la pipeline giri.
-# AUC non interpretabile con 5 round (troppo poco training).
+# Smoke test: 5 round, no-DP, n_shadow=2, shadow-epochs-cap=20 — verifica pipeline rapida.
+# --shadow-epochs-cap 20: LiRA usa max 20 epoche per shadow model invece di 250 (formula default).
+#   Riduce il tempo da ~30 min a ~3-5 min. NON usare nei run sperimentali reali.
+# --sweep-dir experiments/smoke: isola i risultati — non contamina exp{N}/ né l'Excel globale.
+# AUC non interpretabile (troppo poco training + shadow sottoadatti) — solo "la pipeline gira?".
+SMOKE_DIR := $(EXPERIMENTS)/smoke
 .PHONY: experiment-smoke
 experiment-smoke:
-	@echo "→ Smoke test: 5 round, no-DP, seed=$(SEED), n_shadow=4 (Yeom + Shadow + LiRA)..."
-	@mkdir -p $(EXPERIMENTS)
+	@echo "→ Smoke test: 5 round, no-DP, seed=$(SEED), n_shadow=2, shadow-cap=20..."
+	@mkdir -p $(SMOKE_DIR)
 	$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
 		--config config/experiment.yaml \
 		--no-dp \
 		--rounds 5 \
 		--seed $(SEED) \
-		--n-shadow 4
-	@echo "✓ Smoke test completato — se nessun errore, pipeline OK"
+		--n-shadow 2 \
+		--shadow-epochs-cap 20 \
+		--sweep-dir $(SMOKE_DIR)
+	@echo "✓ Smoke test completato — risultati in $(SMOKE_DIR)/; se no errori, pipeline OK"
 
 # Baseline no-DP: seed singolo. Usare experiment-nodp-sweep per 5 seed (mean±std).
 .PHONY: experiment-nodp
