@@ -215,8 +215,38 @@ class TestRunLiRA:
         fl_rounds = cfg["experiment"]["fl_rounds"]
         for r in range(1, fl_rounds + 1):
             assert r in lira_results, f"LiRA non ha prodotto risultati per il round {r}"
-            auc = lira_results[r]["auc_roc"]
+            auc = lira_results[r]["lira_auc_roc"]
             assert 0.0 <= auc <= 1.0, f"round {r}: LiRA AUC {auc} fuori [0,1]"
+
+    def test_scores_do_not_saturate_the_clip_ceiling(
+        self, tiny_cfg, train_sessions, holdout_sessions
+    ):
+        """
+        Regressione bug 2026-07-21e (varianza IN/OUT asimmetrica per i non-member):
+        prima del fix, lira_non_member_score_mean saturava vicino al tetto di
+        clipping (+20) subito dopo un round warm-started (osservato: +17.9 al
+        round 2 su nodp-sweep2 reale), perché sigma_out per-campione (N=n_shadow,
+        piccolo) poteva collassare quasi a zero mentre sigma_in usava il fallback
+        pooled (molto più ampio) — il rapporto di verosimiglianza finiva dominato
+        dal termine 1/sigma^2 invece che dal segnale di membership reale.
+        Con il pavimento di varianza pooled (global_out_stats_per_cluster) né
+        lira_member_score_mean né lira_non_member_score_mean dovrebbero avvicinarsi
+        al tetto di clipping (±20) in un esperimento sintetico piccolo e pulito.
+        """
+        cfg = copy.deepcopy(tiny_cfg)
+        fl_results = run_exp.run_fl_rounds(cfg, train_sessions, no_dp=True)
+        lira_results = run_exp.run_lira(
+            cfg, train_sessions, holdout_sessions, fl_results,
+            n_shadow=cfg["lira"]["n_shadow"], shadow_epochs_cap=2, no_dp=True,
+        )
+        for r, rd in lira_results.items():
+            for key in ("lira_member_score_mean", "lira_non_member_score_mean"):
+                val = rd[key]
+                assert abs(val) < 15.0, (
+                    f"round {r}: {key}={val} troppo vicino al tetto di clipping "
+                    "(±20) — possibile regressione del fix 2026-07-21e "
+                    "(collasso di varianza IN/OUT per i non-member)"
+                )
 
     def test_lira_attacks_post_dp_updates_not_raw(
         self, tiny_cfg, train_sessions, holdout_sessions
@@ -265,7 +295,7 @@ class TestRunLiRA:
             n_shadow=2, shadow_epochs_cap=2, no_dp=True,
         )
 
-        assert lira_normal[1]["auc_roc"] != lira_scaled[1]["auc_roc"], (
+        assert lira_normal[1]["lira_auc_roc"] != lira_scaled[1]["lira_auc_roc"], (
             "LiRA ha prodotto lo stesso AUC con updates normali e updates scalati "
             "×1000 — sospetto che stia ancora leggendo raw_updates invece di "
             "updates (regressione del bug 2026-07-21c)"

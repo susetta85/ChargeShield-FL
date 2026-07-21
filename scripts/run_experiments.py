@@ -831,6 +831,39 @@ def run_lira(
         round) as the IN reference. Non-members' target_loss is typically high
         (model never saw them), so log_p_in << log_p_out → negative score → correct.
 
+    Fix — asymmetric IN/OUT variance estimation for non-members (2026-07-21e):
+        Discovered from real sweep data (nodp-sweep2, seeds 42/123, fixes a-d
+        already applied): lira_non_member_score_mean spiked to +17.9 at round 2
+        (clip ceiling is ±20) then decayed slowly toward +1.4 by round 10, while
+        lira_member_score_mean stayed flat near 0 throughout — an AUC inversion
+        (0.15-0.27 at rounds 2-4) that is NOT explained by fixes a-d.
+        Root cause: for a genuine non-member, out_losses is the per-sample,
+        cross-shadow spread over just n_shadow (~8) values on that ONE point.
+        Right after a shared warm-start (round >= 2), all shadows for a cluster
+        start from the identical global_weights and have only briefly diverged,
+        so on a point none of them trained on they produce nearly identical
+        reconstructions → σ_out collapses toward the μ×0.05 floor. Meanwhile the
+        IN side for a non-member uses the pooled, cluster-wide
+        global_in_stats_per_cluster fallback (hundreds of samples, naturally
+        much wider σ). Comparing a near-collapsed per-point σ_out against a wide
+        pooled σ_in makes the Gaussian log-likelihood-ratio dominated by the
+        1/σ² term rather than by genuine membership signal. Member scoring does
+        NOT show this because both its IN and OUT sides are already
+        per-sample/small-N (symmetric, so the collapse — when it happens —
+        affects both terms similarly and partly cancels).
+        Fix: compute an analogous pooled, per-cluster/per-round GLOBAL OUT
+        distribution (global_out_stats_per_cluster — same construction as
+        global_in_stats_per_cluster, pooling the complementary OUT
+        observations) and use it as a floor for σ_out — and, symmetrically, for
+        σ_in — so neither side's variance can collapse below what is typically
+        observed across the whole cluster this round. μ_in/μ_out (the actual
+        discriminative signal) are untouched by this fix; only the
+        variance floor changes.
+        Contributing factor: n_shadow=8 ("fast demo" per config/experiment.yaml)
+        makes any per-sample cross-shadow variance estimate inherently noisy;
+        the config itself recommends 16-32 for "paper quality" — increasing
+        n_shadow would also reduce reliance on this floor.
+
     Why this differs from run_fedmia / run_fedmia_shadow:
         Both previous attacks use the GLOBAL aggregated model, which is itself a
         cross-cluster blend — so a cross-cluster, one-shot shadow ensemble is the
@@ -1129,6 +1162,52 @@ def run_lira(
             sigma = max(float(np.std(pooled)), max(mu * 0.05, 1e-4)) if pooled else 0.01
             global_in_stats_per_cluster[cid] = (mu, sigma)
 
+        # Fix — asymmetric IN/OUT variance for non-members (2026-07-21e):
+        # For a genuine non-member, out_losses is built from n_shadow (~8) MSE
+        # values on THAT ONE sample — a per-sample, cross-shadow spread. Right
+        # after a shared warm-start (round ≥ 2), all shadows for a cluster begin
+        # from the identical global_weights and have only briefly diverged, so
+        # on a point none of them trained on they tend to produce nearly
+        # identical reconstructions → σ_out collapses toward the μ×0.05 floor
+        # (observed: as low as ~1e-4). Meanwhile the IN side for a non-member
+        # uses the pooled, cluster-wide global_in_stats_per_cluster fallback
+        # above (hundreds of samples, naturally much wider σ). Comparing a
+        # near-collapsed per-point σ_out against a wide pooled σ_in makes the
+        # Gaussian log-likelihood-ratio dominated by the 1/σ² term rather than
+        # by genuine membership signal, producing non-member scores that spike
+        # to the clip ceiling (empirically +17.9 at round 2, seed 42,
+        # nodp-sweep2) while member scores stay flat near 0 (member scoring is
+        # symmetric: both its IN and OUT sides are already per-sample/small-N).
+        # Fix: compute an analogous pooled, per-cluster/per-round GLOBAL OUT
+        # distribution (same construction as global_in_stats_per_cluster, just
+        # pooling the complementary — OUT — observations) and use it as a
+        # floor for σ_out (and, symmetrically, for σ_in) so neither side's
+        # variance can collapse below what is typically observed across the
+        # whole cluster this round. This does not touch μ_in/μ_out (the
+        # discriminative signal itself) — only prevents an under-estimated
+        # per-sample σ from artificially amplifying the ratio.
+        global_out_stats_per_cluster: dict[str, tuple[float, float]] = {}
+        for cid in _CLUSTER_IDS:
+            in_sets    = shadow_in_idx_sets_per_cluster[cid]
+            mse_matrix = shadow_mse_matrix_per_cluster.get(cid, [])
+            pooled_out: list[float] = []
+            for j in range(n_eval):
+                is_mem    = j < len(members_bal)
+                train_idx = _train_idx.get(id(eval_samples[j])) if is_mem else None
+                for si, in_set in enumerate(in_sets):
+                    if si >= len(mse_matrix):
+                        continue
+                    mse = mse_matrix[si][j]
+                    if mse is None:
+                        continue
+                    if is_mem and train_idx is not None and train_idx in in_set:
+                        continue  # this (shadow, sample) pair is an IN observation, skip
+                    pooled_out.append(mse)
+
+            mu_o    = float(np.mean(pooled_out)) if pooled_out else 0.05
+            sigma_o = max(float(np.std(pooled_out)), max(mu_o * 0.05, 1e-4)) if pooled_out else 0.01
+            global_out_stats_per_cluster[cid] = (mu_o, sigma_o)
+
         round_member_scores:    list[float] = []
         round_nonmember_scores: list[float] = []
 
@@ -1153,6 +1232,10 @@ def run_lira(
             _cluster_shadow_mse     = shadow_mse_matrix_per_cluster.get(_client_cluster_id, [])
             _cluster_shadow_in_sets = shadow_in_idx_sets_per_cluster.get(_client_cluster_id, [])
             _cluster_mu_in_fb, _cluster_sigma_in_fb = global_in_stats_per_cluster.get(
+                _client_cluster_id, (0.05, 0.01)
+            )
+            # Fix 2026-07-21e: pooled OUT floor — see comment above global_out_stats_per_cluster.
+            _cluster_mu_out_fb, _cluster_sigma_out_fb = global_out_stats_per_cluster.get(
                 _client_cluster_id, (0.05, 0.01)
             )
             if not _cluster_shadow_mse:
@@ -1204,15 +1287,32 @@ def run_lira(
                     continue  # insufficient calibration data
 
                 μ_out = float(np.mean(out_losses))
-                # σ_min = 5% of μ (scale-adaptive): prevents collapse to 1e-8 when shadow
-                # models converge to similar outputs, which causes ±10^8 score explosion.
-                σ_out = max(float(np.std(out_losses)), max(μ_out * 0.05, 1e-4))
+                # σ floor (fix 2026-07-21e): the per-sample cross-shadow std alone can
+                # collapse to ~0 when all n_shadow (~8) shadows agree on this one point
+                # (typically right after a shared warm-start, before they've diverged —
+                # see comment on global_out_stats_per_cluster above). Floor it with the
+                # larger of: the μ×0.05 scale-adaptive floor (original guard, prevents
+                # 1e-8 collapse), and the pooled per-cluster/per-round OUT spread
+                # (reflects the actual point-to-point + shadow-to-shadow variability
+                # observed this round, not just this one sample's near-zero spread).
+                σ_out = max(
+                    float(np.std(out_losses)),
+                    max(μ_out * 0.05, 1e-4),
+                    _cluster_sigma_out_fb,
+                )
 
                 # Use per-sample IN distribution if available; fall back to this
                 # client's cluster-specific global IN stats (not a cross-cluster global).
+                # Same σ floor rationale as σ_out above — applied symmetrically so
+                # neither side's variance can be artificially tighter than the other
+                # purely due to small-N (n_shadow≈8) per-sample estimation noise.
                 if len(in_losses) >= 2:
                     μ_in = float(np.mean(in_losses))
-                    σ_in = max(float(np.std(in_losses)), max(μ_in * 0.05, 1e-4))
+                    σ_in = max(
+                        float(np.std(in_losses)),
+                        max(μ_in * 0.05, 1e-4),
+                        _cluster_sigma_in_fb,
+                    )
                 else:
                     μ_in = _cluster_mu_in_fb
                     σ_in = _cluster_sigma_in_fb

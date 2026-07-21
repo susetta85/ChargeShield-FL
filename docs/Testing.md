@@ -29,7 +29,7 @@
 5. [Running the Test Suites](#5-running-the-test-suites)
 6. [Coverage Report](#6-coverage-report)
 7. [Integration Test Strategy](#7-integration-test-strategy)
-8. [Sprint 9 Integration Tests — `scripts/run_experiments.py` Pipeline (10 tests)](#8-sprint-9-integration-tests--scriptsrun_experimentspy-pipeline-10-tests)
+8. [Sprint 9 Integration Tests — `scripts/run_experiments.py` Pipeline (11 tests)](#8-sprint-9-integration-tests--scriptsrun_experimentspy-pipeline-11-tests)
 9. [References](#9-references)
 
 ---
@@ -439,7 +439,7 @@ Each configuration is repeated with 5 different random seeds for variance estima
 
 ---
 
-## 8. Sprint 9 Integration Tests — `scripts/run_experiments.py` Pipeline (10 tests)
+## 8. Sprint 9 Integration Tests — `scripts/run_experiments.py` Pipeline (11 tests)
 
 **File:** `tests/test_run_experiments_integration.py`
 **Added:** 2026-07-21, alongside the LiRA shadow/target mismatch fixes described in the README's Engineering Fixes log.
@@ -457,9 +457,12 @@ This test file closes that gap with a small-scale but REAL execution of the pipe
 | 5 | `test_members_and_non_members_must_differ` | `run_fedmia` (precondition) | Asserts the member/non-member session-ID pools used by the fixtures are disjoint, per the function's own documented precondition. |
 | 6 | `test_auc_in_valid_range_and_covers_all_rounds` | `run_lira` | Asserts LiRA produces an AUC in [0, 1] for every FL round, not just a subset. |
 | 7 | `test_lira_attacks_post_dp_updates_not_raw` | `run_lira` | **Regression test for Fix 2026-07-21c.** Builds two copies of `fl_results` that are identical except `updates` is scaled ×1000 in one of them (`raw_updates` untouched in both), and asserts `run_lira()`'s output changes — i.e. that the function is actually reading `updates`, not silently falling back to `raw_updates` as it did before the fix. |
-| 8 | `test_no_false_positive_without_attack` | `run_ids` | Asserts `byzantine_detected` is `False` in every round when no Byzantine attack is configured — regression guard for the Krum threshold calibration (Sprint 9). |
-| 9 | `test_detects_byzantine_gradient_scaling` | `run_ids` | Enables a ×10 gradient-scaling attack on the `highway` cluster and asserts at least one round flags `byzantine_detected=True`. |
-| 10 | `test_no_dp_disables_budget_exhausted_alerts` | `run_ids` | With `no_dp=True`, asserts no alert contains `BUDGET_EXHAUSTED` in its reasons — regression guard for Fix 3a (`epsilon=1000.0` override when DP is off). |
+| 8 | `test_scores_do_not_saturate_the_clip_ceiling` | `run_lira` | **Regression test for Fix 2026-07-21e.** Asserts `lira_member_score_mean`/`lira_non_member_score_mean` stay well below the ±20 clip ceiling in every round — before the fix, real sweep data (`nodp-sweep2`) showed `lira_non_member_score_mean` spiking to +17.9 at round 2 due to a collapsed per-sample OUT variance for non-members. |
+| 9 | `test_no_false_positive_without_attack` | `run_ids` | Asserts `byzantine_detected` is `False` in every round when no Byzantine attack is configured — regression guard for the Krum threshold calibration (Sprint 9). |
+| 10 | `test_detects_byzantine_gradient_scaling` | `run_ids` | Enables a ×10 gradient-scaling attack on the `highway` cluster and asserts at least one round flags `byzantine_detected=True`. |
+| 11 | `test_no_dp_disables_budget_exhausted_alerts` | `run_ids` | With `no_dp=True`, asserts no alert contains `BUDGET_EXHAUSTED` in its reasons — regression guard for Fix 3a (`epsilon=1000.0` override when DP is off). |
+
+**Correction (2026-07-21, same day):** tests #6 and #7 originally read `lira_results[r]["auc_roc"]`, but `run_lira()` actually returns the key `lira_auc_roc` (see §8 test table above vs. the `run_fedmia()`/`run_fedmia_shadow()` results dicts, which do use plain `auc_roc` — the naming differs between the two functions' return schemas). This was a bug in the test file itself, caught while adding test #8 above and cross-checking key names against `run_lira()`'s docstring return-value spec; fixed before these tests were ever run.
 
 **Running:**
 
