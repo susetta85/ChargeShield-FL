@@ -54,6 +54,24 @@ def _compute_max_power_kw(kwh: float, start: datetime, end: datetime) -> float:
     return round(kwh / duration_hours, 3)
 
 
+def _normalize_acn_id(value: Any) -> str:
+    """
+    Normalizza siteID/clusterID a stringa zero-padded a 4 cifre (2026-07-22,
+    trovato scaricando caltech_sessions_2018.json via l'API reale): l'API di
+    ev.caltech.edu restituisce questi campi come stringa zero-padded per la
+    maggior parte dei record (es. "0002") ma come intero per un sottoinsieme
+    (es. 2, senza padding) — stesso sito, tipo/formato diverso. Un semplice
+    str(2) darebbe "2" ≠ "0002": non farebbe combaciare i due gruppi in un
+    confronto per uguaglianza. Qui si forza sempre la stessa rappresentazione
+    zero-padded a 4 cifre osservata nei record string-typed del dataset.
+    """
+    if value is None or value == "":
+        return ""
+    if isinstance(value, int):
+        return f"{value:04d}"
+    return str(value)
+
+
 class ACNDataset(AbstractDataset):
     """
     Adapter per il dataset ACN-Data in formato JSON.
@@ -209,8 +227,16 @@ class ACNDataset(AbstractDataset):
             # None come default per ID — evita falsi duplicati su "" in join e dedup
             "session_id":           item.get("sessionID") or None,
             "node_id":              item.get("stationID", ""),
-            "cluster_id":           item.get("clusterID", ""),
-            "site_id":              item.get("siteID", ""),
+            # _normalize_acn_id(): alcuni record dell'API ev.caltech.edu restituiscono
+            # clusterID/siteID come intero invece che stringa zero-padded (es. 2
+            # invece di "0002") — confermato su un sottoinsieme di record 2018
+            # (2081/15297 in caltech_sessions_2018.json). Un semplice str(2) darebbe
+            # "2", non "0002": non basterebbe a far combaciare i record int-typed
+            # con quelli string-typed dello stesso sito in un confronto per
+            # uguaglianza — serve lo zero-padding a 4 cifre osservato su tutti i
+            # siteID/clusterID string-typed del dataset.
+            "cluster_id":           _normalize_acn_id(item.get("clusterID")),
+            "site_id":              _normalize_acn_id(item.get("siteID")),
             "user_id":              item.get("userID") or None,
             "start_time":           start.isoformat(),
             "end_time":             end.isoformat(),
