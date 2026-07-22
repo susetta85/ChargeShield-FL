@@ -96,12 +96,18 @@ status:
 	@docker ps --filter "name=clab-chargeshield" \
 		--format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
+# NOTA (2026-07-22, review indipendente fresh-pass): target non ancora
+# funzionale indipendentemente da questo fix — containerlab/topology.clab.yml
+# non esiste ancora (l'integrazione Containerlab resta un task aperto), quindi
+# nessuno di questi container esiste oggi. Nome sito aggiornato comunque da
+# "highway" (schema fittizio a 4 cluster, superato) a "caltech" (uno dei 3
+# siti reali ACN-Data, Sprint 10) per coerenza quando quel task verrà ripreso.
 .PHONY: logs
 logs:
 	@echo "=== aggregator ==="
 	docker logs clab-chargeshield-fl-aggregator --tail 50
-	@echo "=== highway ==="
-	docker logs clab-chargeshield-fl-highway --tail 20
+	@echo "=== caltech ==="
+	docker logs clab-chargeshield-fl-caltech --tail 20
 
 # ─── Controllo dipendenze ─────────────────────────────────────────────────────
 # _check-deps: verifica che torch (e le altre dipendenze) siano installate.

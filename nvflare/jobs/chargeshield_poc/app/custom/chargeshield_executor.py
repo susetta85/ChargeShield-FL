@@ -63,6 +63,12 @@ cluster_id dal nome del sito NVFLARE (fl_ctx.get_identity_name(), che
 project.yml garantisce coincidere con highway/urban/residential/corporate)
 quando riconosciuto, usando il valore di config solo come fallback (con
 warning) se il nome del sito non corrisponde a nessun cluster noto.
+NOTA (2026-07-22, più tardi lo stesso giorno — trovato da review indipendente
+fresh-pass, cosmetico): questi nomi (highway/urban/residential/corporate) sono
+storici — narrano il bug così com'era quando fu trovato. Da Sprint 10 in poi
+`nvflare/project.yml` nomina i 3 siti reali `caltech`/`jpl`/`office1` (vedi
+sezione "3 SITI REALI" più sotto in questo file) — il meccanismo di derivazione
+resta identico, solo i nomi concreti sono cambiati.
 
 FIX 2026-07-22 (review indipendente fase 3-5, bug CRITICO trovato in _setup() —
 non un VERIFY, un bug funzionale che avrebbe reso l'intero client inutilizzabile):
@@ -291,10 +297,12 @@ class ChargeShieldExecutor(Executor):
 
         # Fix 2026-07-22 (review A1): deriva cluster_id dal nome del sito NVFLARE
         # invece di fidarsi ciecamente del valore in config_fed_client.json —
-        # nvflare/project.yml nomina i 4 siti client esattamente highway/urban/
-        # residential/corporate, e lo stesso config_fed_client.json (con
-        # cluster_id="highway" hardcoded) viene deployato a "@ALL" i siti in
-        # meta.json. Senza questo, ogni sito userebbe cluster_id="highway".
+        # nvflare/project.yml nomina i siti client (oggi: caltech/jpl/office1,
+        # i 3 siti reali ACN-Data — storicamente erano highway/urban/
+        # residential/corporate, vedi nota in cima al file), e lo stesso
+        # config_fed_client.json (con cluster_id hardcoded a un solo sito)
+        # viene deployato a "@ALL" i siti in meta.json. Senza questo, ogni
+        # sito userebbe lo stesso cluster_id hardcoded in config.
         if site_name in _CLUSTER_IDS:
             if site_name != self._cluster_id:
                 logger.warning(

@@ -214,7 +214,13 @@ class ChargeShieldAggregator(Aggregator):
     def __init__(
         self,
         auditor_config_path: str = "config/auditor.yaml",
-        min_clients: int = 4,
+        # Fix 2026-07-22 (review indipendente fresh-pass): default stale dal
+        # vecchio schema a 4 cluster fittizi. config_fed_server.json passa
+        # sempre min_clients=3 esplicitamente (quindi la config attuale non era
+        # affetta), ma questo default silenziosamente reintrodurrebbe il valore
+        # sbagliato per qualunque altro caller/config futura che lo ometta —
+        # allineato a 3, il numero di siti ACN-Data reali (caltech/jpl/office1).
+        min_clients: int = 3,
         max_grad_norm: float = 1.0,
         epsilon: float | None = None,
         delta: float = 1.0e-5,
@@ -265,6 +271,23 @@ class ChargeShieldAggregator(Aggregator):
         # Rinominato da _prev_raw_global (fase 2) perché con la DP cablata
         # (fase 3) non è più necessariamente "raw" per ogni dp_mode.
         self._prev_global_weights: list[Any] | None = None
+        # Fix 2026-07-22 (review indipendente fresh-pass): _prev_global_weights
+        # sopra è il modello POST-DP effettivamente distribuito ai client (corretto
+        # come reference_weights per il clip lato server di dp-fedavg — è "il
+        # modello che il client ha ricevuto"). Ma _run_ids_analysis() lo usava
+        # ANCHE come baseline per il delta peer-relative dell'IDS — sbagliato:
+        # dal round 2 in poi il rumore DP del round precedente si propaga nella
+        # baseline, gonfiando i delta di ogni client e rischiando falsi
+        # GRADIENT_EXPLOSION/Krum che run_ids() nella simulazione evita apposta
+        # tenendo un raw_global_weights separato (media pulita pre-DP, mai
+        # distribuita, usata SOLO come riferimento IDS — vedi run_fl_rounds()
+        # "Calcola raw_global_weights" e run_ids() "IDS usa pesi PRE-DP").
+        # Questo campo replica esattamente quella separazione: aggiornato a
+        # fine di ogni aggregate() con _raw_global_weights_for_export (già
+        # None sotto dp_mode="local", stessa degradazione attesa e documentata
+        # di run_ids() in quel caso), usato da _run_ids_analysis() al posto di
+        # _prev_global_weights.
+        self._prev_raw_global_weights: list[Any] | None = None
 
     # ── Lazy init ────────────────────────────────────────────────────────────
 
@@ -448,10 +471,19 @@ class ChargeShieldAggregator(Aggregator):
                 n_participants=aggregated.n_participants or self._min_clients,
             )
 
-        # Aggiorna il riferimento per il delta peer-relative IDS E per il clip
-        # server-side di dp-fedavg al prossimo round — è il modello che verrà
-        # distribuito a tutti i client come punto di partenza del round successivo.
+        # Aggiorna il riferimento per il clip server-side di dp-fedavg al
+        # prossimo round — è il modello che verrà distribuito a tutti i client
+        # come punto di partenza del round successivo (POST eventuale rumore
+        # central-DP sopra — corretto qui, perché è esattamente "il modello che
+        # il client riceverà").
         self._prev_global_weights = aggregated.global_weights
+        # Fix 2026-07-22: baseline SEPARATA e pulita (pre-DP) per il prossimo
+        # _run_ids_analysis() — NON aggiornata da aggregated.global_weights
+        # (che sopra include il rumore). _raw_global_weights_for_export è già
+        # stato calcolato sopra con la stessa semantica di run_fl_rounds()
+        # (None sotto dp_mode="local", altrimenti media pesata degli update
+        # raw di QUESTO round) — lo riusiamo qui invece di ricalcolarlo.
+        self._prev_raw_global_weights = _raw_global_weights_for_export
 
         # ── Fase 5 (continua): entry fl_results-compatibile per questo round ──
         # Stesso schema esatto di run_fl_rounds() (vedi docstring modulo) —
@@ -505,11 +537,14 @@ class ChargeShieldAggregator(Aggregator):
 
         for u in updates:
             weights = u.weights or []
-            if self._prev_global_weights is not None and len(self._prev_global_weights) == len(weights):
+            # Fix 2026-07-22: baseline PRE-DP dedicata (_prev_raw_global_weights),
+            # non _prev_global_weights (che è POST-DP dal round 2 in poi) — vedi
+            # commento su _prev_raw_global_weights nell'__init__ per il perché.
+            if self._prev_raw_global_weights is not None and len(self._prev_raw_global_weights) == len(weights):
                 delta = [
                     (w.float() if isinstance(w, torch.Tensor) else torch.tensor(float(w)))
                     - (g.float() if isinstance(g, torch.Tensor) else torch.tensor(float(g)))
-                    for w, g in zip(weights, self._prev_global_weights)
+                    for w, g in zip(weights, self._prev_raw_global_weights)
                 ]
             else:
                 delta = [
