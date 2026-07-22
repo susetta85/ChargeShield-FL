@@ -60,10 +60,68 @@ Cosa fa in più da FASE 4 (2026-07-22, sera) — export strutturato:
     - Non ancora fatto: nessuna analisi MIA (LiRA/Shadow/Yeom) qui — quella è
       fase 5 (raw-update extraction per gli attacchi), non fase 4.
 
-Cosa NON fa ancora (fase 5+, vedi docs/NVFlareIntegration.md):
-    - Nessun attacco MIA (LiRA/Shadow/Yeom) — solo IDS/Auditor per-round.
-      accept() vede già ogni update raw per-client individualmente (necessario
-      per LiRA), ma nulla lo consuma ancora per quello scopo.
+Cosa fa in più da FASE 5 (2026-07-22, notte) — raw-update extraction per LiRA/Shadow:
+    - DECISIONE DI DESIGN: LiRA (scripts/run_experiments.py::run_lira()) è già,
+      anche nella simulazione, un'analisi POST-HOC che itera sull'intero dict
+      fl_results DOPO che tutti i round sono finiti — non un componente che
+      gira "dentro" il training loop. run_lira() ha richiesto CINQUE round di
+      fix empirici (vedi la sua docstring) trovati eseguendo davvero il codice
+      su dati reali; riscriverlo "alla cieca" per girare dentro aggregate()
+      (senza poter eseguire nulla in questo sandbox — niente torch/nvflare)
+      sarebbe con altissima probabilità un secondo tentativo silenziosamente
+      rotto. Scelta fatta invece: l'Aggregator si limita a esportare, per ogni
+      round, ESATTAMENTE la stessa struttura dati che run_fl_rounds() produce
+      in memoria per la simulazione (stessi 5 campi: mean_loss, n_participants,
+      updates, raw_updates, raw_global_weights, global_weights — vedi
+      run_fl_rounds() per il contratto esatto). Un nuovo script separato,
+      scripts/run_nvflare_mia.py, carica questo dump e chiama run_lira()/
+      run_ids()/run_fedmia()/save_results() SENZA MODIFICARLI — zero rischio
+      di introdurre bug nuovi nella logica di attacco già validata.
+    - _fl_results_history[round_num] viene costruito in aggregate() con:
+        "raw_updates":        received_updates (i GradientUpdate così come
+                               arrivati in accept(), PRIMA di qualunque DP
+                               server-side) se dp_mode != "local", altrimenti
+                               None — stessa semantica di _store_raw in
+                               run_fl_rounds() (sotto local DP il server non
+                               deve mai vedere nulla di meno rumoroso di
+                               quello che i client hanno già inviato).
+        "raw_global_weights": media pesata (per n_samples) dei soli
+                               raw_updates, quando non-None — stessa formula
+                               di run_fl_rounds(), usata da run_ids() come
+                               riferimento pulito per il delta peer-relative.
+        "updates":             updates_for_fedavg (ciò che è stato REALMENTE
+                               passato a FedAvgAggregator — post-privatize
+                               server-side in dp-fedavg, as-received in
+                               central/local).
+        "global_weights":      aggregated.global_weights DOPO l'eventuale
+                               rumore central-DP sull'aggregato — identico
+                               a ciò che viene ridistribuito ai client.
+      Nota su "central": qui received_updates sono GIA' clippati (fatto dal
+      client, fase 3) — a differenza della simulazione, dove raw_updates è il
+      valore PRIMA del clip (stesso processo, ordine di codice diverso). Non è
+      un mismatch per run_ids()/run_lira(): entrambi vogliono "la vista meno
+      offuscata dal rumore DP disponibile al server", che per central DP è
+      esattamente il valore clippato-non-rumorizzato — la stessa cosa,
+      raggiunta per una via diversa (client-side invece che stessa riga di
+      codice). Nessun round 0 viene esportato (l'Aggregator non vede mai i
+      pesi di init casuale, generati da persistor/shareable_generator prima
+      del round 1) — run_ids()/run_lira() gestiscono già round 0 assente
+      (fallback a None, degradazione nota, non un crash).
+    - _export_fl_results() fa pickle (non JSON: i GradientUpdate contengono
+      torch.Tensor) dell'intera cronologia su disco dopo ogni round, stesso
+      pattern overwrite-non-append di _export_results() (fase 4). Default:
+      experiments/nvflare_fl_results.pkl, configurabile via
+      `fl_results_export_path`.
+    - Non ancora fatto: nessun no_dp bypass lato NVFLARE (l'Aggregator/
+      Executor non hanno un flag equivalente a --no-dp della simulazione —
+      dp_mode è sempre uno dei 3 valori, non c'è "disabilita tutto") — vedi
+      scripts/run_nvflare_mia.py per come questo viene gestito (assume
+      no_dp=False sempre quando chiama run_ids()/run_lira()).
+
+Cosa NON fa ancora (fase 6+, vedi docs/NVFlareIntegration.md):
+    - Nessuna analisi LiRA/Shadow/Yeom LIVE dentro aggregate() — per design
+      (vedi sopra), resta un passo offline separato via
+      scripts/run_nvflare_mia.py, eseguito dopo che il job NVFLARE finisce.
     - Non gestisce round con partecipazione parziale (drop-out) — stesso
       limite già segnalato nella review scalabilità/realismo di oggi per
       FedAvgAggregator (min_participants=tutti i client).
@@ -143,6 +201,14 @@ class ChargeShieldAggregator(Aggregator):
                      (fase 4) — sovrascritto per intero dopo ogni round.
                      Default: experiments/nvflare_ids_audit_results.json
                      (stessa dir, già in .gitignore, usata dalla simulazione).
+        fl_results_export_path: path (relativo alla root del progetto) del
+                     file PICKLE dove viene scritta, dopo ogni round, la
+                     stessa struttura dati che run_fl_rounds() produce nella
+                     simulazione (mean_loss, n_participants, updates,
+                     raw_updates, raw_global_weights, global_weights) — fase
+                     5, consumata offline da scripts/run_nvflare_mia.py per
+                     eseguire LiRA/Shadow/Yeom SENZA reimplementarli qui.
+                     Default: experiments/nvflare_fl_results.pkl.
     """
 
     def __init__(
@@ -158,6 +224,7 @@ class ChargeShieldAggregator(Aggregator):
         krum_threshold: float = 3.5,
         dp_mode: str = "dp-fedavg",
         results_export_path: str = "experiments/nvflare_ids_audit_results.json",
+        fl_results_export_path: str = "experiments/nvflare_fl_results.pkl",
     ):
         super().__init__()
         self._auditor_config_path = str(_PROJECT_ROOT / auditor_config_path)
@@ -171,9 +238,14 @@ class ChargeShieldAggregator(Aggregator):
         self._krum_threshold = krum_threshold
         self._dp_mode = dp_mode
         self._results_export_path = _PROJECT_ROOT / results_export_path
+        self._fl_results_export_path = _PROJECT_ROOT / fl_results_export_path
         # Cronologia IDS/Auditor per-round (fase 4) — {round_num: {...}},
         # scritta per intero su self._results_export_path dopo ogni round.
         self._audit_history: dict[int, dict[str, Any]] = {}
+        # Cronologia "fl_results"-compatibile per-round (fase 5) — stesso
+        # schema di run_fl_rounds(), scritta per intero (pickle) su
+        # self._fl_results_export_path dopo ogni round.
+        self._fl_results_history: dict[int, dict[str, Any]] = {}
 
         # Istanziati lazy in _ensure_components() — evita di importare
         # torch/ml/auditor/ids al momento della definizione della classe
@@ -330,6 +402,17 @@ class ChargeShieldAggregator(Aggregator):
         # preferisce raw_updates quando esistono.
         self._run_ids_analysis(received_updates)
 
+        # ── Fase 5: raw-update extraction per LiRA/Shadow (vedi docstring modulo) ──
+        # raw_updates/raw_global_weights: None sotto "local" (il server non deve
+        # mai vedere nulla di meno rumoroso di quanto il client ha inviato),
+        # altrimenti received_updates così come arrivati in accept() — stessa
+        # semantica di _store_raw in run_fl_rounds().
+        _raw_updates_for_export = received_updates if self._dp_mode != "local" else None
+        _raw_global_weights_for_export = (
+            self._weighted_average_weights(received_updates)
+            if _raw_updates_for_export is not None else None
+        )
+
         if aggregated is None or not aggregated.global_weights:
             logger.error(
                 f"Round {self._round_num}: FedAvgAggregator non ha prodotto un "
@@ -350,6 +433,20 @@ class ChargeShieldAggregator(Aggregator):
         # server-side di dp-fedavg al prossimo round — è il modello che verrà
         # distribuito a tutti i client come punto di partenza del round successivo.
         self._prev_global_weights = aggregated.global_weights
+
+        # ── Fase 5 (continua): entry fl_results-compatibile per questo round ──
+        # Stesso schema esatto di run_fl_rounds() (vedi docstring modulo) —
+        # global_weights qui è già POST eventuale rumore central-DP sopra,
+        # identico a ciò che viene ridistribuito ai client.
+        self._fl_results_history[self._round_num] = {
+            "mean_loss": aggregated.mean_loss,
+            "n_participants": aggregated.n_participants,
+            "updates": updates_for_fedavg,
+            "raw_updates": _raw_updates_for_export,
+            "raw_global_weights": _raw_global_weights_for_export,
+            "global_weights": aggregated.global_weights,
+        }
+        self._export_fl_results()
 
         outgoing_weights = {
             k: (w.detach().cpu().numpy() if hasattr(w, "detach") else np.asarray(w))
@@ -495,3 +592,63 @@ class ChargeShieldAggregator(Aggregator):
             # risultati — logga e continua (stesso principio difensivo di
             # accept() sopra: un errore qui non deve bloccare l'addestramento).
             logger.error(f"ChargeShieldAggregator._export_results: scrittura fallita: {exc}")
+
+    # ── Fase 5: raw-update extraction per LiRA/Shadow ───────────────────────
+
+    @staticmethod
+    def _weighted_average_weights(updates: list[Any]) -> list[Any] | None:
+        """
+        Media pesata (per n_samples) dei pesi di una lista di GradientUpdate —
+        STESSA formula usata per raw_global_weights in run_fl_rounds()
+        (scripts/run_experiments.py, righe vicino a "Calcola raw_global_weights").
+        Restituisce None se updates è vuota o il primo update non ha pesi.
+        """
+        import torch
+
+        if not updates or not updates[0].weights:
+            return None
+        n_w = len(updates[0].weights)
+        total = sum(u.n_samples for u in updates) or len(updates)
+        averaged = []
+        for i in range(n_w):
+            wavg = sum(
+                (u.weights[i] if isinstance(u.weights[i], torch.Tensor)
+                 else torch.tensor(float(u.weights[i])))
+                * (u.n_samples / total)
+                for u in updates
+            )
+            averaged.append(wavg)
+        return averaged
+
+    def _export_fl_results(self) -> None:
+        """
+        Scrive self._fl_results_history per intero (pickle) su
+        self._fl_results_export_path dopo ogni round — stesso pattern
+        overwrite-non-append di _export_results() (fase 4), stessa
+        motivazione difensiva (mai far fallire il round FL per un errore
+        di I/O). Pickle invece di JSON: gli elementi di "updates"/
+        "raw_updates" sono oggetti ml.base_ml.GradientUpdate contenenti
+        torch.Tensor, non serializzabili in JSON senza perdita di fedeltà —
+        e la lettura (scripts/run_nvflare_mia.py) li passa direttamente,
+        invariati, a run_lira()/run_ids() che si aspettano esattamente
+        questo tipo. VERIFY: stessa cautela sul path di _export_results()
+        (working directory/permessi di scrittura non confermati in un vero
+        deployment NVFLARE).
+        """
+        import pickle
+
+        try:
+            self._fl_results_export_path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "meta": {
+                    "dp_mode": self._dp_mode,
+                    "epsilon": self._epsilon,
+                    "delta": self._delta,
+                    "max_grad_norm": self._max_grad_norm,
+                },
+                "rounds": dict(self._fl_results_history),
+            }
+            with open(self._fl_results_export_path, "wb") as f:
+                pickle.dump(payload, f)
+        except OSError as exc:
+            logger.error(f"ChargeShieldAggregator._export_fl_results: scrittura fallita: {exc}")
