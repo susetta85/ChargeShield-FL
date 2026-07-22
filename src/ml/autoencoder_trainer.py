@@ -174,7 +174,7 @@ class AutoencoderTrainer(AbstractMLModel):
         tensor = self._sessions_to_tensor(sessions)
         if tensor is None:
             logger.warning(f"[{self.node_id}] Nessuna sessione valida — skip training")
-            return GradientUpdate(
+            _skip_update = GradientUpdate(
                 node_id=self.node_id,
                 cluster_id=self.cluster_id,
                 round_num=round_num,
@@ -183,6 +183,28 @@ class AutoencoderTrainer(AbstractMLModel):
                 loss=None,
                 n_samples=0,
             )
+            # Fix 2026-07-22 (review post-wiring ML Plane, commit 1ca713d):
+            # questo early-return NON emetteva alcun evento ML Plane, a
+            # differenza del percorso normale sotto (riga ~239) e del percorso
+            # "0 batch prodotti" (riga ~215, effective_samples=0 ma comunque
+            # emesso). Prima del wiring reale era innocuo — run_fl_rounds()
+            # appendeva comunque `update` alla propria lista locale a
+            # prescindere da cosa il trainer emettesse internamente. Ora che
+            # results[round_num]["raw_updates"]/["updates"] sono popolati
+            # leggendo da FLArtifactCollector (src/ml/ml_plane.py), un client
+            # che finisce qui (0 sessioni valide questo round) sarebbe stato
+            # silenziosamente ASSENTE da entrambe le liste — non solo con
+            # pesi stale, ma proprio mancante, cambiando silenziosamente `n`
+            # per il Krum score peer-relative di ogni altro client in
+            # run_ids() quel round. Emettiamo quindi anche qui, con lo stesso
+            # evento/livello del percorso normale.
+            self.emit_event(MLPlaneEvent(
+                event_type="gradient_upload",
+                purdue_level=1,
+                payload=_skip_update,
+                round_num=round_num,
+            ))
+            return _skip_update
 
         dataset    = TensorDataset(tensor)
         # Generator con seed determinístico per riproducibilità dello shuffle tra run.

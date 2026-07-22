@@ -132,6 +132,23 @@ class GradientManager(AbstractMLModel):
         """
         if not update.weights:
             logger.warning(f"[{update.node_id}] Pesi vuoti — skip DP")
+            # Fix 2026-07-22 (review post-wiring ML Plane, commit 1ca713d):
+            # senza questa emit_event(), un update con pesi vuoti sarebbe
+            # silenziosamente assente da collector.privatized_updates(round_num)
+            # — non solo "non privatizzato", ma proprio mancante dalla lista
+            # "updates" che FedMIA/run_ids() consumano, cambiando silenziosamente
+            # `n` per tutti gli altri client quel round (stessa classe di bug
+            # trovata in AutoencoderTrainer.train_local(), vedi commento lì).
+            # Riemettiamo `update` invariato come purdue_level=2: è la scelta
+            # corretta perché non c'è nulla da privatizzare (pesi vuoti), quindi
+            # "non privatizzato" È il dato reale osservato in questo round.
+            self.emit_event(MLPlaneEvent(
+                event_type="gradient_upload",
+                purdue_level=2,
+                payload=update,
+                round_num=update.round_num,
+                metadata={"noise_perturbation_applied": False, "empty_weights_skip": True},
+            ))
             return update
 
         # Step 1: clip norma L2 del delta rispetto al modello ricevuto a inizio
@@ -240,6 +257,17 @@ class GradientManager(AbstractMLModel):
         """
         if not update.weights:
             logger.warning(f"[{update.node_id}] Pesi vuoti — skip clip")
+            # Fix 2026-07-22 — stesso motivo dell'analogo early-return in
+            # privatize() qui sopra: senza emit_event() questo nodo sarebbe
+            # silenziosamente assente da collector.privatized_updates(round_num)
+            # in modalità central DP.
+            self.emit_event(MLPlaneEvent(
+                event_type="gradient_upload",
+                purdue_level=2,
+                payload=update,
+                round_num=update.round_num,
+                metadata={"clipped_only_central_dp": True, "empty_weights_skip": True},
+            ))
             return update
 
         clipped = self._clip_weights(update.weights, reference=reference_weights, weight_keys=weight_keys)
