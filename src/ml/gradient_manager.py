@@ -244,7 +244,7 @@ class GradientManager(AbstractMLModel):
 
         clipped = self._clip_weights(update.weights, reference=reference_weights, weight_keys=weight_keys)
 
-        return GradientUpdate(
+        clipped_update = GradientUpdate(
             node_id=update.node_id,
             cluster_id=update.cluster_id,
             round_num=update.round_num,
@@ -260,6 +260,24 @@ class GradientManager(AbstractMLModel):
                 "max_grad_norm": self.max_grad_norm,
             },
         )
+
+        # FIX 2026-07-22 (ML Plane realmente usato): a differenza di
+        # privatize(), clip_only() non emetteva MAI un evento ML Plane —
+        # in modalità "central" DP (l'unica che chiama questo metodo,
+        # vedi run_fl_rounds()) il FLArtifactCollector non aveva quindi
+        # nessuna visibilità sull'update clippato-ma-pulito, solo su quello
+        # raw pre-clip (da AutoencoderTrainer). Aggiunto per parità con
+        # privatize(): stesso event_type/purdue_level, il consumatore
+        # distingue le due modalità dal metadata.
+        self.emit_event(MLPlaneEvent(
+            event_type="gradient_upload",
+            purdue_level=2,
+            payload=clipped_update,
+            round_num=update.round_num,
+            metadata={"clipped_only_central_dp": True},
+        ))
+
+        return clipped_update
 
     def privatize_aggregate(
         self,

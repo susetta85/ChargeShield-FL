@@ -41,6 +41,8 @@ from ids.charging_ids import ChargingIDS
 from ml.autoencoder_trainer import AutoencoderTrainer
 from ml.fedavg_aggregator import FedAvgAggregator
 from ml.gradient_manager import GradientManager
+from ml.ml_plane import FLArtifactCollector, MLPlane
+from ml.base_ml import MLPlaneEvent
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -384,6 +386,27 @@ def run_fl_rounds(
 
     agg = FedAvgAggregator({"min_participants": len(cluster_ids)})
 
+    # ML Plane (2026-07-22, richiesta esplicita — vedi README "Relation to
+    # Prior Work" e src/ml/ml_plane.py per il contesto completo): PRIMA di
+    # questo fix, AutoencoderTrainer/GradientManager/FedAvgAggregator
+    # emettevano già eventi ML Plane reali (`emit_event()`), ma nessuno
+    # chiamava mai `subscribe()` nella pipeline — gli eventi finivano nel
+    # vuoto e `results[round_num]` sotto veniva costruito leggendo le
+    # variabili Python locali `raw_updates`/`round_updates`/`aggregated`
+    # direttamente, mai attraverso il ML Plane. Ora un singolo `MLPlane`
+    # collega tutti e tre i componenti (`wire()`) a un `FLArtifactCollector`
+    # reale, che raccoglie gli stessi oggetti (stessa identità, non copie)
+    # nel punto in cui il paper QRS 2026 li colloca: "client updates are
+    # temporarily available... before the execution of FedAvg". Da qui in
+    # poi, `results[round_num]` viene popolato leggendo dal collector, non
+    # dalle variabili locali — il ML Plane è quindi il meccanismo realmente
+    # usato per raccogliere il flusso di artefatti FL, non un'osservazione
+    # parallela mai consultata.
+    mlplane   = MLPlane()
+    collector = FLArtifactCollector()
+    mlplane.subscribe(collector)
+    mlplane.wire(*trainers.values(), gm, agg)
+
     results: dict[int, dict[str, Any]] = {}
 
     # ── Byzantine attack config ────────────────────────────────────────────────
@@ -430,8 +453,6 @@ def run_fl_rounds(
     for round_num in range(1, fl_rounds + 1):
         logger.info(f"=== FL Round {round_num}/{fl_rounds} ===")
 
-        round_updates = []
-        raw_updates   = []  # pre-DP: usati da IDS per analisi non distorta dal rumore
         for cid, trainer in trainers.items():
             # Fix 2026-07-22 (review B1): cattura i pesi del modello PRIMA del
             # training locale di questo round — sono il "modello ricevuto" da
@@ -473,8 +494,30 @@ def run_fl_rounds(
                     f"[BYZANTINE] Round {round_num}: {cid} — "
                     f"gradient scaling ×{_byz_scale} applicato"
                 )
+                # Ri-emissione ML Plane (2026-07-22, wiring reale — vedi
+                # src/ml/ml_plane.py): train_local() ha già emesso un evento
+                # purdue_level=1 con l'update ORIGINALE (pre-scaling) qualche
+                # riga fa. Senza questa ri-emissione, FLArtifactCollector
+                # continuerebbe a restituire da raw_updates() il peso non
+                # scalato per questo nodo — sbagliato, perché ciò che
+                # "attraversa davvero il confine" verso l'aggregatore (e verso
+                # l'IDS) è la versione scalata. Semantica "ultimo vince" per
+                # (round, node_id) nel collector gestisce correttamente questa
+                # sovrascrittura.
+                trainers[cid].emit_event(MLPlaneEvent(
+                    event_type="gradient_upload",
+                    purdue_level=1,
+                    payload=update,
+                    round_num=round_num,
+                    metadata={**update.metadata, "byzantine_reemit": True},
+                ))
 
-            raw_updates.append(update)          # conserva pre-DP per IDS
+            # Nota (2026-07-22, wiring ML Plane): non serve più appendere
+            # `update` a una lista locale — train_local() (e, per il nodo
+            # Byzantine, la ri-emissione sopra) ha già emesso l'evento
+            # purdue_level=1 attraverso il ML Plane; sarà `collector.raw_updates()`,
+            # letto sotto dopo il loop, a fornire la stessa informazione — ma
+            # realmente "raccolta" dal ML Plane, non passata a mano.
             # Applica DP — passa le chiavi per escludere buffer BatchNorm dal rumore.
             # Con --no-dp, usa l'update raw direttamente (σ=0, nessun rumore).
             weight_keys = trainer.get_weight_keys()
@@ -500,22 +543,36 @@ def run_fl_rounds(
                     update, weight_keys=weight_keys, reference_weights=pre_round_weights
                 )
             agg.collect(private_update)
-            round_updates.append(private_update)
+            # Nota (2026-07-22): idem — `private_update` è già stato emesso da
+            # gm.privatize()/clip_only() (o è l'update raw stesso, se no_dp)
+            # attraverso il ML Plane; niente più lista locale `round_updates`.
+
+        # ── Lettura dal ML Plane (2026-07-22, wiring reale) ──────────────────
+        # Questi due elenchi sono ORA la vera fonte di raw_updates/updates per
+        # `results[round_num]` sotto — non più le liste locali `raw_updates`/
+        # `round_updates` costruite a mano durante il loop qui sopra (rimosse).
+        # `collector` (src/ml/ml_plane.py) le ha popolate osservando gli eventi
+        # realmente emessi da train_local() (+ ri-emissione Byzantine sopra) e
+        # da privatize()/clip_only(), con semantica "ultimo vince" per
+        # (round, node_id) — quindi riflettono correttamente l'eventuale
+        # scalatura Byzantine senza bisogno di logica speciale qui.
+        _collected_raw = collector.raw_updates(round_num)
+        _collected_updates = collector.privatized_updates(round_num)
 
         # Calcola raw_global_weights: media semplice dei pesi pre-DP.
         # Usato da IDS come riferimento per i delta (evita che il rumore DP
         # del global aggregato inquini l'analisi degli update locali).
         raw_global_weights: list[Any] | None = None
-        if raw_updates and raw_updates[0].weights:
-            n_w    = len(raw_updates[0].weights)
-            total  = sum(u.n_samples for u in raw_updates) or len(raw_updates)
+        if _collected_raw and _collected_raw[0].weights:
+            n_w    = len(_collected_raw[0].weights)
+            total  = sum(u.n_samples for u in _collected_raw) or len(_collected_raw)
             raw_global_weights = []
             for i in range(n_w):
                 wavg = sum(
                     (u.weights[i] if isinstance(u.weights[i], torch.Tensor)
                      else torch.tensor(float(u.weights[i])))
                     * (u.n_samples / total)
-                    for u in raw_updates
+                    for u in _collected_raw
                 )
                 raw_global_weights.append(wavg)
 
@@ -540,6 +597,20 @@ def run_fl_rounds(
                 weight_keys=_agg_weight_keys,
                 n_participants=aggregated.n_participants or len(cluster_ids),
             )
+            # Ri-emissione ML Plane (2026-07-22, wiring reale): agg.aggregate()
+            # sopra ha già emesso un evento "aggregation" con l'aggregato
+            # PULITO (pre-rumore). privatize_aggregate() modifica `aggregated`
+            # in-place aggiungendo il rumore centrale — senza questa
+            # ri-emissione, FLArtifactCollector.aggregation(round_num)
+            # restituirebbe l'aggregato sbagliato (senza rumore), mentre è
+            # quello rumorizzato che viene davvero distribuito ai trainer e
+            # salvato in results per il warm-start degli shadow di LiRA.
+            agg.emit_event(MLPlaneEvent(
+                event_type="aggregation",
+                purdue_level=3,
+                payload=aggregated,
+                round_num=round_num,
+            ))
 
         # Distribuisci modello globale ai trainer
         for trainer in trainers.values():
@@ -557,7 +628,7 @@ def run_fl_rounds(
         # userà automaticamente `updates` (già rumorizzati) — modellando
         # correttamente il fatto che sotto local DP non esiste nessun momento in
         # cui il server osserva il valore pulito.
-        _store_raw = raw_updates if not (dp_mode == "local" and not no_dp) else None
+        _store_raw = _collected_raw if not (dp_mode == "local" and not no_dp) else None
         _store_raw_global = (
             raw_global_weights if not (dp_mode == "local" and not no_dp) else None
         )
@@ -565,8 +636,8 @@ def run_fl_rounds(
         results[round_num] = {
             "mean_loss":         aggregated.mean_loss,
             "n_participants":    aggregated.n_participants,
-            "updates":           round_updates,      # privatized — usati da FedMIA
-            "raw_updates":       _store_raw,          # pre-DP — usati da IDS (None sotto local DP)
+            "updates":           _collected_updates,  # privatized — usati da FedMIA — dal ML Plane
+            "raw_updates":       _store_raw,          # pre-DP — usati da IDS (None sotto local DP) — dal ML Plane
             "raw_global_weights": _store_raw_global,  # media raw — riferimento IDS (idem)
             "global_weights":    aggregated.global_weights,
         }
