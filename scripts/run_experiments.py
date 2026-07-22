@@ -169,6 +169,7 @@ def run_fl_rounds(
     cfg: dict,
     sessions: list[dict[str, Any]],
     no_dp: bool = False,
+    dp_mode: str = "dp-fedavg",
 ) -> dict[int, dict[str, Any]]:
     """
     Esegue FL rounds via ML Plane.
@@ -182,6 +183,25 @@ def run_fl_rounds(
                  Permette di distinguere:
                    Scenario A: DP funziona → AUC > 0.5 senza DP, ≈0.5 con DP
                    Scenario B: modello non memorizza → AUC ≈ 0.5 in entrambi i casi
+        dp_mode: quale placement DP usare quando no_dp=False (2026-07-22, vedi
+                 docs/CaseStudies.md §2.4.3 per la tassonomia completa):
+                   "dp-fedavg" (default, comportamento storico) — il server
+                     riceve l'update raw di ogni client e lo clippa+rumorizza
+                     PRIMA di aggregarlo (McMahan et al. 2017). Il server/IDS
+                     vede transitoriamente l'update raw (usato oggi da run_ids()).
+                   "central" — ogni client CLIPPA il proprio update (bound la
+                     sensitività) ma NON lo rumorizza; il server (trusted)
+                     aggrega gli update puliti-ma-clippati con FedAvg, poi
+                     aggiunge UN SOLO rumore Gaussiano all'aggregato (scalato
+                     1/n_participants). I singoli update non sono mai rumorizzati:
+                     un attacco sul singolo update (LiRA) non dovrebbe mostrare
+                     alcuna soppressione — è il risultato atteso, non un bug.
+                   "local" — stesso meccanismo per-client di "dp-fedavg", ma il
+                     server/IDS non deve MAI vedere l'update raw, nemmeno
+                     transitoriamente: run_ids() userà `updates` (rumorizzati)
+                     invece di `raw_updates` (che in questa modalità non viene
+                     salvato in fl_results — vedi sotto).
+                 Ignorato se no_dp=True (nessun rumore in nessun caso).
     """
     exp_cfg  = cfg["experiment"]
     ml_cfg   = cfg["ml"]
@@ -290,7 +310,17 @@ def run_fl_rounds(
             weight_keys = trainer.get_weight_keys()
             if no_dp:
                 private_update = update  # baseline: nessuna privacy noise
+            elif dp_mode == "central":
+                # Central DP (2026-07-22): clip-only per client, NESSUN rumore
+                # individuale — il rumore va sull'aggregato (vedi sotto, dopo
+                # agg.aggregate()). Un attacco sul singolo update (LiRA) vedrà
+                # quindi l'update clippato ma pulito — atteso, non un bug.
+                private_update = gm.clip_only(update)
             else:
+                # "dp-fedavg" (default) e "local" condividono lo stesso meccanismo
+                # per-client (clip+noise prima dell'aggregazione) — la differenza
+                # tra i due è SOLO nella visibilità di raw_updates per l'IDS
+                # (vedi sotto, dopo il loop dei client).
                 private_update = gm.privatize(update, weight_keys=weight_keys)
             agg.collect(private_update)
             round_updates.append(private_update)
@@ -319,6 +349,21 @@ def run_fl_rounds(
             logger.warning(f"Round {round_num} saltato — partecipanti insufficienti")
             continue
 
+        # Central DP (2026-07-22): UN SOLO rumore Gaussiano sull'aggregato pulito,
+        # dopo FedAvg — non per client (vedi clip_only() sopra). Il modello
+        # rumorizzato è quello effettivamente distribuito ai trainer per il
+        # prossimo round E quello salvato in results (usato da LiRA per il
+        # warm-start degli shadow — deve vedere lo stesso rumore del target).
+        if not no_dp and dp_mode == "central" and aggregated.global_weights:
+            _agg_weight_keys = (
+                trainers[cluster_ids[0]].get_weight_keys() if cluster_ids else None
+            )
+            aggregated.global_weights = gm.privatize_aggregate(
+                aggregated.global_weights,
+                weight_keys=_agg_weight_keys,
+                n_participants=aggregated.n_participants or len(cluster_ids),
+            )
+
         # Distribuisci modello globale ai trainer
         for trainer in trainers.values():
             trainer.apply_global_model(aggregated)
@@ -326,12 +371,26 @@ def run_fl_rounds(
         loss_str = f"{aggregated.mean_loss:.6f}" if aggregated.mean_loss is not None else "N/A"
         logger.info(f"Round {round_num} — loss globale: {loss_str}")
 
+        # Local DP (2026-07-22): il server/IDS non deve MAI vedere l'update raw,
+        # nemmeno transitoriamente — a differenza di dp-fedavg/central, dove un
+        # server "honest-but-curious"/trusted vede comunque il raw update prima
+        # di clippare+rumorizzare (dp-fedavg) o prima di aggregare (central).
+        # Non salviamo raw_updates in questa modalità: run_ids() (vedi sotto,
+        # "Preferisci raw_updates... Fallback su updates per retrocompatibilità")
+        # userà automaticamente `updates` (già rumorizzati) — modellando
+        # correttamente il fatto che sotto local DP non esiste nessun momento in
+        # cui il server osserva il valore pulito.
+        _store_raw = raw_updates if not (dp_mode == "local" and not no_dp) else None
+        _store_raw_global = (
+            raw_global_weights if not (dp_mode == "local" and not no_dp) else None
+        )
+
         results[round_num] = {
             "mean_loss":         aggregated.mean_loss,
             "n_participants":    aggregated.n_participants,
             "updates":           round_updates,      # privatized — usati da FedMIA
-            "raw_updates":       raw_updates,         # pre-DP — usati da IDS
-            "raw_global_weights": raw_global_weights, # media raw — riferimento IDS
+            "raw_updates":       _store_raw,          # pre-DP — usati da IDS (None sotto local DP)
+            "raw_global_weights": _store_raw_global,  # media raw — riferimento IDS (idem)
             "global_weights":    aggregated.global_weights,
         }
 
@@ -749,6 +808,7 @@ def run_lira(
     n_shadow: int = 8,
     shadow_epochs_cap: int | None = None,
     no_dp: bool = False,
+    dp_mode: str = "dp-fedavg",
 ) -> dict[int, dict[str, Any]]:
     """
     LiRA — Likelihood Ratio Attack, server-side, on each client's per-round update
@@ -885,6 +945,19 @@ def run_lira(
                            value (e.g. 20) only for smoke tests.
         no_dp:             must match the flag used for this experiment — controls
                            whether shadows are privatised like real clients.
+        dp_mode:           must match the dp_mode used in run_fl_rounds() for this
+                           experiment (2026-07-22) — controls HOW shadows are
+                           privatised to mirror the target's actual noise regime:
+                             "dp-fedavg"/"local" → gm.privatize() per shadow (clip
+                               + noise), matching what a real client submitted.
+                             "central" → gm.clip_only() per shadow (clip, NO
+                               noise) — matching that under central DP, individual
+                               client updates are never noised, only the aggregate
+                               is. LiRA on individual updates should therefore show
+                               NO suppression under central DP, at any ε — this is
+                               the expected empirical result the CS4 comparison
+                               (docs/CaseStudies.md §2.4.3) is designed to surface,
+                               not a bug to fix.
 
     Returns:
         {round_num: {
@@ -1103,6 +1176,10 @@ def run_lira(
                 # reale, cosi' la calibrazione IN/OUT riflette il vero effetto della
                 # DP quando abilitata (altrimenti un target rumoroso verrebbe
                 # confrontato con shadow puliti — mismatch aggiuntivo).
+                # Fix 2026-07-22: sotto "central" DP, il client NON rumorizza il
+                # proprio update (solo clip — il rumore va sull'aggregato, mai
+                # osservabile da LiRA che attacca il singolo update) — lo shadow
+                # deve rispecchiare la STESSA cosa, non gm.privatize() completo.
                 if not no_dp:
                     _shadow_keys = list(shadow_model.state_dict().keys())
                     _shadow_update = _GU(
@@ -1115,7 +1192,10 @@ def run_lira(
                         n_samples=len(shadow_tensor),
                         metadata={},
                     )
-                    _privatized = gm.privatize(_shadow_update, weight_keys=_shadow_keys)
+                    if dp_mode == "central":
+                        _privatized = gm.clip_only(_shadow_update)
+                    else:
+                        _privatized = gm.privatize(_shadow_update, weight_keys=_shadow_keys)
                     _load_weights_into(shadow_model, _privatized.weights)
                     shadow_model.eval()
 
@@ -1137,7 +1217,7 @@ def run_lira(
             f"LiRA round {round_num}: {n_shadow}×{len(_CLUSTER_IDS)} shadow "
             f"riaddestrati ({shadow_epochs} epoche/shadow, "
             f"warm_start={'sì' if _warm_start is not None else 'no (init casuale)'}, "
-            f"dp_su_shadow={'no (--no-dp)' if no_dp else 'sì'})"
+            f"dp_su_shadow={'no (--no-dp)' if no_dp else f'sì (dp_mode={dp_mode})'})"
         )
 
         # Per-cluster, per-round global IN distribution — fallback per i non-membri
@@ -1393,6 +1473,22 @@ def run_ids(
       3. Budget esaurito con no_dp=True — falso allarme:
          Quando DP è disabilitato (no_dp=True), il budget non viene consumato.
          Fix: passa epsilon=1000.0 all'auditor per eliminare i BUDGET_EXHAUSTED alert.
+
+    Nota — degradazione attesa sotto dp_mode="local" (2026-07-22):
+        Sotto vera local DP, run_fl_rounds() non salva raw_updates/
+        raw_global_weights in fl_results (il server non deve mai vedere il
+        valore pulito, nemmeno transitoriamente — vedi run_fl_rounds()
+        docstring). Questa funzione usa già `round_data.get("raw_updates") or
+        round_data.get("updates", [])`, quindi sotto local DP userà
+        automaticamente gli update rumorizzati; ma senza un raw_global_weights
+        di riferimento, il calcolo del delta peer-relative (fix 1 sopra) degrada
+        a confronto sui pesi ASSOLUTI (rumorizzati) invece che su un delta
+        round-su-round, il che può produrre più falsi GRADIENT_EXPLOSION. Questo
+        NON è un bug da correggere: è la conseguenza reale e attesa del fatto che
+        un server che non vede mai il gradiente pulito ha una difesa IDS
+        strutturalmente più debole — un punto di discussione legittimo per il
+        paper (motiva secure aggregation o central DP come alternative più
+        IDS-compatibili quando serve sia privacy sia intrusion detection).
     """
     config_path = str(PROJECT_ROOT / "config" / "auditor.yaml")
     max_grad_norm = cfg["experiment"]["max_grad_norm"]
@@ -1631,6 +1727,10 @@ def save_results(
             "proximal_mu": cfg["ml"]["proximal_mu"],
             # no_dp=True → baseline senza rumore DP; usato per disambiguare AUC≈0.5
             "no_dp":      cfg["experiment"].get("no_dp", False),
+            # dp_mode (2026-07-22): quale placement DP — "dp-fedavg" (default),
+            # "central" o "local". Vedi docs/CaseStudies.md §2.4.3 per la
+            # tassonomia. Irrilevante quando no_dp=True.
+            "dp_mode":    cfg["experiment"].get("dp_mode", "dp-fedavg"),
             # seed: necessario per multi-seed aggregation (mean±std) — fix M1
             "seed":       cfg["experiment"].get("seed", 42),
         },
@@ -1821,6 +1921,23 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--dp-mode", type=str, default="dp-fedavg",
+        choices=["dp-fedavg", "central", "local"],
+        help=(
+            "Placement del meccanismo DP quando --no-dp non è passato "
+            "(2026-07-22, vedi docs/CaseStudies.md §2.4.3): "
+            "'dp-fedavg' (default, storico) = server clippa+rumorizza ogni "
+            "update PRIMA di aggregare (McMahan 2017), server/IDS vede l'update "
+            "raw transitoriamente. "
+            "'central' = client clippano SENZA rumorizzare, il server aggrega "
+            "pulito e aggiunge UN SOLO rumore all'aggregato — atteso: LiRA sul "
+            "singolo update non mostra alcuna soppressione, a nessun ε. "
+            "'local' = stesso meccanismo per-client di dp-fedavg, ma server/IDS "
+            "non vede MAI l'update raw (nemmeno transitoriamente) — l'IDS perde "
+            "l'accesso a raw_updates, un tradeoff reale della local DP, non un bug."
+        ),
+    )
+    parser.add_argument(
         "--n-shadow", type=int, default=None,
         help=(
             "Numero di shadow models per LiRA (override config lira.n_shadow). "
@@ -1883,6 +2000,18 @@ def main() -> None:
     if args.no_dp:
         cfg["experiment"]["no_dp"] = True
         cfg["experiment"]["name"] = cfg["experiment"]["name"] + "_nodp_baseline"
+        if args.dp_mode != "dp-fedavg":
+            logger.warning(
+                f"--dp-mode {args.dp_mode} ignorato: --no-dp disabilita ogni rumore, "
+                "indipendentemente dal placement DP scelto."
+            )
+
+    # dp_mode (2026-07-22): rinomina esperimento per distinguere le 3 modalità DP
+    # nel nome/nei log — importante perché tutte e tre producono un modello con
+    # rumore (auc<0.6 plausibile per tutte), ma per ragioni architetturali diverse.
+    cfg["experiment"]["dp_mode"] = args.dp_mode
+    if not args.no_dp and args.dp_mode != "dp-fedavg":
+        cfg["experiment"]["name"] = cfg["experiment"]["name"] + f"_{args.dp_mode}_dp"
 
     # Warning esplicito se Byzantine è attivo senza --sweep-dir: rischio di mischiare
     # risultati IDS con risultati MIA nella directory experiments/ principale.
@@ -1932,7 +2061,7 @@ def main() -> None:
         logger.info("Dry run completato — uscita.")
         return
 
-    fl_results = run_fl_rounds(cfg, train_sessions, no_dp=args.no_dp)
+    fl_results = run_fl_rounds(cfg, train_sessions, no_dp=args.no_dp, dp_mode=args.dp_mode)
 
     # run_fedmia, run_fedmia_shadow e run_ids non devono impedire il salvataggio.
     # Con try/except, save_results() viene sempre chiamato anche in caso di errore.
@@ -1978,6 +2107,7 @@ def main() -> None:
         lira_results = run_lira(
             cfg, train_sessions, holdout_sessions, fl_results,
             n_shadow=n_shadow, shadow_epochs_cap=shadow_cap, no_dp=args.no_dp,
+            dp_mode=args.dp_mode,
         )
         for rnd, lira_data in lira_results.items():
             if rnd in mia_results:

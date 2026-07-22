@@ -160,6 +160,9 @@ def load_experiments(experiments_dir: Path | None = None) -> list[dict]:
                 "delta":        float(cfg.get("delta", 1e-5)),
                 "proximal_mu":  float(cfg.get("proximal_mu", 0)),
                 "no_dp":        bool(cfg.get("no_dp", False)),
+                # dp_mode (2026-07-22): "dp-fedavg" (default)/"central"/"local" —
+                # irrilevante quando no_dp=True. Vedi docs/CaseStudies.md §2.4.3.
+                "dp_mode":      cfg.get("dp_mode", "dp-fedavg"),
                 # Yeom 2018 — loss-based MIA sul modello globale (baseline debole)
                 "auc_roc":      float(summ["mean_auc_roc"]) if summ.get("mean_auc_roc") is not None else None,
                 "auc_max":      float(summ["max_auc_roc"])  if summ.get("max_auc_roc")  is not None else None,
@@ -261,7 +264,17 @@ def build_raw_data(ws, records: list[dict]) -> None:
         _data_cell(ws.cell(row_idx, 3),  rec["epsilon"],             fmt="0.0#", alt_row=alt)
         _data_cell(ws.cell(row_idx, 4),  rec["delta"],               fmt="0.00E+00", alt_row=alt)
         _data_cell(ws.cell(row_idx, 5),  rec["proximal_mu"],         fmt="0.00", alt_row=alt)
-        _data_cell(ws.cell(row_idx, 6),  "YES" if rec.get("no_dp") else "no", alt_row=alt)
+        # dp_mode (2026-07-22): mostrato tra parentesi solo quando DP è attivo e
+        # non è la modalità storica di default ("dp-fedavg") — evita di dover
+        # inserire una colonna e shiftare tutti gli indici di colonna hardcoded
+        # in questo foglio (15 colonne, A1:O1 merge, gruppi colorati per attacco).
+        _dp_mode = rec.get("dp_mode", "dp-fedavg")
+        _no_dp_label = (
+            "YES" if rec.get("no_dp")
+            else "no" if _dp_mode == "dp-fedavg"
+            else f"no ({_dp_mode})"
+        )
+        _data_cell(ws.cell(row_idx, 6),  _no_dp_label, alt_row=alt)
         # Yeom
         _auc_cell(ws.cell(row_idx, 7),  rec.get("auc_roc"),    alt)
         _auc_cell(ws.cell(row_idx, 8),  rec.get("auc_max"),    alt)
@@ -552,6 +565,9 @@ def build_comparison(ws, records: list[dict]) -> None:
         ("FL Rounds",              "rounds",          None),
         ("Epsilon (ε)",            "epsilon",          "0.0#"),
         ("No-DP baseline",         "no_dp",            None),
+        # dp_mode (2026-07-22): dp-fedavg (default) / central / local — vedi
+        # docs/CaseStudies.md §2.4.3. Irrilevante se No-DP baseline = YES.
+        ("DP Mode",                "dp_mode",          None),
         # ── Yeom 2018 (baseline debole) ──
         ("Yeom AUC (mean)",        "auc_roc",          "0.0000"),
         ("Yeom AUC (max)",         "auc_max",          "0.0000"),

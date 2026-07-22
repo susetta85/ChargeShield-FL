@@ -196,6 +196,91 @@ class GradientManager(AbstractMLModel):
             / self.epsilon
         )
 
+    def clip_only(self, update: GradientUpdate) -> GradientUpdate:
+        """
+        Applica SOLO il clipping L2 (NESSUN rumore) a un GradientUpdate.
+
+        Usato dalla modalità **central DP** (2026-07-22): a differenza di
+        DP-FedAvg (`privatize()`, rumore per-client prima dell'aggregazione),
+        sotto central DP ogni client clippa il proprio update per limitare la
+        sensitività, ma il rumore viene aggiunto UNA SOLA VOLTA sull'aggregato
+        FedAvg (vedi `privatize_aggregate()`), non per client. Il clipping resta
+        necessario anche qui: senza un bound sulla norma del singolo update, la
+        sensitività della media aggregata (e quindi il σ da usare sull'aggregato)
+        non sarebbe definita.
+
+        Args:
+            update: GradientUpdate grezzo da AutoencoderTrainer
+
+        Returns:
+            GradientUpdate con pesi clippati, NON rumorizzati.
+        """
+        if not update.weights:
+            logger.warning(f"[{update.node_id}] Pesi vuoti — skip clip")
+            return update
+
+        clipped = self._clip_weights(update.weights)
+
+        return GradientUpdate(
+            node_id=update.node_id,
+            cluster_id=update.cluster_id,
+            round_num=update.round_num,
+            weights=clipped,
+            gradients=None,
+            loss=update.loss,
+            n_samples=update.n_samples,
+            metadata={
+                **update.metadata,
+                # Distingue da "noise_perturbation_applied" (DP-FedAvg/local):
+                # qui il client NON ha aggiunto rumore, solo clipping.
+                "clipped_only_central_dp": True,
+                "max_grad_norm": self.max_grad_norm,
+            },
+        )
+
+    def privatize_aggregate(
+        self,
+        global_weights: list[Any],
+        weight_keys: list[str] | None = None,
+        n_participants: int = 1,
+    ) -> list[torch.Tensor]:
+        """
+        Aggiunge UN SOLO rumore Gaussiano all'aggregato FedAvg (central DP).
+
+        Central DP [McMahan et al. 2018, "Learning Differentially Private
+        Recurrent Language Models"]: il server (trusted) riceve gli update
+        raw-ma-clippati (vedi `clip_only()`) di tutti i client, calcola la
+        media pesata pulita, poi aggiunge UN SOLO draw di rumore Gaussiano
+        all'aggregato — non uno per client. Questo beneficia della riduzione
+        di sensitività 1/n della media: se ogni update è clippato a
+        max_grad_norm, la sensitività della MEDIA di n update è
+        max_grad_norm/n (assumendo pesi ~uniformi tra client; qui n_participants
+        è un'approssimazione — con pesi molto sbilanciati per n_samples la
+        sensitività reale sarebbe più alta di max_grad_norm/n, ma per i 4
+        cluster ~equamente dimensionati di questo esperimento l'approssimazione
+        è ragionevole. Documentare questa assunzione nel paper.).
+
+        Args:
+            global_weights:  pesi aggregati (puliti) da FedAvgAggregator
+            weight_keys:     chiavi state_dict, per escludere i buffer BatchNorm
+            n_participants:  numero di client aggregati questo round (per lo
+                             scaling 1/n della sensitività)
+
+        Returns:
+            Lista di tensori con rumore Gaussiano σ/n aggiunto (buffer BN esclusi).
+        """
+        sigma_central = self.sigma / max(1, n_participants)
+        tensors = [
+            w if isinstance(w, torch.Tensor) else torch.tensor(w)
+            for w in global_weights
+        ]
+        noised = self._add_noise(tensors, weight_keys=weight_keys, sigma=sigma_central)
+        logger.debug(
+            f"Central DP — rumore sull'aggregato: σ_central={sigma_central:.4f} "
+            f"(σ_singolo={self.sigma:.4f} / n_participants={n_participants})"
+        )
+        return noised
+
     def _clip_weights(self, weights: list[Any]) -> list[torch.Tensor]:
         """
         Clippa la norma L2 globale dei pesi a max_grad_norm.
@@ -229,10 +314,17 @@ class GradientManager(AbstractMLModel):
         self,
         weights: list[torch.Tensor],
         weight_keys: list[str] | None = None,
+        sigma: float | None = None,
     ) -> list[torch.Tensor]:
         """
         Aggiunge rumore Gaussiano N(0, σ²) solo ai tensori floating-point,
         escludendo i buffer BatchNorm quando le chiavi dello state_dict sono note.
+
+        Args:
+            sigma: override esplicito di σ (usato da `privatize_aggregate()` per
+                   il central DP, dove σ è scalato 1/n_participants rispetto a
+                   `self.sigma`). Se None, usa `self.sigma` (comportamento
+                   originale, DP-FedAvg/local per-client).
 
         Motivazione dell'esclusione BatchNorm:
             running_var è una varianza (tipicamente ~0.1–1.0 per dati normalizzati).
@@ -246,6 +338,7 @@ class GradientManager(AbstractMLModel):
         I buffer int64 (num_batches_tracked) vengono già esclusi perché
         torch.randn_like() su int64 solleva RuntimeError in PyTorch ≥2.0.
         """
+        _sigma = sigma if sigma is not None else self.sigma
         _BN_BUFFERS = {"running_mean", "running_var", "num_batches_tracked"}
         result: list[torch.Tensor] = []
         for i, w in enumerate(weights):
@@ -259,5 +352,5 @@ class GradientManager(AbstractMLModel):
                 # Buffer BatchNorm: restituiti invariati, non sono parametri DP
                 result.append(w)
             else:
-                result.append(w + torch.randn_like(w) * self.sigma)
+                result.append(w + torch.randn_like(w) * _sigma)
         return result

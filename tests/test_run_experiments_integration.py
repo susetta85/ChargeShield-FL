@@ -178,6 +178,74 @@ class TestRunFLRounds:
             "almeno in qualche peso — altrimenti il rumore DP non sta venendo applicato"
         )
 
+    def test_central_dp_clips_per_client_but_does_not_noise_them(
+        self, tiny_cfg, train_sessions
+    ):
+        """
+        Regressione/verifica per dp_mode='central' (2026-07-22): ogni client deve
+        CLIPPARE il proprio update (norma L2 <= max_grad_norm + tolleranza) ma NON
+        rumorizzarlo individualmente — il rumore va solo sull'aggregato FedAvg
+        (verificato separatamente in test_central_dp_noises_only_the_aggregate).
+
+        Un update rumorizzato (dp_mode="dp-fedavg") avrebbe invece norma L2 ben
+        superiore a max_grad_norm, perché sigma (~4.8 per epsilon=1.0 di default)
+        domina rispetto al clipping a 1.0 — la differenza di scala è netta e
+        rende questo un buon discriminante.
+        """
+        cfg = copy.deepcopy(tiny_cfg)
+        max_grad_norm = cfg["experiment"]["max_grad_norm"]
+        fl_results = run_exp.run_fl_rounds(cfg, train_sessions, no_dp=False, dp_mode="central")
+        rd = fl_results[1]
+        for update in rd["updates"]:
+            float_weights = [w for w in update.weights if w.is_floating_point()]
+            l2 = sum(float(w.float().norm() ** 2) for w in float_weights) ** 0.5
+            assert l2 <= max_grad_norm + 1e-3, (
+                f"dp_mode='central': la norma L2 dell'update del client {update.node_id} "
+                f"è {l2:.4f}, oltre max_grad_norm={max_grad_norm} + tolleranza — "
+                "suggerisce che sia stato rumorizzato individualmente invece di "
+                "solo clippato (clip_only())"
+            )
+
+    def test_central_dp_noises_only_the_aggregate(self, tiny_cfg, train_sessions):
+        """dp_mode='central': il modello globale POST-aggregazione deve differire
+        dalla media pesata pulita degli update raw — il rumore va sull'aggregato,
+        non sui singoli update (verificato in test_central_dp_clips_per_client_...)."""
+        cfg = copy.deepcopy(tiny_cfg)
+        fl_results = run_exp.run_fl_rounds(cfg, train_sessions, no_dp=False, dp_mode="central")
+        rd = fl_results[1]
+        raw_avg = rd["raw_global_weights"]
+        noised_global = rd["global_weights"]
+        assert raw_avg is not None and noised_global is not None
+        any_diff = any(
+            not (torch_w_a == torch_w_b).all()
+            for torch_w_a, torch_w_b in zip(raw_avg, noised_global)
+            if torch_w_a.is_floating_point()
+        )
+        assert any_diff, (
+            "dp_mode='central': il modello globale aggregato deve differire dalla "
+            "media raw — altrimenti privatize_aggregate() non sta aggiungendo rumore"
+        )
+
+    def test_local_dp_hides_raw_updates_from_ids(self, tiny_cfg, train_sessions):
+        """dp_mode='local' (2026-07-22): fl_results non deve contenere raw_updates/
+        raw_global_weights per i round > 0 — il server non deve mai vedere il
+        valore pulito, nemmeno transitoriamente (run_ids() userà updates via il
+        fallback esistente `raw_updates or updates`)."""
+        cfg = copy.deepcopy(tiny_cfg)
+        fl_results = run_exp.run_fl_rounds(cfg, train_sessions, no_dp=False, dp_mode="local")
+        for round_num, rd in fl_results.items():
+            if round_num == 0:
+                continue  # round 0 = baseline init, non soggetto a dp_mode
+            assert rd.get("raw_updates") is None, (
+                f"round {round_num}: dp_mode='local' non deve esporre raw_updates"
+            )
+            assert rd.get("raw_global_weights") is None, (
+                f"round {round_num}: dp_mode='local' non deve esporre raw_global_weights"
+            )
+            # Ma gli update privatizzati (quelli che il client invia davvero) devono
+            # comunque esistere e portare il rumore, come in dp-fedavg.
+            assert rd.get("updates"), f"round {round_num}: updates mancanti"
+
 
 # ── run_fedmia() (Yeom 2018, global model) ──────────────────────────────────────
 

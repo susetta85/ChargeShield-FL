@@ -264,17 +264,50 @@ experiment-nodp: _check-deps
 	@echo "✓ Baseline no-DP completato — controlla Attack Comparison nell'Excel"
 
 # Con DP: seed singolo. Usare experiment-dp-sweep per 5 seed (mean±std).
+# Placement DP-FedAvg (default, McMahan 2017) — clip+noise per client prima di FedAvg.
 .PHONY: experiment-dp
 experiment-dp: _check-deps
-	@echo "→ Esperimento con DP (ε=$(EPS), 10 round, seed=$(SEED), n_shadow=$(N_SHADOW)) — Yeom + Shadow + LiRA..."
+	@echo "→ Esperimento con DP-FedAvg (ε=$(EPS), 10 round, seed=$(SEED), n_shadow=$(N_SHADOW)) — Yeom + Shadow + LiRA..."
 	@mkdir -p $(EXPERIMENTS)
 	$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
 		--config config/experiment.yaml \
 		--epsilon $(EPS) \
 		--rounds 10 \
 		--seed $(SEED) \
-		--n-shadow $(N_SHADOW)
-	@echo "✓ Esperimento DP completato — confronta con no-DP nel foglio Attack Comparison"
+		--n-shadow $(N_SHADOW) \
+		--dp-mode dp-fedavg
+	@echo "✓ Esperimento DP-FedAvg completato — confronta con no-DP nel foglio Attack Comparison"
+
+# Central DP (2026-07-22, vedi docs/CaseStudies.md §2.4.3): client clippano SENZA
+# rumorizzare, il server aggrega pulito e aggiunge UN SOLO rumore all'aggregato.
+# Atteso: LiRA sul singolo update NON mostra soppressione, a nessun ε (non un bug).
+.PHONY: experiment-central-dp
+experiment-central-dp: _check-deps
+	@echo "→ Esperimento con Central DP (ε=$(EPS), 10 round, seed=$(SEED), n_shadow=$(N_SHADOW))..."
+	@mkdir -p $(EXPERIMENTS)
+	$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
+		--config config/experiment.yaml \
+		--epsilon $(EPS) \
+		--rounds 10 \
+		--seed $(SEED) \
+		--n-shadow $(N_SHADOW) \
+		--dp-mode central
+	@echo "✓ Esperimento Central DP completato — confronta LiRA con dp-fedavg: atteso NESSUNA soppressione"
+
+# Local DP (2026-07-22): stesso meccanismo per-client di dp-fedavg, ma server/IDS
+# non vede mai l'update raw — run_ids() degrada (atteso, vedi docstring run_ids()).
+.PHONY: experiment-local-dp
+experiment-local-dp: _check-deps
+	@echo "→ Esperimento con Local DP (ε=$(EPS), 10 round, seed=$(SEED), n_shadow=$(N_SHADOW))..."
+	@mkdir -p $(EXPERIMENTS)
+	$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
+		--config config/experiment.yaml \
+		--epsilon $(EPS) \
+		--rounds 10 \
+		--seed $(SEED) \
+		--n-shadow $(N_SHADOW) \
+		--dp-mode local
+	@echo "✓ Esperimento Local DP completato — IDS degradato per design, vedi docstring run_ids()"
 
 # ─── Multi-seed sweep per DSN 2027 ───────────────────────────────────────────
 #
@@ -333,6 +366,54 @@ experiment-dp-sweep: _check-deps
 			--sweep-dir "$$SWEEP_DIR" 2>&1 | tee -a "$$LOG"; \
 	done; \
 	echo "✓ DP sweep #$$SWEEP_NUM completato (ε=$(EPS)) — confronta con no-DP in Seed Aggregation" | tee -a "$$LOG"
+
+# Central DP multi-seed sweep (2026-07-22) — CS4 candidate, docs/CaseStudies.md §2.4.3.
+.PHONY: experiment-central-dp-sweep
+experiment-central-dp-sweep: _check-deps
+	@mkdir -p $(EXPERIMENTS); \
+	SWEEP_NUM=$$(find $(EXPERIMENTS) -maxdepth 1 -type d -name 'central-sweep[0-9]*' 2>/dev/null | wc -l | tr -d ' '); \
+	SWEEP_NUM=$$((SWEEP_NUM + 1)); \
+	SWEEP_DIR=$(EXPERIMENTS)/central-sweep$$SWEEP_NUM; \
+	mkdir -p "$$SWEEP_DIR"; \
+	LOG="$$SWEEP_DIR/sweep_log.txt"; \
+	echo "→ Central DP multi-seed sweep #$$SWEEP_NUM — ε=$(EPS), seeds: $(SEEDS)" | tee "$$LOG"; \
+	echo "  n_shadow=$(N_SHADOW), rounds=10, Central DP ε=$(EPS)" | tee -a "$$LOG"; \
+	for seed in $(SEEDS); do \
+		echo "=== seed=$$seed ===" | tee -a "$$LOG"; \
+		$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
+			--config config/experiment.yaml \
+			--epsilon $(EPS) \
+			--rounds 10 \
+			--seed $$seed \
+			--n-shadow $(N_SHADOW) \
+			--dp-mode central \
+			--sweep-dir "$$SWEEP_DIR" 2>&1 | tee -a "$$LOG"; \
+	done; \
+	echo "✓ Central DP sweep #$$SWEEP_NUM completato — atteso: LiRA NON soppressa (vedi CaseStudies.md §2.4.3)" | tee -a "$$LOG"
+
+# Local DP multi-seed sweep (2026-07-22).
+.PHONY: experiment-local-dp-sweep
+experiment-local-dp-sweep: _check-deps
+	@mkdir -p $(EXPERIMENTS); \
+	SWEEP_NUM=$$(find $(EXPERIMENTS) -maxdepth 1 -type d -name 'local-sweep[0-9]*' 2>/dev/null | wc -l | tr -d ' '); \
+	SWEEP_NUM=$$((SWEEP_NUM + 1)); \
+	SWEEP_DIR=$(EXPERIMENTS)/local-sweep$$SWEEP_NUM; \
+	mkdir -p "$$SWEEP_DIR"; \
+	LOG="$$SWEEP_DIR/sweep_log.txt"; \
+	echo "→ Local DP multi-seed sweep #$$SWEEP_NUM — ε=$(EPS), seeds: $(SEEDS)" | tee "$$LOG"; \
+	echo "  n_shadow=$(N_SHADOW), rounds=10, Local DP ε=$(EPS)" | tee -a "$$LOG"; \
+	for seed in $(SEEDS); do \
+		echo "=== seed=$$seed ===" | tee -a "$$LOG"; \
+		$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
+			--config config/experiment.yaml \
+			--epsilon $(EPS) \
+			--rounds 10 \
+			--seed $$seed \
+			--n-shadow $(N_SHADOW) \
+			--dp-mode local \
+			--sweep-dir "$$SWEEP_DIR" 2>&1 | tee -a "$$LOG"; \
+	done; \
+	echo "✓ Local DP sweep #$$SWEEP_NUM completato — IDS degradato per design (vedi docstring run_ids())" | tee -a "$$LOG"
 
 
 .PHONY: experiment-dry
