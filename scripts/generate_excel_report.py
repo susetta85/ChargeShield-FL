@@ -306,6 +306,15 @@ def build_raw_data(ws, records: list[dict]) -> None:
 def build_heat_map(ws, records: list[dict]) -> None:
     ws.title = "Heat Map"
 
+    # Fix 2026-07-22 (review A2): questa griglia è indicizzata solo su
+    # (rounds, epsilon) — se mescolasse dp_mode diversi (dp-fedavg/central/local)
+    # allo stesso (rounds, epsilon), un run "central" e uno "dp-fedavg" con lo
+    # stesso ε si sovrascriverebbero silenziosamente a vicenda (vince l'ultimo
+    # per timestamp). Restringere esplicitamente a dp-fedavg (il meccanismo che
+    # questo foglio è nato per rappresentare) invece di ristrutturare la griglia
+    # per un terzo asse — central/local DP si confrontano nel foglio Comparison.
+    records = [r for r in records if r.get("dp_mode", "dp-fedavg") == "dp-fedavg"]
+
     # Raccoglie valori unici ordinati
     rounds_list  = sorted(set(r["rounds"] for r in records))
     epsilon_list = sorted(set(r["epsilon"] for r in records))
@@ -332,7 +341,8 @@ def build_heat_map(ws, records: list[dict]) -> None:
     sub.value = (
         "AUC-ROC ≈ 0.50 → MIA non migliore del random (DP efficace)  |  "
         "AUC-ROC > 0.55 → MIA parzialmente efficace  |  "
-        "Dataset: ACN-Data JPL 2019+2020 (13,073 sessioni)"
+        "Dataset: ACN-Data JPL 2019+2020 (13,073 sessioni)  |  "
+        "Solo dp_mode=dp-fedavg (central/local DP: vedi foglio Comparison)"
     )
     sub.font = _font(bold=False, color="404040", size=9)
     sub.fill = _fill("EBF3FB")
@@ -1030,8 +1040,11 @@ def build_seed_aggregation(ws, records: list[dict]) -> None:
     Il foglio è vuoto se ci sono solo 1 seed per configurazione — in quel caso
     usa prima 'make experiment-nodp-sweep' o 'make experiment-dp-sweep'.
 
-    Raggruppa per (fl_rounds, epsilon, no_dp).  Ogni gruppo diventa una riga.
-    Ordine: prima no-DP, poi DP crescente per ε; round crescenti.
+    Raggruppa per (fl_rounds, epsilon, no_dp, dp_mode).  Ogni gruppo diventa
+    una riga. Ordine: prima no-DP, poi DP crescente per ε (a parità di ε,
+    dp-fedavg/central/local restano gruppi separati — fix 2026-07-22, review
+    A2: senza dp_mode nella chiave, seed di modalità DP diverse allo stesso
+    ε finirebbero mediati insieme in una sola riga senza alcun avviso).
     """
     import statistics
 
@@ -1081,13 +1094,16 @@ def build_seed_aggregation(ws, records: list[dict]) -> None:
     # ── Raggruppa records ──────────────────────────────────────────────────────
     groups: dict[tuple, list[dict]] = {}
     for rec in records:
-        key = (rec["rounds"], rec["epsilon"], rec.get("no_dp", False))
+        key = (
+            rec["rounds"], rec["epsilon"], rec.get("no_dp", False),
+            rec.get("dp_mode", "dp-fedavg"),
+        )
         groups.setdefault(key, []).append(rec)
 
-    # Ordine: no-DP prima, poi DP crescente per ε; round crescenti per parità
+    # Ordine: no-DP prima, poi DP crescente per ε e per dp_mode; round crescenti per parità
     def _sort_key(k):
-        rounds, eps, no_dp = k
-        return (0 if no_dp else 1, rounds, eps)
+        rounds, eps, no_dp, dp_mode = k
+        return (0 if no_dp else 1, rounds, eps, dp_mode)
 
     sorted_keys = sorted(groups.keys(), key=_sort_key)
 
@@ -1126,13 +1142,16 @@ def build_seed_aggregation(ws, records: list[dict]) -> None:
             cell.fill = _fill("D5E8D4"); cell.font = _font(color="2D6A2D", bold=bold)
 
     for row_idx, key in enumerate(sorted_keys, 4):
-        rounds, eps, no_dp = key
+        rounds, eps, no_dp, dp_mode = key
         recs = groups[key]
         alt  = row_idx % 2 == 0
 
         seeds_used = sorted(rec.get("seed", 42) for rec in recs)
         n_seeds    = len(recs)
-        eps_label  = "no-DP" if no_dp else str(eps)
+        if no_dp:
+            eps_label = "no-DP" if dp_mode == "dp-fedavg" else f"no-DP ({dp_mode})"
+        else:
+            eps_label = str(eps) if dp_mode == "dp-fedavg" else f"{eps} ({dp_mode})"
 
         yeom_vals   = [r.get("auc_roc")    for r in recs]
         shadow_vals = [r.get("shadow_auc") for r in recs]

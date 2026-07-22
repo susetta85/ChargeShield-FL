@@ -33,6 +33,18 @@ Punti da VERIFICARE appena nvflare è installabile (marcati inline con "VERIFY:"
     - Se il round_num vada letto da fl_ctx (es. via AppConstants.CURRENT_ROUND)
       invece che da un contatore locale (qui uso un contatore locale come
       placeholder, quasi certamente sbagliato in un run multi-round reale).
+
+FIX 2026-07-22 (review indipendente, punto A1 — bug reale nella prima stesura,
+non un semplice VERIFY): meta.json deploya un solo app/ a "@ALL" i siti, e
+config_fed_client.json ha "cluster_id": "highway" hardcoded — senza correzione,
+TUTTI e 4 i client NVFLARE (nvflare/project.yml li nomina "highway", "urban",
+"residential", "corporate") avrebbero istanziato cluster_id="highway",
+allenandosi tutti sulla STESSA fetta di dati: l'opposto dell'eterogeneità
+per-cluster su cui si basa l'intera simulazione. Fix: _setup() deriva ora
+cluster_id dal nome del sito NVFLARE (fl_ctx.get_identity_name(), che
+project.yml garantisce coincidere con highway/urban/residential/corporate)
+quando riconosciuto, usando il valore di config solo come fallback (con
+warning) se il nome del sito non corrisponde a nessun cluster noto.
 """
 
 from __future__ import annotations
@@ -61,6 +73,12 @@ from nvflare.apis.shareable import Shareable, make_reply  # noqa: E402
 from nvflare.apis.signal import Signal  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+# Split contiguo identico a run_fl_rounds() — stesso ordine cluster_ids.
+# Definito a livello di modulo (fix 2026-07-22, review A1): usato sia per
+# derivare cluster_id dal nome del sito NVFLARE in _setup(), sia per il
+# filtro del dataset — prima erano due copie locali della stessa lista.
+_CLUSTER_IDS = ["highway", "urban", "residential", "corporate"]
 
 
 class ChargeShieldExecutor(Executor):
@@ -127,7 +145,30 @@ class ChargeShieldExecutor(Executor):
         from adapters.acn_dataset import ACNDataset
         from ml.autoencoder_trainer import AutoencoderTrainer
 
-        node_id = fl_ctx.get_identity_name() if fl_ctx else f"{self._cluster_id}-01"
+        site_name = fl_ctx.get_identity_name() if fl_ctx else None
+
+        # Fix 2026-07-22 (review A1): deriva cluster_id dal nome del sito NVFLARE
+        # invece di fidarsi ciecamente del valore in config_fed_client.json —
+        # nvflare/project.yml nomina i 4 siti client esattamente highway/urban/
+        # residential/corporate, e lo stesso config_fed_client.json (con
+        # cluster_id="highway" hardcoded) viene deployato a "@ALL" i siti in
+        # meta.json. Senza questo, ogni sito userebbe cluster_id="highway".
+        if site_name in _CLUSTER_IDS:
+            if site_name != self._cluster_id:
+                logger.warning(
+                    f"cluster_id da config ({self._cluster_id}) diverso dal nome "
+                    f"del sito NVFLARE ({site_name}) — uso il nome del sito."
+                )
+            self._cluster_id = site_name
+        else:
+            logger.warning(
+                f"Nome sito NVFLARE '{site_name}' non riconosciuto come cluster "
+                f"({_CLUSTER_IDS}) — uso cluster_id da config: {self._cluster_id}. "
+                "Se questo accade su più siti, verranno tutti allenati sugli "
+                "stessi dati (vedi FIX 2026-07-22 nel docstring del modulo)."
+            )
+
+        node_id = f"{self._cluster_id}-01" if site_name is None else site_name
 
         self._trainer = AutoencoderTrainer(
             config=self._trainer_cfg,
@@ -150,8 +191,8 @@ class ChargeShieldExecutor(Executor):
         ds.load(str(dataset_path))
         all_sessions = [ds.get_sample(i) for i in range(len(ds))]
 
-        # Split contiguo identico a run_fl_rounds() — stesso ordine cluster_ids.
-        _CLUSTER_IDS = ["highway", "urban", "residential", "corporate"]
+        # Split contiguo identico a run_fl_rounds() — stesso ordine cluster_ids
+        # (_CLUSTER_IDS ora definita a livello di modulo, vedi fix 2026-07-22 sopra).
         if self._cluster_id not in _CLUSTER_IDS:
             logger.error(f"cluster_id sconosciuto: {self._cluster_id}")
             self._sessions = []

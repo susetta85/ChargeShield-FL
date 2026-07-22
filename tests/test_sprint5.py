@@ -249,6 +249,54 @@ class TestGradientManager:
         norm = float(torch.norm(flat, p=2))
         assert norm <= dp_config["max_grad_norm"] + 1e-5
 
+    def test_clip_only_does_not_add_noise(self, dp_config, gradient_update):
+        """clip_only() (central DP, 2026-07-22): stessa garanzia di norma di
+        _clip_weights(), ma senza alcun rumore — i pesi restituiti devono essere
+        deterministici (identici a _clip_weights() diretto), non un draw casuale."""
+        gm = GradientManager(dp_config)
+        clipped_direct = gm._clip_weights(gradient_update.weights)
+        result = gm.clip_only(gradient_update)
+        assert result.metadata.get("clipped_only_central_dp") is True
+        assert "noise_perturbation_applied" not in result.metadata
+        for a, b in zip(clipped_direct, result.weights):
+            assert torch.equal(a, b), (
+                "clip_only() ha prodotto pesi diversi da _clip_weights() diretto — "
+                "sospetto che stia aggiungendo rumore o applicando un clip diverso"
+            )
+
+    def test_privatize_aggregate_sigma_scales_with_n_participants(self, dp_config):
+        """
+        Regressione per privatize_aggregate() (central DP, 2026-07-22): il rumore
+        sull'aggregato deve avere sigma = self.sigma / n_participants — non
+        self.sigma tal quale (che sarebbe equivalente a NON applicare la
+        riduzione di sensibilità 1/n di McMahan et al. 2018) e non un fattore
+        arbitrario diverso.
+
+        Verifica empirica (non solo "il risultato differisce dall'input", che
+        passerebbe anche con uno scaling sbagliato): genera molti draw di rumore
+        con n_participants=1 e n_participants=4 su un tensore di zeri grande a
+        sufficienza da stimare la deviazione standard empirica, e verifica che il
+        rapporto delle std misurate sia vicino a 4 (entro tolleranza statistica).
+        """
+        gm = GradientManager(dp_config)
+        big_zero = [torch.zeros(4000)]
+
+        torch.manual_seed(123)
+        noised_n1 = gm.privatize_aggregate(big_zero, n_participants=1)
+        std_n1 = float(noised_n1[0].std())
+
+        torch.manual_seed(123)
+        noised_n4 = gm.privatize_aggregate(big_zero, n_participants=4)
+        std_n4 = float(noised_n4[0].std())
+
+        assert std_n1 > 0.0 and std_n4 > 0.0
+        ratio = std_n1 / std_n4
+        assert 3.5 < ratio < 4.5, (
+            f"rapporto atteso delle std sigma_n1/sigma_n4 ≈ 4 (n_participants "
+            f"scala sigma come 1/n), osservato {ratio:.2f} — la riduzione di "
+            "sensitività 1/n di privatize_aggregate() potrebbe essere rotta"
+        )
+
 
 # ── FedAvgAggregator ───────────────────────────────────────────────────────────
 

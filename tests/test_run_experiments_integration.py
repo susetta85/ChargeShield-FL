@@ -369,6 +369,37 @@ class TestRunLiRA:
             "updates (regressione del bug 2026-07-21c)"
         )
 
+    def test_runs_under_central_and_local_dp_mode(
+        self, tiny_cfg, train_sessions, holdout_sessions
+    ):
+        """
+        Copertura mancante (flagged dalla review indipendente 2026-07-22, punto D):
+        nessun test esercitava run_lira(dp_mode="central"/"local") prima d'ora —
+        il ramo che sceglie gm.clip_only() invece di gm.privatize() per i shadow
+        (linee ~1195-1198 di run_experiments.py) non aveva copertura, quindi una
+        regressione lì (es. shadow rumorizzati mentre il target è solo clippato,
+        o viceversa) non sarebbe stata rilevata da nessun test.
+
+        Non verifica la calibrazione fine (richiederebbe molti più shadow/seed
+        di quanto sia pratico in un test veloce), solo che entrambe le modalità
+        girino senza eccezioni e producano AUC validi per ogni round — una
+        regressione di wiring (branch sbagliato, TypeError, KeyError) farebbe
+        fallire questo test.
+        """
+        for mode in ("central", "local"):
+            cfg = copy.deepcopy(tiny_cfg)
+            fl_results = run_exp.run_fl_rounds(cfg, train_sessions, no_dp=False, dp_mode=mode)
+            lira_results = run_exp.run_lira(
+                cfg, train_sessions, holdout_sessions, fl_results,
+                n_shadow=cfg["lira"]["n_shadow"], shadow_epochs_cap=2,
+                no_dp=False, dp_mode=mode,
+            )
+            fl_rounds = cfg["experiment"]["fl_rounds"]
+            for r in range(1, fl_rounds + 1):
+                assert r in lira_results, f"dp_mode={mode}: LiRA manca il round {r}"
+                auc = lira_results[r]["lira_auc_roc"]
+                assert 0.0 <= auc <= 1.0, f"dp_mode={mode}, round {r}: LiRA AUC {auc} fuori [0,1]"
+
 
 # ── run_ids() (ChargingIDS + PrivacyAuditor) ────────────────────────────────────
 
@@ -407,6 +438,33 @@ class TestRunIDS:
         cfg = copy.deepcopy(tiny_cfg)
         fl_results = run_exp.run_fl_rounds(cfg, train_sessions, no_dp=True)
         ids_results = run_exp.run_ids(cfg, fl_results, no_dp=True)
+
+    def test_local_dp_degrades_without_crashing(self, tiny_cfg, train_sessions):
+        """
+        Copertura mancante (review indipendente 2026-07-22, punto D): la docstring
+        di run_ids() già documenta la degradazione attesa sotto dp_mode="local"
+        (raw_global_weights assente dal round 1 in poi → prev_raw_global diventa
+        None → il confronto peer-relative degrada a confronto sui pesi assoluti),
+        ma nessun test lo esercitava. Questo test non giudica se la degradazione
+        sia "corretta" (è un compromesso di design noto e documentato), verifica
+        solo che: (a) run_ids() non sollevi eccezioni sotto dp_mode="local", e
+        (b) produca comunque un risultato strutturato per ogni round — una
+        regressione strutturale (es. KeyError su raw_global_weights mancante)
+        farebbe fallire questo test silenziosamente altrimenti.
+        """
+        cfg = copy.deepcopy(tiny_cfg)
+        fl_results = run_exp.run_fl_rounds(cfg, train_sessions, no_dp=False, dp_mode="local")
+
+        # Precondizione del test: verifica che il round 1 mostri davvero
+        # l'assenza di raw_global_weights (altrimenti il test non eserciterebbe
+        # il percorso di degradazione che vuole coprire).
+        assert fl_results[1].get("raw_global_weights") is None
+
+        ids_results = run_exp.run_ids(cfg, fl_results, no_dp=False)
+        fl_rounds = cfg["experiment"]["fl_rounds"]
+        for r in range(1, fl_rounds + 1):
+            assert r in ids_results, f"dp_mode='local': run_ids manca il round {r}"
+            assert "byzantine_detected" in ids_results[r]
 
         for round_num, rd in ids_results.items():
             for alert in rd["alerts"]:

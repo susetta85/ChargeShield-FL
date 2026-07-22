@@ -2005,6 +2005,14 @@ def main() -> None:
                 f"--dp-mode {args.dp_mode} ignorato: --no-dp disabilita ogni rumore, "
                 "indipendentemente dal placement DP scelto."
             )
+        # Fix 2026-07-22 (review A3): normalizza args.dp_mode PRIMA che venga
+        # persistito qui sotto in cfg["experiment"]["dp_mode"] — senza questo,
+        # una riga con no_dp=True poteva comunque riportare dp_mode="central"/
+        # "local" nel JSON/Excel, incoerente col fatto che no_dp disabilita
+        # ogni rumore (il valore era innocuo a runtime — no_dp cortocircuita
+        # run_fl_rounds() prima che dp_mode sia consultato — ma fuorviante nei
+        # risultati salvati).
+        args.dp_mode = "dp-fedavg"
 
     # dp_mode (2026-07-22): rinomina esperimento per distinguere le 3 modalità DP
     # nel nome/nei log — importante perché tutte e tre producono un modello con
