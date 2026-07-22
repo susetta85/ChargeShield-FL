@@ -5,6 +5,11 @@
 **Authors:** ChargeShield-FL Research Team  
 **Date:** 2026-06-26  
 
+> **Correction and architecture update (2026-07-22) — read before relying on any section below.** Two things changed after this document was written, and neither has been propagated through the prose below yet (out of scope for this pass — flag before DSN submission):
+>
+> 1. **The "JPL" dataset was mislabeled.** The file used for every case study below (`datasets/acn/jpl/acndata_sessions_2019.json`, referred to throughout as "the ACN-Data JPL dataset", "the JPL facility", "JPL 2019+2020") was re-verified against ACN-Data's own `siteID` field and the official per-site EVSE counts at https://ev.caltech.edu/dataset: it is actually **Caltech** campus data (`siteID="0002"`, 54 stations — Caltech's exact EVSE count, not JPL's 50). Every qualitative characterisation below built on "JPL = restricted workplace facility" (e.g. §2.1's threat-model framing) describes the wrong site; the data is from Caltech's public campus deployment instead. See README "Dataset" section for the full correction.
+> 2. **The 4-cluster topology (Highway/Urban/Residential/Corporate) has been superseded.** As this document itself concludes in RQ1/RQ2 and the CS2 heterogeneity analysis, the 4 clusters described below were never 4 real sites — they were one real site's sessions sliced 4 ways (by power profile in CS1, by temporal/behavioural criteria in CS2) to *approximate* heterogeneity. As of 2026-07-22, the actual experiment pipeline (`scripts/run_experiments.py`) uses the 3 real ACN-Data sites (Caltech, JPL, Office 1) as its FL clients instead, grouped by each session's genuine `site_id` — real, not simulated, heterogeneity. A 4th/5th client pair (`synthetic_1`/`synthetic_2`) exists only for a separate IDS/Krum-validation sweep (`byzantine_attack.enabled: true`) and is never used for training data in the main privacy experiment or for any MIA/LiRA attack — see README "Real multi-site experiment" for the full design and rationale. The CS1/CS2/CS3 case studies below should be read as describing the pre-2026-07-22 experimental design; re-running them against the 3-real-site pipeline (and re-deriving the RQ1/RQ2 hypotheses in terms of genuine cross-site heterogeneity rather than simulated intra-site heterogeneity) is pending future work.
+
 ---
 
 ## Table of Contents

@@ -108,11 +108,18 @@ from nvflare.apis.signal import Signal  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
-# Split contiguo identico a run_fl_rounds() — stesso ordine cluster_ids.
-# Definito a livello di modulo (fix 2026-07-22, review A1): usato sia per
-# derivare cluster_id dal nome del sito NVFLARE in _setup(), sia per il
-# filtro del dataset — prima erano due copie locali della stessa lista.
-_CLUSTER_IDS = ["highway", "urban", "residential", "corporate"]
+# I 3 SITI REALI di ACN-Data (2026-07-22, sostituisce i 4 nomi fittizi
+# highway/urban/residential/corporate — mai stati siti realmente distinti,
+# solo fette arbitrarie dello stesso dataset). Verificati via siteID +
+# conteggio stazioni uniche contro https://ev.caltech.edu/dataset (Caltech 54
+# EVSE, JPL 50 EVSE, Office 1 8 EVSE) — vedi scripts/run_experiments.py per lo
+# stesso identico controllo lato simulazione, e docs/NVFlareIntegration.md per
+# il dettaglio della scoperta (il vecchio dataset "jpl" del progetto era in
+# realtà Caltech). Nessun 4°/5° sito reale esiste in questo dataset — i 2
+# client sintetici usati per la validazione IDS a 5 client (vedi
+# config/experiment.yaml) esistono SOLO nella simulazione, non ancora portati
+# su NVFLARE (fuori scope per ora, vedi nvflare/project.yml).
+_CLUSTER_IDS = ["caltech", "jpl", "office1"]
 
 # ── Enrichment/normalizzazione sessioni — duplicati da scripts/run_experiments.py ──
 # FIX 2026-07-22 (review indipendente fase 3-5, bug CRITICO trovato in _setup()):
@@ -204,18 +211,20 @@ class ChargeShieldExecutor(Executor):
     scripts/run_experiments.py::run_fl_rounds().
 
     Args (da config_fed_client.json):
-        cluster_id:   uno tra highway/urban/residential/corporate — determina
-                      quali sessioni carica questo client (oggi: filtro su
-                      un dataset locale; in produzione ogni client avrebbe il
-                      proprio file/DB locale, non un filtro su un file condiviso).
+        cluster_id:   uno tra caltech/jpl/office1 (2026-07-22: siti REALI,
+                      non più nomi fittizi) — determina quale sottocartella
+                      datasets/acn/<cluster_id>/ questo client carica. Ogni
+                      sito ha ORA davvero solo i propri dati (tutti gli anni
+                      disponibili in quella sottocartella), non una fetta
+                      arbitraria di un file condiviso — vedi _setup().
         input_dim/lr/epochs/batch_size/proximal_mu/seed: passati direttamente
                       alla config di AutoencoderTrainer, stessi nomi/semantica
                       di scripts/run_experiments.py.
-        dataset_path: path al JSON ACN-Data da cui questo client carica le
-                      proprie sessioni (fase 1: stesso dataset condiviso,
-                      filtrato client-side — NON rappresentativo di un vero
-                      deploy multi-sito, dove ogni client avrebbe già solo i
-                      propri dati; sufficiente per validare il round-trip).
+        dataset_path: directory PADRE dei dataset per sito (default:
+                      "datasets/acn") — _setup() vi accoda self._cluster_id
+                      per ottenere la cartella reale del sito (es.
+                      "datasets/acn/caltech/") e carica TUTTI i file .json
+                      al suo interno (tutti gli anni disponibili).
     """
 
     def __init__(
@@ -227,7 +236,7 @@ class ChargeShieldExecutor(Executor):
         batch_size: int = 32,
         proximal_mu: float = 0.0,
         seed: int = 42,
-        dataset_path: str = "datasets/acn/jpl/acndata_sessions_2019.json",
+        dataset_path: str = "datasets/acn",
         train_task_name: str = "train",
         dp_mode: str = "dp-fedavg",
         epsilon: float = 1.0,
@@ -309,56 +318,60 @@ class ChargeShieldExecutor(Executor):
             cluster_id=self._cluster_id,
         )
 
-        # Carica e filtra le sessioni per questo cluster.
-        # FASE 1 (round-trip only): filtro client-side su un dataset condiviso,
-        # con lo stesso split contiguo per-cluster di run_fl_rounds() — NON
-        # rappresenta un vero deploy multi-sito (ogni stazione avrebbe già solo
-        # i propri dati). Sufficiente per validare che il trasporto funzioni.
-        dataset_path = _PROJECT_ROOT / self._dataset_path
-        if not dataset_path.exists():
-            logger.error(f"[{self._cluster_id}] Dataset non trovato: {dataset_path}")
+        # FIX 2026-07-22 (3 siti reali, sostituisce fase 1): ogni client carica
+        # ORA il proprio dataset REALE — tutti i file .json nella sua directory
+        # datasets/acn/<cluster_id>/ (es. datasets/acn/caltech/, un file per
+        # anno) — non più un unico file condiviso affettato per indice tra 4
+        # cluster fittizi. dataset_path (da config_fed_client.json) è ora la
+        # directory PADRE ("datasets/acn"), non un singolo file; self._cluster_id
+        # (derivato dal nome del sito NVFLARE sopra) seleziona la sottocartella.
+        # Risolve la limitazione "Per-client dataset access è fake" documentata
+        # in docs/NVFlareIntegration.md — ogni sito ha ORA davvero solo i propri
+        # dati, non una fetta arbitraria di un pool condiviso.
+        dataset_dir = _PROJECT_ROOT / self._dataset_path / self._cluster_id
+        if not dataset_dir.is_dir():
+            logger.error(f"[{self._cluster_id}] Directory dataset non trovata: {dataset_dir}")
             self._sessions = []
             return
 
-        ds = ACNDataset()
-        ds.load(str(dataset_path))
-        all_sessions = [ds.get_sample(i) for i in range(len(ds))]
+        all_sessions: list[dict[str, Any]] = []
+        json_files = sorted(dataset_dir.glob("*.json"))
+        for f in json_files:
+            ds = ACNDataset()
+            ds.load(str(f))
+            all_sessions.extend(ds.get_sample(i) for i in range(len(ds)))
+
+        if not all_sessions:
+            logger.error(f"[{self._cluster_id}] Nessuna sessione trovata in {dataset_dir}")
+            self._sessions = []
+            return
 
         # FIX 2026-07-22 (review indipendente, bug critico — vedi commento sopra
-        # _enrich_sessions()): enrich PRIMA dello split, sull'intero dataset
-        # condiviso, così hour_of_day/duration_hours esistono per ogni sessione
-        # prima che _sessions_to_tensor() le richieda. Senza questo, ogni
-        # sessione veniva scartata silenziosamente e self._sessions produceva
-        # un tensore vuoto ad ogni round.
+        # _enrich_sessions()): enrich PRIMA della normalizzazione, così
+        # hour_of_day/duration_hours esistono per ogni sessione prima che
+        # _sessions_to_tensor() le richieda. Senza questo, ogni sessione veniva
+        # scartata silenziosamente e self._sessions produceva un tensore vuoto.
         all_sessions = _enrich_sessions(all_sessions)
 
-        # Split contiguo identico a run_fl_rounds() — stesso ordine cluster_ids
-        # (_CLUSTER_IDS ora definita a livello di modulo, vedi fix 2026-07-22 sopra).
-        if self._cluster_id not in _CLUSTER_IDS:
-            logger.error(f"cluster_id sconosciuto: {self._cluster_id}")
-            self._sessions = []
-            return
-        idx = _CLUSTER_IDS.index(self._cluster_id)
-        cluster_size = max(1, len(all_sessions) // len(_CLUSTER_IDS))
-        start = idx * cluster_size
-        end = None if idx == len(_CLUSTER_IDS) - 1 else start + cluster_size
-
-        # Normalizzazione [0,1] (fix 2026-07-22, stesso bug): calcolata su
-        # all_sessions (l'intero dataset condiviso, fase 1 — vedi
-        # _compute_feature_stats() sopra per la motivazione), applicata SOLO
-        # alla fetta di questo cluster. Stessa formula di normalize_sessions()
-        # nella simulazione — senza questo, AutoencoderTrainer avrebbe ricevuto
-        # feature su scale eterogenee (kWh vs ore 0-23), mai validato in
-        # nessun esperimento reale del progetto.
+        # Normalizzazione [0,1]: calcolata sulle sessioni DI QUESTO SITO
+        # (non più su un pool condiviso multi-cluster, dato che ogni client ora
+        # ha davvero solo i propri dati). NOTA/limite noto: questo significa
+        # min/max leggermente diversi tra siti (es. il kWh massimo osservato a
+        # Caltech vs JPL) invece di un'unica scala globale condivisa come nella
+        # simulazione (scripts/run_experiments.py::compute_feature_stats() su
+        # train_sessions di TUTTI i siti insieme) — una differenza reale tra i
+        # due percorsi codice, accettabile per un primo draft (i range delle
+        # feature ACN-Data non variano di ordini di grandezza tra siti), ma da
+        # tenere presente se si confrontano risultati NVFLARE vs simulazione.
         feature_stats = _compute_feature_stats(all_sessions, AutoencoderTrainer.CONTINUOUS_FEATURES)
-        cluster_sessions = all_sessions[start:end]
         self._sessions = _normalize_sessions(
-            cluster_sessions, feature_stats, AutoencoderTrainer.CONTINUOUS_FEATURES
+            all_sessions, feature_stats, AutoencoderTrainer.CONTINUOUS_FEATURES
         )
 
         logger.info(
             f"[{self._cluster_id}] ChargeShieldExecutor pronto — "
-            f"{len(self._sessions)} sessioni caricate da {dataset_path.name}"
+            f"{len(self._sessions)} sessioni caricate da {len(json_files)} file "
+            f"in {dataset_dir}"
         )
 
     # ── Task execution ───────────────────────────────────────────────────────

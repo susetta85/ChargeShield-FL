@@ -72,26 +72,154 @@ def load_config(config_path: Path | None, overrides: dict) -> dict:
 
 # ── Dataset ────────────────────────────────────────────────────────────────────
 
+# Mappa siteID ACN-Data (campo "site_id" già estratto da ACNDataset.get_sample(),
+# vedi src/adapters/acn_dataset.py) → nome sito leggibile usato come cluster_id
+# nell'FL. Verificata empiricamente 2026-07-22 confrontando il numero di stazioni
+# uniche per siteID coi valori ufficiali pubblicati su https://ev.caltech.edu/dataset
+# (Caltech 54 EVSE, JPL 50 EVSE, Office 1 8 EVSE): siteID="0002"→54 stazioni→Caltech,
+# siteID="0001"→52 stazioni (≈50 ufficiali)→JPL, siteID="0019"→8 stazioni→Office 1.
+# FIX 2026-07-22 (scoperta importante): il progetto ha SEMPRE chiamato "jpl" il
+# dataset con siteID="0002" (54 stazioni) — che in realtà è Caltech, non JPL (50
+# EVSE). Ogni esperimento precedente (nodp-sweep1/dp-sweep1 inclusi) ha quindi
+# usato dati Caltech mal etichettati come "jpl" — vedi README/CaseStudies.md per
+# la correzione della documentazione storica. Questa mappa ora usa l'identità
+# corretta, verificata via conteggio stazioni, non il nome storico del file.
+_SITE_ID_TO_NAME = {
+    "0002": "caltech",
+    "0001": "jpl",
+    "0019": "office1",
+}
+
+
 def load_sessions(cfg: dict) -> list[dict[str, Any]]:
-    """Carica sessioni EV da ACN-Data JPL 2019 + 2020."""
+    """
+    Carica sessioni EV da ACN-Data, da TUTTI i siti/anni elencati in
+    cfg["sites"] (2026-07-22: sostituisce il precedente cfg["datasets"] — un
+    solo dataset condiviso affettato arbitrariamente in 4 "cluster" fittizi).
+    cfg["sites"] è {nome_sito: [path_anno1, path_anno2, ...]} — ogni sito reale
+    combina tutti gli anni disponibili in un unico pool (stessa logica già
+    usata per jpl_2019+jpl_2020 prima di oggi, ora per sito invece che globale).
+
+    Restituisce una lista PIATTA (stesso contratto di sempre — compute_feature_stats/
+    normalize_sessions/il train-holdout split lavorano su questa lista intera).
+    L'appartenenza al sito reale di ciascuna sessione resta comunque disponibile
+    nel campo "site_id" (estratto da ACNDataset) — vedi group_sessions_by_site()
+    per il raggruppamento usato da run_fl_rounds()/run_lira().
+    """
     sessions: list[dict[str, Any]] = []
-    for key, path_str in cfg["datasets"].items():
-        p = PROJECT_ROOT / path_str
-        if not p.exists():
-            logger.warning(f"Dataset non trovato: {p} — skip {key}")
-            continue
-        dataset = ACNDataset()
-        dataset.load(str(p))
-        loaded = [dataset.get_sample(i) for i in range(len(dataset))]
-        sessions.extend(loaded)
-        logger.info(f"{key}: {len(loaded)} sessioni caricate")
+    sites_cfg = cfg.get("sites") or cfg.get("datasets") or {}
+    for site_name, paths in sites_cfg.items():
+        path_list = paths if isinstance(paths, list) else [paths]
+        site_count = 0
+        for path_str in path_list:
+            p = PROJECT_ROOT / path_str
+            if not p.exists():
+                logger.warning(f"Dataset non trovato: {p} — skip")
+                continue
+            dataset = ACNDataset()
+            dataset.load(str(p))
+            loaded = [dataset.get_sample(i) for i in range(len(dataset))]
+            sessions.extend(loaded)
+            site_count += len(loaded)
+        logger.info(f"{site_name}: {site_count} sessioni caricate (tutti gli anni)")
     if not sessions:
         raise FileNotFoundError(
-            "Nessun dataset trovato. Scarica ACN-Data JPL da "
-            "https://ev.caltech.edu/dataset e posizionalo in datasets/"
+            "Nessun dataset trovato. Scarica ACN-Data da "
+            "https://ev.caltech.edu/dataset e posizionalo in datasets/acn/<sito>/"
         )
-    logger.info(f"Totale sessioni: {len(sessions)}")
+    logger.info(f"Totale sessioni (tutti i siti): {len(sessions)}")
     return sessions
+
+
+def group_sessions_by_site(sessions: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """
+    Raggruppa le sessioni per SITO REALE, usando il campo "site_id" già presente
+    in ogni sessione (estratto da ACNDataset dal siteID di ACN-Data) — non per
+    slicing posizionale/contiguo come in precedenza.
+
+    FIX 2026-07-22 (review indipendente su scripts/run_nvflare_mia.py, stesso
+    principio applicato qui): ricostruire l'appartenenza a un cluster affettando
+    una lista per indice (es. "le prime N/4 sessioni sono il cluster A") è
+    fragile — dipende dall'ordine/dalla lunghezza esatta della lista a monte, e
+    un mismatch tra chi produce la lista e chi la riaffetta produce risultati
+    sbagliati SENZA errori visibili (esattamente il bug trovato oggi). Usare il
+    campo site_id proprio di ogni sessione elimina questa intera classe di bug:
+    il raggruppamento è corretto qualunque sia l'ordine/la provenienza della
+    lista di sessioni.
+
+    Sessioni con site_id sconosciuto (non in _SITE_ID_TO_NAME) sono raggruppate
+    sotto il loro site_id grezzo invece di essere scartate — permette di
+    scoprire nuovi siti aggiunti in futuro senza modificare questa funzione.
+    """
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for s in sessions:
+        site_id = s.get("site_id", "")
+        name = _SITE_ID_TO_NAME.get(site_id, site_id or "unknown")
+        groups.setdefault(name, []).append(s)
+    return groups
+
+
+def group_indices_by_site(sessions: list[dict[str, Any]]) -> dict[str, list[int]]:
+    """
+    Come group_sessions_by_site(), ma restituisce gli INDICI GLOBALI in
+    `sessions` invece delle sessioni stesse — usato da run_lira() (fase MIA),
+    che deve campionare gli shadow model da un pool di indici nello stesso
+    spazio di train_sessions (per costruire, dato un round, i sotto-tensori
+    IN/OUT), non dalle sessioni stesse. Vedi cluster_membership in run_lira().
+    """
+    groups: dict[str, list[int]] = {}
+    for i, s in enumerate(sessions):
+        site_id = s.get("site_id", "")
+        name = _SITE_ID_TO_NAME.get(site_id, site_id or "unknown")
+        groups.setdefault(name, []).append(i)
+    return groups
+
+
+def inject_synthetic_client_indices(
+    real_index_groups: dict[str, list[int]],
+    n_synthetic: int = 2,
+    seed: int = 42,
+) -> dict[str, list[int]]:
+    """
+    Aggiunge n_synthetic client FITTIZI a real_index_groups (l'output di
+    group_indices_by_site()) — SOLO per lo sweep IDS/Byzantine (config/
+    experiment.yaml: byzantine_attack.enabled=True). MAI usato per l'esperimento
+    privacy/FedMIA/LiRA principale, che deve vedere SOLO i 3 client reali
+    (caltech/jpl/office1) — questa funzione va chiamata unicamente sul percorso
+    codice dello sweep Byzantine, mai su quello di default.
+
+    Perché servono client fittizi: Krum (usato da ChargingIDS per il rilevamento
+    Byzantine) garantisce di rilevare f nodi Byzantine solo con n≥2f+3 nodi
+    totali. Con f=1 (un solo attaccante, unico scenario oggi supportato)
+    servono n≥5 client totali — i soli 3 siti reali non bastano su basi
+    teoriche solide. Nessun 4°/5° sito REALE esiste in ACN-Data (solo Caltech/
+    JPL/Office1, verificato su https://ev.caltech.edu/dataset, sezione "Sites")
+    — un vero 4°/5° sito richiederebbe un dataset EV completamente diverso.
+
+    Come sono costruiti: pool = concatenazione di TUTTI gli indici reali (3
+    siti, nell'ordine di iterazione di real_index_groups), shuffle con seed
+    fisso, poi affettato in n_synthetic parti aggiuntive. Le sessioni
+    referenziate possono sovrapporsi con quelle già assegnate ai client reali —
+    accettabile SOLO per lo scopo di validazione IDS (Krum verifica un
+    comportamento geometrico locale — un gradiente scalato artificialmente —
+    non richiede popolazioni disgiunte come farebbe invece un esperimento di
+    privacy/generalizzazione). Per questo motivo l'uso di questi client
+    fittizi in FedMIA/LiRA sarebbe metodologicamente invalido e va evitato.
+    """
+    import random as _random
+
+    pooled_indices: list[int] = [i for idxs in real_index_groups.values() for i in idxs]
+    rng = _random.Random(seed + 271828)  # offset arbitrario, separato dal seed sperimentale
+    shuffled = pooled_indices[:]
+    rng.shuffle(shuffled)
+
+    expanded: dict[str, list[int]] = dict(real_index_groups)
+    chunk_size = max(1, len(shuffled) // n_synthetic)
+    for i in range(n_synthetic):
+        start = i * chunk_size
+        end = len(shuffled) if i == n_synthetic - 1 else start + chunk_size
+        expanded[f"synthetic_{i + 1}"] = shuffled[start:end]
+    return expanded
 
 # ── Session enrichment ─────────────────────────────────────────────────────────
 def enrich_sessions(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -170,6 +298,7 @@ def run_fl_rounds(
     sessions: list[dict[str, Any]],
     no_dp: bool = False,
     dp_mode: str = "dp-fedavg",
+    cluster_sessions: dict[str, list[dict[str, Any]]] | None = None,
 ) -> dict[int, dict[str, Any]]:
     """
     Esegue FL rounds via ML Plane.
@@ -178,7 +307,17 @@ def run_fl_rounds(
 
     Args:
         cfg:     configurazione esperimento
-        sessions: sessioni di training
+        sessions: sessioni di training (usato SOLO come fallback se
+                 cluster_sessions non è fornito — vedi sotto).
+        cluster_sessions: sessioni GIÀ raggruppate per cluster/sito reale
+                 (2026-07-22, vedi group_sessions_by_site()) — {cluster_id:
+                 [sessioni]}. Se fornito, `sessions` viene ignorato e i cluster
+                 sono esattamente quelli passati (es. 3 siti reali: caltech/
+                 jpl/office1, o 5 per lo sweep IDS/Byzantine — vedi
+                 inject_synthetic_clients()). Se None (default, retrocompatibile
+                 coi test esistenti che usano dati sintetici senza site_id
+                 reale), affetta `sessions` in 4 parti uguali fittizie — stesso
+                 comportamento storico pre-2026-07-22.
         no_dp:   se True, salta il rumore DP (σ=0) — usato per baseline experiment.
                  Permette di distinguere:
                    Scenario A: DP funziona → AUC > 0.5 senza DP, ≈0.5 con DP
@@ -207,13 +346,26 @@ def run_fl_rounds(
     ml_cfg   = cfg["ml"]
     fl_rounds = exp_cfg["fl_rounds"]
 
-    cluster_ids = ["highway", "urban", "residential", "corporate"]
-    cluster_size = max(1, len(sessions) // len(cluster_ids))
+    if cluster_sessions is not None:
+        # Sessioni già raggruppate per sito/cluster reale (2026-07-22) — vedi
+        # group_sessions_by_site()/inject_synthetic_clients(). `sessions` (il
+        # parametro posizionale) viene ignorato in questo ramo.
+        cluster_ids = list(cluster_sessions.keys())
+    else:
+        # Fallback storico (pre-2026-07-22, retrocompatibile coi test esistenti
+        # che usano dati sintetici senza site_id reale): affetta `sessions` in
+        # 4 parti uguali fittizie, come sempre fatto finora.
+        cluster_ids = ["highway", "urban", "residential", "corporate"]
+        cluster_size = max(1, len(sessions) // len(cluster_ids))
+        cluster_sessions = {}
+        for i, cid in enumerate(cluster_ids):
+            start = i * cluster_size
+            end   = None if i == len(cluster_ids) - 1 else start + cluster_size
+            cluster_sessions[cid] = sessions[start:end]
 
     # Inizializza trainer per ogni cluster
     trainers: dict[str, AutoencoderTrainer] = {}
-    cluster_sessions: dict[str, list] = {}
-    for i, cid in enumerate(cluster_ids):
+    for cid in cluster_ids:
         # Propaga il seed sperimentale nella config ml così AutoencoderTrainer
         # lo usa per il DataLoader generator → shuffle deterministico per seed.
         trainer_cfg = {**ml_cfg, "seed": exp_cfg.get("seed", 42)}
@@ -222,9 +374,6 @@ def run_fl_rounds(
             node_id=f"{cid}-01",
             cluster_id=cid,
         )
-        start = i * cluster_size
-        end   = None if i == len(cluster_ids) - 1 else start + cluster_size
-        cluster_sessions[cid] = sessions[start:end]
         logger.info(f"Cluster {cid}: {len(cluster_sessions[cid])} sessioni")
 
     gm = GradientManager({
@@ -241,9 +390,21 @@ def run_fl_rounds(
     # Legge la sezione byzantine_attack dal config. Se assente o disabled, nessun attacco.
     _byz_cfg      = cfg.get("byzantine_attack", {})
     _byz_enabled  = _byz_cfg.get("enabled", False)
-    _byz_node     = _byz_cfg.get("byzantine_node", "highway")   # cluster attaccante
+    # Default aggiornato 2026-07-22 (3 siti reali + 2 client sintetici per lo
+    # sweep IDS): "highway" non esiste più come cluster_id — l'attaccante di
+    # default è ora uno dei client sintetici (mai un sito reale, per non
+    # implicare che un sito reale specifico sia "malevolo" nella narrazione).
+    _byz_node     = _byz_cfg.get("byzantine_node", "synthetic_1")   # cluster attaccante
     _byz_type     = _byz_cfg.get("attack_type", "gradient_scaling")
     _byz_scale    = float(_byz_cfg.get("scale_factor", 10.0))
+
+    if _byz_enabled and _byz_node not in cluster_ids:
+        logger.error(
+            f"[BYZANTINE ATTACK] byzantine_node={_byz_node!r} non è tra i cluster "
+            f"attivi {cluster_ids} — l'attacco NON verrà applicato a nessun client "
+            "(nessun errore verrà sollevato più avanti, il confronto cid==_byz_node "
+            "semplicemente non scatterà mai mai). Verifica byzantine_node nel config."
+        )
 
     if _byz_enabled:
         logger.warning(
@@ -825,6 +986,7 @@ def run_lira(
     shadow_epochs_cap: int | None = None,
     no_dp: bool = False,
     dp_mode: str = "dp-fedavg",
+    cluster_membership: dict[str, list[int]] | None = None,
 ) -> dict[int, dict[str, Any]]:
     """
     LiRA — Likelihood Ratio Attack, server-side, on each client's per-round update
@@ -974,6 +1136,15 @@ def run_lira(
                                the expected empirical result the CS4 comparison
                                (docs/CaseStudies.md §2.4.3) is designed to surface,
                                not a bug to fix.
+        cluster_membership: {cluster_id: [indici GLOBALI in train_sessions]}
+                           (2026-07-22) — deve rispecchiare ESATTAMENTE i cluster
+                           usati da run_fl_rounds() per lo stesso esperimento
+                           (es. via group_sessions_by_site() per i 3 siti reali,
+                           o inject_synthetic_clients() per i 5 client dello
+                           sweep IDS). Se None (default, retrocompatibile coi
+                           test con dati sintetici senza site_id reale), affetta
+                           train_sessions in 4 parti contigue uguali — stesso
+                           comportamento storico pre-2026-07-22.
 
     Returns:
         {round_num: {
@@ -1011,18 +1182,26 @@ def run_lira(
     })
 
     # ── Step 1: Reconstruct per-cluster membership — must match run_fl_rounds() ─
-    _CLUSTER_IDS = ["highway", "urban", "residential", "corporate"]
-    cluster_size = max(1, len(train_sessions) // len(_CLUSTER_IDS))
-    cluster_members: dict[str, list[dict[str, Any]]] = {}
-    # cluster_index_ranges: (start, end) in GLOBAL train_sessions index space — usato
-    # per campionare gli shadow SOLO dal pool di indici del proprio cluster (fix
-    # shadow/target mismatch, vedi docstring).
-    cluster_index_ranges: dict[str, tuple[int, int]] = {}
-    for i, cid in enumerate(_CLUSTER_IDS):
-        start = i * cluster_size
-        end   = len(train_sessions) if i == len(_CLUSTER_IDS) - 1 else start + cluster_size
-        cluster_members[cid] = train_sessions[start:end]
-        cluster_index_ranges[cid] = (start, end)
+    # FIX 2026-07-22 (coerente col fix di run_nvflare_mia.py/group_sessions_by_site()):
+    # cluster_idx_pools ora è {cluster_id: [indici GLOBALI in train_sessions]} —
+    # se cluster_membership è fornito (3 siti reali o 5 per lo sweep IDS), viene
+    # usato direttamente; altrimenti fallback storico (4 fette contigue fittizie,
+    # per compatibilità coi test con dati sintetici senza site_id).
+    if cluster_membership is not None:
+        _CLUSTER_IDS = list(cluster_membership.keys())
+        cluster_idx_pools: dict[str, list[int]] = cluster_membership
+    else:
+        _CLUSTER_IDS = ["highway", "urban", "residential", "corporate"]
+        cluster_size = max(1, len(train_sessions) // len(_CLUSTER_IDS))
+        cluster_idx_pools = {}
+        for i, cid in enumerate(_CLUSTER_IDS):
+            start = i * cluster_size
+            end   = len(train_sessions) if i == len(_CLUSTER_IDS) - 1 else start + cluster_size
+            cluster_idx_pools[cid] = list(range(start, end))
+
+    cluster_members: dict[str, list[dict[str, Any]]] = {
+        cid: [train_sessions[i] for i in idxs] for cid, idxs in cluster_idx_pools.items()
+    }
 
     # Reverse map: sample Python id → cluster (for correct client-member matching).
     # Members must be evaluated ONLY against their home cluster's client.
@@ -1092,8 +1271,7 @@ def run_lira(
     shadow_tensors_per_cluster: dict[str, list[torch.Tensor | None]] = {}
 
     for cluster_idx, cid in enumerate(_CLUSTER_IDS):
-        start, end = cluster_index_ranges[cid]
-        cluster_idx_pool = list(range(start, end))
+        cluster_idx_pool = cluster_idx_pools[cid]
         cluster_in_idx_sets: list[set[int]] = []
         cluster_tensors: list[torch.Tensor | None] = []
 
@@ -1527,15 +1705,56 @@ def run_ids(
     config_path = str(PROJECT_ROOT / "config" / "auditor.yaml")
     max_grad_norm = cfg["experiment"]["max_grad_norm"]
 
+    # byzantine_tolerance/krum_threshold (2026-07-22, 3 siti reali + sweep IDS n=5):
+    # PRIMA di questo fix, byzantine_tolerance era SEMPRE 0, anche durante lo
+    # sweep dedicato con byzantine_attack.enabled=true (n=5 = 3 client reali +
+    # 2 sintetici synthetic_1/synthetic_2, vedi inject_synthetic_client_indices()
+    # in main()). Questo era sbagliato: la garanzia teorica di Krum di rilevare
+    # f nodi Byzantine richiede n≥2f+3 — i 2 sintetici sono stati aggiunti
+    # ESATTAMENTE per soddisfare n=5≥2·1+3 con f=1, quindi Krum va calcolato
+    # con byzantine_tolerance=1 in quel caso (neighbors=n-f-2=2), non con f=0
+    # (che userebbe neighbors=n-f-2=3 e non offrirebbe alcuna garanzia formale
+    # per f=1). Nell'esperimento principale (n=3, solo client reali, mai
+    # attaccato) byzantine_tolerance resta 0: con solo 3 nodi Krum funge da
+    # trimmed-mean (esclude il più isolato) senza garanzia formale, il che è
+    # accettabile perché quel run non inietta mai un attacco.
+    _byz_cfg = cfg.get("byzantine_attack", {})
+    _byz_enabled = _byz_cfg.get("enabled", False)
+    _byz_tolerance = 1 if _byz_enabled else 0
+
+    # krum_threshold=3.5: calibrato empiricamente (2026-07-16) su n=4 "cluster"
+    # fittizi — che in realtà erano 4 fette CONTIGUE dello STESSO singolo sito
+    # reale (varianza inter-client dovuta solo a rumore di campionamento, MAI
+    # a eterogeneità reale tra siti). Con 50 epoch, varianza naturale → score
+    # Krum fino a ~3.3 (FP osservato). Attacco Byzantine ×10 → score ≈4.0.
+    # Soglia 3.5: rileva Byzantine, non FP. Precedente 1.5 era calibrato per
+    # 3 epoch (varianza bassa, score legittimi ≤1.1).
+    #
+    # ATTENZIONE — NON ANCORA RI-VALIDATA per n=5 (2026-07-22): lo sweep IDS
+    # con n=5 usa 3 siti reali GENUINAMENTE eterogenei (Caltech/JPL/Office1 —
+    # EVSE count, popolazione, pattern di ricarica diversi) più 2 client
+    # sintetici che sono ri-affettature del pool COMBINATO (quindi vicini alla
+    # "media" globale). Questo cambia la natura della varianza naturale rispetto
+    # al vecchio caso (4 fette identiche dello stesso sito): un sito reale
+    # potrebbe ora apparire geometricamente isolato rispetto ai 2 sintetici
+    # anche SENZA alcun attacco, producendo falsi positivi Byzantine su un
+    # client legittimo — oppure, al contrario, la soglia 3.5 potrebbe restare
+    # valida se la varianza inter-sito è comunque dominata dal training (50
+    # epoch). Non è stato possibile verificarlo in questa sessione (training
+    # reale richiede torch/nvflare, non disponibili in questo sandbox).
+    # PRIMA di fidarsi degli alert Krum di un run byzantine_attack.enabled=true,
+    # eseguire lo sweep una volta con scale_factor=10 e ispezionare gli score
+    # Krum reali in experiments/.../ids_audit_results (o l'export NVFLARE) per
+    # i 3 client reali SENZA attacco attivo (o nei round prima che l'attaccante
+    # venga scelto) — se il loro score naturale supera già ~3.0-3.5, alzare
+    # krum_threshold di conseguenza prima di considerare i risultati attendibili.
+    krum_threshold = 3.5
+
     ids = ChargingIDS(
         config_path=config_path,
-        byzantine_tolerance=0,
+        byzantine_tolerance=_byz_tolerance,
         cosine_threshold=0.3,
-        # krum_threshold=3.5: calibrato per 50 epoch di training locale.
-        # Con 50 epoch, varianza naturale → score Krum fino a ~3.3 (FP osservato).
-        # Attacco Byzantine ×10 → score ≈4.0. Soglia 3.5: rileva Byzantine, non FP.
-        # Precedente 1.5 era calibrato per 3 epoch (varianza bassa, score legittimi ≤1.1).
-        krum_threshold=3.5,
+        krum_threshold=krum_threshold,
     )
     # Fix 3a: budget — se no_dp=True, epsilon enorme → budget_ratio resta ~0 (no BUDGET_EXHAUSTED).
     # Fix 3b: explosion threshold — con epsilon=1000, sigma≈0.005 → threshold≈1.015.
@@ -1938,7 +2157,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--byzantine-node", type=str, default=None,
-        help="Override cluster attaccante (es. highway, urban). Default: valore da config.",
+        help=(
+            "Override cluster attaccante (2026-07-22: synthetic_1/synthetic_2 "
+            "per lo sweep IDS a 5 client — mai un sito reale caltech/jpl/office1). "
+            "Default: valore da config."
+        ),
     )
     parser.add_argument(
         "--scale-factor", type=float, default=None,
@@ -2103,64 +2326,126 @@ def main() -> None:
         logger.info("Dry run completato — uscita.")
         return
 
-    fl_results = run_fl_rounds(cfg, train_sessions, no_dp=args.no_dp, dp_mode=args.dp_mode)
+    # ── Cluster reali (2026-07-22) — sostituisce lo slicing contiguo in 4 fette
+    # fittizie di un unico dataset (mai stato realmente eterogeneo — vedi fix
+    # mislabeling jpl/Caltech in README/CaseStudies.md). Ogni sessione porta già
+    # il proprio site_id reale (ACNDataset) — group_indices_by_site() raggruppa
+    # per quello, non per posizione. Vedi group_indices_by_site()/
+    # inject_synthetic_client_indices() per il contratto completo.
+    #
+    # IMPORTANTE: i 2 client sintetici (synthetic_1/synthetic_2) esistono
+    # SOLO per rendere valido il rilevamento Byzantine di Krum (che richiede
+    # n≥2f+3 nodi — con f=1 servono 5, i 3 siti reali non bastano). Vengono
+    # aggiunti ESCLUSIVAMENTE quando byzantine_attack.enabled=True (sweep IDS
+    # dedicato, separato dallo sweep privacy). L'esperimento principale
+    # (FedMIA/Shadow/LiRA, privacy_risk, tutto ciò che finisce nel paper come
+    # misura di privacy) vede SEMPRE e SOLO i 3 client reali (caltech/jpl/
+    # office1) — mai i sintetici, che userebbero sessioni duplicate/sovrapposte
+    # tra client e invaliderebbero qualunque misura di privacy o utility.
+    real_cluster_membership = group_indices_by_site(train_sessions)
+    _byz_enabled_main = cfg.get("byzantine_attack", {}).get("enabled", False)
+    if _byz_enabled_main:
+        cluster_membership = inject_synthetic_client_indices(
+            real_cluster_membership, n_synthetic=2, seed=seed,
+        )
+        logger.warning(
+            "[BYZANTINE/IDS SWEEP] 2 client sintetici aggiunti (synthetic_1/"
+            "synthetic_2) per validare Krum con n=5 — NON usare questo run per "
+            "misure di privacy/FedMIA/LiRA, solo per validazione IDS."
+        )
+    else:
+        cluster_membership = real_cluster_membership
+    cluster_sessions = {
+        cid: [train_sessions[i] for i in idxs] for cid, idxs in cluster_membership.items()
+    }
+    logger.info(f"Client attivi ({len(cluster_sessions)}): {list(cluster_sessions.keys())}")
 
-    # run_fedmia, run_fedmia_shadow e run_ids non devono impedire il salvataggio.
-    # Con try/except, save_results() viene sempre chiamato anche in caso di errore.
+    fl_results = run_fl_rounds(
+        cfg, train_sessions, no_dp=args.no_dp, dp_mode=args.dp_mode,
+        cluster_sessions=cluster_sessions,
+    )
+
+    # ── FedMIA/Shadow/LiRA: SOLO client reali, MAI durante uno sweep Byzantine/IDS ──
+    # Istruzione esplicita 2026-07-22: i 2 client sintetici (synthetic_1/
+    # synthetic_2) servono ESCLUSIVAMENTE a rendere valido il rilevamento Krum
+    # (n≥2f+3). Il modello FL viene addestrato su di essi quando
+    # byzantine_attack.enabled=True (sopra, cluster_sessions), ma qualunque
+    # attacco di privacy calcolato su quel run includerebbe update di client le
+    # cui sessioni si sovrappongono arbitrariamente tra loro e coi client reali
+    # (vedi inject_synthetic_client_indices()) — un numero privo di significato
+    # per qualunque claim di privacy, non solo "da usare con cautela". Per
+    # questo FedMIA/Shadow/LiRA vengono saltati DEL TUTTO quando
+    # byzantine_attack.enabled=True, invece di girare comunque su dati che poi
+    # nessuno dovrebbe interpretare. Il run Byzantine resta quindi
+    # esclusivamente uno strumento di validazione IDS (Krum/cosine/alert),
+    # mai una fonte di numeri di privacy — coerente con quanto già indicato
+    # dal warning "I risultati MIA in questa run NON sono validi per il privacy
+    # sweep" più sopra in questa stessa funzione, reso qui vincolante invece
+    # che solo informativo.
     mia_results: dict = {}
-    try:
-        mia_results = run_fedmia(cfg, train_sessions, holdout_sessions, fl_results)
-    except Exception as exc:  # noqa: BLE001
-        logger.error(
-            f"run_fedmia() fallita: {exc}. "
-            "I risultati FL vengono comunque salvati con mia_results={}. "
-            "Controllare il log per la causa (es. NaN negli score MIA).",
-            exc_info=True,
+    if _byz_enabled_main:
+        logger.warning(
+            "[BYZANTINE/IDS SWEEP] FedMIA/Shadow/LiRA SALTATI — questo run usa "
+            "client sintetici (synthetic_1/synthetic_2) solo per validare Krum, "
+            "non è un esperimento di privacy valido. Per i numeri di privacy "
+            "usare un run con byzantine_attack.enabled=false (solo 3 client reali)."
         )
+    else:
+        # run_fedmia, run_fedmia_shadow e run_ids non devono impedire il salvataggio.
+        # Con try/except, save_results() viene sempre chiamato anche in caso di errore.
+        try:
+            mia_results = run_fedmia(cfg, train_sessions, holdout_sessions, fl_results)
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                f"run_fedmia() fallita: {exc}. "
+                "I risultati FL vengono comunque salvati con mia_results={}. "
+                "Controllare il log per la causa (es. NaN negli score MIA).",
+                exc_info=True,
+            )
 
-    # Shadow MIA (Carlini 2022) — attacco calibrato più potente di Yeom 2018.
-    # Affianca run_fedmia() senza sostituirlo: entrambe le metriche vengono salvate.
-    shadow_mia_results: dict = {}
-    try:
-        shadow_mia_results = run_fedmia_shadow(
-            cfg, train_sessions, holdout_sessions, fl_results
-        )
-        # Merge nei mia_results per round: aggiunge campi shadow_* al dict esistente
-        for rnd, shadow_data in shadow_mia_results.items():
-            if rnd in mia_results:
-                mia_results[rnd].update(shadow_data)
-            else:
-                mia_results[rnd] = shadow_data
-    except Exception as exc:  # noqa: BLE001
-        logger.error(
-            f"run_fedmia_shadow() fallita: {exc}. Continuazione senza shadow MIA.",
-            exc_info=True,
-        )
+        # Shadow MIA (Carlini 2022) — attacco calibrato più potente di Yeom 2018.
+        # Affianca run_fedmia() senza sostituirlo: entrambe le metriche vengono salvate.
+        shadow_mia_results: dict = {}
+        try:
+            shadow_mia_results = run_fedmia_shadow(
+                cfg, train_sessions, holdout_sessions, fl_results
+            )
+            # Merge nei mia_results per round: aggiunge campi shadow_* al dict esistente
+            for rnd, shadow_data in shadow_mia_results.items():
+                if rnd in mia_results:
+                    mia_results[rnd].update(shadow_data)
+                else:
+                    mia_results[rnd] = shadow_data
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                f"run_fedmia_shadow() fallita: {exc}. Continuazione senza shadow MIA.",
+                exc_info=True,
+            )
 
-    # LiRA (Carlini 2022, Eq. 2) — server-side attack sul singolo update di ogni
-    # client, PRE-aggregazione FedAvg ma POST-privatizzazione DP (fix 2026-07-21c —
-    # in precedenza attaccava raw_updates, pre-DP per costruzione, vedi run_lira()).
-    # Threat model: aggregatore semi-onesto intercetta gli update locali prima di FedAvg.
-    # Più forte di Yeom e shadow-global perché usa i modelli locali (segnale non ancora
-    # distrutto dall'averaging FedAvg). Documentato nel paper come attacco primario.
-    n_shadow = args.n_shadow if args.n_shadow is not None else cfg.get("lira", {}).get("n_shadow", 8)
-    shadow_cap = args.shadow_epochs_cap  # None → local_epochs; int → override per smoke
-    try:
-        lira_results = run_lira(
-            cfg, train_sessions, holdout_sessions, fl_results,
-            n_shadow=n_shadow, shadow_epochs_cap=shadow_cap, no_dp=args.no_dp,
-            dp_mode=args.dp_mode,
-        )
-        for rnd, lira_data in lira_results.items():
-            if rnd in mia_results:
-                mia_results[rnd].update(lira_data)
-            else:
-                mia_results[rnd] = lira_data
-    except Exception as exc:  # noqa: BLE001
-        logger.error(
-            f"run_lira() fallita: {exc}. Continuazione senza LiRA.",
-            exc_info=True,
-        )
+        # LiRA (Carlini 2022, Eq. 2) — server-side attack sul singolo update di ogni
+        # client, PRE-aggregazione FedAvg ma POST-privatizzazione DP (fix 2026-07-21c —
+        # in precedenza attaccava raw_updates, pre-DP per costruzione, vedi run_lira()).
+        # Threat model: aggregatore semi-onesto intercetta gli update locali prima di FedAvg.
+        # Più forte di Yeom e shadow-global perché usa i modelli locali (segnale non ancora
+        # distrutto dall'averaging FedAvg). Documentato nel paper come attacco primario.
+        n_shadow = args.n_shadow if args.n_shadow is not None else cfg.get("lira", {}).get("n_shadow", 8)
+        shadow_cap = args.shadow_epochs_cap  # None → local_epochs; int → override per smoke
+        try:
+            lira_results = run_lira(
+                cfg, train_sessions, holdout_sessions, fl_results,
+                n_shadow=n_shadow, shadow_epochs_cap=shadow_cap, no_dp=args.no_dp,
+                dp_mode=args.dp_mode, cluster_membership=cluster_membership,
+            )
+            for rnd, lira_data in lira_results.items():
+                if rnd in mia_results:
+                    mia_results[rnd].update(lira_data)
+                else:
+                    mia_results[rnd] = lira_data
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                f"run_lira() fallita: {exc}. Continuazione senza LiRA.",
+                exc_info=True,
+            )
 
     ids_results: dict = {}
     if not args.skip_ids:

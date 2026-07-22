@@ -13,19 +13,23 @@ participants:
     fed_learn_port: 8002
     admin_port: 8003
 
-  - name: highway
+  # 2026-07-22: sostituiti i 4 nomi fittizi (highway/urban/residential/corporate
+  # — mai stati siti realmente distinti, solo fette arbitrarie dello stesso
+  # dataset) con i 3 siti REALI di ACN-Data (Caltech/JPL/Office1, verificati
+  # via siteID+conteggio stazioni — vedi scripts/run_experiments.py e
+  # docs/NVFlareIntegration.md). Nessun 4°/5° sito reale esiste in ACN-Data;
+  # i 2 client sintetici usati per la validazione IDS (n=5, vedi
+  # config/experiment.yaml byzantine_attack) esistono SOLO nella simulazione
+  # single-process, non ancora portati su NVFLARE (fuori scope per ora).
+  - name: caltech
     type: client
     org: chargeshield
 
-  - name: urban
+  - name: jpl
     type: client
     org: chargeshield
 
-  - name: residential
-    type: client
-    org: chargeshield
-
-  - name: corporate
+  - name: office1
     type: client
     org: chargeshield
 

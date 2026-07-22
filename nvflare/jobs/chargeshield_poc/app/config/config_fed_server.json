@@ -1,5 +1,5 @@
 {
-  "_comment": "ChargeShield-FL — server-side config, NVFLARE 2.7.2. FASE 2+3+4+5 (2026-07-22, NON verificato — vedi docs/NVFlareIntegration.md): l'aggregatore built-in InTimeAccumulateWeightedAggregator e' stato sostituito da ChargeShieldAggregator (app/custom/chargeshield_aggregator.py), che avvolge le classi VERE e gia' testate della simulazione — FedAvgAggregator (src/ml/fedavg_aggregator.py) per la media pesata, PrivacyAuditor + ChargingIDS (src/auditor, src/ids) per l'analisi IDS/privacy per-round, GradientManager per la DP server-side (fase 3: privatize per-client in dp_mode='dp-fedavg', privatize_aggregate sull'aggregato in dp_mode='central'). dp_mode/epsilon/delta DEVONO combaciare con i valori equivalenti in config_fed_client.json — nessuna validazione incrociata automatica. FASE 4: results_export_path — dove viene scritta (overwrite dopo ogni round) la cronologia JSON di IDS/Auditor. FASE 5: fl_results_export_path — dump pickle per-round (updates/raw_updates/global_weights) consumato offline da scripts/run_nvflare_mia.py per LiRA/Shadow/Yeom.",
+  "_comment": "ChargeShield-FL — server-side config, NVFLARE 2.7.2. FASE 2+3+4+5 (2026-07-22, NON verificato — vedi docs/NVFlareIntegration.md): l'aggregatore built-in InTimeAccumulateWeightedAggregator e' stato sostituito da ChargeShieldAggregator (app/custom/chargeshield_aggregator.py), che avvolge le classi VERE e gia' testate della simulazione — FedAvgAggregator (src/ml/fedavg_aggregator.py) per la media pesata, PrivacyAuditor + ChargingIDS (src/auditor, src/ids) per l'analisi IDS/privacy per-round, GradientManager per la DP server-side (fase 3: privatize per-client in dp_mode='dp-fedavg', privatize_aggregate sull'aggregato in dp_mode='central'). dp_mode/epsilon/delta DEVONO combaciare con i valori equivalenti in config_fed_client.json — nessuna validazione incrociata automatica. FASE 4: results_export_path — dove viene scritta (overwrite dopo ogni round) la cronologia JSON di IDS/Auditor. FASE 5: fl_results_export_path — dump pickle per-round (updates/raw_updates/global_weights) consumato offline da scripts/run_nvflare_mia.py per LiRA/Shadow/Yeom. FIX 2026-07-22 (3 siti reali): min_clients 4→3 in entrambi i punti sotto (aggregator e scatter_and_gather) — nvflare/project.yml ora provisiona solo 3 client reali (caltech/jpl/office1); i 2 client sintetici per la validazione IDS/Krum (n=5, vedi config/experiment.yaml byzantine_attack) esistono SOLO nella simulazione single-process (scripts/run_experiments.py), non ancora portati su NVFLARE — krum_threshold qui resta quello calibrato per il caso n=3 senza attacco (byzantine_tolerance=0), NON il caso n=5 del sweep IDS.",
   "format_version": 2,
   "server": {
     "heart_beat_timeout": 600
@@ -27,7 +27,7 @@
       "path": "chargeshield_aggregator.ChargeShieldAggregator",
       "args": {
         "auditor_config_path": "config/auditor.yaml",
-        "min_clients": 4,
+        "min_clients": 3,
         "max_grad_norm": 1.0,
         "epsilon": 1.0,
         "delta": 1.0e-5,
@@ -45,7 +45,7 @@
       "id": "scatter_and_gather",
       "path": "nvflare.app_common.workflows.scatter_and_gather.ScatterAndGather",
       "args": {
-        "min_clients": 4,
+        "min_clients": 3,
         "num_rounds": 10,
         "start_round": 0,
         "wait_time_after_min_received": 10,

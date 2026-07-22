@@ -35,6 +35,13 @@ clab-*/
 
 # Datasets
 datasets/raw/
+# ACN-Data per-site session dumps (2026-07-22): ~52MB across caltech/jpl/office,
+# publicly downloadable from https://ev.caltech.edu/dataset via
+# scripts/download_acn_sessions.py — kept local-only rather than growing the
+# repo forever. jpl_2019/jpl_2020 were tracked before this date; untracked via
+# `git rm --cached` in the same commit that adds this line (old versions
+# remain in git history, no further growth going forward).
+datasets/acn/
 
 # NVFlare
 workspace/

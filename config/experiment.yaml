@@ -12,13 +12,34 @@ experiment:
   max_grad_norm: 1.0
   # proximal_mu: rimosso — il codice legge cfg["ml"]["proximal_mu"], non cfg["experiment"]["proximal_mu"]
 
-datasets:
-  jpl_2019: datasets/acn/jpl/acndata_sessions_2019.json
-  jpl_2020: datasets/acn/jpl/acndata_sessions_2020.json
-  # Dataset aggiuntivi per validazione cross-dataset (Sprint 9).
-  # Abilitare quando pronti per i run di riproducibilità:
-  # jpl_2018: datasets/acn/jpl/acndata_sessions_2018.json
-  # jpl_2021: datasets/acn/jpl/acndata_sessions_2021.json
+# sites (2026-07-22): sostituisce la precedente sezione "datasets" (jpl_2019/
+# jpl_2020 — che in realtà, scoperto oggi, erano dati Caltech mal etichettati
+# "jpl", vedi README/CaseStudies.md per il dettaglio). Ogni sito reale combina
+# TUTTI gli anni disponibili (2018-2021, tranne Office 1 dove il 2018 non
+# esiste su ev.caltech.edu) in un unico pool — stessa logica già usata prima
+# per jpl_2019+jpl_2020, ora applicata per sito invece che globalmente.
+# I 3 siti sono gli UNICI siti reali disponibili in ACN-Data (verificato su
+# https://ev.caltech.edu/dataset, sezione "Sites": Caltech 54 EVSE, JPL 50
+# EVSE, Office 1 8 EVSE — nessun 4°/5° sito esiste in questo dataset).
+# Ogni sessione porta il proprio site_id reale (src/adapters/acn_dataset.py) —
+# scripts/run_experiments.py::group_indices_by_site() raggruppa per quello,
+# non serve che le liste qui sotto siano in un ordine particolare.
+sites:
+  caltech:
+    - datasets/acn/caltech/acndata_sessions_2018.json
+    - datasets/acn/caltech/acndata_sessions_2019.json
+    - datasets/acn/caltech/acndata_sessions_2020.json
+    - datasets/acn/caltech/acndata_sessions_2021.json
+  jpl:
+    - datasets/acn/jpl/acndata_sessions_2018.json
+    - datasets/acn/jpl/acndata_sessions_2019.json
+    - datasets/acn/jpl/acndata_sessions_2020.json
+    - datasets/acn/jpl/acndata_sessions_2021.json
+  office1:
+    - datasets/acn/office/acndata_sessions_2019.json
+    - datasets/acn/office/acndata_sessions_2020.json
+    - datasets/acn/office/acndata_sessions_2021.json
+    # Nessun 2018: non disponibile per Office 1 su ev.caltech.edu.
 
 # fedmia: parametri legacy — sezione mantenuta per compatibilità con codice meno recente.
 # Il pipeline sperimentale (run_experiments.py) esegue tre attacchi separati:
@@ -67,14 +88,29 @@ lira:
 # all'aggregatore. Con scale_factor=10, il nodo è ~10× più "lontano"
 # geometricamente dagli altri → Krum score >1.5 → alert reale.
 #
+# IMPORTANTE (2026-07-22): quando enabled=true, run_experiments.py aggiunge
+# ESCLUSIVAMENTE a questo run 2 client FITTIZI (synthetic_1/synthetic_2, dati
+# reali ri-affettati dal pool combinato — vedi inject_synthetic_client_indices()
+# in scripts/run_experiments.py) oltre ai 3 siti reali (caltech/jpl/office1),
+# per un totale di 5 client — necessario perché Krum garantisce di rilevare
+# f=1 nodo Byzantine solo con n≥2f+3=5 nodi, e i soli 3 siti reali non
+# bastano (nessun 4°/5° sito reale esiste in ACN-Data). Con enabled=true,
+# FedMIA/Shadow/LiRA vengono SALTATI DEL TUTTO (non solo "da non fidarsi") —
+# questo run serve SOLO a validare Krum/ChargingIDS, non produce numeri di
+# privacy validi per il paper. Per gli esperimenti di privacy, lasciare
+# enabled=false: SOLO i 3 client reali vengono usati, sia per il training
+# FL sia per FedMIA/Shadow/LiRA.
+#
 # attack_type:
 #   none            → baseline (nessun attacco, default)
 #   gradient_scaling → moltiplica pesi attaccante × scale_factor
 #
-# byzantine_node: nome del cluster attaccante (highway, urban, residential, corporate)
+# byzantine_node: nome del cluster attaccante — synthetic_1 o synthetic_2
+#                 (MAI un sito reale, per non implicare che un sito reale
+#                 specifico sia "malevolo" nella narrazione del paper)
 # scale_factor:   intensità attacco (10 = forte, 3 = moderato, 50 = devastante)
 byzantine_attack:
-  enabled: false          # true = attiva attacco; false = baseline normale
+  enabled: false           # true = attiva attacco + 2 client sintetici; false = solo 3 siti reali
   attack_type: gradient_scaling
-  byzantine_node: highway  # cluster attaccante
-  scale_factor: 10         # intensità: 10× → rilevabile da Krum; 3× → borderline
+  byzantine_node: synthetic_1  # cluster attaccante fittizio
+  scale_factor: 10          # intensità: 10× → rilevabile da Krum; 3× → borderline
