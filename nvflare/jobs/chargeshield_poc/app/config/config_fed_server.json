@@ -1,0 +1,51 @@
+{
+  "_comment": "ChargeShield-FL — server-side config, NVFLARE 2.7.2 (2026-07-22, NON verificato — vedi docs/NVFlareIntegration.md). Usa i componenti built-in di NVFLARE (ScatterAndGather + InTimeAccumulateWeightedAggregator + FullModelShareableGenerator + PTFileModelPersistor) SOLO per validare il trasporto client<->server round per round. FedAvgAggregator/GradientManager/PrivacyAuditor/ChargingIDS (le classi vere e gia' testate in src/ml e src/auditor, src/ids) NON sono ancora collegate qui — sostituire InTimeAccumulateWeightedAggregator con un Aggregator custom che le richiami e' il prossimo passo (vedi docs/NVFlareIntegration.md, fase 2).",
+  "format_version": 2,
+  "server": {
+    "heart_beat_timeout": 600
+  },
+  "task_data_filters": [],
+  "task_result_filters": [],
+  "components": [
+    {
+      "id": "persistor",
+      "path": "nvflare.app_opt.pt.file_model_persistor.PTFileModelPersistor",
+      "args": {
+        "model": {
+          "path": "core.autoencoder.Autoencoder",
+          "args": { "input_dim": 6 }
+        }
+      }
+    },
+    {
+      "id": "shareable_generator",
+      "path": "nvflare.app_common.shareablegenerators.full_model_shareable_generator.FullModelShareableGenerator",
+      "args": {}
+    },
+    {
+      "id": "aggregator",
+      "path": "nvflare.app_common.aggregators.intime_accumulate_model_aggregator.InTimeAccumulateWeightedAggregator",
+      "args": {
+        "exclude_vars": null,
+        "aggregation_weights": null
+      }
+    }
+  ],
+  "workflows": [
+    {
+      "id": "scatter_and_gather",
+      "path": "nvflare.app_common.workflows.scatter_and_gather.ScatterAndGather",
+      "args": {
+        "min_clients": 4,
+        "num_rounds": 10,
+        "start_round": 0,
+        "wait_time_after_min_received": 10,
+        "aggregator_id": "aggregator",
+        "persistor_id": "persistor",
+        "shareable_generator_id": "shareable_generator",
+        "train_task_name": "train",
+        "train_timeout": 0
+      }
+    }
+  ]
+}

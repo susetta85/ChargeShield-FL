@@ -1,0 +1,9 @@
+{
+  "_comment": "ChargeShield-FL — NVFLARE job scaffold (2026-07-22, primo slice, NON eseguito/verificato: nvflare non installabile nel sandbox che ha scritto questo file — vedi docs/NVFlareIntegration.md per stato e prossimi passi). Obiettivo di questo primo job: SOLO validare il round-trip client<->server con 4 client (uno per cluster), NESSUN DP/IDS ancora integrato (arriva in una fase successiva, vedi docs/NVFlareIntegration.md).",
+  "name": "chargeshield_poc",
+  "resource_spec": {},
+  "min_clients": 4,
+  "deploy_map": {
+    "app": ["@ALL"]
+  }
+}
