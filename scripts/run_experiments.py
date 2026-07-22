@@ -1576,7 +1576,8 @@ def save_results(
     Salva risultati in experiments/ (o sweep_dir) con timestamp.
 
     Se sweep_dir è fornita, i JSON vengono salvati in quella directory
-    e l'Excel verrà nominato come la directory (es. experiments/exp1/exp1.xlsx).
+    e l'Excel verrà nominato come la directory (es.
+    experiments/nodp-sweep1/nodp-sweep1.xlsx).
     Questo garantisce che ogni sweep abbia il proprio file Excel separato.
     """
     if sweep_dir is not None:
@@ -1708,8 +1709,10 @@ def _update_excel_report(sweep_dir: Path, named_sweep: bool = False) -> None:
     Rigenera il report Excel a 6 sheet per il sweep corrente.
 
     Il nome del file Excel dipende dalla modalità:
-    - sweep_dir nominata (es. experiments/exp1) → exp1.xlsx
-    - fallback (experiments/) → ChargeShield_FL_Results.xlsx (retro-compatibilità)
+    - sweep_dir nominata (es. experiments/nodp-sweep1) → nodp-sweep1.xlsx
+    - fallback (experiments/) → ChargeShield_FL_Results.xlsx (retro-compatibilità,
+      usata da `make experiment-nodp`/`experiment-dp` — run singolo-seed senza
+      --sweep-dir, non parte della metodologia multi-seed)
 
     Usa un import Python standard invece di exec_module() per evitare il rischio
     di arbitrary code execution se il file fosse modificato da un attacker con accesso
@@ -1782,9 +1785,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--sweep-dir", type=Path, default=None,
         help=(
-            "Directory del sweep corrente (es. experiments/exp1). "
+            "Directory del sweep corrente (es. experiments/nodp-sweep1). "
             "Se fornita, JSON e Excel vengono salvati qui con nome del sweep "
-            "(es. exp1.xlsx). Permette di isolare i risultati di sweep distinti."
+            "(es. nodp-sweep1.xlsx). Permette di isolare i risultati di sweep distinti."
         ),
     )
     parser.add_argument(

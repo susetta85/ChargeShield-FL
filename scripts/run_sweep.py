@@ -7,9 +7,18 @@ Esegue run_experiments.py sequenzialmente per ogni combinazione rounds × epsilo
 Dopo ogni esperimento il report Excel del sweep viene aggiornato automaticamente
 (6 sheet: Raw Data, Heat Map, Per Rounds, Per Epsilon, Comparison, AUC Progression).
 
-Ogni sweep crea una directory numerata (experiments/exp1/, experiments/exp2/, ...)
-che contiene i JSON dei risultati e il file Excel del sweep (es. exp1.xlsx).
-Questo garantisce che sweep distinti non si mescolino mai.
+Ogni sweep crea una directory numerata (experiments/full-sweep1/,
+experiments/full-sweep2/, ...) che contiene i JSON dei risultati e il file
+Excel del sweep (es. full-sweep1.xlsx). Questo garantisce che sweep distinti
+non si mescolino mai.
+
+Nota (fix 2026-07-22): questo script esegue lo stesso tipo di sweep
+rounds×epsilon del target `make experiment-full-sweep` (Makefile), che usa il
+contatore dedicato `full-sweep{N}` per evitare l'ambiguità di un contatore
+generico condiviso tra tipi di sweep diversi (no-DP, DP, rounds×epsilon —
+vedi README.md "Engineering Fixes", 2026-07-21). Questo script usava ancora
+il vecchio schema generico `exp{N}`, ormai abbandonato dappertutto nel
+progetto; allineato a `full-sweep{N}` per coerenza con il target Makefile.
 
 Usage:
     python scripts/run_sweep.py                          # round default: 100 200 500 1000
@@ -18,7 +27,7 @@ Usage:
     python scripts/run_sweep.py --rounds 100 200 --epsilon 0.5 1.0  # sweep 2D
     python scripts/run_sweep.py --skip-ids               # salta IDS (più veloce)
     python scripts/run_sweep.py --dry-run                # verifica config senza training
-    python scripts/run_sweep.py --sweep-dir experiments/exp3  # directory sweep manuale
+    python scripts/run_sweep.py --sweep-dir experiments/full-sweep3  # directory sweep manuale
 """
 
 from __future__ import annotations
@@ -46,14 +55,18 @@ EXPERIMENTS   = PROJECT_ROOT / "experiments"
 def _next_sweep_dir() -> Path:
     """
     Rileva il numero del prossimo sweep disponibile e restituisce la directory.
-    Esempio: se esistono exp1/ e exp2/, restituisce experiments/exp3/.
+    Esempio: se esistono full-sweep1/ e full-sweep2/, restituisce
+    experiments/full-sweep3/ — stesso contatore dedicato usato dal target
+    Makefile `experiment-full-sweep` (fix 2026-07-22: prima usava il vecchio
+    schema generico `exp{N}`, condiviso e ambiguo tra i diversi tipi di sweep).
     """
+    _prefix = "full-sweep"
     existing = [
         d for d in EXPERIMENTS.iterdir()
-        if d.is_dir() and d.name.startswith("exp") and d.name[3:].isdigit()
+        if d.is_dir() and d.name.startswith(_prefix) and d.name[len(_prefix):].isdigit()
     ] if EXPERIMENTS.exists() else []
     next_num = len(existing) + 1
-    return EXPERIMENTS / f"exp{next_num}"
+    return EXPERIMENTS / f"{_prefix}{next_num}"
 
 
 def run_experiment(
@@ -107,8 +120,9 @@ def main() -> None:
     parser.add_argument(
         "--sweep-dir", type=Path, default=None,
         help=(
-            "Directory del sweep (es. experiments/exp3). "
-            "Se non fornita, viene auto-rilevata la prossima disponibile."
+            "Directory del sweep (es. experiments/full-sweep3). "
+            "Se non fornita, viene auto-rilevata la prossima disponibile "
+            "(schema full-sweep{N})."
         ),
     )
     args = parser.parse_args()

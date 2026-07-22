@@ -174,9 +174,12 @@ experiment-full-sweep: _check-deps
 #
 # IMPORTANTE: questo sweep NON è un test di privacy risk.
 # Serve SOLO a validare che l'IDS (Krum) rilevi correttamente nodi malevoli.
-# I risultati vanno in experiments/ids_validation/ — MAI in experiments/exp{N}/.
-# La sequenza exp{N} è riservata esclusivamente agli esperimenti MIA puliti
-# (nessun attacco attivo, DP variabile, per misurare AUC-ROC vs epsilon).
+# I risultati vanno in experiments/ids_validation/ — MAI in experiments/nodp-sweep{N}/,
+# dp-sweep{N}/ o full-sweep{N}/ (fix 2026-07-22: nome aggiornato, il vecchio
+# schema generico "exp{N}" non esiste più — vedi nota sotto experiment-full-sweep).
+# Le sequenze nodp-sweep{N}/dp-sweep{N}/full-sweep{N} sono riservate esclusivamente
+# agli esperimenti MIA puliti (nessun attacco attivo, DP variabile, per misurare
+# AUC-ROC vs epsilon).
 #
 # Attacco: highway moltiplica pesi ×10 → Krum score ≈4.0 > threshold 1.5 → alert.
 # 25 run: 5 seed × 5 epsilon per robustezza statistica della detection.

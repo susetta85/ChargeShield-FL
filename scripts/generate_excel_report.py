@@ -576,8 +576,17 @@ def build_comparison(ws, records: list[dict]) -> None:
             val = rec.get(key)
             c = ws.cell(row_idx, col)
             _data_cell(c, val, fmt=fmt, alt_row=alt)
-            # Colora AUC-ROC e Privacy Risk
-            if key in ("auc_roc", "auc_max", "auc_min") and val is not None:
+            # Colora AUC-ROC (Yeom, Shadow, LiRA) e Privacy Risk.
+            # Fix 2026-07-22: mancavano shadow_auc/shadow_max/lira_auc/lira_max —
+            # solo le righe Yeom (auc_roc/auc_max/auc_min) venivano colorate, quindi
+            # un LiRA AUC anomalo (invertito o ≈0.14, l'esatto sintomo dei fix
+            # 2026-07-21a-e) sarebbe rimasto testo nero non evidenziato proprio nel
+            # foglio "Comparison" — trovato da una review indipendente.
+            if key in (
+                "auc_roc", "auc_max", "auc_min",
+                "shadow_auc", "shadow_max",
+                "lira_auc", "lira_max",
+            ) and val is not None:
                 c.font = _font(bold=True, color=_auc_risk_color(val))
             elif key == "privacy_risk":
                 c.font = _font(bold=True, color=_risk_label_color(val))
