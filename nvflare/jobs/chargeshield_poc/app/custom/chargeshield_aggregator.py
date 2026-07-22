@@ -43,12 +43,27 @@ della DP (vedi chargeshield_executor.py per la parte client-side):
       attesa e documentata in run_ids() (fallback a confronto su pesi
       assoluti/rumorizzati, non un bug).
 
-Cosa NON fa ancora (fase 4, vedi docs/NVFlareIntegration.md):
-    - I risultati di PrivacyAuditor/ChargingIDS sono solo loggati (logger.info/
-      warning), non esportati in un formato strutturato (JSON/Excel) come fa
-      save_results() nella simulazione — da aggiungere quando questo gira
-      davvero (probabile: scrivere su file via fl_ctx o un componente NVFLARE
-      dedicato, non deciso).
+Cosa fa in più da FASE 4 (2026-07-22, sera) — export strutturato:
+    - _run_ids_analysis() ora costruisce un dizionario per-round nello STESSO
+      formato di ids_results in scripts/run_experiments.py::run_ids() (alerts
+      con node_id/severity/reasons/recommended_action, byzantine_detected,
+      low_similarity_nodes) PIU' un blocco per_client_audit con l'output grezzo
+      di PrivacyAuditor.audit() (privacy_score, epsilon, threats_detected) —
+      stessa struttura dati, non una re-invenzione.
+    - _export_results() scrive l'intera cronologia (self._audit_history) su
+      un file JSON dopo OGNI round (overwrite, non append — così il file è
+      sempre coerente anche se il job viene interrotto a metà), invece di
+      solo loggare. Path di default: experiments/nvflare_ids_audit_results.json
+      (stessa directory `experiments/` già usata — e già in .gitignore — per
+      gli output della simulazione single-process), configurabile via
+      `results_export_path`.
+    - Non ancora fatto: nessuna analisi MIA (LiRA/Shadow/Yeom) qui — quella è
+      fase 5 (raw-update extraction per gli attacchi), non fase 4.
+
+Cosa NON fa ancora (fase 5+, vedi docs/NVFlareIntegration.md):
+    - Nessun attacco MIA (LiRA/Shadow/Yeom) — solo IDS/Auditor per-round.
+      accept() vede già ogni update raw per-client individualmente (necessario
+      per LiRA), ma nulla lo consuma ancora per quello scopo.
     - Non gestisce round con partecipazione parziale (drop-out) — stesso
       limite già segnalato nella review scalabilità/realismo di oggi per
       FedAvgAggregator (min_participants=tutti i client).
@@ -75,6 +90,7 @@ Punti VERIFY: (stessa cautela di chargeshield_executor.py — marcati inline):
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
 from pathlib import Path
@@ -122,6 +138,11 @@ class ChargeShieldAggregator(Aggregator):
                      ciascun modo.
         delta:       parametro DP, passato a GradientManager insieme a
                      epsilon/max_grad_norm (fase 3).
+        results_export_path: path (relativo alla root del progetto) del file
+                     JSON dove viene scritta la cronologia IDS/Auditor
+                     (fase 4) — sovrascritto per intero dopo ogni round.
+                     Default: experiments/nvflare_ids_audit_results.json
+                     (stessa dir, già in .gitignore, usata dalla simulazione).
     """
 
     def __init__(
@@ -136,6 +157,7 @@ class ChargeShieldAggregator(Aggregator):
         cosine_threshold: float = 0.3,
         krum_threshold: float = 3.5,
         dp_mode: str = "dp-fedavg",
+        results_export_path: str = "experiments/nvflare_ids_audit_results.json",
     ):
         super().__init__()
         self._auditor_config_path = str(_PROJECT_ROOT / auditor_config_path)
@@ -148,6 +170,10 @@ class ChargeShieldAggregator(Aggregator):
         self._cosine_threshold = cosine_threshold
         self._krum_threshold = krum_threshold
         self._dp_mode = dp_mode
+        self._results_export_path = _PROJECT_ROOT / results_export_path
+        # Cronologia IDS/Auditor per-round (fase 4) — {round_num: {...}},
+        # scritta per intero su self._results_export_path dopo ogni round.
+        self._audit_history: dict[int, dict[str, Any]] = {}
 
         # Istanziati lazy in _ensure_components() — evita di importare
         # torch/ml/auditor/ids al momento della definizione della classe
@@ -350,10 +376,10 @@ class ChargeShieldAggregator(Aggregator):
         cluster. Vedi scripts/run_experiments.py::run_ids() per la
         spiegazione completa dei fix (Sprint 9) replicati qui.
 
-        Differenza rispetto alla simulazione: qui non esiste ancora un modo
-        strutturato per esportare i risultati (niente save_results()/Excel in
-        questa fase) — vengono solo loggati. Da estendere quando questa parte
-        del progetto arriva a girare davvero.
+        Fase 4 (2026-07-22, sera): oltre a loggare, ora costruisce una entry
+        strutturata in self._audit_history[self._round_num] nello stesso
+        formato di ids_results in run_ids() (vedi quella funzione), e la
+        esporta su JSON via _export_results() — vedi docstring del modulo.
         """
         import numpy as np
         import torch
@@ -395,6 +421,11 @@ class ChargeShieldAggregator(Aggregator):
             gradients[node_id] = {f"layer_{i}": dw for i, dw in enumerate(delta)}
 
         if not reports:
+            self._audit_history[self._round_num] = {
+                "alerts": [], "byzantine_detected": False, "low_similarity_nodes": [],
+                "per_client_audit": {},
+            }
+            self._export_results()
             return
 
         analysis = self._ids.analyze_round(self._round_num, reports, gradients)
@@ -405,3 +436,62 @@ class ChargeShieldAggregator(Aggregator):
             )
         else:
             logger.debug(f"Round {self._round_num}: nessun nodo Byzantine rilevato")
+
+        # ── Fase 4: entry strutturata, stesso formato di ids_results in run_ids() ──
+        self._audit_history[self._round_num] = {
+            "alerts": [
+                {
+                    "node_id": a.node_id,
+                    "severity": a.severity,
+                    "reasons": a.reasons,
+                    "recommended_action": a.recommended_action,
+                }
+                for a in (analysis.alerts if analysis else [])
+            ],
+            "byzantine_detected": bool(analysis.byzantine_nodes) if analysis else False,
+            "low_similarity_nodes": analysis.low_similarity_nodes if analysis else [],
+            "per_client_audit": {
+                node_id: {
+                    "privacy_score": report.privacy_score,
+                    "epsilon": report.epsilon,
+                    "threats_detected": report.threats_detected,
+                }
+                for node_id, report in reports.items()
+            },
+        }
+        self._export_results()
+
+    def _export_results(self) -> None:
+        """
+        Scrive self._audit_history per intero su self._results_export_path
+        (overwrite, non append) — chiamata alla fine di ogni round, cosi' il
+        file riflette sempre lo stato piu' recente anche se il job si ferma
+        a meta'. VERIFY: assume che il processo server abbia accesso in
+        scrittura a _PROJECT_ROOT/experiments/ dalla macchina/container dove
+        gira l'Aggregator — non verificato in un vero deployment NVFLARE
+        multi-sito (in un deployment reale l'Aggregator gira SOLO lato
+        server, quindi e' un singolo processo/filesystem, non uno per client
+        — ma il path assoluto e la working directory effettiva al momento
+        dell'esecuzione non sono stati confermati).
+        """
+        try:
+            self._results_export_path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "config": {
+                    "dp_mode": self._dp_mode,
+                    "epsilon": self._epsilon,
+                    "delta": self._delta,
+                    "max_grad_norm": self._max_grad_norm,
+                    "min_clients": self._min_clients,
+                    "krum_threshold": self._krum_threshold,
+                    "cosine_threshold": self._cosine_threshold,
+                },
+                "per_round": {str(r): v for r, v in sorted(self._audit_history.items())},
+            }
+            with open(self._results_export_path, "w") as f:
+                json.dump(payload, f, indent=2, default=str)
+        except OSError as exc:
+            # Non deve mai far fallire il round FL per un errore di I/O sui
+            # risultati — logga e continua (stesso principio difensivo di
+            # accept() sopra: un errore qui non deve bloccare l'addestramento).
+            logger.error(f"ChargeShieldAggregator._export_results: scrittura fallita: {exc}")

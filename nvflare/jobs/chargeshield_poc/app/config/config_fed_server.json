@@ -1,5 +1,5 @@
 {
-  "_comment": "ChargeShield-FL — server-side config, NVFLARE 2.7.2. FASE 2+3 (2026-07-22, NON verificato — vedi docs/NVFlareIntegration.md): l'aggregatore built-in InTimeAccumulateWeightedAggregator e' stato sostituito da ChargeShieldAggregator (app/custom/chargeshield_aggregator.py), che avvolge le classi VERE e gia' testate della simulazione — FedAvgAggregator (src/ml/fedavg_aggregator.py) per la media pesata, PrivacyAuditor + ChargingIDS (src/auditor, src/ids) per l'analisi IDS/privacy per-round, GradientManager per la DP server-side (fase 3: privatize per-client in dp_mode='dp-fedavg', privatize_aggregate sull'aggregato in dp_mode='central'). dp_mode/epsilon/delta DEVONO combaciare con i valori equivalenti in config_fed_client.json — nessuna validazione incrociata automatica.",
+  "_comment": "ChargeShield-FL — server-side config, NVFLARE 2.7.2. FASE 2+3+4 (2026-07-22, NON verificato — vedi docs/NVFlareIntegration.md): l'aggregatore built-in InTimeAccumulateWeightedAggregator e' stato sostituito da ChargeShieldAggregator (app/custom/chargeshield_aggregator.py), che avvolge le classi VERE e gia' testate della simulazione — FedAvgAggregator (src/ml/fedavg_aggregator.py) per la media pesata, PrivacyAuditor + ChargingIDS (src/auditor, src/ids) per l'analisi IDS/privacy per-round, GradientManager per la DP server-side (fase 3: privatize per-client in dp_mode='dp-fedavg', privatize_aggregate sull'aggregato in dp_mode='central'). dp_mode/epsilon/delta DEVONO combaciare con i valori equivalenti in config_fed_client.json — nessuna validazione incrociata automatica. FASE 4: results_export_path — dove viene scritta (overwrite dopo ogni round) la cronologia JSON di IDS/Auditor.",
   "format_version": 2,
   "server": {
     "heart_beat_timeout": 600
@@ -34,7 +34,8 @@
         "byzantine_tolerance": 0,
         "cosine_threshold": 0.3,
         "krum_threshold": 3.5,
-        "dp_mode": "dp-fedavg"
+        "dp_mode": "dp-fedavg",
+        "results_export_path": "experiments/nvflare_ids_audit_results.json"
       }
     }
   ],
