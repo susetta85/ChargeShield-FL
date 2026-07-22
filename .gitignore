@@ -44,3 +44,12 @@ prod_*/
 # mTLS certificates
 certs/
 certs/
+
+# Output esperimenti — dati generati, mai stati tracciati (git ls-files
+# experiments/ è sempre stato vuoto), ma non era mai stato reso esplicito:
+# senza questa riga un futuro `git add -A` rischia di tracciare per sbaglio
+# xlsx/json di sweep (potenzialmente grandi, in crescita con più esperimenti).
+experiments/
+
+# Metadata locale di Claude Code / Cowork — mai da versionare.
+.claude/
