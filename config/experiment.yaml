@@ -36,9 +36,9 @@ sites:
     - datasets/acn/jpl/acndata_sessions_2020.json
     - datasets/acn/jpl/acndata_sessions_2021.json
   office1:
-    - datasets/acn/office/acndata_sessions_2019.json
-    - datasets/acn/office/acndata_sessions_2020.json
-    - datasets/acn/office/acndata_sessions_2021.json
+    - datasets/acn/office1/acndata_sessions_2019.json
+    - datasets/acn/office1/acndata_sessions_2020.json
+    - datasets/acn/office1/acndata_sessions_2021.json
     # Nessun 2018: non disponibile per Office 1 su ev.caltech.edu.
 
 # fedmia: parametri legacy — sezione mantenuta per compatibilità con codice meno recente.

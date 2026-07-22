@@ -116,7 +116,9 @@ def load_nvflare_fl_results(path: Path) -> tuple[dict[int, dict[str, Any]], dict
     return fl_results, meta
 
 
-def load_client_sessions(client_config_path: Path) -> list[dict[str, Any]]:
+def load_client_sessions(
+    client_config_path: Path,
+) -> tuple[list[dict[str, Any]], dict[str, list[int]] | None]:
     """
     Ricostruisce ESATTAMENTE le sessioni (enriched, NON shuffled, ordine
     originale del file) che i client NVFLARE reali hanno visto — leggendo
@@ -137,6 +139,28 @@ def load_client_sessions(client_config_path: Path) -> list[dict[str, Any]]:
     SENZA generare alcun errore visibile (fallimento silenzioso, il più
     pericoloso). Fix: legge lo stesso "dataset_path" dal config del client
     reale e applica la stessa pipeline (ACNDataset → enrich, NESSUNO shuffle).
+
+    FIX 2026-07-22 (review indipendente pre-push, 3 siti reali): questa
+    funzione assumeva ancora "dataset_path" = UN singolo file JSON condiviso
+    da tutti i client (design pre-2026-07-22). Da quando
+    chargeshield_executor.py carica invece TUTTI i file sotto la directory
+    PADRE "datasets/acn/<cluster_id>/" (un cluster_id per sito reale), questa
+    funzione andava in `IsADirectoryError` aprendo quella directory come se
+    fosse un file — mai eseguita/testata da nessuno nel frattempo (nvflare/
+    torch non disponibili in questo sandbox), quindi il bug non era stato
+    notato. Fix: se "dataset_path" è una directory, la tratta come la radice
+    multi-sito (stessa struttura di chargeshield_executor.py) e carica OGNI
+    sottodirectory sito trovata (non solo quella del cluster_id di default
+    nel config — quel valore è comunque solo un fallback per-sito, mai letto
+    a runtime da un vero deployment NVFLARE, vedi commento in
+    config_fed_client.json), costruendo anche un `cluster_membership`
+    (site_name -> lista indici) — stesso schema di
+    scripts/run_experiments.py::group_indices_by_site() — così run_lira()
+    può raggruppare per sito reale invece di ricadere silenziosamente sul
+    fallback a 4 fette fittizie (comportamento di default se
+    cluster_membership=None). Se invece "dataset_path" è ancora un file
+    singolo (design pre-2026-07-22, o un dump storico), il comportamento
+    originale è preservato invariato e restituisce cluster_membership=None.
     """
     import json as _json
 
@@ -144,6 +168,37 @@ def load_client_sessions(client_config_path: Path) -> list[dict[str, Any]]:
         client_cfg = _json.load(f)
     dataset_path_str = client_cfg["executors"][0]["executor"]["args"]["dataset_path"]
     dataset_path = PROJECT_ROOT / dataset_path_str
+
+    if dataset_path.is_dir():
+        site_dirs = sorted(p for p in dataset_path.iterdir() if p.is_dir())
+        if not site_dirs:
+            raise ValueError(
+                f"'dataset_path' ({dataset_path}) è una directory ma non contiene "
+                "nessuna sottodirectory sito (es. caltech/jpl/office1) — non è "
+                "possibile ricostruire le sessioni dei client reali."
+            )
+        sessions: list[dict[str, Any]] = []
+        cluster_membership: dict[str, list[int]] = {}
+        for site_dir in site_dirs:
+            json_files = sorted(site_dir.glob("*.json"))
+            if not json_files:
+                logger.warning(f"Nessun file .json in {site_dir} — sito saltato.")
+                continue
+            site_sessions: list[dict[str, Any]] = []
+            for jf in json_files:
+                ds = ACNDataset()
+                ds.load(str(jf))
+                site_sessions.extend(ds.get_sample(i) for i in range(len(ds)))
+            start = len(sessions)
+            sessions.extend(site_sessions)
+            cluster_membership[site_dir.name] = list(range(start, len(sessions)))
+        sessions = enrich_sessions(sessions)
+        logger.info(
+            f"Sessioni multi-sito ricostruite da {dataset_path} — {len(sessions)} "
+            f"totali su {len(cluster_membership)} siti reali: "
+            + ", ".join(f"{k}={len(v)}" for k, v in cluster_membership.items())
+        )
+        return sessions, cluster_membership
 
     ds = ACNDataset()
     ds.load(str(dataset_path))
@@ -153,7 +208,7 @@ def load_client_sessions(client_config_path: Path) -> list[dict[str, Any]]:
         f"Sessioni client ricostruite da {dataset_path.name} (stesso file, stesso "
         f"ordine, nessuno shuffle — mirroring chargeshield_executor.py): {len(sessions)}"
     )
-    return sessions
+    return sessions, None
 
 
 def load_holdout_sessions(holdout_dataset_path: Path) -> list[dict[str, Any]]:
@@ -260,7 +315,7 @@ def main() -> None:
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    train_sessions = load_client_sessions(args.client_config)
+    train_sessions, cluster_membership = load_client_sessions(args.client_config)
 
     if args.holdout_dataset is not None:
         holdout_path = args.holdout_dataset
@@ -269,9 +324,37 @@ def main() -> None:
         with open(args.client_config) as f:
             _client_cfg = _json.load(f)
         _client_dataset = _client_cfg["executors"][0]["executor"]["args"]["dataset_path"]
-        # Tentativo automatico: sostituisce l'anno nel nome file con il
-        # successivo (es. *_2019.json -> *_2020.json) — entrambi presenti nel
-        # repo (datasets/acn/jpl/), mai toccati dallo stesso client.
+        _dataset_path_resolved = PROJECT_ROOT / _client_dataset
+        if _dataset_path_resolved.is_dir():
+            # FIX 2026-07-22 (review indipendente pre-push): con la directory
+            # multi-sito, chargeshield_executor.py::_setup() carica GIÀ TUTTI
+            # gli anni disponibili per ogni sito (vedi load_client_sessions())
+            # — a differenza del vecchio design a file singolo, non esiste più
+            # un "anno successivo" mai visto da nessun client da dedurre
+            # automaticamente: ogni anno scaricato per un sito è già stato
+            # usato per il training di quel sito. Dedurre automaticamente un
+            # file "successivo" qui rischierebbe di scegliere silenziosamente
+            # un file che in realtà FA PARTE del training set (falso
+            # hold-out, AUC di membership inference non validi senza alcun
+            # errore visibile) — l'esatto tipo di fallimento silenzioso che
+            # questo stesso file ha già dovuto correggere una volta (vedi
+            # load_client_sessions()). Richiede --holdout-dataset esplicito:
+            # un file/anno GENUINAMENTE mai incluso in nessuna sottodirectory
+            # sito passata a load_client_sessions() (es. un anno scaricato
+            # apposta e tenuto fuori da datasets/acn/, o un mese/sotto-periodo
+            # riservato manualmente prima del deployment NVFLARE).
+            raise ValueError(
+                "'dataset_path' è una directory multi-sito (3 siti reali, tutti "
+                "gli anni disponibili già usati per il training) — non esiste più "
+                "un 'anno successivo' automaticamente deducibile come hold-out "
+                "genuino. Specifica esplicitamente --holdout-dataset con un file "
+                "MAI incluso in nessuna sottodirectory sito caricata da "
+                "load_client_sessions() (vedi log sopra per l'elenco file usati)."
+            )
+        # Tentativo automatico (solo design a file singolo, pre-2026-07-22):
+        # sostituisce l'anno nel nome file con il successivo (es. *_2019.json
+        # -> *_2020.json), entrambi presenti nel repo, mai toccati dallo
+        # stesso client in quel design.
         import re
         _m = re.search(r"(19|20)\d{2}", _client_dataset)
         if not _m:
@@ -331,6 +414,7 @@ def main() -> None:
             cfg, train_sessions, holdout_sessions, fl_results,
             n_shadow=n_shadow, shadow_epochs_cap=args.shadow_epochs_cap,
             no_dp=no_dp, dp_mode=dp_mode,
+            cluster_membership=cluster_membership,
         )
         for rnd, data in lira_results.items():
             mia_results.setdefault(rnd, {}).update(data)

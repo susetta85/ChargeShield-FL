@@ -1722,6 +1722,42 @@ def run_ids(
     _byz_enabled = _byz_cfg.get("enabled", False)
     _byz_tolerance = 1 if _byz_enabled else 0
 
+    # FIX 2026-07-22 (review indipendente pre-push): byzantine_tolerance sopra
+    # è derivato SOLO dal flag di config, non dal numero di client realmente
+    # presenti in fl_results. Questo è un problema concreto per
+    # scripts/run_nvflare_mia.py: i 2 client sintetici esistono SOLO nella
+    # simulazione (mai portati su NVFLARE, per scelta esplicita — vedi
+    # docs/NVFlareIntegration.md), quindi un dump NVFLARE reale ha SEMPRE e
+    # SOLO 3 client anche se byzantine_attack.enabled=true è rimasto nel
+    # config usato per l'analisi post-hoc. Con byzantine_tolerance=1 e solo 3
+    # client, KrumDetector.compute_scores() (src/ids/charging_ids.py) applica
+    # il guard n<2f+3 (3<5) e azzera silenziosamente TUTTI gli score (con un
+    # solo warning nei log, facile da perdere) — non un crash, ma un IDS che
+    # sembra funzionare e in realtà non rileva nulla. Cross-check: conta i
+    # node_id distinti effettivamente presenti in fl_results e, se
+    # byzantine_tolerance=1 non è supportato dal numero reale di client
+    # (n<2·1+3=5), ricade su 0 con un warning esplicito — più sicuro che
+    # lasciare che il guard di Krum lo faccia silenziosamente più a valle.
+    if _byz_tolerance > 0:
+        _observed_node_ids: set[str] = set()
+        for _round_data in fl_results.values():
+            for _upd in (_round_data or {}).get("raw_updates") or (_round_data or {}).get("updates", []):
+                _nid = getattr(_upd, "node_id", None)
+                if _nid is not None:
+                    _observed_node_ids.add(_nid)
+        _n_observed = len(_observed_node_ids)
+        if _n_observed and _n_observed < 2 * _byz_tolerance + 3:
+            logger.warning(
+                f"[IDS] byzantine_attack.enabled=true ma solo {_n_observed} client "
+                f"osservati in fl_results ({sorted(_observed_node_ids)}) — insufficienti "
+                f"per la garanzia Krum n≥2f+3 con f={_byz_tolerance} (serve n≥{2*_byz_tolerance+3}). "
+                "Probabile analisi di un run NVFLARE reale (dove i client sintetici non "
+                "esistono, vedi docs/NVFlareIntegration.md) con un config di simulazione "
+                "lasciato a byzantine_attack.enabled=true. Ricado su byzantine_tolerance=0 "
+                "per evitare che Krum azzeri silenziosamente tutti gli score."
+            )
+            _byz_tolerance = 0
+
     # krum_threshold=3.5: calibrato empiricamente (2026-07-16) su n=4 "cluster"
     # fittizi — che in realtà erano 4 fette CONTIGUE dello STESSO singolo sito
     # reale (varianza inter-client dovuta solo a rumore di campionamento, MAI

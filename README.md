@@ -267,8 +267,10 @@ Download all 3 real ACN-Data sites from https://ev.caltech.edu/dataset (or use `
 ```
 datasets/acn/caltech/acndata_sessions_2018.json   (+ 2019, 2020, 2021)
 datasets/acn/jpl/acndata_sessions_2018.json       (+ 2019, 2020, 2021)
-datasets/acn/office/acndata_sessions_2019.json    (+ 2020, 2021 — no 2018 for this site)
+datasets/acn/office1/acndata_sessions_2019.json   (+ 2020, 2021 — no 2018 for this site)
 ```
+
+> The folder name must be `office1` (not `office`) — it must match the `office1` site name used in `config/experiment.yaml`'s `sites:` key and in NVFLARE's `cluster_id`/`project.yml`, since `chargeshield_executor.py` derives each client's dataset directory as `datasets/acn/<cluster_id>/`.
 
 See `config/experiment.yaml`'s `sites:` section for the exact file list read by `scripts/run_experiments.py`.
 

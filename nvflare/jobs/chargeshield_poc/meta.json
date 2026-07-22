@@ -1,8 +1,8 @@
 {
-  "_comment": "ChargeShield-FL — NVFLARE job scaffold (2026-07-22, primo slice, NON eseguito/verificato: nvflare non installabile nel sandbox che ha scritto questo file — vedi docs/NVFlareIntegration.md per stato e prossimi passi). Obiettivo di questo primo job: SOLO validare il round-trip client<->server con 4 client (uno per cluster), NESSUN DP/IDS ancora integrato (arriva in una fase successiva, vedi docs/NVFlareIntegration.md). deploy_map='@ALL' deploya lo STESSO app/ a tutti i siti: 'uno per cluster' è garantito da ChargeShieldExecutor._setup() che deriva cluster_id dal nome del sito NVFLARE (highway/urban/residential/corporate, da project.yml), non da config statica per-sito — fix 2026-07-22, review A1, vedi chargeshield_executor.py.",
+  "_comment": "ChargeShield-FL — NVFLARE job scaffold (2026-07-22, primo slice, NON eseguito/verificato: nvflare non installabile nel sandbox che ha scritto questo file — vedi docs/NVFlareIntegration.md per stato e prossimi passi). Obiettivo di questo primo job: SOLO validare il round-trip client<->server, NESSUN DP/IDS ancora integrato (arriva in una fase successiva, vedi docs/NVFlareIntegration.md). deploy_map='@ALL' deploya lo STESSO app/ a tutti i siti: il cluster_id per-sito è garantito da ChargeShieldExecutor._setup() che lo deriva dal nome del sito NVFLARE (fix 2026-07-22, review A1, vedi chargeshield_executor.py). FIX 2026-07-22 (3 siti reali): min_clients 4→3, i client sono ora i 3 siti reali ACN-Data (caltech/jpl/office1, da project.yml) invece dei 4 cluster fittizi highway/urban/residential/corporate — vedi README 'Real multi-site experiment' e config_fed_server.json (stesso min_clients, aggiornato in parallelo).",
   "name": "chargeshield_poc",
   "resource_spec": {},
-  "min_clients": 4,
+  "min_clients": 3,
   "deploy_map": {
     "app": ["@ALL"]
   }

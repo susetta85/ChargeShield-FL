@@ -181,14 +181,19 @@ experiment-full-sweep: _check-deps
 # agli esperimenti MIA puliti (nessun attacco attivo, DP variabile, per misurare
 # AUC-ROC vs epsilon).
 #
-# Attacco: highway moltiplica pesi ×10 → Krum score ≈4.0 > threshold 1.5 → alert.
+# Attacco: synthetic_1 (client fittizio, mai un sito reale — vedi
+# inject_synthetic_client_indices() in run_experiments.py, n=5 = 3 siti reali
+# + 2 sintetici, garanzia Krum n≥2f+3 con f=1) moltiplica pesi ×10 → Krum
+# score elevato → alert. FedMIA/Shadow/LiRA vengono saltati automaticamente
+# per questo sweep (byzantine_attack.enabled=true): non è una fonte di numeri
+# di privacy, solo di validazione IDS/Krum.
 # 25 run: 5 seed × 5 epsilon per robustezza statistica della detection.
 IDS_VALIDATION_DIR := $(EXPERIMENTS)/ids_validation
 .PHONY: experiment-byzantine-sweep
 experiment-byzantine-sweep: _check-deps
 	@mkdir -p $(IDS_VALIDATION_DIR); \
 	LOG="$(IDS_VALIDATION_DIR)/sweep_log.txt"; \
-	echo "→ IDS validation sweep (highway ×10, 5 seed × 5 epsilon)" | tee "$$LOG"; \
+	echo "→ IDS validation sweep (synthetic_1 ×10, 5 seed × 5 epsilon)" | tee "$$LOG"; \
 	echo "  NOTA: risultati in experiments/ids_validation/ — separati da exp{N} (MIA)" | tee -a "$$LOG"; \
 	for seed in 42 123 456 789 1234; do \
 		for eps in 0.1 0.5 1.0 2.0 5.0; do \
@@ -199,7 +204,7 @@ experiment-byzantine-sweep: _check-deps
 				--rounds 100 \
 				--seed $$seed \
 				--byzantine \
-				--byzantine-node highway \
+				--byzantine-node synthetic_1 \
 				--scale-factor 10 \
 				--sweep-dir "$(IDS_VALIDATION_DIR)" 2>&1 | tee -a "$$LOG"; \
 		done; \
