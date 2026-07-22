@@ -1,6 +1,6 @@
 # nvflare/jobs/chargeshield_poc/app/custom/chargeshield_aggregator.py
 """
-ChargeShieldAggregator — NVFLARE server-side Aggregator custom (fase 2, 2026-07-22).
+ChargeShieldAggregator — NVFLARE server-side Aggregator custom (fase 2+3, 2026-07-22).
 
 STATO: scritto e ragionato manualmente in un sandbox dove `nvflare`/`torch`
 non sono installabili (stesso limite di chargeshield_executor.py — vedi
@@ -24,12 +24,26 @@ già testate della simulazione, invece di InTimeAccumulateWeightedAggregator):
        c) converte l'AggregatedUpdate risultante in un DXO/Shareable per
           FullModelShareableGenerator.
 
-Cosa NON fa ancora (fase 3, vedi docs/NVFlareIntegration.md):
-    - Nessun DP (GradientManager.privatize()/clip_only()/privatize_aggregate()
-      non sono chiamati né qui né in chargeshield_executor.py). Gli update
-      raccolti in accept() sono quindi "raw" per definizione in questa fase —
-      non serve distinguere raw_updates/updates come nella simulazione finché
-      la DP non è cablata.
+Cosa fa in più da FASE 3 (2026-07-22, pomeriggio) — controparte server-side
+della DP (vedi chargeshield_executor.py per la parte client-side):
+    - dp_mode="dp-fedavg": gli update ricevuti in accept() sono RAW (il client
+      non applica DP) — aggregate() li usa RAW per l'analisi IDS/Auditor
+      (mirroring "il server vede transitoriamente il raw update" di run_ids()),
+      poi li clippa+rumorizza UNO PER UNO (GradientManager.privatize()) PRIMA
+      di passarli a FedAvgAggregator. Questa è l'architettura dp-fedavg
+      originale [McMahan et al. 2017]: il server (semi-trusted) fa il lavoro
+      di privatizzazione, non il client.
+    - dp_mode="central": gli update ricevuti sono già clippati (non rumorizzati)
+      dal client — l'IDS li analizza così com'è, FedAvgAggregator li combina,
+      poi aggregate() aggiunge UN SOLO rumore Gaussiano all'aggregato
+      (GradientManager.privatize_aggregate()), mirroring run_fl_rounds().
+    - dp_mode="local": gli update ricevuti sono già clippati E rumorizzati dal
+      client — l'aggregatore non fa nulla in più per la DP, ma l'IDS ora
+      analizza dati già rumorizzati invece che puliti: stessa degradazione
+      attesa e documentata in run_ids() (fallback a confronto su pesi
+      assoluti/rumorizzati, non un bug).
+
+Cosa NON fa ancora (fase 4, vedi docs/NVFlareIntegration.md):
     - I risultati di PrivacyAuditor/ChargingIDS sono solo loggati (logger.info/
       warning), non esportati in un formato strutturato (JSON/Excel) come fa
       save_results() nella simulazione — da aggiungere quando questo gira
@@ -82,7 +96,8 @@ logger = logging.getLogger(__name__)
 class ChargeShieldAggregator(Aggregator):
     """
     Sostituisce InTimeAccumulateWeightedAggregator con FedAvgAggregator +
-    PrivacyAuditor + ChargingIDS reali (fase 2, vedi docstring del modulo).
+    PrivacyAuditor + ChargingIDS + GradientManager reali (fase 2+3, vedi
+    docstring del modulo).
 
     Args (da config_fed_server.json):
         auditor_config_path: path a config/auditor.yaml (stesso file YAML
@@ -95,10 +110,18 @@ class ChargeShieldAggregator(Aggregator):
                      (fase 3), altrimenti la soglia GRADIENT_EXPLOSION non è
                      calibrata correttamente.
         epsilon / explosion_threshold: passati a PrivacyAuditor — vedi
-                     run_ids() per la semantica (no_dp non esiste ancora qui,
-                     fase 2 è sempre "senza DP" per costruzione).
+                     run_ids() per la semantica. epsilon è usato ANCHE per
+                     GradientManager quando dp_mode ne ha bisogno server-side
+                     (dp-fedavg, central) — deve combaciare con l'epsilon del
+                     client in config_fed_client.json.
         byzantine_tolerance / cosine_threshold / krum_threshold: passati a
                      ChargingIDS — stessi default di run_ids() (0, 0.3, 3.5).
+        dp_mode:     "dp-fedavg" (default) | "central" | "local" — deve
+                     combaciare con dp_mode nel config del client. Vedi
+                     docstring del modulo per cosa cambia server-side in
+                     ciascun modo.
+        delta:       parametro DP, passato a GradientManager insieme a
+                     epsilon/max_grad_norm (fase 3).
     """
 
     def __init__(
@@ -107,20 +130,24 @@ class ChargeShieldAggregator(Aggregator):
         min_clients: int = 4,
         max_grad_norm: float = 1.0,
         epsilon: float | None = None,
+        delta: float = 1.0e-5,
         explosion_threshold: float | None = None,
         byzantine_tolerance: int = 0,
         cosine_threshold: float = 0.3,
         krum_threshold: float = 3.5,
+        dp_mode: str = "dp-fedavg",
     ):
         super().__init__()
         self._auditor_config_path = str(_PROJECT_ROOT / auditor_config_path)
         self._min_clients = min_clients
         self._max_grad_norm = max_grad_norm
         self._epsilon = epsilon
+        self._delta = delta
         self._explosion_threshold = explosion_threshold
         self._byzantine_tolerance = byzantine_tolerance
         self._cosine_threshold = cosine_threshold
         self._krum_threshold = krum_threshold
+        self._dp_mode = dp_mode
 
         # Istanziati lazy in _ensure_components() — evita di importare
         # torch/ml/auditor/ids al momento della definizione della classe
@@ -128,11 +155,18 @@ class ChargeShieldAggregator(Aggregator):
         self._fedavg = None
         self._auditor = None
         self._ids = None
+        self._gm = None  # GradientManager (fase 3) — serve per dp_mode="dp-fedavg"/"central"
 
         self._weight_keys: list[str] | None = None
         self._round_updates: list[Any] = []   # GradientUpdate raccolti questo round
         self._round_num = 0                    # VERIFY: leggere da fl_ctx, non contare localmente
-        self._prev_raw_global: list[Any] | None = None  # per il delta peer-relative IDS
+        # Modello globale distribuito ai client all'INIZIO del round corrente
+        # (= output dell'aggregate() precedente) — usato sia come riferimento
+        # per il delta peer-relative dell'IDS, sia come reference_weights per
+        # GradientManager.privatize() lato server in dp_mode="dp-fedavg".
+        # Rinominato da _prev_raw_global (fase 2) perché con la DP cablata
+        # (fase 3) non è più necessariamente "raw" per ogni dp_mode.
+        self._prev_global_weights: list[Any] | None = None
 
     # ── Lazy init ────────────────────────────────────────────────────────────
 
@@ -140,6 +174,7 @@ class ChargeShieldAggregator(Aggregator):
         if self._fedavg is not None:
             return
         from ml.fedavg_aggregator import FedAvgAggregator
+        from ml.gradient_manager import GradientManager
         from auditor.privacy_auditor import PrivacyAuditor
         from ids.charging_ids import ChargingIDS
 
@@ -155,9 +190,17 @@ class ChargeShieldAggregator(Aggregator):
             cosine_threshold=self._cosine_threshold,
             krum_threshold=self._krum_threshold,
         )
+        # GradientManager: serve solo per dp_mode="dp-fedavg" (privatize per-client
+        # server-side) e "central" (privatize_aggregate sull'aggregato) — istanziato
+        # comunque per semplicità, inutilizzato in dp_mode="local" (tutto client-side).
+        self._gm = GradientManager({
+            "epsilon": self._epsilon if self._epsilon is not None else 1.0,
+            "delta": self._delta,
+            "max_grad_norm": self._max_grad_norm,
+        })
         logger.info(
-            "ChargeShieldAggregator inizializzato — FedAvgAggregator + "
-            "PrivacyAuditor + ChargingIDS (fase 2, nessuna DP ancora)"
+            f"ChargeShieldAggregator inizializzato — FedAvgAggregator + "
+            f"PrivacyAuditor + ChargingIDS + GradientManager (fase 3, dp_mode={self._dp_mode})"
         )
 
     # ── Aggregator API ───────────────────────────────────────────────────────
@@ -224,19 +267,42 @@ class ChargeShieldAggregator(Aggregator):
         import numpy as np
 
         self._round_num += 1  # VERIFY: leggere il round reale da fl_ctx
-        updates = self._round_updates
+        received_updates = self._round_updates
         self._round_updates = []
 
-        if not updates:
+        if not received_updates:
             logger.warning(f"Round {self._round_num}: nessun update ricevuto — aggregazione saltata")
             return DXO(data_kind=DataKind.WEIGHTS, data={}).to_shareable()
 
-        for u in updates:
+        # ── DP fase 3: cosa arriva in received_updates dipende da dp_mode ──────
+        # - "dp-fedavg": RAW (il client non ha applicato DP) — l'IDS analizza
+        #   questi stessi valori raw (mirroring run_ids()), poi li privatizziamo
+        #   UNO PER UNO qui prima di passarli a FedAvg (architettura originale
+        #   McMahan et al. 2017: il server semi-trusted clippa+rumorizza).
+        # - "central": già clippati (non rumorizzati) dal client — l'IDS li
+        #   analizza così, FedAvg li combina, POI aggiungiamo un solo rumore
+        #   all'aggregato (privatize_aggregate(), sotto).
+        # - "local": già clippati+rumorizzati dal client — l'IDS analizza dati
+        #   già rumorizzati (degradazione attesa, stessa nota di run_ids()).
+        if self._dp_mode == "dp-fedavg":
+            updates_for_fedavg = [
+                self._gm.privatize(
+                    u, weight_keys=self._weight_keys, reference_weights=self._prev_global_weights,
+                )
+                for u in received_updates
+            ]
+        else:
+            updates_for_fedavg = received_updates
+
+        for u in updates_for_fedavg:
             self._fedavg.collect(u)
         aggregated = self._fedavg.aggregate(self._round_num)
 
         # ── IDS/Auditor: replica semplificata di run_ids() per questo round ──
-        self._run_ids_analysis(updates)
+        # Usa SEMPRE received_updates (la vista più "raw" disponibile in questo
+        # dp_mode), non updates_for_fedavg — stesso principio di run_ids() che
+        # preferisce raw_updates quando esistono.
+        self._run_ids_analysis(received_updates)
 
         if aggregated is None or not aggregated.global_weights:
             logger.error(
@@ -245,9 +311,19 @@ class ChargeShieldAggregator(Aggregator):
             )
             return DXO(data_kind=DataKind.WEIGHTS, data={}).to_shareable()
 
-        # Aggiorna il riferimento per il delta peer-relative del prossimo round.
-        # Fase 2 (nessuna DP): il modello aggregato è già "raw" per definizione.
-        self._prev_raw_global = aggregated.global_weights
+        # Central DP (fase 3): un solo rumore Gaussiano sull'aggregato pulito,
+        # DOPO FedAvg — mirroring il blocco equivalente in run_fl_rounds().
+        if self._dp_mode == "central":
+            aggregated.global_weights = self._gm.privatize_aggregate(
+                aggregated.global_weights,
+                weight_keys=self._weight_keys,
+                n_participants=aggregated.n_participants or self._min_clients,
+            )
+
+        # Aggiorna il riferimento per il delta peer-relative IDS E per il clip
+        # server-side di dp-fedavg al prossimo round — è il modello che verrà
+        # distribuito a tutti i client come punto di partenza del round successivo.
+        self._prev_global_weights = aggregated.global_weights
 
         outgoing_weights = {
             k: (w.detach().cpu().numpy() if hasattr(w, "detach") else np.asarray(w))
@@ -287,11 +363,11 @@ class ChargeShieldAggregator(Aggregator):
 
         for u in updates:
             weights = u.weights or []
-            if self._prev_raw_global is not None and len(self._prev_raw_global) == len(weights):
+            if self._prev_global_weights is not None and len(self._prev_global_weights) == len(weights):
                 delta = [
                     (w.float() if isinstance(w, torch.Tensor) else torch.tensor(float(w)))
                     - (g.float() if isinstance(g, torch.Tensor) else torch.tensor(float(g)))
-                    for w, g in zip(weights, self._prev_raw_global)
+                    for w, g in zip(weights, self._prev_global_weights)
                 ]
             else:
                 delta = [

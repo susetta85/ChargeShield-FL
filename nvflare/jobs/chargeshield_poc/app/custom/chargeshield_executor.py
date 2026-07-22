@@ -17,12 +17,30 @@ Cosa fa (fase 1 — SOLO round-trip, nessun DP/IDS ancora):
        cluster di questo client.
     4. Restituisce l'update al server come Shareable/DXO.
 
+Cosa fa in più da FASE 3 (2026-07-22, pomeriggio) — DP client-side per i modi
+che la richiedono (vedi dp_mode sotto e chargeshield_aggregator.py per la
+controparte server-side di "dp-fedavg"/"central"):
+    - dp_mode="central": il client CLIPPA il proprio update (clip_only(),
+      NESSUN rumore) prima di inviarlo — il rumore va sull'aggregato, aggiunto
+      dal server in ChargeShieldAggregator.
+    - dp_mode="local": il client CLIPPA E RUMORIZZA (privatize()) prima di
+      inviare — il server non deve MAI vedere il valore pulito, nemmeno
+      transitoriamente (vero local DP).
+    - dp_mode="dp-fedavg" (default): il client invia l'update RAW, non
+      privatizzato — architetturalmente, in dp-fedavg [McMahan et al. 2017]
+      è il SERVER (semi-trusted) a clippare+rumorizzare ogni update non
+      appena arriva, PRIMA di aggregarlo — vedi ChargeShieldAggregator.accept().
+      Questa è una distinzione che nella simulazione single-process
+      (scripts/run_experiments.py) è invisibile (client e server sono la
+      stessa chiamata Python), ma che nel deploy NVFLARE reale diventa
+      concreta: dp-fedavg e local finiscono per inviare payload diversi sul
+      canale di rete (raw vs. già-privatizzato).
+
 Cosa NON fa ancora (fasi successive, vedi docs/NVFlareIntegration.md):
-    - Non applica GradientManager.privatize()/clip_only() (DP) — fase 2.
-    - Non chiama PrivacyAuditor.audit() / non emette dati per ChargingIDS — fase 2.
-    - Il server usa l'aggregatore built-in di NVFLARE (InTimeAccumulateWeightedAggregator),
-      non FedAvgAggregator — sostituirlo con un Aggregator custom che richiami
-      FedAvgAggregator è fase 2, per riusare l'accumulo/pesatura già testato.
+    - Non chiama PrivacyAuditor.audit() / non emette dati per ChargingIDS
+      lato client — questa analisi resta server-side in ChargeShieldAggregator,
+      mirroring run_ids() (che nella simulazione osserva gli update non
+      ancora aggregati, non i singoli client).
 
 Punti da VERIFICARE appena nvflare è installabile (marcati inline con "VERIFY:"):
     - Il formato esatto di dxo.data (dict[str, np.ndarray] atteso, chiavi = nomi
@@ -113,6 +131,10 @@ class ChargeShieldExecutor(Executor):
         seed: int = 42,
         dataset_path: str = "datasets/acn/jpl/acndata_sessions_2019.json",
         train_task_name: str = "train",
+        dp_mode: str = "dp-fedavg",
+        epsilon: float = 1.0,
+        delta: float = 1.0e-5,
+        max_grad_norm: float = 1.0,
     ):
         super().__init__()
         self._cluster_id = cluster_id
@@ -126,6 +148,19 @@ class ChargeShieldExecutor(Executor):
         }
         self._dataset_path = dataset_path
         self._train_task_name = train_task_name
+
+        # DP (fase 3, 2026-07-22) — vedi docstring del modulo per la semantica
+        # dei 3 dp_mode. epsilon/delta/max_grad_norm devono combaciare con gli
+        # stessi valori usati da ChargeShieldAggregator lato server (per
+        # dp_mode="dp-fedavg", dove il server clippa/rumorizza) — nessun
+        # meccanismo di validazione incrociata client/server esiste ancora,
+        # da tenerli allineati manualmente in config_fed_client.json/
+        # config_fed_server.json finché non c'è un modo migliore.
+        self._dp_mode = dp_mode
+        self._dp_epsilon = epsilon
+        self._dp_delta = delta
+        self._dp_max_grad_norm = max_grad_norm
+        self._gm = None  # GradientManager, istanziato lazy solo se dp_mode ne ha bisogno
 
         self._trainer = None          # AutoencoderTrainer, creato in _setup()
         self._sessions: list[dict[str, Any]] = []
@@ -264,12 +299,44 @@ class ChargeShieldExecutor(Executor):
         if abort_signal.triggered:
             return make_reply(ReturnCode.TASK_ABORTED)
 
+        # Riferimento per il clip del DELTA (fix 2026-07-22, stesso principio
+        # di run_fl_rounds()/pre_round_weights): i pesi APPENA applicati sopra
+        # sono il modello ricevuto a inizio round. Se il server non ha inviato
+        # nulla (should not happen in un deploy NVFLARE reale — il persistor
+        # inizializza sempre un modello — ma non escluso in questa fase non
+        # verificata), usa i pesi correnti del trainer come fallback: assenza
+        # di reference fa scattare il fallback storico (clip assoluto) in
+        # GradientManager._clip_weights(), non un crash.
+        pre_round_weights = self._trainer.get_weights()
+
         # Training locale — STESSO metodo usato in simulazione da
-        # scripts/run_experiments.py::run_fl_rounds(). Nessun DP applicato in
-        # questa fase (vedi docstring del modulo).
+        # scripts/run_experiments.py::run_fl_rounds().
         update = self._trainer.train_local(self._sessions, self._round_num)
 
         weight_keys = self._trainer.get_weight_keys()
+
+        # DP client-side (fase 3, 2026-07-22) — vedi docstring del modulo.
+        # dp_mode="dp-fedavg": nessuna operazione qui, il client invia l'update
+        # raw — è il server (ChargeShieldAggregator.accept()) a clippare e
+        # rumorizzare, mirroring l'architettura dp-fedavg originale (McMahan
+        # et al. 2017: server semi-trusted riceve il raw update per client).
+        if self._dp_mode in ("central", "local"):
+            if self._gm is None:
+                from ml.gradient_manager import GradientManager
+                self._gm = GradientManager({
+                    "epsilon": self._dp_epsilon,
+                    "delta": self._dp_delta,
+                    "max_grad_norm": self._dp_max_grad_norm,
+                })
+            if self._dp_mode == "central":
+                update = self._gm.clip_only(
+                    update, weight_keys=weight_keys, reference_weights=pre_round_weights,
+                )
+            else:  # "local"
+                update = self._gm.privatize(
+                    update, weight_keys=weight_keys, reference_weights=pre_round_weights,
+                )
+
         outgoing_weights = {
             k: w.detach().cpu().numpy() if hasattr(w, "detach") else w
             for k, w in zip(weight_keys, update.weights or [])
@@ -282,10 +349,11 @@ class ChargeShieldExecutor(Executor):
                 "n_samples": update.n_samples or 0,
                 "loss": update.loss,
                 "cluster_id": self._cluster_id,
-                # VERIFY: chiave meta corretta per la pesatura letta da
-                # InTimeAccumulateWeightedAggregator — probabilmente serve
-                # anche/invece MetaKey.NUM_STEPS_CURRENT_ROUND
-                # (nvflare.apis.fl_constant.MetaKey), da confermare.
+                "dp_mode": self._dp_mode,
+                # VERIFY: chiave meta corretta per la pesatura letta da un
+                # eventuale futuro aggregatore NVFLARE built-in — irrilevante
+                # per ChargeShieldAggregator, che legge "n_samples" sopra
+                # direttamente (vedi chargeshield_aggregator.py).
             },
         )
         return outgoing_dxo.to_shareable()

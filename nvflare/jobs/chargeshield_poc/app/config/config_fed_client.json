@@ -1,5 +1,5 @@
 {
-  "_comment": "ChargeShield-FL — client-side config, NVFLARE 2.7.2 (2026-07-22, NON verificato). L'Executor custom (chargeshield_executor.py) avvolge AutoencoderTrainer.train_local() — la STESSA classe usata da scripts/run_experiments.py in simulazione single-process. FIX 2026-07-22 (review A1): questo stesso file viene deployato a TUTTI i siti (meta.json deploy_map='@ALL'), quindi 'cluster_id' qui sotto è solo un FALLBACK — a runtime ChargeShieldExecutor._setup() deriva cluster_id dal nome del sito NVFLARE (fl_ctx.get_identity_name(), che nvflare/project.yml garantisce essere highway/urban/residential/corporate), non da questo valore. dataset_path resta condiviso da tutti i client (fase 1, filtro client-side — vedi limitazioni in docs/NVFlareIntegration.md).",
+  "_comment": "ChargeShield-FL — client-side config, NVFLARE 2.7.2 (2026-07-22, NON verificato). L'Executor custom (chargeshield_executor.py) avvolge AutoencoderTrainer.train_local() — la STESSA classe usata da scripts/run_experiments.py in simulazione single-process. FIX 2026-07-22 (review A1): questo stesso file viene deployato a TUTTI i siti (meta.json deploy_map='@ALL'), quindi 'cluster_id' qui sotto è solo un FALLBACK — a runtime ChargeShieldExecutor._setup() deriva cluster_id dal nome del sito NVFLARE (fl_ctx.get_identity_name(), che nvflare/project.yml garantisce essere highway/urban/residential/corporate), non da questo valore. dataset_path resta condiviso da tutti i client (fase 1, filtro client-side — vedi limitazioni in docs/NVFlareIntegration.md). FASE 3 (stesso giorno, pomeriggio): dp_mode/epsilon/delta/max_grad_norm aggiunti — vedi docstring di chargeshield_executor.py per la semantica dei 3 dp_mode. epsilon/delta/max_grad_norm DEVONO combaciare con i valori equivalenti in config_fed_server.json (ChargeShieldAggregator) — nessuna validazione incrociata automatica ancora.",
   "format_version": 2,
   "executors": [
     {
@@ -14,7 +14,11 @@
           "batch_size": 32,
           "proximal_mu": 0.01,
           "seed": 42,
-          "dataset_path": "datasets/acn/jpl/acndata_sessions_2019.json"
+          "dataset_path": "datasets/acn/jpl/acndata_sessions_2019.json",
+          "dp_mode": "dp-fedavg",
+          "epsilon": 1.0,
+          "delta": 1.0e-5,
+          "max_grad_norm": 1.0
         }
       }
     }
