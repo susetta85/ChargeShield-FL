@@ -63,6 +63,22 @@ cluster_id dal nome del sito NVFLARE (fl_ctx.get_identity_name(), che
 project.yml garantisce coincidere con highway/urban/residential/corporate)
 quando riconosciuto, usando il valore di config solo come fallback (con
 warning) se il nome del sito non corrisponde a nessun cluster noto.
+
+FIX 2026-07-22 (review indipendente fase 3-5, bug CRITICO trovato in _setup() —
+non un VERIFY, un bug funzionale che avrebbe reso l'intero client inutilizzabile):
+_setup() caricava le sessioni via ACNDataset.get_sample() e le usava
+DIRETTAMENTE, senza mai applicare l'equivalente di enrich_sessions()/
+normalize_sessions() (scripts/run_experiments.py). AutoencoderTrainer.
+CONTINUOUS_FEATURES include "hour_of_day"/"duration_hours", calcolati SOLO da
+enrich_sessions() — assenti nei sample grezzi. Senza il fix, _sessions_to_tensor()
+(src/ml/autoencoder_trainer.py) scartava OGNI sessione per feature mancante,
+producendo un tensore vuoto: nessun training locale sarebbe mai realmente
+avvenuto in un run NVFLARE reale, un bug invisibile a py_compile e non
+menzionato nei "VERIFY:" originali (che riguardavano solo il formato dei pesi,
+non i dati di input). Fix: _enrich_sessions()/_compute_feature_stats()/
+_normalize_sessions() (duplicati da scripts/run_experiments.py — non importati,
+per non riconfigurare logging.basicConfig() dentro un processo client NVFLARE
+reale) chiamati in _setup() prima dello split per-cluster.
 """
 
 from __future__ import annotations
@@ -97,6 +113,88 @@ logger = logging.getLogger(__name__)
 # derivare cluster_id dal nome del sito NVFLARE in _setup(), sia per il
 # filtro del dataset — prima erano due copie locali della stessa lista.
 _CLUSTER_IDS = ["highway", "urban", "residential", "corporate"]
+
+# ── Enrichment/normalizzazione sessioni — duplicati da scripts/run_experiments.py ──
+# FIX 2026-07-22 (review indipendente fase 3-5, bug CRITICO trovato in _setup()):
+# la prima stesura caricava le sessioni via ACNDataset.get_sample() e le passava
+# DIRETTAMENTE ad AutoencoderTrainer.train_local(), senza mai chiamare
+# l'equivalente di enrich_sessions()/normalize_sessions() (scripts/run_experiments.py).
+# AutoencoderTrainer.CONTINUOUS_FEATURES include "hour_of_day" e "duration_hours",
+# che NON esistono nei sample grezzi di ACNDataset (solo start_time/end_time in
+# formato ISO) — vengono calcolati SOLO da enrich_sessions(). Senza questo fix,
+# _sessions_to_tensor() scarta OGNI sessione (val is None → valid=False per ogni
+# riga, vedi src/ml/autoencoder_trainer.py::_sessions_to_tensor()), quindi
+# self._sessions avrebbe prodotto un tensore vuoto e train_local() non avrebbe
+# mai potuto addestrare nulla — un bug che avrebbe reso l'intero client NVFLARE
+# non funzionante su dati reali, non rilevabile da py_compile.
+#
+# Duplicate qui (non importate da scripts/run_experiments.py) perché quel modulo
+# chiama logging.basicConfig() a livello di modulo — importarlo da dentro un
+# processo client NVFLARE reale riconfigurerebbe silenziosamente il logging
+# dell'intero processo. Stessa formula esatta, nessuna deviazione di logica.
+def _enrich_sessions(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Aggiunge hour_of_day/duration_hours dai timestamp — vedi
+    scripts/run_experiments.py::enrich_sessions() per l'originale."""
+    from datetime import datetime
+
+    enriched = []
+    for s in sessions:
+        try:
+            start = datetime.fromisoformat(s["start_time"])
+            end = datetime.fromisoformat(s["end_time"])
+            s["hour_of_day"] = float(start.hour)
+            s["duration_hours"] = max(0.0, (end - start).total_seconds() / 3600.0)
+            enriched.append(s)
+        except (KeyError, ValueError):
+            pass  # scarta sessioni con timestamp malformati (stesso comportamento dell'originale)
+    return enriched
+
+
+def _compute_feature_stats(
+    sessions: list[dict[str, Any]], features: list[str],
+) -> dict[str, tuple[float, float]]:
+    """Min/max per-feature — vedi scripts/run_experiments.py::compute_feature_stats().
+    Calcolato su TUTTE le sessioni del dataset condiviso (fase 1: un solo file
+    per tutti i client — vedi limitazione "Per-client dataset access è fake" in
+    docs/NVFlareIntegration.md), non solo sulla fetta di questo cluster: un vero
+    client mono-sito non potrebbe calcolare min/max globali da solo, ma finché
+    il dataset resta condiviso, farlo qui (prima dello split) è l'equivalente
+    più fedele possibile di come lo fa la simulazione (compute_feature_stats su
+    train_sessions, che copre già tutti i cluster nello stesso processo)."""
+    stats: dict[str, tuple[float, float]] = {}
+    for feat in features:
+        vals = []
+        for s in sessions:
+            raw = s.get(feat)
+            if raw is None:
+                continue
+            try:
+                vals.append(float(raw))
+            except (ValueError, TypeError):
+                continue
+        if not vals:
+            stats[feat] = (0.0, 1.0)
+            continue
+        fmin, fmax = min(vals), max(vals)
+        stats[feat] = (fmin, fmax if fmax != fmin else fmin + 1.0)
+    return stats
+
+
+def _normalize_sessions(
+    sessions: list[dict[str, Any]], stats: dict[str, tuple[float, float]], features: list[str],
+) -> list[dict[str, Any]]:
+    """Min-max scaling [0,1] — vedi scripts/run_experiments.py::normalize_sessions()."""
+    normalized = []
+    for s in sessions:
+        s = dict(s)
+        for feat in features:
+            val = s.get(feat)
+            if val is None:
+                continue
+            fmin, fmax = stats[feat]
+            s[feat] = (float(val) - fmin) / (fmax - fmin)
+        normalized.append(s)
+    return normalized
 
 
 class ChargeShieldExecutor(Executor):
@@ -226,6 +324,14 @@ class ChargeShieldExecutor(Executor):
         ds.load(str(dataset_path))
         all_sessions = [ds.get_sample(i) for i in range(len(ds))]
 
+        # FIX 2026-07-22 (review indipendente, bug critico — vedi commento sopra
+        # _enrich_sessions()): enrich PRIMA dello split, sull'intero dataset
+        # condiviso, così hour_of_day/duration_hours esistono per ogni sessione
+        # prima che _sessions_to_tensor() le richieda. Senza questo, ogni
+        # sessione veniva scartata silenziosamente e self._sessions produceva
+        # un tensore vuoto ad ogni round.
+        all_sessions = _enrich_sessions(all_sessions)
+
         # Split contiguo identico a run_fl_rounds() — stesso ordine cluster_ids
         # (_CLUSTER_IDS ora definita a livello di modulo, vedi fix 2026-07-22 sopra).
         if self._cluster_id not in _CLUSTER_IDS:
@@ -236,7 +342,19 @@ class ChargeShieldExecutor(Executor):
         cluster_size = max(1, len(all_sessions) // len(_CLUSTER_IDS))
         start = idx * cluster_size
         end = None if idx == len(_CLUSTER_IDS) - 1 else start + cluster_size
-        self._sessions = all_sessions[start:end]
+
+        # Normalizzazione [0,1] (fix 2026-07-22, stesso bug): calcolata su
+        # all_sessions (l'intero dataset condiviso, fase 1 — vedi
+        # _compute_feature_stats() sopra per la motivazione), applicata SOLO
+        # alla fetta di questo cluster. Stessa formula di normalize_sessions()
+        # nella simulazione — senza questo, AutoencoderTrainer avrebbe ricevuto
+        # feature su scale eterogenee (kWh vs ore 0-23), mai validato in
+        # nessun esperimento reale del progetto.
+        feature_stats = _compute_feature_stats(all_sessions, AutoencoderTrainer.CONTINUOUS_FEATURES)
+        cluster_sessions = all_sessions[start:end]
+        self._sessions = _normalize_sessions(
+            cluster_sessions, feature_stats, AutoencoderTrainer.CONTINUOUS_FEATURES
+        )
 
         logger.info(
             f"[{self._cluster_id}] ChargeShieldExecutor pronto — "

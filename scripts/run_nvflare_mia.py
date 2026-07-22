@@ -60,13 +60,13 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 sys.path.insert(0, str(Path(__file__).parent))  # per "import run_experiments"
 
+from adapters.acn_dataset import ACNDataset  # noqa: E402
 from ml.autoencoder_trainer import AutoencoderTrainer  # noqa: E402
 
 from run_experiments import (  # noqa: E402
     compute_feature_stats,
     enrich_sessions,
     load_config,
-    load_sessions,
     normalize_sessions,
     run_fedmia,
     run_fedmia_shadow,
@@ -116,6 +116,66 @@ def load_nvflare_fl_results(path: Path) -> tuple[dict[int, dict[str, Any]], dict
     return fl_results, meta
 
 
+def load_client_sessions(client_config_path: Path) -> list[dict[str, Any]]:
+    """
+    Ricostruisce ESATTAMENTE le sessioni (enriched, NON shuffled, ordine
+    originale del file) che i client NVFLARE reali hanno visto — leggendo
+    "dataset_path" da config_fed_client.json invece di assumerlo.
+
+    FIX 2026-07-22 (review indipendente): la prima stesura di questo script
+    caricava le sessioni via load_sessions(cfg) da config/experiment.yaml
+    (che combina jpl_2019+jpl_2020) E le shuffle-ava prima dello split
+    train/hold-out — un dataset e un ordinamento DIVERSI da quelli che
+    chargeshield_executor.py::_setup() usa davvero (SOLO il file indicato
+    da "dataset_path" in config_fed_client.json, MAI shuffled, split
+    contiguo per indice — vedi quella funzione). run_lira()/run_fedmia()
+    ricostruiscono l'appartenenza ai cluster assumendo che train_sessions
+    sia nello STESSO ordine/split usato dai client reali (stesso principio
+    di run_fl_rounds() nella simulazione) — con un dataset/ordine diverso,
+    la ground truth membership (chi ha allenato su cosa) sarebbe scorrelata
+    da quella reale, rendendo gli AUC di LiRA/Shadow/Yeom non significativi
+    SENZA generare alcun errore visibile (fallimento silenzioso, il più
+    pericoloso). Fix: legge lo stesso "dataset_path" dal config del client
+    reale e applica la stessa pipeline (ACNDataset → enrich, NESSUNO shuffle).
+    """
+    import json as _json
+
+    with open(client_config_path) as f:
+        client_cfg = _json.load(f)
+    dataset_path_str = client_cfg["executors"][0]["executor"]["args"]["dataset_path"]
+    dataset_path = PROJECT_ROOT / dataset_path_str
+
+    ds = ACNDataset()
+    ds.load(str(dataset_path))
+    sessions = [ds.get_sample(i) for i in range(len(ds))]
+    sessions = enrich_sessions(sessions)
+    logger.info(
+        f"Sessioni client ricostruite da {dataset_path.name} (stesso file, stesso "
+        f"ordine, nessuno shuffle — mirroring chargeshield_executor.py): {len(sessions)}"
+    )
+    return sessions
+
+
+def load_holdout_sessions(holdout_dataset_path: Path) -> list[dict[str, Any]]:
+    """
+    Sessioni hold-out (non-member) per MIA — devono provenire da un file MAI
+    visto da nessun client NVFLARE reale (non da uno split random dello STESSO
+    file, che qui non avrebbe senso: load_client_sessions() restituisce l'intero
+    dataset del client, senza nessuna porzione riservata — a differenza della
+    simulazione, dove main() fa un 80/20 split PRIMA di passare i dati a
+    run_fl_rounds(), qui TUTTE le sessioni del file client vengono usate per
+    il training reale, quindi un vero hold-out deve venire da un anno/file
+    diverso, mai toccato da alcun client — es. acndata_sessions_2020.json
+    quando i client hanno usato acndata_sessions_2019.json).
+    """
+    ds = ACNDataset()
+    ds.load(str(holdout_dataset_path))
+    sessions = [ds.get_sample(i) for i in range(len(ds))]
+    sessions = enrich_sessions(sessions)
+    logger.info(f"Sessioni hold-out da {holdout_dataset_path.name}: {len(sessions)}")
+    return sessions
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -132,6 +192,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--sweep-dir", type=Path, default=None,
         help="Directory di output (come in run_experiments.py --sweep-dir).",
+    )
+    parser.add_argument(
+        "--client-config", type=Path,
+        default=Path("nvflare/jobs/chargeshield_poc/app/config/config_fed_client.json"),
+        help=(
+            "config_fed_client.json del job NVFLARE reale — usato per leggere "
+            "'dataset_path' e ricostruire ESATTAMENTE le sessioni viste dai "
+            "client (stesso file, nessuno shuffle, vedi load_client_sessions())."
+        ),
+    )
+    parser.add_argument(
+        "--holdout-dataset", type=Path, default=None,
+        help=(
+            "Dataset MAI usato da alcun client NVFLARE, per il pool non-member "
+            "di LiRA/Shadow/Yeom (es. datasets/acn/jpl/acndata_sessions_2020.json "
+            "se i client hanno usato il file *_2019.json). Default: stesso nome "
+            "file di dataset_path in --client-config con l'anno successivo, se "
+            "individuabile automaticamente — altrimenti obbligatorio."
+        ),
     )
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--n-shadow", type=int, default=None)
@@ -169,29 +248,57 @@ def main() -> None:
     # LIMITE NOTO (vedi docstring modulo): nessun bypass --no-dp lato NVFLARE.
     no_dp = False
 
-    # ── Dataset: stessa pipeline di main() in run_experiments.py ────────────
-    # VERIFY: deve combaciare con cosa hanno visto davvero i client NVFLARE.
-    # Oggi (fase 1) ogni client carica lo stesso file condiviso e affetta per
-    # indice — stesso schema fake-per-client di run_fl_rounds() — quindi
-    # riusare load_sessions()/lo stesso split è corretto PER ORA. Se in futuro
-    # ogni client avrà accesso reale al proprio dataset (vedi limitazioni in
-    # docs/NVFlareIntegration.md), questa pipeline andrà rifatta per riflettere
-    # quella realtà (niente più "un solo file, split unico").
-    sessions = load_sessions(cfg)
-    sessions = enrich_sessions(sessions)
-    logger.info(f"Sessioni dopo enrichment: {len(sessions)}")
-
+    # ── Dataset: ricostruisce ESATTAMENTE cosa hanno visto i client reali ───
+    # FIX 2026-07-22 (review indipendente — vedi load_client_sessions() per il
+    # dettaglio del bug originale): NON riusa load_sessions(cfg)/shuffle come
+    # nella simulazione — quella pipeline combina un dataset diverso (2019+2020,
+    # da config/experiment.yaml) e mischia l'ordine, disallineando la ground
+    # truth membership da quella reale. Legge invece "dataset_path" da
+    # --client-config (config_fed_client.json del job reale).
     seed = cfg["experiment"].get("seed", 42)
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    random.shuffle(sessions)
-    split = max(1, int(len(sessions) * 0.8))
-    train_sessions = sessions[:split]
-    holdout_sessions = sessions[split:]
-    logger.info(f"Split — train: {len(train_sessions)}, hold-out: {len(holdout_sessions)}")
+
+    train_sessions = load_client_sessions(args.client_config)
+
+    if args.holdout_dataset is not None:
+        holdout_path = args.holdout_dataset
+    else:
+        import json as _json
+        with open(args.client_config) as f:
+            _client_cfg = _json.load(f)
+        _client_dataset = _client_cfg["executors"][0]["executor"]["args"]["dataset_path"]
+        # Tentativo automatico: sostituisce l'anno nel nome file con il
+        # successivo (es. *_2019.json -> *_2020.json) — entrambi presenti nel
+        # repo (datasets/acn/jpl/), mai toccati dallo stesso client.
+        import re
+        _m = re.search(r"(19|20)\d{2}", _client_dataset)
+        if not _m:
+            raise ValueError(
+                f"Impossibile dedurre --holdout-dataset da {_client_dataset!r} "
+                "(nessun anno a 4 cifre nel nome file) — specificalo esplicitamente."
+            )
+        _year = int(_m.group(0))
+        holdout_path = PROJECT_ROOT / _client_dataset.replace(str(_year), str(_year + 1))
+        logger.warning(
+            f"--holdout-dataset non specificato — dedotto automaticamente: "
+            f"{holdout_path} (verifica che sia corretto per il tuo run reale)."
+        )
+    holdout_sessions = load_holdout_sessions(holdout_path)
+
+    logger.info(
+        f"Train (client reali): {len(train_sessions)} sessioni — "
+        f"Hold-out (non-member): {len(holdout_sessions)} sessioni"
+    )
 
     _FEATURES = AutoencoderTrainer.CONTINUOUS_FEATURES
+    # Stats calcolate su train_sessions (le sessioni realmente usate per il
+    # training), NON su holdout — stessa regola anti-leakage di main() nella
+    # simulazione, e stessa formula usata in chargeshield_executor.py::_setup()
+    # (dove le stats sono calcolate su TUTTO il dataset condiviso prima dello
+    # split per-cluster — equivalente, dato che train_sessions qui È l'intero
+    # dataset condiviso, non una sua fetta).
     feature_stats = compute_feature_stats(train_sessions, _FEATURES)
     train_sessions = normalize_sessions(train_sessions, feature_stats, _FEATURES)
     holdout_sessions = normalize_sessions(holdout_sessions, feature_stats, _FEATURES)

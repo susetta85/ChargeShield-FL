@@ -382,6 +382,25 @@ class ChargeShieldAggregator(Aggregator):
         #   all'aggregato (privatize_aggregate(), sotto).
         # - "local": già clippati+rumorizzati dal client — l'IDS analizza dati
         #   già rumorizzati (degradazione attesa, stessa nota di run_ids()).
+        # KNOWN GAP (review indipendente fase 3-5, non risolto): al round 1,
+        # self._prev_global_weights è ancora None (viene assegnato solo alla
+        # fine di aggregate(), la prima volta dopo che il round 1 è già stato
+        # aggregato) — reference_weights=None fa scattare in
+        # GradientManager._clip_weights() il fallback storico (clip sul
+        # vettore ASSOLUTO, non sul delta), diversamente da ogni round
+        # successivo (dove self._prev_global_weights è il vero modello globale
+        # precedente) e diversamente dalla simulazione (dove pre_round_weights
+        # in run_fl_rounds() è SEMPRE concreto, anche al round 1 — è il modello
+        # random-init di ogni trainer, disponibile perché client e server sono
+        # lo stesso processo). Nel vero NVFLARE l'Aggregator non ha modo di
+        # vedere il modello di inizializzazione che persistor/shareable_
+        # generator inviano ai client PRIMA del round 1 — un fix corretto
+        # richiederebbe che il client includa i propri pesi pre-round nel DXO
+        # (plumbing aggiuntivo, non fatto qui: tentare un fix speculativo senza
+        # poter eseguire nulla in questo sandbox rischierebbe di introdurre
+        # un'assunzione sbagliata invece di una nota onesta). Effetto pratico:
+        # SOLO il clipping DP-FedAvg del round 1 usa la semantica "assoluta"
+        # invece che "delta" — dal round 2 in poi il comportamento è corretto.
         if self._dp_mode == "dp-fedavg":
             updates_for_fedavg = [
                 self._gm.privatize(
