@@ -2022,6 +2022,26 @@ def save_results(
             "dp_mode":    cfg["experiment"].get("dp_mode", "dp-fedavg"),
             # seed: necessario per multi-seed aggregation (mean±std) — fix M1
             "seed":       cfg["experiment"].get("seed", 42),
+            # epsilon_cumulative_naive (2026-07-22, review indipendente pre-push):
+            # PRIMA di questo fix, solo l'epsilon NOMINALE per-round veniva
+            # esportato — mai il budget cumulativo reale su tutti i round.
+            # gradient_manager.py::_compute_sigma() documenta che (a) la
+            # garanzia (ε,δ)-DP formale vale solo per epochs=1 (qui epochs=50),
+            # e (b) sotto composizione naive (nessuna amplificazione Rényi/
+            # sub-sampling) il budget cumulativo reale su T round è
+            # ε_tot ≈ T × ε_per_round — MOLTO più permissivo del solo ε
+            # nominale riportato finora. Vedi docs/CaseStudies.md §2.4.3 per
+            # la tabella e la spiegazione completa. Questo numero è la
+            # spiegazione più rigorosa del perché LiRA continua a rilevare
+            # membership anche con "DP attiva" a ε nominale basso: riportarlo
+            # esplicitamente nei risultati (non solo in un commento nel
+            # codice) rende il claim "c'è fuga di privacy reale nonostante la
+            # DP" verificabile numero alla mano, non solo qualitativo.
+            # None quando no_dp=True (nessun budget DP consumato).
+            "epsilon_cumulative_naive": (
+                None if cfg["experiment"].get("no_dp", False)
+                else cfg["experiment"]["epsilon"] * cfg["experiment"]["fl_rounds"]
+            ),
         },
         "summary": {
             # Yeom 2018 — loss-based MIA sul modello globale (baseline debole)
