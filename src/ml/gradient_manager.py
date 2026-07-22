@@ -103,6 +103,7 @@ class GradientManager(AbstractMLModel):
         self,
         update: GradientUpdate,
         weight_keys: list[str] | None = None,
+        reference_weights: list[Any] | None = None,
     ) -> GradientUpdate:
         """
         Applica gradient clipping + Gaussian noise ai pesi del GradientUpdate.
@@ -115,6 +116,16 @@ class GradientManager(AbstractMLModel):
                          aggiungere rumore Gaussiano a running_var la renderebbe
                          negativa (σ >> var tipica), causando NaN in sqrt durante
                          la forward pass in eval mode.
+            reference_weights: pesi del modello globale ricevuto dal client
+                         all'INIZIO di questo round (prima del training locale),
+                         stesso ordine/formato di update.weights. Se forniti,
+                         il clipping (Step 1) limita la norma del DELTA
+                         (update.weights - reference_weights), non del vettore
+                         pesi assoluto — vedi `_clip_weights()` per il perché
+                         (fix 2026-07-22, review indipendente). Se None,
+                         fallback al clipping assoluto (comportamento storico,
+                         retro-compatibile con chiamate che non hanno un
+                         riferimento disponibile).
 
         Returns:
             GradientUpdate con pesi privatizzati (DP garantita)
@@ -123,8 +134,10 @@ class GradientManager(AbstractMLModel):
             logger.warning(f"[{update.node_id}] Pesi vuoti — skip DP")
             return update
 
-        # Step 1: clip norma L2 globale
-        clipped = self._clip_weights(update.weights)
+        # Step 1: clip norma L2 del delta rispetto al modello ricevuto a inizio
+        # round (o, se reference_weights non è disponibile, del vettore pesi
+        # assoluto — comportamento storico, vedi _clip_weights()).
+        clipped = self._clip_weights(update.weights, reference=reference_weights, weight_keys=weight_keys)
 
         # Step 2: aggiungi rumore Gaussiano (escludi buffer BN se keys note)
         noised = self._add_noise(clipped, weight_keys=weight_keys)
@@ -196,7 +209,12 @@ class GradientManager(AbstractMLModel):
             / self.epsilon
         )
 
-    def clip_only(self, update: GradientUpdate) -> GradientUpdate:
+    def clip_only(
+        self,
+        update: GradientUpdate,
+        weight_keys: list[str] | None = None,
+        reference_weights: list[Any] | None = None,
+    ) -> GradientUpdate:
         """
         Applica SOLO il clipping L2 (NESSUN rumore) a un GradientUpdate.
 
@@ -210,7 +228,12 @@ class GradientManager(AbstractMLModel):
         non sarebbe definita.
 
         Args:
-            update: GradientUpdate grezzo da AutoencoderTrainer
+            update:       GradientUpdate grezzo da AutoencoderTrainer
+            weight_keys:  chiavi state_dict — esclude i buffer BatchNorm dalla
+                          norma clippata (vedi `_clip_weights()`).
+            reference_weights: pesi del modello globale ricevuto a inizio round
+                          — se forniti, clippa il DELTA invece del vettore
+                          assoluto (fix 2026-07-22, vedi `_clip_weights()`).
 
         Returns:
             GradientUpdate con pesi clippati, NON rumorizzati.
@@ -219,7 +242,7 @@ class GradientManager(AbstractMLModel):
             logger.warning(f"[{update.node_id}] Pesi vuoti — skip clip")
             return update
 
-        clipped = self._clip_weights(update.weights)
+        clipped = self._clip_weights(update.weights, reference=reference_weights, weight_keys=weight_keys)
 
         return GradientUpdate(
             node_id=update.node_id,
@@ -281,33 +304,100 @@ class GradientManager(AbstractMLModel):
         )
         return noised
 
-    def _clip_weights(self, weights: list[Any]) -> list[torch.Tensor]:
+    def _clip_weights(
+        self,
+        weights: list[Any],
+        reference: list[Any] | None = None,
+        weight_keys: list[str] | None = None,
+    ) -> list[torch.Tensor]:
         """
-        Clippa la norma L2 globale dei pesi a max_grad_norm.
-        Applicato ai pesi aggregati del round locale (weight perturbation).
-        I buffer BatchNorm int64 (num_batches_tracked) vengono esclusi dal
-        clipping e restituiti invariati: non sono parametri DP-perturbabili.
+        Clippa la norma L2 a max_grad_norm.
+
+        FIX 2026-07-22 (review indipendente, punto B1 di docs/CaseStudies.md
+        §2.4.3) — due problemi distinti nella versione precedente, entrambi
+        corretti qui:
+
+        1) **Clippava il vettore pesi ASSOLUTO invece del DELTA**. La
+           costruzione canonica (McMahan et al., citata da `privatize_aggregate()`)
+           bound la sensitività del contributo del client, cioè quanto il suo
+           update si allontana dal modello globale ricevuto — non la norma
+           del modello stesso. Clippare l'assoluto, con max_grad_norm=1.0 su
+           un modello di ~650 parametri, fa scattare quasi sempre factor<1,
+           comprimendo l'INTERO modello verso una palla di norma 1 a ogni
+           round — un'operazione molto più aggressiva di un bound sull'
+           incremento per round, che può da sola spiegare parte dell'effetto
+           "la DP sopprime la MIA" osservato, confondendolo con l'effetto del
+           rumore Gaussiano.
+           Fix: se `reference` è fornito, si clippa `weights - reference`
+           (il vero "contributo" del client) e si ricostruisce
+           `reference + delta_clippato` — il modello resta vicino al globale
+           ricevuto, non viene tirato verso zero. Se `reference` è None
+           (nessun riferimento disponibile), fallback al comportamento
+           storico (clip assoluto) per retro-compatibilità.
+
+        2) **I buffer BatchNorm entravano nella norma clippata**, mentre
+           `_add_noise()` li esclude già dal rumore (vedi il motivo lì:
+           running_var negativa → NaN). Includerli nel calcolo della norma
+           "diluisce" il budget di clipping disponibile per i parametri
+           veri, e — nel vecchio clipping assoluto — li faceva restringere
+           verso zero ad ogni round (running_var sempre più piccola,
+           normalizzazione BatchNorm sempre più aggressiva in eval mode).
+           Fix: se `weight_keys` è fornito, i buffer BatchNorm sono esclusi
+           dal calcolo della norma E restituiti invariati (valore locale,
+           non quello di riferimento) — stessa filosofia di `_add_noise()`.
+           Se `weight_keys` è None, fallback: tutti i tensori float
+           partecipano alla norma (comportamento storico).
+
+        I buffer int64 (num_batches_tracked) sono sempre esclusi e restituiti
+        invariati — non sono float, non attraversano né clip né rumore.
         """
         tensors = [w if isinstance(w, torch.Tensor) else torch.tensor(w)
                    for w in weights]
+        _BN_BUFFERS = {"running_mean", "running_var", "num_batches_tracked"}
 
-        # Separa floating-point (perturbabili) da int (buffer BN invariati)
-        float_tensors = [t for t in tensors if t.is_floating_point()]
-        int_masks      = [not t.is_floating_point() for t in tensors]
+        def _is_bn_buffer(idx: int) -> bool:
+            return (
+                weight_keys is not None
+                and idx < len(weight_keys)
+                and weight_keys[idx].split(".")[-1] in _BN_BUFFERS
+            )
 
-        if not float_tensors:
+        # Indici dei tensori float "clippabili" (parametri veri, non buffer BN)
+        clip_idx = [
+            i for i, t in enumerate(tensors)
+            if t.is_floating_point() and not _is_bn_buffer(i)
+        ]
+        if not clip_idx:
             return tensors
 
-        # Norma L2 globale su tutti i pesi float concatenati
+        if reference is not None:
+            # ── Modalità corretta: clip del DELTA rispetto al modello ricevuto ──
+            ref_tensors = [
+                r if isinstance(r, torch.Tensor) else torch.tensor(r)
+                for r in reference
+            ]
+            deltas = [tensors[i].float() - ref_tensors[i].float() for i in clip_idx]
+            flat   = torch.cat([d.flatten() for d in deltas])
+            norm   = torch.norm(flat, p=2)
+            factor = min(1.0, self.max_grad_norm / (float(norm) + 1e-8))
+
+            result = list(tensors)  # copia; sovrascriviamo solo gli indici clippati
+            for i, d in zip(clip_idx, deltas):
+                result[i] = ref_tensors[i].float() + d * factor
+            return result
+
+        # ── Fallback storico: clip del vettore assoluto (nessun reference) ──
+        # Usato quando il chiamante non ha un modello di riferimento disponibile
+        # (retro-compatibilità con codice/test esistenti che chiamano
+        # _clip_weights()/privatize()/clip_only() senza reference_weights).
+        float_tensors = [tensors[i] for i in clip_idx]
         flat   = torch.cat([t.flatten().float() for t in float_tensors])
         norm   = torch.norm(flat, p=2)
         factor = min(1.0, self.max_grad_norm / (float(norm) + 1e-8))
 
-        result: list[torch.Tensor] = []
-        float_iter = iter(t * factor for t in float_tensors)
-        int_iter   = iter(t for t in tensors if not t.is_floating_point())
-        for is_int in int_masks:
-            result.append(next(int_iter) if is_int else next(float_iter))
+        result = list(tensors)
+        for i in clip_idx:
+            result[i] = tensors[i] * factor
         return result
 
     def _add_noise(

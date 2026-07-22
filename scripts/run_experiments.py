@@ -272,6 +272,15 @@ def run_fl_rounds(
         round_updates = []
         raw_updates   = []  # pre-DP: usati da IDS per analisi non distorta dal rumore
         for cid, trainer in trainers.items():
+            # Fix 2026-07-22 (review B1): cattura i pesi del modello PRIMA del
+            # training locale di questo round — sono il "modello ricevuto" da
+            # usare come riferimento per il clipping del DELTA (non del vettore
+            # assoluto) in privatize()/clip_only() più sotto. Per il round 1
+            # coincide con l'init casuale del trainer (nessun modello globale
+            # ancora applicato); per i round successivi coincide col modello
+            # applicato da apply_global_model() alla fine del round precedente.
+            pre_round_weights = trainer.get_weights()
+
             # Training locale
             update = trainer.train_local(cluster_sessions[cid], round_num)
 
@@ -315,13 +324,20 @@ def run_fl_rounds(
                 # individuale — il rumore va sull'aggregato (vedi sotto, dopo
                 # agg.aggregate()). Un attacco sul singolo update (LiRA) vedrà
                 # quindi l'update clippato ma pulito — atteso, non un bug.
-                private_update = gm.clip_only(update)
+                # reference_weights=pre_round_weights (fix 2026-07-22, review
+                # B1): clippa il DELTA rispetto al modello ricevuto, non il
+                # vettore assoluto — vedi GradientManager._clip_weights().
+                private_update = gm.clip_only(
+                    update, weight_keys=weight_keys, reference_weights=pre_round_weights
+                )
             else:
                 # "dp-fedavg" (default) e "local" condividono lo stesso meccanismo
                 # per-client (clip+noise prima dell'aggregazione) — la differenza
                 # tra i due è SOLO nella visibilità di raw_updates per l'IDS
                 # (vedi sotto, dopo il loop dei client).
-                private_update = gm.privatize(update, weight_keys=weight_keys)
+                private_update = gm.privatize(
+                    update, weight_keys=weight_keys, reference_weights=pre_round_weights
+                )
             agg.collect(private_update)
             round_updates.append(private_update)
 
@@ -1152,6 +1168,15 @@ def run_lira(
                         "warm-start non applicabile (shape mismatch) — init casuale"
                     )
 
+                # Fix 2026-07-22 (review B1): cattura i pesi PRIMA del training
+                # dello shadow — riferimento per il clip del DELTA più sotto,
+                # simmetrico a pre_round_weights in run_fl_rounds(). Coincide
+                # col warm-start se applicato con successo, altrimenti con
+                # l'init casuale appena fatto (round 1 / shape mismatch).
+                _shadow_pretrain_weights = [
+                    w.detach().clone() for w in shadow_model.state_dict().values()
+                ]
+
                 shadow_opt  = torch.optim.Adam(shadow_model.parameters(), lr=lr)
                 shadow_crit = torch.nn.MSELoss()
                 shadow_ds  = torch.utils.data.TensorDataset(shadow_tensor)
@@ -1192,10 +1217,19 @@ def run_lira(
                         n_samples=len(shadow_tensor),
                         metadata={},
                     )
+                    # reference_weights=_shadow_pretrain_weights (fix 2026-07-22,
+                    # review B1): clippa il DELTA dello shadow rispetto al proprio
+                    # punto di partenza, come per i client reali in run_fl_rounds().
                     if dp_mode == "central":
-                        _privatized = gm.clip_only(_shadow_update)
+                        _privatized = gm.clip_only(
+                            _shadow_update, weight_keys=_shadow_keys,
+                            reference_weights=_shadow_pretrain_weights,
+                        )
                     else:
-                        _privatized = gm.privatize(_shadow_update, weight_keys=_shadow_keys)
+                        _privatized = gm.privatize(
+                            _shadow_update, weight_keys=_shadow_keys,
+                            reference_weights=_shadow_pretrain_weights,
+                        )
                     _load_weights_into(shadow_model, _privatized.weights)
                     shadow_model.eval()
 

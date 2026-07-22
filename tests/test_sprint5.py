@@ -249,6 +249,49 @@ class TestGradientManager:
         norm = float(torch.norm(flat, p=2))
         assert norm <= dp_config["max_grad_norm"] + 1e-5
 
+    def test_clip_weights_with_reference_bounds_delta_not_absolute_norm(
+        self, dp_config, gradient_update
+    ):
+        """
+        Regressione per il fix 2026-07-22 (review B1): _clip_weights() con
+        `reference` fornito deve bound la norma del DELTA (weights - reference),
+        NON la norma assoluta del vettore pesi risultante. Prima del fix,
+        _clip_weights() clippava sempre l'assoluto — questo test lo dimostra
+        costruendo un reference "lontano" (pesi con norma assoluta grande) e
+        verificando che il risultato clippato resti VICINO al reference (norma
+        assoluta grande, quindi ben oltre max_grad_norm), non vicino a zero.
+        """
+        gm = GradientManager(dp_config)
+        float_weights = [w for w in gradient_update.weights if w.is_floating_point()]
+
+        # Reference "lontano dall'origine": ogni tensore + 100 — la sua norma
+        # assoluta è enorme (>> max_grad_norm=1.0), ma il delta rispetto ad
+        # esso (i pesi originali - reference) è piccolo (i pesi veri sono
+        # vicini a reference, non all'origine).
+        reference = [w + 100.0 for w in gradient_update.weights]
+        clipped = gm._clip_weights(gradient_update.weights, reference=reference)
+
+        clipped_float = [c for c, w in zip(clipped, gradient_update.weights) if w.is_floating_point()]
+        ref_float     = [r for r, w in zip(reference, gradient_update.weights) if w.is_floating_point()]
+
+        # Il delta (clippato - reference) deve avere norma <= max_grad_norm.
+        delta = torch.cat([(c - r).flatten() for c, r in zip(clipped_float, ref_float)])
+        delta_norm = float(torch.norm(delta, p=2))
+        assert delta_norm <= dp_config["max_grad_norm"] + 1e-3, (
+            f"delta norm={delta_norm:.4f} supera max_grad_norm — il clipping "
+            "con reference non sta bound-ando il delta come atteso"
+        )
+
+        # Il risultato deve restare VICINO al reference (norma assoluta grande),
+        # non essere stato tirato verso zero come nel vecchio clipping assoluto.
+        clipped_abs_norm = float(torch.cat([c.flatten() for c in clipped_float]).norm())
+        assert clipped_abs_norm > 50.0, (
+            f"norma assoluta del risultato clippato = {clipped_abs_norm:.2f} — "
+            "atteso vicino al reference (norma grande, offset +100), non "
+            "vicino a zero: suggerisce che il clipping stia ancora operando "
+            "sul vettore assoluto invece che sul delta (regressione fix 2026-07-22)"
+        )
+
     def test_clip_only_does_not_add_noise(self, dp_config, gradient_update):
         """clip_only() (central DP, 2026-07-22): stessa garanzia di norma di
         _clip_weights(), ma senza alcun rumore — i pesi restituiti devono essere

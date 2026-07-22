@@ -46,6 +46,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import torch
 
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
@@ -183,27 +184,50 @@ class TestRunFLRounds:
     ):
         """
         Regressione/verifica per dp_mode='central' (2026-07-22): ogni client deve
-        CLIPPARE il proprio update (norma L2 <= max_grad_norm + tolleranza) ma NON
-        rumorizzarlo individualmente — il rumore va solo sull'aggregato FedAvg
-        (verificato separatamente in test_central_dp_noises_only_the_aggregate).
+        CLIPPARE il proprio update ma NON rumorizzarlo individualmente — il
+        rumore va solo sull'aggregato FedAvg (verificato separatamente in
+        test_central_dp_noises_only_the_aggregate).
 
-        Un update rumorizzato (dp_mode="dp-fedavg") avrebbe invece norma L2 ben
-        superiore a max_grad_norm, perché sigma (~4.8 per epsilon=1.0 di default)
-        domina rispetto al clipping a 1.0 — la differenza di scala è netta e
-        rende questo un buon discriminante.
+        Fix 2026-07-22 (review B1): il clipping ora bound la norma L2 del DELTA
+        rispetto al modello ricevuto a inizio round, non del vettore pesi
+        assoluto (che con max_grad_norm=1.0 su un modello di ~650 parametri
+        avrebbe quasi sempre fatto scattare un clip aggressivo su ogni singolo
+        round, indipendentemente da quanto il client si fosse davvero
+        allontanato dal modello globale). Verifica quindi il delta al round 2
+        (fl_results[1]["global_weights"] = modello ricevuto da tutti i client
+        a inizio round 2 — vedi run_fl_rounds()), non il round 1 (dove il
+        riferimento sarebbe l'init casuale per-client, non osservabile da qui
+        senza instrumentare run_fl_rounds()). I buffer BatchNorm sono esclusi
+        dal delta, come nel codice di produzione.
         """
+        from ml.autoencoder_trainer import AutoencoderTrainer
+
         cfg = copy.deepcopy(tiny_cfg)
         max_grad_norm = cfg["experiment"]["max_grad_norm"]
         fl_results = run_exp.run_fl_rounds(cfg, train_sessions, no_dp=False, dp_mode="central")
-        rd = fl_results[1]
-        for update in rd["updates"]:
-            float_weights = [w for w in update.weights if w.is_floating_point()]
-            l2 = sum(float(w.float().norm() ** 2) for w in float_weights) ** 0.5
-            assert l2 <= max_grad_norm + 1e-3, (
-                f"dp_mode='central': la norma L2 dell'update del client {update.node_id} "
-                f"è {l2:.4f}, oltre max_grad_norm={max_grad_norm} + tolleranza — "
+
+        _dummy_trainer = AutoencoderTrainer(
+            config={**cfg["ml"], "seed": cfg["experiment"].get("seed", 42)},
+            node_id="dummy", cluster_id="dummy",
+        )
+        weight_keys = _dummy_trainer.get_weight_keys()
+        _BN_BUFFERS = {"running_mean", "running_var", "num_batches_tracked"}
+        clip_idx = [i for i, k in enumerate(weight_keys) if k.split(".")[-1] not in _BN_BUFFERS]
+
+        reference = fl_results[1]["global_weights"]
+        for update in fl_results[2]["updates"]:
+            deltas = [
+                update.weights[i].float() - reference[i].float()
+                for i in clip_idx
+            ]
+            l2 = torch.cat([d.flatten() for d in deltas]).norm().item()
+            assert l2 <= max_grad_norm + 1e-2, (
+                f"dp_mode='central', round 2: la norma L2 del DELTA dell'update "
+                f"del client {update.node_id} rispetto al modello ricevuto è "
+                f"{l2:.4f}, oltre max_grad_norm={max_grad_norm} + tolleranza — "
                 "suggerisce che sia stato rumorizzato individualmente invece di "
-                "solo clippato (clip_only())"
+                "solo clippato (clip_only()), o che il clip del delta non stia "
+                "funzionando (regressione del fix 2026-07-22)"
             )
 
     def test_central_dp_noises_only_the_aggregate(self, tiny_cfg, train_sessions):
