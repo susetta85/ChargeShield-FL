@@ -234,8 +234,15 @@ experiment-byzantine-sweep: _check-deps
 #
 # EPS ?= 1.0   — override epsilon: make experiment-dp EPS=0.5
 
+# N_SHADOW alzato da 8 a 16 (2026-07-23): il round 8 dello sweep ε=0.5/0.1
+# del 2026-07-22 (seed=42) mostrava un gap LiRA invertito, causato da
+# instabilità di calibrazione con un ensemble di soli 8 shadow/cluster
+# (confermato non essere un effetto reale legato a ε: seed=123 sullo stesso
+# ε=0.5 non mostra l'inversione — vedi esperimenti/anomaly_check). Più
+# shadow stabilizzano la stima IN/OUT round per round, riducendo il rischio
+# di ripetere questo tipo di instabilità sui prossimi sweep "seri".
 EPS      ?= 1.0
-N_SHADOW ?= 8
+N_SHADOW ?= 16
 SEED     ?= 42
 # SEEDS: 5 seed per mean±std (minimo DSN 2027); 10 seed per test Wilcoxon di significatività.
 # Override: make experiment-nodp-sweep SEEDS="42 123 456"
