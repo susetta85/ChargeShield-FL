@@ -447,14 +447,22 @@ class KrumDetector:
     @staticmethod
     def detect_byzantine(
         krum_scores: dict[str, float],
-        threshold: float = 0.8,
+        # Fix 2026-07-22 (review indipendente fresh-pass): 0.8 era il default
+        # pre-ricalibrazione (training a poche epoche). Con epochs=50 (Sprint 9,
+        # forza memorizzazione) la distribuzione naturale dei Krum score sale,
+        # e 0.8 produce falsi positivi sistematici su nodi legittimi — per
+        # questo ogni call site reale (run_ids() in scripts/run_experiments.py)
+        # passa esplicitamente 3.5. Allineato qui per chi istanzia la classe
+        # con i default (es. l'esempio d'uso nel docstring di ChargingIDS sotto).
+        threshold: float = 3.5,
     ) -> list[str]:
         """
         Identifica nodi Byzantine dai Krum scores.
 
         Args:
             krum_scores: {node_id: normalized_krum_score}
-            threshold:   score oltre cui il nodo è sospetto (default 0.8)
+            threshold:   score oltre cui il nodo è sospetto (default 3.5,
+                         calibrato per training a 50 epoche — vedi commento sopra)
 
         Returns:
             lista di node_id sospetti
@@ -498,7 +506,10 @@ class ChargingIDS(AbstractIDS):
         config_path: str = "config/auditor.yaml",
         byzantine_tolerance: int = 1,
         cosine_threshold: float = 0.3,
-        krum_threshold: float = 0.8,
+        # Fix 2026-07-22 (review indipendente fresh-pass): stesso motivo di
+        # KrumDetector.detect_byzantine() sopra — 0.8 stale, ogni call site
+        # reale passa 3.5 esplicitamente.
+        krum_threshold: float = 3.5,
         fedmia: FedMIA | None = None,
     ):
         """
@@ -770,18 +781,46 @@ class ChargingIDS(AbstractIDS):
                 # Shadow model non ancora addestrato — skip MIA detection
                 pass
 
-        # Step 5: aggiorna risk scores solo per i nodi rilevati dai detector geometrici
-        # (Krum e cosine similarity) che NON passano per analyze() — quest'ultimo ha già
-        # aggiornato il risk score per i nodi in `reports` alla riga 610 (analyze()).
-        # Aggiornare di nuovo causerebbe un double-count del penalità (+0.2 due volte
-        # per anomali, -10% due volte per normali).
+        # Step 5: integra nel risk score il contributo dei detector geometrici
+        # (Krum, cosine similarity).
+        #
+        # FIX 2026-07-22 (review indipendente fresh-pass, bug reale trovato):
+        # la versione precedente di questo blocco saltava (`continue`) OGNI
+        # nodo presente in `reports` — cioè, in ogni call site reale
+        # (run_ids() qui, che costruisce `reports`/`gradients` dallo stesso
+        # set di node_id nello stesso loop), TUTTI i nodi, sempre. Motivazione
+        # originale ("Krum/cosine sono già coperti da analyze() in Step 1") era
+        # sbagliata: analyze() (Step 1) aggiorna il risk score usando SOLO
+        # `len(reasons)` dalle regole single-node + CUSUM — Krum e cosine
+        # vengono calcolati DOPO, in Step 2/3, quindi analyze() non può averli
+        # visti. Risultato: un nodo Byzantine rilevato da Krum o con cosine
+        # similarity anomala otteneva comunque un IDSAlert in questo round
+        # (Step 2/3 sopra), ma get_node_risk_score() — la misura persistente
+        # usata per decisioni cumulative — non lo rifletteva MAI in
+        # produzione. Non individuato da test_sprint4.py, che verifica solo
+        # `byzantine_nodes`/`low_similarity_nodes`, mai il risk score dopo
+        # analyze_round().
+        #
+        # Fix: per ogni nodo già aggiornato da analyze() in Step 1 (quelli in
+        # `reports`), NON richiamare _update_risk_score() con l'intero
+        # anomaly_count (duplicherebbe il contributo single-node già applicato
+        # e il decay -10% verrebbe eseguito due volte per i nodi puliti) —
+        # aggiungiamo SOLO l'incremento del rilevamento geometrico, se
+        # presente, come chiamata aggiuntiva separata (niente doppio decay:
+        # il decay resta applicato una sola volta per round, da analyze()).
+        # Per nodi senza AuditReport (fuori da `reports` — comportamento
+        # storico, non osservato in nessun call site reale ma mantenuto per
+        # retrocompatibilità) si applica/decade in base al solo rilevamento
+        # geometrico, come prima.
         already_updated = set(reports.keys())
         all_detected = set(byzantine_nodes) | set(low_similarity_nodes)
         for node_id in gradients:
+            geometric_anomaly = 1 if node_id in all_detected else 0
             if node_id in already_updated:
-                continue  # già aggiornato da analyze() in Step 1
-            anomalies = 1 if node_id in all_detected else 0
-            self._update_risk_score(node_id, anomalies)
+                if geometric_anomaly:
+                    self._update_risk_score(node_id, geometric_anomaly)
+            else:
+                self._update_risk_score(node_id, geometric_anomaly)
 
         round_analysis = RoundAnalysis(
             round_id=round_id,
