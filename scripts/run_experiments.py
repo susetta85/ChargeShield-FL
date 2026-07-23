@@ -2163,11 +2163,24 @@ def save_results(
     with open(result_file, "w") as f:
         json.dump(summary, f, indent=2, default=str)
 
-    mean_str = f"{summary['summary']['mean_auc_roc']:.4f}" \
-               if summary["summary"]["mean_auc_roc"] is not None else "N/A"
+    # Fix 2026-07-22 (trovato analizzando i risultati nodp/dp reali, non da una
+    # review del codice): questo log stampava mean_auc_roc (la media di Yeom,
+    # l'attacco PIÙ DEBOLE — quasi sempre ≈0.50, a prescindere da ε) accanto al
+    # verdetto privacy_risk, che invece è calcolato da _primary_mean (LiRA
+    # quando disponibile — vedi "Privacy risk basato sull'attacco più forte"
+    # sopra). Il log dava l'impressione fuorviante che il numero mostrato
+    # spiegasse il verdetto, mentre erano due metriche diverse (visto dal vivo:
+    # "AUC-ROC medio: 0.4988 — Privacy risk: ANOMALY", con LiRA mean reale
+    # ≈0.49 ma min 0.39 — il numero giusto per capire l'ANOMALY non era quello
+    # stampato). Ora mostra esplicitamente l'attacco primario usato per il
+    # verdetto, con Yeom a fianco per contesto.
+    mean_str = f"{_primary_mean:.4f}" if _primary_mean is not None else "N/A"
+    yeom_mean_str = f"{summary['summary']['mean_auc_roc']:.4f}" \
+                    if summary["summary"]["mean_auc_roc"] is not None else "N/A"
     logger.info(f"Risultati salvati: {result_file.name}")
     logger.info(
-        f"AUC-ROC medio: {mean_str} — "
+        f"{summary['summary']['primary_attack']} AUC-ROC medio: {mean_str} "
+        f"(Yeom: {yeom_mean_str}) — "
         f"Privacy risk: {summary['summary']['privacy_risk']}"
     )
     if summary["summary"]["privacy_risk"] == "ANOMALY":
