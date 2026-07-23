@@ -157,6 +157,17 @@ def load_experiments(experiments_dir: Path | None = None) -> list[dict]:
                 "file":         path.name,
                 "rounds":       int(cfg.get("fl_rounds", 0)),
                 "epsilon":      float(cfg.get("epsilon", 0)),
+                # Fix 2026-07-22 (review indipendente fresh-pass): campo
+                # aggiunto a save_results() lo stesso giorno (epsilon × fl_rounds,
+                # None sotto no_dp) ma mai letto qui — spariva silenziosamente
+                # dal report Excel. È il numero di composizione naive/worst-case
+                # che il paper userà per il claim di privacy (vedi
+                # gradient_manager.py::_compute_sigma() e docs/CaseStudies.md
+                # §2.4.3) — non va perso.
+                "epsilon_cumulative_naive": (
+                    float(cfg["epsilon_cumulative_naive"])
+                    if cfg.get("epsilon_cumulative_naive") is not None else None
+                ),
                 "delta":        float(cfg.get("delta", 1e-5)),
                 "proximal_mu":  float(cfg.get("proximal_mu", 0)),
                 "no_dp":        bool(cfg.get("no_dp", False)),
@@ -224,7 +235,12 @@ def build_raw_data(ws, records: list[dict]) -> None:
     ws.title = "Raw Data"
 
     # Titolo
-    ws.merge_cells("A1:O1")
+    # Fix 2026-07-22 (review indipendente fresh-pass): merge/header/indici di
+    # colonna estesi da 15 (A:O) a 16 (A:P) per inserire "ε cumulativo (naive)"
+    # subito dopo "Epsilon (ε)" — vedi commento su epsilon_cumulative_naive in
+    # load_experiments(). Tutti gli indici di colonna da qui in poi sono
+    # shiftati di 1 rispetto alla versione precedente di questa funzione.
+    ws.merge_cells("A1:P1")
     title = ws["A1"]
     title.value = "ChargeShield-FL — Experiment Results (Full Sweep)"
     title.font = _font(bold=True, color=COLOR_HEADER_FG, size=12)
@@ -232,7 +248,8 @@ def build_raw_data(ws, records: list[dict]) -> None:
     title.alignment = _center()
 
     headers = [
-        "Timestamp", "FL Rounds", "Epsilon (ε)", "Delta (δ)", "Proximal μ", "No-DP",
+        "Timestamp", "FL Rounds", "Epsilon (ε)", "ε cumulativo (naive, T×ε)",
+        "Delta (δ)", "Proximal μ", "No-DP",
         # Yeom
         "Yeom AUC (mean)", "Yeom AUC (max)", "Yeom AUC (min)",
         # Shadow
@@ -245,11 +262,11 @@ def build_raw_data(ws, records: list[dict]) -> None:
     for col, h in enumerate(headers, 1):
         _header_cell(ws.cell(2, col), h, bg=COLOR_SUBHDR_BG)
     # Colora i gruppi di header per distinguere gli attacchi
-    for col in [7, 8, 9]:   # Yeom
+    for col in [8, 9, 10]:   # Yeom
         _header_cell(ws.cell(2, col), headers[col - 1], bg="4472C4")
-    for col in [10, 11]:    # Shadow
+    for col in [11, 12]:     # Shadow
         _header_cell(ws.cell(2, col), headers[col - 1], bg="ED7D31")
-    for col in [12, 13]:    # LiRA (primary)
+    for col in [13, 14]:     # LiRA (primary)
         _header_cell(ws.cell(2, col), headers[col - 1], bg="70AD47")
 
     def _auc_cell(cell, val, alt_row):
@@ -262,37 +279,37 @@ def build_raw_data(ws, records: list[dict]) -> None:
         _data_cell(ws.cell(row_idx, 1),  rec["timestamp"],           alt_row=alt)
         _data_cell(ws.cell(row_idx, 2),  rec["rounds"],              alt_row=alt)
         _data_cell(ws.cell(row_idx, 3),  rec["epsilon"],             fmt="0.0#", alt_row=alt)
-        _data_cell(ws.cell(row_idx, 4),  rec["delta"],               fmt="0.00E+00", alt_row=alt)
-        _data_cell(ws.cell(row_idx, 5),  rec["proximal_mu"],         fmt="0.00", alt_row=alt)
+        _data_cell(ws.cell(row_idx, 4),  rec.get("epsilon_cumulative_naive"), fmt="0.0#", alt_row=alt)
+        _data_cell(ws.cell(row_idx, 5),  rec["delta"],               fmt="0.00E+00", alt_row=alt)
+        _data_cell(ws.cell(row_idx, 6),  rec["proximal_mu"],         fmt="0.00", alt_row=alt)
         # dp_mode (2026-07-22): mostrato tra parentesi solo quando DP è attivo e
         # non è la modalità storica di default ("dp-fedavg") — evita di dover
-        # inserire una colonna e shiftare tutti gli indici di colonna hardcoded
-        # in questo foglio (15 colonne, A1:O1 merge, gruppi colorati per attacco).
+        # inserire un'ulteriore colonna e shiftare di nuovo tutti gli indici.
         _dp_mode = rec.get("dp_mode", "dp-fedavg")
         _no_dp_label = (
             "YES" if rec.get("no_dp")
             else "no" if _dp_mode == "dp-fedavg"
             else f"no ({_dp_mode})"
         )
-        _data_cell(ws.cell(row_idx, 6),  _no_dp_label, alt_row=alt)
+        _data_cell(ws.cell(row_idx, 7),  _no_dp_label, alt_row=alt)
         # Yeom
-        _auc_cell(ws.cell(row_idx, 7),  rec.get("auc_roc"),    alt)
-        _auc_cell(ws.cell(row_idx, 8),  rec.get("auc_max"),    alt)
-        _auc_cell(ws.cell(row_idx, 9),  rec.get("auc_min"),    alt)
+        _auc_cell(ws.cell(row_idx, 8),  rec.get("auc_roc"),    alt)
+        _auc_cell(ws.cell(row_idx, 9),  rec.get("auc_max"),    alt)
+        _auc_cell(ws.cell(row_idx, 10), rec.get("auc_min"),    alt)
         # Shadow
-        _auc_cell(ws.cell(row_idx, 10), rec.get("shadow_auc"), alt)
-        _auc_cell(ws.cell(row_idx, 11), rec.get("shadow_max"), alt)
+        _auc_cell(ws.cell(row_idx, 11), rec.get("shadow_auc"), alt)
+        _auc_cell(ws.cell(row_idx, 12), rec.get("shadow_max"), alt)
         # LiRA
-        _auc_cell(ws.cell(row_idx, 12), rec.get("lira_auc"),   alt)
-        _auc_cell(ws.cell(row_idx, 13), rec.get("lira_max"),   alt)
+        _auc_cell(ws.cell(row_idx, 13), rec.get("lira_auc"),   alt)
+        _auc_cell(ws.cell(row_idx, 14), rec.get("lira_max"),   alt)
         # Privacy risk con colore
-        risk_cell = ws.cell(row_idx, 14)
+        risk_cell = ws.cell(row_idx, 15)
         risk = rec["privacy_risk"]
         _data_cell(risk_cell, risk, alt_row=alt, bold=True)
         risk_cell.font = _font(bold=True, color=_risk_label_color(risk))
-        _data_cell(ws.cell(row_idx, 15), rec["total_alerts"], alt_row=alt)
+        _data_cell(ws.cell(row_idx, 16), rec["total_alerts"], alt_row=alt)
 
-    widths = [20, 10, 10, 12, 10, 7, 16, 14, 14, 18, 16, 16, 14, 14, 12]
+    widths = [20, 10, 10, 16, 12, 10, 7, 16, 14, 14, 18, 16, 16, 14, 14, 12]
     for i, w in enumerate(widths, 1):
         _set_col_width(ws, get_column_letter(i), w)
 
@@ -341,7 +358,12 @@ def build_heat_map(ws, records: list[dict]) -> None:
     sub.value = (
         "AUC-ROC ≈ 0.50 → MIA non migliore del random (DP efficace)  |  "
         "AUC-ROC > 0.55 → MIA parzialmente efficace  |  "
-        "Dataset: ACN-Data JPL 2019+2020 (13,073 sessioni)  |  "
+        # Fix 2026-07-22 (review indipendente fresh-pass): etichetta stale,
+        # residuo dell'epoca pre-Sprint-10 (singolo dataset mislabeled "JPL",
+        # in realtà Caltech — vedi correzione in README) e pre-3-siti-reali.
+        # I dati ora coprono 3 siti reali (Caltech/JPL/Office1) × più anni —
+        # rimossa la cifra fissa, fuorviante e non più veritiera.
+        "Dataset: ACN-Data — 3 siti reali (Caltech/JPL/Office1)  |  "
         "Solo dp_mode=dp-fedavg (central/local DP: vedi foglio Comparison)"
     )
     sub.font = _font(bold=False, color="404040", size=9)
