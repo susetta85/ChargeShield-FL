@@ -91,8 +91,9 @@ class ACNDataset(AbstractDataset):
         "cluster_id",       # ID del cluster (clusterID in ACN)
         "site_id",          # Sito fisico: JPL o Caltech
         "user_id",          # ID anonimizzato dell'utente
-        "start_time",       # Orario di connessione del veicolo
-        "end_time",         # Orario di disconnessione del veicolo
+        "start_time",       # Orario di connessione del veicolo (UTC nonostante il nome)
+        "end_time",         # Orario di disconnessione del veicolo (UTC nonostante il nome)
+        "timezone",         # Timezone IANA del sito (es. "America/Los_Angeles") — per localizzare hour_of_day
         "done_charging_time",  # Orario fine ricarica effettiva
         "total_energy_kwh", # Energia erogata in kWh
         "max_power_kw",     # Potenza media stimata in kW
@@ -240,6 +241,22 @@ class ACNDataset(AbstractDataset):
             "user_id":              item.get("userID") or None,
             "start_time":           start.isoformat(),
             "end_time":             end.isoformat(),
+            # Fix 2026-07-22 (review indipendente fresh-pass, bug reale
+            # trovato e confermato empiricamente — vedi enrich_sessions() in
+            # scripts/run_experiments.py, che usa questo campo per calcolare
+            # hour_of_day correttamente): connectionTime/disconnectTime hanno
+            # il suffisso "GMT" ma sono in realtà UTC reale (non l'ora locale
+            # del sito mascherata da GMT) — confermato confrontando la
+            # distribuzione oraria grezza di office1 (picco 14-19, implausibile
+            # per charging da ufficio) con quella dopo conversione a
+            # America/Los_Angeles (picco 6-13, coerente con arrivi al lavoro
+            # 8-9am). Esponiamo qui il campo timezone IANA del sito (presente
+            # in ogni record ACN-Data) così chi consuma start_time/end_time
+            # può localizzare correttamente quando serve l'ora locale — senza
+            # toccare la semantica di start_time/end_time stessi (restano UTC,
+            # usati altrove per year-splitting/holdout — non li tocchiamo per
+            # non introdurre effetti collaterali su quella logica).
+            "timezone":             item.get("timezone") or None,
             "done_charging_time":   done.isoformat(),
             "done_time_estimated":  done_time_estimated,
             "total_energy_kwh":     kwh,

@@ -227,15 +227,48 @@ def inject_synthetic_client_indices(
 def enrich_sessions(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     Aggiunge feature derivate dai timestamp ACN-Data.
-    - hour_of_day: ora di connessione (0–23), pattern comportamentale
+    - hour_of_day: ora di connessione LOCALE al sito (0–23), pattern comportamentale
     - duration_hours: durata sessione in ore, correlata all'energia
+
+    Fix 2026-07-22 (review indipendente fresh-pass, bug reale confermato
+    empiricamente): start_time/end_time (da ACNDataset) sono UTC nonostante il
+    suffisso "GMT" nel dato grezzo ACN-Data sia fuorviante — vedi commento su
+    "timezone" in src/adapters/acn_dataset.py per la verifica empirica (picco
+    orario grezzo di office1 implausibile per charging da ufficio, plausibile
+    dopo conversione a America/Los_Angeles). hour_of_day va quindi calcolato
+    sull'ora LOCALE del sito, non sui pesi grezzi di start.hour (che erano UTC,
+    sistematicamente sfasati di 7-8h da quanto la feature dichiara di
+    rappresentare — "ora di connessione, pattern comportamentale"). Non
+    tocchiamo start_time/end_time stessi (restano UTC — usati altrove per
+    year-splitting/holdout, che non deve essere influenzato da questo fix) né
+    duration_hours (invariante a un offset UTC uniforme, entrambi i lati
+    dell'intervallo si spostano della stessa quantità).
     """
+    from zoneinfo import ZoneInfo
+
     enriched = []
     for s in sessions:
         try:
             start = datetime.fromisoformat(s["start_time"])
             end   = datetime.fromisoformat(s["end_time"])
-            s["hour_of_day"]    = float(start.hour)
+
+            tz_name = s.get("timezone")
+            if tz_name:
+                try:
+                    local_start = start.replace(tzinfo=ZoneInfo("UTC")).astimezone(
+                        ZoneInfo(tz_name)
+                    )
+                    hour_of_day = float(local_start.hour)
+                except Exception:
+                    # Timezone IANA sconosciuta/malformata — fallback all'ora
+                    # grezza (comportamento pre-fix) invece di scartare la
+                    # sessione: un hour_of_day leggermente sfasato è preferibile
+                    # a perdere il campione.
+                    hour_of_day = float(start.hour)
+            else:
+                hour_of_day = float(start.hour)  # nessun timezone noto — fallback
+
+            s["hour_of_day"]    = hour_of_day
             s["duration_hours"] = max(0.0, (end - start).total_seconds() / 3600.0)
             enriched.append(s)
         except (KeyError, ValueError):
