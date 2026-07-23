@@ -238,6 +238,24 @@ class PrivacyAuditor(AbstractPrivacyAuditor):
         # NOTA composizione: con composizione base (Dwork 2014) il budget totale su T round
         # è T * epsilon_target. Con composizione avanzata (RDP/zCDP) il costo è √T * ε.
         # Questo auditor usa composizione base: budget totale = ε * total_rounds_budget.
+        #
+        # ATTENZIONE (2026-07-22, review indipendente fresh-pass) — questo NON
+        # è lo stesso ε_tot riportato nel paper: qui round_epsilon è scalato
+        # dal rapporto sensitivity/max_grad_norm ("saturazione del clipping",
+        # vedi sopra) — se il gradiente non satura il clip (il caso comune,
+        # sensitivity osservata ≈3-4% di max_grad_norm), il budget cumulativo
+        # cresce molto più lentamente di quanto assuma total_budget sotto
+        # composizione naive. Questo è un modello DELIBERATAMENTE ottimistico
+        # usato SOLO per la soglia interna PRIVACY_BUDGET_EXHAUSTED/
+        # NEAR_EXHAUSTION di questo IDS — con sensitivity realistica, quella
+        # soglia non scatterà praticamente mai, anche a molti round da qui.
+        # Per il claim di privacy nel paper si usa invece la composizione
+        # naive CONSERVATIVA (ε_tot ≈ T × ε_per_round, worst-case, nessuno
+        # sconto per sensitivity) — vedi gradient_manager.py::_compute_sigma()
+        # e il campo "epsilon_cumulative_naive" esportato da
+        # scripts/run_experiments.py::save_results(). Non confondere le due
+        # cifre: self._cumulative_epsilon qui sotto è per l'allerta IDS
+        # interna, non per la cifra di privacy budget del paper.
         round_epsilon = (sensitivity / self._max_grad_norm) * self._epsilon_budget
 
         # Step 3: aggiorna epsilon cumulativo per questo nodo

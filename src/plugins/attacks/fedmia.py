@@ -105,6 +105,17 @@ class FedMIA:
         # Shadow model: stesso autoencoder usato dai nodi target
         # Viene addestrato su dati pubblici (ACN-Data JPL)
         self._shadow_model = Autoencoder(input_dim=input_dim).to(self._device)
+        # Fix 2026-07-22 (review indipendente fresh-pass): input_dim non veniva
+        # mai salvato — _prepare_tensor() importava invece la costante di
+        # modulo core.autoencoder.INPUT_DIM, ignorando questo parametro del
+        # costruttore. Con input_dim != INPUT_DIM (default 6), il modello si
+        # aspetterebbe una shape diversa da quella prodotta da _prepare_tensor(),
+        # causando un errore di shape mismatch al primo forward. Codice
+        # attualmente non usato in produzione (mai istanziato da run_ids() o
+        # ChargeShieldAggregator — vedi FedMIA class docstring/README), quindi
+        # nessun impatto sui risultati sperimentali di oggi; corretto comunque
+        # per coerenza interna del modulo.
+        self._input_dim = input_dim
         # Soglia per classificare un campione come membro
         self._attack_threshold = attack_threshold
 
@@ -283,12 +294,16 @@ class FedMIA:
         Returns:
             tensore di shape (1, INPUT_DIM)
         """
-        from core.autoencoder import INPUT_DIM
-        if len(values) >= INPUT_DIM:
-            tensor_values = values[:INPUT_DIM]
+        # Fix 2026-07-22: usa self._input_dim (dal costruttore) invece della
+        # costante di modulo core.autoencoder.INPUT_DIM — altrimenti un'istanza
+        # con input_dim != INPUT_DIM costruirebbe tensori di shape sbagliata
+        # rispetto al proprio _shadow_model (vedi commento in __init__).
+        target_dim = self._input_dim
+        if len(values) >= target_dim:
+            tensor_values = values[:target_dim]
         else:
             # Padding con zeri
-            tensor_values = values + [0.0] * (INPUT_DIM - len(values))
+            tensor_values = values + [0.0] * (target_dim - len(values))
         return torch.tensor(tensor_values, dtype=torch.float32).unsqueeze(0)
 
     def _normalize_score(self, error: float) -> float:
