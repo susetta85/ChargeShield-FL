@@ -68,12 +68,17 @@ clears 0.5 once any DP-FedAvg noise is added (this matches the "DP-FedAvg suppre
 the tested range" slide). That is **not** evidence that the metric has nothing to show — it is
 the correct, expected output of a metric designed to flag *false* privacy claims, applied to a
 case where the claim happens to hold up. The important open question, already flagged as the
-project's next step (Task #57 and the in-progress central-DP run in
-`experiments/dp-sweep3/`), is whether **Central DP** — which clips client-side but noises only the
-aggregate once, leaving the raw per-client update LiRA actually attacks untouched — produces
-nonzero, possibly large, `PES_v1` at low ε. That would be the first genuinely newsworthy PES
-number, and the reason Central DP is the priority experiment right now rather than an
-afterthought.
+project's next step (Task #66, `make experiment-central-dp EPS=1.0/0.1 N_SHADOW=16`, not yet run
+as of 2026-07-24 — corrected here after independent review: `experiments/dp-sweep3/` is **not**
+a central-DP run, it is two additional dp-fedavg ε=0.1 seeds, 123/456, confirming the round-8
+anomaly was single-seed variance, see Task #57), is whether **Central DP** — which clips
+client-side but noises only the aggregate once, leaving the raw per-client update LiRA actually
+attacks untouched — produces nonzero, possibly large, `PES_v1` at low ε. That would be the first
+genuinely newsworthy PES number, and the reason Central DP is the priority experiment right now
+rather than an afterthought. Note for whoever computes PES on that run: `experiment-central-dp`
+does not pass `--sweep-dir`, so its JSON lands directly in `experiments/`, not inside
+`dp-sweep3/` or any subdirectory — check there (or in `experiments/central-sweep1/` if the
+`-sweep` multi-seed variant is used instead).
 
 Also note the `U_cost` column: at ε≤0.5 the mean reconstruction loss is already ~135–139× the
 no-DP baseline. That level of degradation is close to a non-functional model. Any future claim

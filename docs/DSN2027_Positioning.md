@@ -25,18 +25,46 @@ narrative layer — abstract, introduction, contributions — not the code.
 > deployments is an empirical question that current research answers piecemeal: one paper per
 > attack, one dataset per paper, rarely a production FL framework, rarely an industrial dataset.
 > We present **ChargeShield-FL**, an open, reproducible benchmark for measuring how much privacy
-> leakage survives standard FL mitigations in a real critical-infrastructure deployment, using
-> real EV charging session data (ACN-Data, 3 sites: Caltech, JPL, Office 1) run on a genuine
-> multi-site NVFLARE federation with differential privacy, Byzantine-robust aggregation, and
-> intrusion detection all active simultaneously — not a toy simulation of any of them. Privacy
-> attacks (membership inference today; gradient inversion and property inference as planned
-> extensions) are implemented as pluggable modules against a common measurement harness, so the
-> benchmark's value compounds with each new attack or defence added, rather than resetting with
-> every new paper. Our first results, using a likelihood-ratio membership inference attack
-> (LiRA), show [result — to be finalised once Central DP + multi-seed results land]: differential
-> privacy's nominal guarantee (ε) does not reliably predict the empirical protection an attacker
-> experiences, and the gap between the two is largest under exactly the DP placement (central,
-> aggregate-only noising) that many production FL deployments favour for utility reasons.
+> leakage survives standard FL mitigations in a realistic critical-infrastructure setting, using
+> real EV charging session data (ACN-Data, 3 sites: Caltech, JPL, Office 1) in a multi-site FL
+> simulation with the real differential-privacy, Byzantine-robust-aggregation, and
+> intrusion-detection code paths this project implements — not synthetic data standing in for any
+> of the three. (A companion NVFLARE job/app implementing the same pipeline on a genuine
+> multi-container federation exists as a scaffold and is planned validation work, not a claim of
+> this paper — see "Current validation status" below.) Privacy attacks (membership inference
+> today; gradient inversion and property inference as planned extensions) are implemented as
+> pluggable modules against a common measurement harness, so the benchmark's value compounds with
+> each new attack or defence added, rather than resetting with every new paper. Our first results,
+> using a likelihood-ratio membership inference attack (LiRA), show [result — to be finalised once
+> Central DP + multi-seed results land]: differential privacy's nominal guarantee (ε) does not
+> reliably predict the empirical protection an attacker experiences, and the gap between the two
+> is largest under exactly the DP placement (central, aggregate-only noising) that many production
+> FL deployments favour for utility reasons.
+
+### Current validation status — do not overclaim this in the paper
+
+Caught by independent review (2026-07-24) before this draft went further: the sentence above
+originally claimed results came from "a genuine multi-site NVFLARE federation with DP, Byzantine
+aggregation, and IDS all active simultaneously." That is not what happened and must not reach a
+submission. Concretely:
+
+- All reported numbers (`experiments/experiment_*.json`, `dp-sweep*/`, `nodp-sweep1/`) come from
+  the single-process Python simulation in `scripts/run_experiments.py` — real ACN-Data, real DP/
+  attack/IDS code, but one process, not a deployed multi-container NVFLARE federation.
+- `nvflare/jobs/chargeshield_poc/` (the actual NVFLARE job/app) is scaffold-only per
+  `docs/NVFlareIntegration.md`: "not executed, not tested" — it has never been run, because this
+  project's environment cannot install `torch`/`nvflare` (see that doc for why).
+- DP and Byzantine/IDS are **not** measured together in one privacy-leakage run today:
+  `run_experiments.py` explicitly skips FedMIA/Shadow/LiRA whenever `byzantine_attack.enabled` is
+  true (Byzantine sweeps validate Krum detection only, in `experiments/ids_validation/`, and are
+  a separate, non-privacy measurement — see the Makefile's `experiment-byzantine-sweep` comment
+  block). So "DP + Byzantine + IDS active simultaneously while measuring MIA" is not a result this
+  project has produced.
+
+The honest version of the claim: real dataset, real DP mechanism code, real attack code, all in a
+validated single-process simulation; a real multi-container NVFLARE deployment of the same
+pipeline is designed and scaffolded but not yet executed, and is future/ongoing work rather than
+part of the DSN 2027 results. The paper should say exactly that, not the stronger claim above.
 
 (The bracketed sentence is intentionally left open — it should be filled in once the Central DP
 + multi-seed results are in, so the abstract states a real number rather than an anticipated
