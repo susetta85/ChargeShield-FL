@@ -49,6 +49,7 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 
 try:
     from openpyxl import Workbook
@@ -73,12 +74,31 @@ def save_report_with_history(wb: "Workbook", output_path: Path) -> Path:
        tutti gli esperimenti raccolti finora nella cartella (stesso principio
        già accettato per il foglio "Seed Aggregation" — un'aggregazione che
        si aggiorna non è la stessa cosa di un run individuale che sparisce).
-    2. `output_path.parent / "history" / f"{stem}_<timestamp>.xlsx"` — MAI
+    2. `output_path.parent / "history" / f"{stem}_<timestamp>_<hex>.xlsx"` — MAI
        sovrascritto: uno snapshot permanente del report esattamente come
-       si presentava subito dopo QUESTO esperimento/rigenerazione. Se due
-       chiamate cadono nello stesso secondo (improbabile ma non impossibile
-       in un run automatizzato), un suffisso numerico incrementale evita la
-       collisione invece di sovrascrivere lo snapshot precedente.
+       si presentava subito dopo QUESTO esperimento/rigenerazione.
+
+    Nota su collisioni (fix 2026-07-24, review indipendente, stesso giorno):
+    la prima versione di questa funzione usava un timestamp al secondo più un
+    suffisso numerico incrementale scelto con un controllo "esiste già questo
+    path?" — un pattern check-then-write con una race condition reale se due
+    processi (es. due run paralleli di uno sweep) generano lo stesso timestamp:
+    entrambi vedono "non esiste" prima che uno dei due scriva, e il secondo
+    sovrascrive silenziosamente il primo — lo stesso identico bug che questa
+    funzione doveva risolvere. Il suffisso è ora un frammento random (non
+    derivato da un controllo sul filesystem), quindi la probabilità di
+    collisione fra due chiamate concorrenti è trascurabile senza bisogno di
+    coordinamento fra processi.
+
+    Nota su crescita illimitata di history/ (review indipendente 2026-07-24):
+    ogni run/seed di uno sweep lascia un file permanente qui — uno sweep da
+    50 seed produce 50 snapshot mai ripuliti automaticamente. Scelta accettata
+    di proposito (è esattamente ciò che l'utente ha chiesto: un file per ogni
+    esperimento lanciato), non un oversight — experiments/ è comunque interamente
+    in .gitignore, quindi non pesa sul repository. Se in futuro diventa un
+    problema di spazio su disco reale, valutare un `--keep-last-n` o una
+    pulizia periodica in `make clean-experiments`; non implementato ora perché
+    nessuno sweep finora eseguito si è avvicinato a un volume problematico.
 
     Ritorna il path dello snapshot in history/.
     """
@@ -88,12 +108,8 @@ def save_report_with_history(wb: "Workbook", output_path: Path) -> Path:
 
     history_dir = output_path.parent / "history"
     history_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:6]
     snapshot_path = history_dir / f"{output_path.stem}_{ts}{output_path.suffix}"
-    suffix_n = 1
-    while snapshot_path.exists():
-        snapshot_path = history_dir / f"{output_path.stem}_{ts}_{suffix_n}{output_path.suffix}"
-        suffix_n += 1
     wb.save(snapshot_path)
     return snapshot_path
 

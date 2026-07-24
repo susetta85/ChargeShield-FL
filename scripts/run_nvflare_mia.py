@@ -283,13 +283,36 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _round_count_or_reason(path: Path) -> str:
+    """Legge un dump pickle NVFLARE e ritorna il numero di round contenuti
+    (o il motivo per cui non è stato possibile leggerlo) — usato solo per
+    logging diagnostico, non cambia quale file viene selezionato."""
+    try:
+        with open(path, "rb") as f:
+            payload = pickle.load(f)
+        return f"{len(payload)} round"
+    except Exception as e:  # file corrotto/troncato/formato inatteso
+        return f"illeggibile ({e.__class__.__name__})"
+
+
 def _resolve_fl_results_path(explicit: Path | None) -> Path:
     """Se --fl-results non è passato esplicitamente, sceglie il dump pickle
     NVFLARE più recente per data di modifica — fix 2026-07-24: da quando
     ChargeShieldAggregator inserisce un timestamp univoco nel nome (per non
     sovrascrivere i risultati di run precedenti, vedi il suo __init__), non
     esiste più un singolo 'nvflare_fl_results.pkl' fisso da usare come
-    default."""
+    default.
+
+    Fix 2026-07-24 (review indipendente, stesso giorno): la sola mtime NON
+    distingue un run completato da uno interrotto a metà — ChargeShieldAggregator
+    riscrive lo stesso file dopo OGNI round, quindi un run avviato dopo uno
+    completato ma interrotto al round 2 ha comunque una mtime più recente, e
+    verrebbe scelto in silenzio al posto del run completo precedente. Non
+    risolto scegliendo un file diverso (quale euristica sostituire a "il più
+    recente" è una scelta che cambia il comportamento di default, non ovvia
+    da prendere alla cieca) — mitigato invece rendendo sempre visibile nel log
+    il numero di round di ogni candidato, cosicché un run interrotto sia
+    immediatamente riconoscibile prima di fidarsi dei risultati a valle."""
     if explicit is not None:
         return explicit
     candidates = sorted(
@@ -303,12 +326,22 @@ def _resolve_fl_results_path(explicit: Path | None) -> Path:
             "'make nvflare-sim-smoke'/'make nvflare-sim', oppure passa --fl-results "
             "esplicitamente."
         )
+    chosen = candidates[0]
+    logger.info(
+        f"Dump NVFLARE selezionato (più recente per mtime): {chosen.name} — "
+        f"{_round_count_or_reason(chosen)}. Verifica che il conteggio round sia "
+        "quello atteso prima di usare questi risultati — un run interrotto ha "
+        "comunque mtime più recente di uno completato prima."
+    )
     if len(candidates) > 1:
-        logger.warning(
-            f"Trovati {len(candidates)} dump NVFLARE — uso il più recente: "
-            f"{candidates[0].name} (altri: {[p.name for p in candidates[1:]]})"
+        others = ", ".join(
+            f"{p.name} ({_round_count_or_reason(p)})" for p in candidates[1:]
         )
-    return candidates[0]
+        logger.warning(
+            f"Trovati {len(candidates)} dump NVFLARE — uso il più recente per mtime "
+            f"(NON necessariamente il più completo): {chosen.name}. Altri: {others}"
+        )
+    return chosen
 
 
 def main() -> None:

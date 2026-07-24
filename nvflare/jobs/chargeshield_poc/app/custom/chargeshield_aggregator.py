@@ -304,9 +304,20 @@ class ChargeShieldAggregator(Aggregator):
         # resto del progetto — nessun run futuro sovrascrive un run passato.
         # config_fed_server.json resta invariato (i due valori di default
         # sopra restano "puliti"); il timestamp è aggiunto qui, non lì.
+        #
+        # Fix 2026-07-24 (review indipendente, stesso giorno): il timestamp
+        # aveva risoluzione al secondo — due run avviati nello stesso secondo
+        # (es. due processi paralleli, possibile in un futuro sweep NVFLARE
+        # parallelizzato) avrebbero prodotto lo stesso nome file e si sarebbero
+        # sovrascritti a vicenda esattamente come nel bug originale. Aggiunto
+        # un suffisso random (non basato su un controllo "esiste già" — quel
+        # pattern ha la stessa race condition se due processi lo eseguono nello
+        # stesso istante) per rendere la collisione trascurabile anche fra run
+        # concorrenti, mantenendo il timestamp leggibile come prefisso.
         from datetime import datetime as _datetime
+        from uuid import uuid4 as _uuid4
 
-        _run_ts = _datetime.now().strftime("%Y%m%d_%H%M%S")
+        _run_ts = _datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + _uuid4().hex[:6]
 
         def _with_run_timestamp(path_str: str, ts: str) -> Path:
             p = _PROJECT_ROOT / path_str
