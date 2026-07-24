@@ -4,7 +4,7 @@
 **Status:** Skeleton only — job scaffold + client Executor + custom Aggregator + DP wiring + structured exports (fase 1-5) written, **not executed, not tested**.
 
 **Update (2026-07-22, later same day):** the 4 fictional same-site "clusters" (`highway`/`urban`/`residential`/`corporate`) referenced throughout the fase 1-5 sections below have been replaced project-wide with the 3 real ACN-Data sites (`caltech`/`jpl`/`office1` — see README "Real multi-site experiment" and the JPL/Caltech mislabeling correction in the same section). `nvflare/project.yml`, `chargeshield_executor.py`, `config_fed_client.json`, and `config_fed_server.json` (`min_clients: 4→3`) were all updated to match. The fase 1-5 narrative and `VERIFY:` points below are left as originally written (historical record of that work) except where explicitly annotated as updated; read `highway`/`urban`/`residential`/`corporate` in what follows as referring to the old 4-cluster scheme this superseded, not the current client set.
-**Why:** the environment used to write this code cannot install `torch` (proxy blocks `download.pytorch.org`) or, by extension, verify `nvflare` behaviour (nvflare depends on torch). Every NVFLARE API call below was written from documented/standard NVFLARE 2.x patterns and careful reading of the existing `src/ml/`/`src/auditor/`/`src/ids/` code, but **none of it has run**. Treat this as a first draft to debug on a machine with the real dependencies installed, not as working code.
+**Why:** the environment used to write this code cannot install `torch` (proxy blocks `download.pytorch.org`) or, by extension, verify `nvflare` behaviour (nvflare depends on torch). Every NVFLARE API call below was written from documented/standard NVFLARE 2.x patterns and careful reading of the existing `src/ml/`/`src/auditor/`/`src/ids/` code, but **none of it has run**. Treat this as a first draft to debug on a machine with the real dependencies installed, not as working code. **Update (2026-07-24)**: re-checked — `pip install torch`/`pip install nvflare==2.7.2` now resolve their dependency graphs fine in this sandbox (no proxy block observed today), but the actual wheel downloads are large enough (CUDA toolkit dependencies pulled in alongside torch) to exceed this session's per-command execution time budget, so a full install still wasn't completed here. This is a sandbox time-limit constraint, not necessarily a hard network block anymore — worth trying a plain `pip install torch nvflare==2.7.2` on a normal (non-time-boxed) machine before assuming it will fail the same way.
 
 This document exists because the prior state of the repo's Containerlab/NVFLARE scaffolding was audited (2026-07-21, see `docs/CaseStudies.md` §2.4.3's "the privacy pipeline does not run on the containerised network" limitation) and found to be unused: `src/flare/flare_connector.py` is an explicit Sprint-3 placeholder that never imports `nvflare` and simulates gradients with `random.gauss()`; `nvflare/project.yml` only provisions PKI/network participants, no job/app existed; the `docker/` Dockerfiles are orphaned (unreferenced, and their `CMD`s have no `if __name__ == "__main__"` guard, so they'd crash on start). This document and the files under `nvflare/jobs/chargeshield_poc/` are the first concrete step toward closing that gap — not a completed integration.
 
@@ -79,23 +79,104 @@ Fixed in `chargeshield_executor.py::_setup()`: `cluster_id` is now derived from 
 
 ## Points marked `VERIFY:` in the code — check these first
 
-Search `chargeshield_executor.py` and `chargeshield_aggregator.py` for `VERIFY:`. The four riskiest assumptions (executor) plus new aggregator-specific ones below:
-1. **DXO data format**: assumed `dxo.data` is `dict[str, np.ndarray]` keyed by the exact `state_dict()` key names `AutoencoderTrainer.get_weight_keys()` returns. If `FullModelShareableGenerator` + `PTFileModelPersistor` produce a different structure (e.g., wrapped in another dict, or numpy vs. tensor), the conversion in `execute()` breaks immediately and loudly (KeyError) — easy to spot, not a silent-corruption risk.
-2. **Aggregation weighting**: the outgoing DXO puts `n_samples` in `meta`, but the exact meta key `InTimeAccumulateWeightedAggregator` reads for per-client weighting in NVFLARE 2.7.2 needs confirming against `nvflare.apis.fl_constant.MetaKey` — if wrong, aggregation would silently fall back to unweighted averaging (wrong, but not a crash — the more dangerous failure mode of the three).
-3. **Round number**: the Executor counts rounds locally (`self._round_num += 1` on every `execute()` call) instead of reading the authoritative round from `fl_ctx`. Almost certainly wrong in any scenario with retries or non-trivial task dispatch; low risk for a straight-through single-task-per-round POC, but flagged for correctness.
-4. **Site identity → cluster_id** (added 2026-07-22, see fix above; site names updated same day to the 3 real ACN-Data sites): assumed `fl_ctx.get_identity_name()` returns exactly `"caltech"`/`"jpl"`/`"office1"` at `START_RUN` time, matching `project.yml`'s site names verbatim. If NVFLARE returns a decorated form (e.g. with an org suffix), the fallback-with-warning path engages and all sites silently fall back to the config default (`"caltech"`) — check the logs for this warning on first run.
-5. **Client identity in the Aggregator** (new, `chargeshield_aggregator.py`): `ChargeShieldAggregator.accept()` identifies which client sent an update via `dxo.meta["cluster_id"]` (set by the executor), NOT via `fl_ctx`/peer info — unverified whether this is the right/most robust way to identify the sender inside an `Aggregator.accept()` call.
-6. **round_num in the Aggregator** (new): same local-counter pattern as the Executor's, in `aggregate()` — two independent counters (client-side, server-side) that need to agree, unverified under retries.
-7. **Aggregator base class contract** (new): `ChargeShieldAggregator(Aggregator)` implements `accept(shareable, fl_ctx) -> bool` and `aggregate(fl_ctx) -> Shareable`, returning a `DXO(DataKind.WEIGHTS, ...)` with the full aggregated weights, assuming `FullModelShareableGenerator` interprets that the same way it interpreted `InTimeAccumulateWeightedAggregator`'s output. Unverified against the actual `nvflare.app_common.abstract.aggregator.Aggregator` base class.
+Search `chargeshield_executor.py` and `chargeshield_aggregator.py` for `VERIFY:`. Originally seven
+points, all reasoned from documented NVFLARE patterns but none confirmed by actually running
+anything. **Update (2026-07-24, preparatory pass before the first real execution attempt)**: with
+`torch`/`nvflare` still uninstallable in this sandbox (confirmed again today — `pip install torch`
+resolves dependencies but the actual wheel download exceeds this session's per-command time budget;
+this is a sandbox constraint, not a fundamentally-blocked install, so it may well work in a normal
+environment with no time-boxed shell), five of the seven were instead checked against NVFLARE's
+**actual public source** (`nvflare.app_common.abstract.aggregator`,
+`nvflare.app_common.shareablegenerators.full_model_shareable_generator`, both fetched directly from
+the `NVIDIA/NVFlare` GitHub `main` branch) and official docs/discussions — this is not the same as
+running our code, but it is stronger evidence than "reasoned from general patterns," and resolves
+most of the framework-compatibility risk before the first real attempt.
+
+1. **DXO data format — CONFIRMED.** `dxo.data` for `DataKind.WEIGHTS` is exactly `dict[str,
+   np.ndarray]` keyed by `state_dict()` variable names — confirmed both by
+   `FullModelShareableGenerator.shareable_to_learnable()`'s source (`weights = dxo.data`, stored
+   directly under `ModelLearnableKey.WEIGHTS`, no wrapping) and by NVFLARE's own PyTorch examples
+   (`new_weights = {k: v.cpu().numpy() for k, v in new_weights.items()}`). Our assumption in both
+   `chargeshield_executor.py` and `chargeshield_aggregator.py` matches exactly — no code change
+   needed, downgraded from "assumed" to "confirmed against upstream source."
+2. **Aggregation weighting — MOOT, not just resolved.** This VERIFY point asked which
+   `MetaKey`/`InTimeAccumulateWeightedAggregator` convention we need to match — but
+   `ChargeShieldAggregator` doesn't use `InTimeAccumulateWeightedAggregator` at all; it's a
+   from-scratch `Aggregator` subclass that reads its own custom `dxo.meta["n_samples"]` key
+   directly (`chargeshield_executor.py` line ~488, `chargeshield_aggregator.py` line ~366). The
+   original VERIFY comment in `chargeshield_executor.py` already noted this ("irrilevante per
+   ChargeShieldAggregator, che legge n_samples direttamente") — this document's own VERIFY list
+   just hadn't caught up to that. No `MetaKey` convention to match; nothing to fix.
+3. **Round number — still genuinely open.** The Executor and Aggregator both count rounds with a
+   local `self._round_num += 1` instead of reading `fl_ctx`'s authoritative round (e.g.
+   `AppConstants.CURRENT_ROUND`). No amount of documentation reading resolves this — it depends on
+   whether `ScatterAndGather` ever retries a task or re-invokes `accept()`/`execute()` outside a
+   strict one-call-per-round-per-client pattern, which needs a real multi-round run to observe.
+   Real risk, but degrades gracefully for a first straight-through smoke test (no retries expected
+   at `-n 1`/`-n 3`, no failure injection).
+4. **Site identity → cluster_id — CONFIRMED directionally, exact string form still open.**
+   NVFLARE's own `FLContext` docs confirm `get_identity_name()` "returns the unique name of the
+   peer site (client name or server name)" — consistent with our assumption that it returns
+   `project.yml`'s site names (`caltech`/`jpl`/`office1`) verbatim. What's still unconfirmed:
+   whether NVFLARE ever decorates this (org suffix, case normalization) — the existing
+   fallback-with-warning path in `_setup()` already handles that gracefully if so; check the logs
+   for that warning on first run.
+5. **Client identity in the Aggregator via `dxo.meta["cluster_id"]` — reframed, not really an
+   NVFLARE-API risk.** This is a private contract between our own Executor (which sets the key)
+   and our own Aggregator (which reads it) — nothing in NVFLARE's API constrains this either way,
+   so there was never real framework-compatibility risk here, only an internal-consistency
+   requirement, which the two files already satisfy (both use the literal string `"cluster_id"`).
+6. **round_num in the Aggregator — same status as point 3**, still open for the same reason (no
+   dependency on `fl_ctx`'s authoritative round counter).
+7. **Aggregator base class contract — CONFIRMED exactly.** Fetched
+   `nvflare/app_common/abstract/aggregator.py` directly from GitHub (`main` branch): `accept(self,
+   shareable: Shareable, fl_ctx: FLContext) -> bool` and `aggregate(self, fl_ctx: FLContext) ->
+   Shareable` are the only two `@abstractmethod`s; `reset(self, fl_ctx)` has a concrete no-op
+   default (`pass`), so **not** overriding it (as `ChargeShieldAggregator` currently does) is fine,
+   not a gap. `ChargeShieldAggregator`'s method signatures match the abstract contract exactly.
+   `FullModelShareableGenerator.shareable_to_learnable()`'s source also confirms our `aggregate()`
+   return convention: a `DXO(DataKind.WEIGHTS, ...)` is read via `weights = dxo.data;
+   base_model[WEIGHTS] = weights` — no additional wrapping expected, matches what
+   `chargeshield_aggregator.py` returns.
+
+**Net effect of this pass**: two real open risks remain (points 3/6, the round-number counter) —
+everything else that could be checked without execution now has been. The two remaining risks are
+exactly the kind that need a real `nvflare simulator` run to resolve, not more reading — see
+"Suggested next steps" below, still step 1 in the list, unchanged by this pass.
 
 ## Suggested next steps (in order)
 
-1. Install `nvflare==2.7.2` + `torch` in a real environment (not this sandbox). Run `nvflare simulator` against `nvflare/jobs/chargeshield_poc/` with `-n 4` (or fewer, for a first smoke test — even `-n 1` validates the transport contract before scaling to 4).
-2. Fix whatever the `VERIFY:` points above turn out to need — expect at least one to need a real fix, not just confirmation. Confirm `ChargeShieldAggregator` actually replaces `InTimeAccumulateWeightedAggregator` correctly (point 7 above) before trusting any output.
+1. Install `nvflare==2.7.2` + `torch` in a real environment (not this sandbox — see the 2026-07-24
+   update above; a plain `pip install` may just work outside this session's time-boxed shell).
+   Run `nvflare simulator` against `nvflare/jobs/chargeshield_poc/` — updated 2026-07-24 for the
+   current 3-real-site client set (`caltech`/`jpl`/`office1`, not the old 4-cluster scheme this
+   command previously assumed):
+   ```bash
+   cd ChargeShield-FL
+   nvflare simulator nvflare/jobs/chargeshield_poc \
+       -w /tmp/chargeshield_nvflare_sim \
+       -n 1 -c caltech
+   ```
+   Start with `-n 1` (single client, validates the transport contract — DXO round-trip, Executor
+   `_setup()`/`execute()` — without needing all three sites to behave correctly at once). Once that
+   completes without crashing, scale to the real deployment shape:
+   ```bash
+   nvflare simulator nvflare/jobs/chargeshield_poc \
+       -w /tmp/chargeshield_nvflare_sim \
+       -n 3 -c caltech,jpl,office1
+   ```
+   `nvflare simulator` runs everything in local processes/threads — no `nvflare provision`, no
+   Containerlab, no Docker needed for this step (see "Not on Containerlab" above). Expect the first
+   run to fail somewhere — that is normal for code that has never executed once; the point is to
+   find out *where*, which is far cheaper to do here than after also standing up containers.
+2. Fix whatever breaks. The two real open `VERIFY:` points after 2026-07-24's documentation-based
+   pass are both about the local round-number counters (points 3/6 above) — expect the first crash
+   or silent-wrong-result to involve those, or something in the numpy/tensor conversion at the
+   `execute()`/`accept()` boundary that no amount of reading could rule out in advance.
 3. ~~Write a custom server-side Controller/Aggregator...~~ **Done 2026-07-22** — `ChargeShieldAggregator` (`app/custom/chargeshield_aggregator.py`) wraps `FedAvgAggregator` for the averaging and `PrivacyAuditor`/`ChargingIDS` for per-round analysis, mirroring `run_ids()`. Not yet done: exporting IDS/Auditor results anywhere structured (currently log-only — see "What is explicitly NOT done yet").
 4. ~~Add DP: call `GradientManager.privatize()`/`clip_only()` inside the Executor's `execute()`...~~ **Done 2026-07-22 (fase 3)** — see the "DP wiring" section above for the full client/server split. Both files still only `py_compile`-checked, not executed.
 5. ~~Export IDS/Auditor results somewhere structured...~~ **Done 2026-07-22 (fase 4)** — `ChargeShieldAggregator._export_results()` writes the full per-round history to `experiments/nvflare_ids_audit_results.json` (overwritten after every round). See "What is explicitly NOT done yet" above for the one open verification point (working-directory/deployment assumption).
 6. ~~Solve raw-update extraction for LiRA/Shadow...~~ **Done 2026-07-22 (fase 5)**, scoped as an offline step by design — `ChargeShieldAggregator._export_fl_results()` dumps the exact `run_fl_rounds()`-shaped data per round, and `scripts/run_nvflare_mia.py` runs the existing, already-validated `run_lira()`/`run_ids()`/`run_fedmia()` against it unchanged. See the dedicated section above for why this wasn't ported to run live inside `aggregate()`.
-7. Only after 1-6 work against the NVFLARE simulator: wire this same job into `topology.clab.yml`/Docker — fix the orphaned `docker/charging-node` build, point the topology at whatever image actually gets built, reconcile the two PKI trees (`certs/` vs. the NVFLARE-provisioned workspace). Target environment: OrbStack's Linux VM on macOS (Containerlab needs Linux), even though single-process simulation experiments run natively on the physical machine for speed.
+7. Only after 1-6 work against the NVFLARE simulator: wire this same job into `topology.clab.yml`/Docker — fix the orphaned `docker/charging-node` build, point the topology at whatever image actually gets built, reconcile the two PKI trees (`certs/` vs. the NVFLARE-provisioned workspace). Target environment: OrbStack's Linux VM on macOS (Containerlab needs Linux), even though single-process simulation experiments run natively on the physical machine for speed. **Found 2026-07-24, still true, not fixed (correctly out of scope until steps 1-6 pass)**: the existing `topology.clab.yml` is misplaced (lives at the repo root, not under `containerlab/` where its own header comment and every reference to it — including this document — assume) and is Sprint-5 vintage: 12 fictional OT "charging nodes" (`highway-01..03`/`urban-01..03`/etc.) plus 4 fictional FL clients (`highway`/`urban`/`residential`/`corporate`), OCPP/MQTT protocol simulation that was never wired to anything real, and Docker images (`chargeshield-fl:latest`, `chargeshield/charging-node:latest`) with no confirmed working build. None of this matches the current 3-real-site (`caltech`/`jpl`/`office1`) design, and rewriting it now would be guessing at a container topology before step 1 even confirms the simulator-level job works — left as-is deliberately, flagged here so nobody deploys it by mistake before it's rewritten as part of step 7.
 
 Steps 1-2 are a few hours of real debugging once someone has `nvflare` installed. Steps 4-6 are the "multi-week" part of the original estimate — this document doesn't shrink that estimate, it just gives it a concrete starting point.

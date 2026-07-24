@@ -1,5 +1,20 @@
 # containerlab/topology.clab.yml
 # ChargeShield-FL — Topologia Sprint 5
+#
+# STATO (2026-07-24, review preparatoria pre-NVFLARE): STALE, non aggiornata
+# dopo la migrazione Sprint 10 ai 3 siti reali ACN-Data. Riferisce ancora i 4
+# cluster fittizi (highway/urban/residential/corporate) e 12 "charging node"
+# OT (highway-01..03 etc.) con simulazione OCPP/MQTT mai collegata a nulla di
+# reale — src/adapters/ocpp16_adapter.py, src/nodes/charging_node.py sono
+# codice morto (vedi header di quei file). Inoltre questo file vive alla ROOT
+# del repo, non sotto containerlab/ come il proprio commento in cima e ogni
+# riferimento nella documentazione (docs/NVFlareIntegration.md) assumono.
+# NON usare per un deploy reale finché non è riscritta per i 3 siti reali
+# (caltech/jpl/office1) — vedi docs/NVFlareIntegration.md, "Suggested next
+# steps" #7: questa riscrittura è deliberatamente rimandata a DOPO che il job
+# NVFLARE funziona su `nvflare simulator` (passi 1-6), non prima — vedi quel
+# documento per il piano completo ed il perché.
+#
 # Deploy: sudo containerlab deploy -t containerlab/topology.clab.yml
 # Prerequisiti:
 #   1. docker build -f Dockerfile.flare -t chargeshield-fl:latest .
