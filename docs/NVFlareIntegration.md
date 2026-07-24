@@ -1,7 +1,7 @@
 # NVFLARE / Containerlab Integration — Status and Plan
 
 **Started:** 2026-07-22
-**Status:** Job scaffold + client Executor + custom Aggregator + DP wiring + structured exports (fase 1-5) written. **First real execution attempt: 2026-07-24** (see "First real run" section below) — found and fixed 2 real bugs; re-run pending confirmation as of this writing.
+**Status:** Job scaffold + client Executor + custom Aggregator + DP wiring + structured exports (fase 1-5) written. **First real execution: 2026-07-24** (see "First real run" section below) — 4 real bugs found and fixed across three attempts; **the third attempt completed all 10 rounds successfully** (`make nvflare-sim-smoke`, 1 client/caltech, `min_clients=1`: "Round 9 finished" → "Finished ScatterAndGather Training", no errors). This confirms the DXO/Executor/Aggregator/DP/IDS-export pipeline runs end-to-end for a single client. **Not yet run**: the 3-real-site shape (`make nvflare-sim`, `-n 3 -c caltech,jpl,office1`) — that is the next concrete step, not yet attempted.
 
 **Update (2026-07-22, later same day):** the 4 fictional same-site "clusters" (`highway`/`urban`/`residential`/`corporate`) referenced throughout the fase 1-5 sections below have been replaced project-wide with the 3 real ACN-Data sites (`caltech`/`jpl`/`office1` — see README "Real multi-site experiment" and the JPL/Caltech mislabeling correction in the same section). `nvflare/project.yml`, `chargeshield_executor.py`, `config_fed_client.json`, and `config_fed_server.json` (`min_clients: 4→3`) were all updated to match. The fase 1-5 narrative and `VERIFY:` points below are left as originally written (historical record of that work) except where explicitly annotated as updated; read `highway`/`urban`/`residential`/`corporate` in what follows as referring to the old 4-cluster scheme this superseded, not the current client set.
 **Why:** the environment used to write this code cannot install `torch` (proxy blocks `download.pytorch.org`) or, by extension, verify `nvflare` behaviour (nvflare depends on torch). Every NVFLARE API call below was written from documented/standard NVFLARE 2.x patterns and careful reading of the existing `src/ml/`/`src/auditor/`/`src/ids/` code, but **none of it has run**. Treat this as a first draft to debug on a machine with the real dependencies installed, not as working code. **Update (2026-07-24)**: re-checked — `pip install torch`/`pip install nvflare==2.7.2` now resolve their dependency graphs fine in this sandbox (no proxy block observed today), but the actual wheel downloads are large enough (CUDA toolkit dependencies pulled in alongside torch) to exceed this session's per-command execution time budget, so a full install still wasn't completed here. This is a sandbox time-limit constraint, not necessarily a hard network block anymore — worth trying a plain `pip install torch nvflare==2.7.2` on a normal (non-time-boxed) machine before assuming it will fail the same way.
@@ -84,9 +84,15 @@ it silently produces wrong data instead:
 single-process simulation depends on — these are NVFLARE-job-only files (the executor/aggregator
 under `nvflare/jobs/chargeshield_poc/`). No existing experiment result (including the Central DP
 numbers reported elsewhere in this document and in `docs/PrivacyExposureScore_v1.md`) is affected.
-All four fixes are `py_compile`-verified only from this side (no torch/nvflare in this sandbox);
-**not yet confirmed by a successful multi-round re-run** as of this writing — that confirmation has
-to happen on the user's machine (`make nvflare-sim-smoke` again, then `make nvflare-sim`).
+All four fixes are `py_compile`-verified only from this side (no torch/nvflare in this sandbox) —
+but **confirmed by a successful real run**: after all four fixes, the user re-ran `make
+nvflare-sim-smoke` and it completed all 10 configured rounds without error (`Round 9 finished` →
+`Finished ScatterAndGather Training`). This is the first time any of this code has ever run to
+completion. **Next step, not yet attempted**: `make nvflare-sim` (`-n 3 -c caltech,jpl,office1`,
+`min_clients=3`) — the real 3-site deployment shape. A single successful 1-client run derisks the
+transport/DP/IDS-export pipeline considerably but does not guarantee the 3-site case is
+bug-free (e.g. the per-cluster `cluster_id` derivation, IDS Krum quorum at n=3, and multi-client
+`FedAvgAggregator` weighting are all only exercised for the first time at `-n 3`).
 
 Also noted, not yet acted on: the simulator printed `WARNING: 'nvflare simulator' is deprecated.
 Use 'python job.py' with SimEnv instead.` — nvflare 2.8.1 (installed) vs. `>=2.7.2` (pinned in
