@@ -87,6 +87,39 @@ model may simply be too noisy to memorize anything, which is a Pyrrhic privacy w
 one. This caveat is exactly the kind of thing a single-scalar metric can hide if `U_cost` isn't
 kept visible.
 
+## Central DP, ε=1.0 — the first nonzero PES_v1 (real result, 2026-07-24)
+
+`experiments/experiment_20260724_111109.json` (`dp_mode=central`, ε=1.0, 10 rounds, seed=42,
+n_shadow=16) is the first completed run of the experiment this document flagged above as "the
+priority experiment right now." It is exactly the failure mode PES was built to catch:
+
+| Config | ε | LiRA mean AUC | L(AUC) | strength(ε) | U_cost (loss increase vs no-DP) | PES_v1 |
+|---|---|---|---|---|---|---|
+| Central DP | 1.0 | **0.7430** | **0.486** | 0.500 | ×38.2 | **0.243** |
+
+(`mean_lira_auc_roc` from `summary`; `L(AUC) = clip(2*max(0, 0.7430224-0.5), 0, 1) = 0.4860`;
+`strength(1.0) = 1/(1+1) = 0.5`; `PES_v1 = 0.4860 * 0.5 = 0.2430`. `U_cost`: mean reconstruction
+loss over the 10 rounds is 0.10324 vs 0.002706 for the matching no-DP seed=42 baseline
+(`experiments/experiment_20260722_185408.json`) — a ×38.2 increase, notably smaller than the
+×122–139 seen at the corresponding ε under DP-FedAvg, so this is not the same "noised into
+uselessness" confound flagged above.)
+
+This is the first PES_v1 value in the project greater than zero. Read plainly: at ε=1.0, Central
+DP's nominal privacy claim (`strength=0.5`, a "moderate" budget) is not honoured — LiRA recovers
+membership at 0.743 AUC, well above chance, because Central DP clips client-side but only noises
+the aggregate once, leaving the raw per-client update (what LiRA actually attacks) untouched. This
+is architecturally expected — see the "Three DP placements" note in the project's methodology —
+but this is the first *measured*, multi-round confirmation of it with a real PES number attached,
+not just a qualitative "expected little/no suppression" prediction. `privacy_risk` in the same
+JSON is independently flagged `"HIGH"` by the existing (non-PES) risk heuristic, corroborating
+the PES reading.
+
+The matching ε=0.1 run (same config, tighter nominal budget) was still in progress as of
+2026-07-24 11:35 (`logs/central_dp_20260724_092615.log`, FL rounds done, shadow/LiRA training
+phase running) — its PES_v1 value should be added here once it completes; expect `strength(0.1) =
+1/(1.1) ≈ 0.909`, so if LiRA AUC holds up anywhere near 0.74, PES_v1 there would be higher still
+(≈0.44), the single most damning number this project would have produced to date.
+
 ## Naming
 
 Working name is "Privacy Exposure Score (PES)"; "Operational Leakage Score (OLS)" and "Critical

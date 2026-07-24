@@ -1,4 +1,14 @@
 # src/adapters/ocpp16_adapter.py
+#
+# STATO (2026-07-24, review indipendente round 3): non importato da alcuna
+# pipeline attiva (run_experiments.py, run_sweep.py, run_nvflare_mia.py, o i
+# file custom NVFLARE) — solo da src/core/base_node.py / src/nodes/ e dai
+# rispettivi test. Scaffold da un'esplorazione iniziale del protocollo OCPP
+# 1.6, mai collegato al percorso dati reale (che usa direttamente ACN-Data via
+# src/adapters/acn_dataset.py). Lasciato com'è (non è codice pericoloso, solo
+# non wired) — vedi anche base_adapter.py, base_node.py,
+# src/nodes/charging_node.py, src/flare/flare_connector.py per lo stesso
+# scaffold non collegato.
 import json
 from datetime import datetime, timezone
 from typing import Any

@@ -1,4 +1,7 @@
 # src/nodes/charging_node.py
+#
+# STATO (2026-07-24, review indipendente round 3): non importato da alcuna
+# pipeline attiva — vedi la nota completa in src/adapters/ocpp16_adapter.py.
 import yaml
 from pathlib import Path
 from typing import Any

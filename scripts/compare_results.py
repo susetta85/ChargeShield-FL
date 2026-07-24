@@ -2,6 +2,23 @@
 # scripts/compare_results.py
 # ChargeShield-FL — Confronto risultati esperimenti
 #
+# STATO (2026-07-24, review indipendente round 3): script orfano/obsoleto, non
+# richiamato da Makefile né da alcuna pipeline attiva — solo menzionato in
+# docs/CaseStudies.md (che ha già un banner "leggere come storico"). Due
+# problemi noti, non corretti qui perché nessun codice vivo dipende da questo
+# file:
+#   1. load_results() usa un glob NON ricorsivo su experiments/experiment_*.json
+#      — ignora tutti i file dentro le sottocartelle di sweep (dp-sweep*/,
+#      nodp-sweep*/, central-sweep*/), cioè oggi circa il 75% dei risultati
+#      totali generati dal progetto.
+#   2. docs/CaseStudies.md:622 documenta un uso con `--sweep-dir`, ma
+#      l'argparse qui sotto non definisce quel flag — l'invocazione
+#      documentata fallirebbe se eseguita.
+# Per confronti multi-sweep reali usare invece i report Excel generati
+# automaticamente da scripts/generate_experiment_report.py /
+# scripts/generate_excel_report.py (con --experiments-dir), che sono
+# effettivamente mantenuti e verificati.
+#
 # Legge tutti i JSON in experiments/ e produce:
 #   - tabella rounds × epsilon → AUC-ROC (heat map)
 #   - confronto FedAvg vs FedProx

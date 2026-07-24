@@ -378,10 +378,28 @@ def main() -> None:
     _FEATURES = AutoencoderTrainer.CONTINUOUS_FEATURES
     # Stats calcolate su train_sessions (le sessioni realmente usate per il
     # training), NON su holdout — stessa regola anti-leakage di main() nella
-    # simulazione, e stessa formula usata in chargeshield_executor.py::_setup()
-    # (dove le stats sono calcolate su TUTTO il dataset condiviso prima dello
-    # split per-cluster — equivalente, dato che train_sessions qui È l'intero
-    # dataset condiviso, non una sua fetta).
+    # simulazione.
+    #
+    # ATTENZIONE — discrepanza nota, non "corretta" alla cieca (2026-07-24,
+    # review indipendente round 3): questa riga calcola UNA sola feature_stats
+    # globale sull'intero pool multi-sito combinato. Il commento precedente qui
+    # affermava che questo fosse "equivalente" a chargeshield_executor.py::
+    # _setup() — non è più vero nel design attuale (post-migrazione ai 3 siti
+    # reali, Sprint 10): lì ogni client calcola le proprie stats SOLO sulle
+    # sessioni del proprio sito (vedi il commento a chargeshield_executor.py
+    # righe 364-373, che riconosce esplicitamente che min/max variano tra siti —
+    # es. kWh massimo osservato a Caltech vs JPL — invece di un'unica scala
+    # globale condivisa come nella simulazione single-process).
+    #
+    # Non correggiamo qui ricalcolando le stats per-sito "alla cieca": farlo
+    # richiederebbe anche decidere con quali stats normalizzare holdout_sessions
+    # (che non appartiene in modo univoco a nessun sito di training), una scelta
+    # metodologica che non possiamo validare senza poter eseguire davvero
+    # NVFLARE in questo sandbox (torch/nvflare non installabili). Finché questo
+    # script resta "non eseguito, non testato" (vedi docstring in testa al
+    # file), qualunque numero prodotto da questa pipeline offline contro un vero
+    # dump NVFLARE va trattato come indicativo, non come replica esatta della
+    # normalizzazione realmente vista da ciascun client in training.
     feature_stats = compute_feature_stats(train_sessions, _FEATURES)
     train_sessions = normalize_sessions(train_sessions, feature_stats, _FEATURES)
     holdout_sessions = normalize_sessions(holdout_sessions, feature_stats, _FEATURES)

@@ -9,7 +9,8 @@ Legge tutti i file experiment_*.json e produce:
   Sheet 3  "Per Rounds"        — AUC-ROC medio, min, max per numero di round
   Sheet 4  "Per Epsilon"       — AUC-ROC medio, min, max per valore di epsilon
   Sheet 5  "Comparison"        — confronto diretto fra configurazioni
-  Sheet 6  "AUC Progression"   — AUC Yeom per round (convergenza FL)
+  Sheet 6  "AUC Progression"   — AUC Yeom per round (convergenza FL); titolo interno
+                                  corretto 2026-07-24 (diceva "FedMIA" pur mostrando Yeom)
   Sheet 7  "Attack Comparison" — Yeom vs Shadow vs LiRA sintetico per esperimento
   Sheet 8  "Yeom Per Round"    — AUC Yeom round-by-round per ogni esperimento
   Sheet 9  "Shadow Per Round"  — AUC Shadow round-by-round per ogni esperimento
@@ -678,7 +679,12 @@ def build_auc_progression(ws, records: list[dict]) -> None:
 
     ws.merge_cells(f"A1:{get_column_letter(n_cols)}1")
     t = ws["A1"]
-    t.value = "AUC-ROC per Round — Andamento FedMIA Attack (convergenza modello FL)"
+    # Titolo corretto 2026-07-24 (review indipendente round 3): i dati di questo
+    # foglio vengono da rec["per_round_auc"], popolato da v["mia"]["auc_roc"] —
+    # cioè Yeom, non FedMIA (che ha un campo/dizionario separato). Il titolo
+    # precedente diceva "FedMIA Attack" pur mostrando dati Yeom — stessa classe
+    # di errore già corretta nelle sheet Heat Map/Per Rounds/Per Epsilon.
+    t.value = "AUC-ROC per Round — Andamento Yeom Attack (convergenza modello FL)"
     t.font = _font(bold=True, color=COLOR_HEADER_FG, size=12)
     t.fill = _fill(COLOR_HEADER_BG)
     t.alignment = _center()
@@ -710,7 +716,7 @@ def build_auc_progression(ws, records: list[dict]) -> None:
     _header_cell(ws.cell(4, 1), "", bg=COLOR_HEADER_BG)
     for i in range(n_exp):
         base_col = i * 2 + 2
-        _header_cell(ws.cell(4, base_col),     "AUC-ROC", bg=COLOR_SUBHDR_BG)
+        _header_cell(ws.cell(4, base_col),     "Yeom AUC-ROC", bg=COLOR_SUBHDR_BG)
         _header_cell(ws.cell(4, base_col + 1), "FL Loss", bg=COLOR_SUBHDR_BG)
 
     # Raccoglie tutti i round number unici, ordinati

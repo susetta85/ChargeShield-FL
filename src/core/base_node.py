@@ -1,4 +1,7 @@
 # src/core/base_node.py
+#
+# STATO (2026-07-24, review indipendente round 3): non importato da alcuna
+# pipeline attiva — vedi la nota completa in src/adapters/ocpp16_adapter.py.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any

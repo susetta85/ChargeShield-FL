@@ -1,4 +1,11 @@
 # src/flare/flare_connector.py
+#
+# STATO (2026-07-24, review indipendente round 3): non importato da alcuna
+# pipeline attiva — il vero integrazione NVFLARE vive in
+# nvflare/jobs/chargeshield_poc/app/custom/ (chargeshield_executor.py,
+# chargeshield_aggregator.py), scritta successivamente e indipendente da
+# questo file. Vedi anche la nota completa in
+# src/adapters/ocpp16_adapter.py.
 """
 FLARE Connector — NVIDIA FLARE Integration Layer
 =================================================
