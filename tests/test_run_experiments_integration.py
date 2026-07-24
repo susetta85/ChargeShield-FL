@@ -490,10 +490,15 @@ class TestRunIDS:
             assert r in ids_results, f"dp_mode='local': run_ids manca il round {r}"
             assert "byzantine_detected" in ids_results[r]
 
-        for round_num, rd in ids_results.items():
-            for alert in rd["alerts"]:
-                reasons = " ".join(alert.get("reasons", []))
-                assert "BUDGET_EXHAUSTED" not in reasons, (
-                    f"round {round_num}: falso BUDGET_EXHAUSTED con no_dp=True "
-                    "(regressione Fix 3a, Sprint 9)"
-                )
+        # NOTA (fix 2026-07-24, review indipendente): questo test aveva un blocco
+        # di assert copiato per errore da test_no_dp_disables_budget_exhausted_alerts
+        # (sopra), che verificava "nessun BUDGET_EXHAUSTED" con un messaggio che
+        # citava testualmente "con no_dp=True" — ma questo test chiama
+        # run_fl_rounds/run_ids con no_dp=False, dp_mode="local" (riga 480/487):
+        # uno scenario di DP reale, dove il budget epsilon PUÒ esaurirsi
+        # legittimamente (a differenza di no_dp=True, dove epsilon=1000 lo
+        # impedisce per costruzione — Fix 3a, Sprint 9). L'assert non apparteneva
+        # allo scopo dichiarato dal docstring di questo test ("verifica solo che:
+        # (a)... (b)...") ed era semplicemente sbagliato per lo scenario testato.
+        # Rimosso invece di "correggerne il messaggio", perché non c'è nessuna
+        # invariante di design che garantisca l'assenza di BUDGET_EXHAUSTED qui.

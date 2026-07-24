@@ -938,6 +938,16 @@ def run_fedmia_shadow(
         logger.warning("Shadow MIA: shadow_train vuoto dopo feature extraction — skip")
         return {}
 
+    # Fix (2026-07-24, review indipendente — stessa classe di bug già corretta in
+    # run_lira() il 2026-07-21d): seed PRIMA di istanziare il modello. Autoencoder()
+    # pesca l'init casuale dei pesi dall'RNG globale di torch — se il seed viene
+    # fissato solo qui sotto (dopo la costruzione), l'init dipende da qualunque cosa
+    # abbia consumato l'RNG globale prima (draw di rumore DP, init di altri modelli,
+    # ecc.), rendendo shadow_auc_roc/shadow_score_gap non riproducibili "a parità di
+    # seed" e — più grave — confondendo il confronto no-DP vs DP: il path no-DP non
+    # fa mai draw di rumore prima di questo punto, il path DP sì, quindi i due rami
+    # partivano da pesi iniziali diversi anche a seed identico.
+    torch.manual_seed(seed + 999)
     shadow_model = Autoencoder(input_dim=input_dim)
     shadow_optimizer = torch.optim.Adam(shadow_model.parameters(), lr=ml_cfg.get("lr", 1e-3))
     shadow_criterion = torch.nn.MSELoss()

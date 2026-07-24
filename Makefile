@@ -40,7 +40,7 @@ help:
 	@echo "  make status            Stato container"
 	@echo "  make logs              Log server + highway"
 	@echo "  make experiment            Esegui esperimento FedMIA (config default)"
-	@echo "  make experiment-smoke       Smoke test (5 round, no-DP, seed=SEED, n_shadow=4)"
+	@echo "  make experiment-smoke       Smoke test (5 round, no-DP, seed=SEED, n_shadow=2)"
 	@echo "  make experiment-nodp        Baseline no-DP singolo seed (10 round)"
 	@echo "  make experiment-dp          Con DP singolo seed (10 round, ε=EPS)"
 	@echo "  make experiment-nodp-sweep  no-DP multi-seed (SEEDS='42 123 456 789 1234') → mean±std"

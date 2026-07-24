@@ -75,9 +75,15 @@ one.)
 Where the old framing had one contribution ("we show LiRA beats DP"), the benchmark framing
 supports a list that keeps growing:
 
-1. **A reproducible, production-grade measurement harness** for FL privacy leakage — real
-   NVFLARE federation, real multi-site industrial dataset, real DP/IDS/aggregation stack, not a
-   simulated stand-in for any of the three.
+1. **A reproducible measurement harness** for FL privacy leakage — a real multi-site industrial
+   dataset (ACN-Data, 3 real sites) and real DP/IDS/aggregation code, validated today in a
+   single-process simulation (not synthetic data standing in for any of the three). A matching
+   NVFLARE job/app implementing the same pipeline on a genuine multi-container federation is
+   designed and scaffolded as the next validation step — see "Current validation status" below;
+   it is planned work, not a current claim of this paper. (Corrected 2026-07-24: this bullet
+   originally claimed "real NVFLARE federation... not a simulated stand-in," directly
+   contradicting the validation-status section below — same overclaim caught by the same
+   independent review, missed in this second location on the first pass.)
 2. **A pluggable attack interface** (`src/plugins/attacks/`) that lets any membership-inference,
    gradient-inversion, or property-inference attack be dropped in against the same harness and
    compared on equal footing — today populated with Yeom/Shadow/LiRA; Gradient Inversion tracked

@@ -6,7 +6,7 @@ Traduce il dataset pubblico ACN-Data (Adaptive Charging Network, Caltech)
 dal formato JSON grezzo al formato standard del framework ChargeShield-FL.
 
 Dataset source: https://ev.caltech.edu/dataset
-Siti supportati: JPL, Caltech
+Siti supportati: Caltech, JPL, Office1 (aggiornato 2026-07-24, mancava Office1)
 Formato input: JSON con chiavi _meta e _items
 
 Responsabilità di questo modulo:

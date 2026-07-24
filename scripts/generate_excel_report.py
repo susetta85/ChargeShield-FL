@@ -18,6 +18,19 @@ Legge tutti i file experiment_*.json e produce:
 Usage:
   python scripts/generate_excel_report.py
   python scripts/generate_excel_report.py --output experiments/my_report.xlsx
+  python scripts/generate_excel_report.py --experiments-dir experiments/dp-sweep1
+
+SCOPE (importante, trovato da review 2026-07-24): questo script legge SOLO i file
+experiment_*.json direttamente dentro --experiments-dir (default: experiments/),
+NON ricorsivamente. Le sottocartelle multi-seed (dp-sweep1/2/3, nodp-sweep1,
+central-sweep*, ecc.) NON vengono incluse nel report generato senza flag —
+quindi il foglio "Seed Aggregation" del report di default mostrerà sempre N=1
+per ogni gruppo, perché i 6 file sciolti in experiments/ sono ciascuno un seed
+singolo. I veri report multi-seed (mean±std su 5 seed) sono quelli generati
+automaticamente da run_experiments.py dentro ciascuna sottocartella sweep
+(es. experiments/dp-sweep1/dp-sweep1.xlsx) — usare quelli per le statistiche
+multi-seed del paper, oppure passare esplicitamente --experiments-dir a una
+sottocartella per rigenerare il report di quella sola sweep.
 """
 
 from __future__ import annotations
@@ -336,18 +349,23 @@ def build_heat_map(ws, records: list[dict]) -> None:
     rounds_list  = sorted(set(r["rounds"] for r in records))
     epsilon_list = sorted(set(r["epsilon"] for r in records))
 
-    # Indice (rounds, epsilon) → auc_roc
+    # Indice (rounds, epsilon) → lira_auc
+    # Fix 2026-07-24 (review indipendente): usava rec["auc_roc"] (Yeom, la baseline
+    # debole) invece di rec["lira_auc"] (LiRA, l'attacco ★ PRIMARIO ovunque nel resto
+    # del progetto). Il foglio "headline" del report mostrava quindi i numeri
+    # dell'attacco sbagliato — un reviewer che guarda solo questa heat map vedrebbe
+    # Yeom, non il claim reale del paper.
     data_map: dict[tuple, float | None] = {}
     for rec in records:
         key = (rec["rounds"], rec["epsilon"])
         # Se duplicato, tieni il più recente (già ordinati per timestamp)
-        data_map[key] = rec["auc_roc"]
+        data_map[key] = rec["lira_auc"]
 
     # Titolo
     n_cols = len(epsilon_list) + 2
     ws.merge_cells(f"A1:{get_column_letter(n_cols)}1")
     title = ws["A1"]
-    title.value = "AUC-ROC Heat Map — FedMIA vs ε (Differential Privacy Budget)"
+    title.value = "LiRA AUC-ROC Heat Map — Primary Attack vs ε (Differential Privacy Budget)"
     title.font = _font(bold=True, color=COLOR_HEADER_FG, size=12)
     title.fill = _fill(COLOR_HEADER_BG)
     title.alignment = _center()
@@ -482,21 +500,23 @@ def build_per_rounds(ws, records: list[dict]) -> None:
 
     ws.merge_cells("A1:F1")
     t = ws["A1"]
-    t.value = "AUC-ROC Statistics by Number of FL Rounds"
+    t.value = "LiRA AUC-ROC Statistics by Number of FL Rounds"
     t.font = _font(bold=True, color=COLOR_HEADER_FG, size=12)
     t.fill = _fill(COLOR_HEADER_BG)
     t.alignment = _center()
 
-    headers = ["FL Rounds", "N Experiments", "AUC-ROC Mean", "AUC-ROC Min", "AUC-ROC Max", "Std Dev"]
+    headers = ["FL Rounds", "N Experiments", "LiRA AUC-ROC Mean", "LiRA AUC-ROC Min", "LiRA AUC-ROC Max", "Std Dev"]
     for col, h in enumerate(headers, 1):
         _header_cell(ws.cell(2, col), h, bg=COLOR_SUBHDR_BG)
 
     from statistics import mean, stdev
 
+    # Fix 2026-07-24 (review indipendente): usava r["auc_roc"] (Yeom) invece di
+    # r["lira_auc"] (LiRA, attacco ★ primario) — stesso bug del foglio Heat Map.
     rounds_list = sorted(set(r["rounds"] for r in records))
     for row_idx, rnd in enumerate(rounds_list, 3):
         alt = (row_idx % 2 == 0)
-        group = [r["auc_roc"] for r in records if r["rounds"] == rnd and r["auc_roc"] is not None]
+        group = [r["lira_auc"] for r in records if r["rounds"] == rnd and r["lira_auc"] is not None]
         _data_cell(ws.cell(row_idx, 1), rnd,           alt_row=alt, bold=True)
         _data_cell(ws.cell(row_idx, 2), len(group),    alt_row=alt)
         _data_cell(ws.cell(row_idx, 3), mean(group) if group else None, fmt="0.0000", alt_row=alt)
@@ -515,17 +535,19 @@ def build_per_epsilon(ws, records: list[dict]) -> None:
 
     ws.merge_cells("A1:F1")
     t = ws["A1"]
-    t.value = "AUC-ROC Statistics by DP Budget (ε) — Privacy/Utility Trade-off"
+    t.value = "LiRA AUC-ROC Statistics by DP Budget (ε) — Privacy/Utility Trade-off"
     t.font = _font(bold=True, color=COLOR_HEADER_FG, size=12)
     t.fill = _fill(COLOR_HEADER_BG)
     t.alignment = _center()
 
-    headers = ["Epsilon (ε)", "N Experiments", "AUC-ROC Mean", "AUC-ROC Min", "AUC-ROC Max", "Interpretation"]
+    headers = ["Epsilon (ε)", "N Experiments", "LiRA AUC-ROC Mean", "LiRA AUC-ROC Min", "LiRA AUC-ROC Max", "Interpretation"]
     for col, h in enumerate(headers, 1):
         _header_cell(ws.cell(2, col), h, bg=COLOR_SUBHDR_BG)
 
     from statistics import mean
 
+    # Fix 2026-07-24 (review indipendente): stesso bug di Heat Map/Per Rounds —
+    # usava r["auc_roc"] (Yeom) invece di r["lira_auc"] (LiRA, attacco primario).
     epsilon_list = sorted(set(r["epsilon"] for r in records))
     interpretations = {
         0.1: "Strong DP — high noise, MIA likely ineffective",
@@ -536,7 +558,7 @@ def build_per_epsilon(ws, records: list[dict]) -> None:
     }
     for row_idx, eps in enumerate(epsilon_list, 3):
         alt = (row_idx % 2 == 0)
-        group = [r["auc_roc"] for r in records if r["epsilon"] == eps and r["auc_roc"] is not None]
+        group = [r["lira_auc"] for r in records if r["epsilon"] == eps and r["lira_auc"] is not None]
         avg = mean(group) if group else None
 
         _data_cell(ws.cell(row_idx, 1), eps,            fmt="0.0#",  alt_row=alt, bold=True)
@@ -1267,14 +1289,33 @@ def main() -> None:
         "--output", type=Path,
         default=EXPERIMENTS_DIR / "ChargeShield_FL_Results.xlsx",
     )
+    # Fix 2026-07-24 (review indipendente): prima non esisteva modo di puntare
+    # questo script a una sottocartella sweep da riga di comando — load_experiments()
+    # lo supportava già come parametro, solo main() non lo esponeva. Non ricorsivo
+    # per design (vedi nota SCOPE nel docstring del modulo): experiments/ di default
+    # legge solo i file sciolti, mai le sottocartelle dp-sweep*/nodp-sweep* ecc.
+    parser.add_argument(
+        "--experiments-dir", type=Path, default=EXPERIMENTS_DIR,
+        help="Cartella da cui leggere experiment_*.json (non ricorsiva). "
+             "Default: experiments/ (solo i run singoli sciolti, non le sweep "
+             "multi-seed in experiments/dp-sweep*/ ecc. — vedi SCOPE nel docstring).",
+    )
     args = parser.parse_args()
 
-    records = load_experiments()
+    records = load_experiments(args.experiments_dir)
     if not records:
-        print("ERROR: Nessun file experiment_*.json trovato in experiments/")
+        print(f"ERROR: Nessun file experiment_*.json trovato in {args.experiments_dir}")
         sys.exit(1)
 
-    print(f"Caricati {len(records)} esperimenti.")
+    print(f"Caricati {len(records)} esperimenti da {args.experiments_dir}.")
+    if args.experiments_dir == EXPERIMENTS_DIR:
+        print(
+            "NOTA: questo è il report dei soli run singoli in experiments/ "
+            "(nessuna sottocartella sweep) — il foglio 'Seed Aggregation' mostrerà "
+            "N=1 per ogni gruppo. Per le statistiche multi-seed usa i report "
+            "generati automaticamente in experiments/<sweep>/<sweep>.xlsx, oppure "
+            "rilancia con --experiments-dir experiments/<sweep>."
+        )
 
     wb = Workbook()
     wb.remove(wb.active)  # rimuovi sheet vuoto di default

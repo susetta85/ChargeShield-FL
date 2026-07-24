@@ -175,9 +175,11 @@ pass, not an exhaustive check.
 
 1. Full-text read of: FEDLAD, the 2026 GIA survey (arXiv:2503.11514), the Nature Comms battery
    paper, and the 2026 AI Review FL-IDS survey — the four flagged above as highest-priority.
-2. A dedicated search for "NVIDIA FLARE" + "privacy attack" / "membership inference" specifically,
-   since none of the 10 category searches surfaced a FLARE-based privacy-attack paper — this is
-   the single most load-bearing claim in our positioning doc and deserves its own targeted query.
+2. ~~A dedicated search for "NVIDIA FLARE" + "privacy attack"...~~ **Done, 2026-07-24** — see the
+   "Targeted follow-up" section above (no prior work found attacking NVFLARE's own DP guarantees
+   with a membership-inference attack). Worth re-running periodically as new 2026 papers appear,
+   since this remains the single most load-bearing claim in the positioning doc, but it is no
+   longer an open item as this list previously (incorrectly) implied.
 3. Backward citation chase from the four MIA/GIA surveys to catch older landmark papers this
    search-engine-driven pass under-weighted (e.g. Shokri et al. 2017, Carlini et al. 2022 LiRA,
    Zhu et al. 2019 DLG — all already known/cited in this project but not re-surfaced here since

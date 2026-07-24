@@ -60,3 +60,11 @@ experiments/
 
 # Metadata locale di Claude Code / Cowork — mai da versionare.
 .claude/
+
+# Slide deck e file Office temporanei (2026-07-24, trovato da review indipendente):
+# ChargeShield-FL_Update.pptx/ChargeShield-FL_v0.pptx e il relativo lock file
+# ~$ChargeShield-FL_v0.pptx erano non tracciati ma non coperti da .gitignore —
+# rischio di un futuro commit accidentale (specialmente il lock file, che non
+# va MAI versionato). Le slide vivono fuori dal repo, non fanno parte del codice.
+*.pptx
+~$*
