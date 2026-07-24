@@ -32,6 +32,14 @@ automaticamente da run_experiments.py dentro ciascuna sottocartella sweep
 (es. experiments/dp-sweep1/dp-sweep1.xlsx) — usare quelli per le statistiche
 multi-seed del paper, oppure passare esplicitamente --experiments-dir a una
 sottocartella per rigenerare il report di quella sola sweep.
+
+NON SOVRASCRITTURA (fix 2026-07-24, richiesta esplicita dell'utente): ogni
+esecuzione salva --output normalmente (sovrascritto — è la vista "corrente"
+sempre aggiornata) MA salva anche uno snapshot permanente, mai sovrascritto,
+in <cartella-di---output>/history/<nome>_<timestamp>.xlsx — vedi
+save_report_with_history(). Stesso principio già applicato il 2026-07-24 ai
+due export raw di ChargeShieldAggregator (NVFLARE) — vedi
+docs/NVFlareIntegration.md.
 """
 
 from __future__ import annotations
@@ -39,6 +47,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 try:
@@ -50,6 +59,43 @@ try:
 except ImportError:
     print("ERROR: openpyxl non trovato. Installa con: pip install openpyxl")
     sys.exit(1)
+
+
+def save_report_with_history(wb: "Workbook", output_path: Path) -> Path:
+    """Salva il workbook in due posti — fix 2026-07-24 (richiesta esplicita
+    dell'utente: "i file excel non si devono sovrascrivere", un file/snapshot
+    per ogni esperimento lanciato, mantenendo comunque un foglio/file che
+    aggrega più run/seed insieme):
+
+    1. `output_path` (es. `experiments/dp-sweep1/dp-sweep1.xlsx` o
+       `experiments/ChargeShield_FL_Results.xlsx`) — SOVRASCRITTO a ogni
+       chiamata, di proposito: è la vista "aggregata, sempre aggiornata" su
+       tutti gli esperimenti raccolti finora nella cartella (stesso principio
+       già accettato per il foglio "Seed Aggregation" — un'aggregazione che
+       si aggiorna non è la stessa cosa di un run individuale che sparisce).
+    2. `output_path.parent / "history" / f"{stem}_<timestamp>.xlsx"` — MAI
+       sovrascritto: uno snapshot permanente del report esattamente come
+       si presentava subito dopo QUESTO esperimento/rigenerazione. Se due
+       chiamate cadono nello stesso secondo (improbabile ma non impossibile
+       in un run automatizzato), un suffisso numerico incrementale evita la
+       collisione invece di sovrascrivere lo snapshot precedente.
+
+    Ritorna il path dello snapshot in history/.
+    """
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    wb.save(output_path)
+
+    history_dir = output_path.parent / "history"
+    history_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    snapshot_path = history_dir / f"{output_path.stem}_{ts}{output_path.suffix}"
+    suffix_n = 1
+    while snapshot_path.exists():
+        snapshot_path = history_dir / f"{output_path.stem}_{ts}_{suffix_n}{output_path.suffix}"
+        suffix_n += 1
+    wb.save(snapshot_path)
+    return snapshot_path
 
 PROJECT_ROOT = Path(__file__).parent.parent
 EXPERIMENTS_DIR = PROJECT_ROOT / "experiments"
@@ -1355,9 +1401,13 @@ def main() -> None:
     wb.properties.subject = "FedMIA vs Differential Privacy — DSN 2027"
     wb.properties.creator = "ChargeShield-FL Framework"
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    wb.save(args.output)
+    # Fix 2026-07-24: non solo overwrite di args.output (vista "corrente"
+    # sempre aggiornata) — anche uno snapshot permanente in history/, mai
+    # sovrascritto, un file per ogni rigenerazione/esperimento. Vedi
+    # save_report_with_history().
+    snapshot_path = save_report_with_history(wb, args.output)
     print(f"Report salvato: {args.output}")
+    print(f"Snapshot permanente: {snapshot_path}")
 
 
 if __name__ == "__main__":

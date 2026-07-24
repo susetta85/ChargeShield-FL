@@ -2262,7 +2262,7 @@ def save_results(
 
 def _update_excel_report(sweep_dir: Path, named_sweep: bool = False) -> None:
     """
-    Rigenera il report Excel a 6 sheet per il sweep corrente.
+    Rigenera il report Excel a 11 sheet per il sweep corrente.
 
     Il nome del file Excel dipende dalla modalità:
     - sweep_dir nominata (es. experiments/nodp-sweep1) → nodp-sweep1.xlsx
@@ -2274,6 +2274,17 @@ def _update_excel_report(sweep_dir: Path, named_sweep: bool = False) -> None:
     di arbitrary code execution se il file fosse modificato da un attacker con accesso
     al filesystem. Con import standard il modulo viene caricato una sola volta e
     cachato in sys.modules — sicuro e idempotente.
+
+    NON SOVRASCRITTURA (fix 2026-07-24, richiesta esplicita dell'utente: "i file
+    excel non si devono sovrascrivere... un foglio o un file per ogni esperimento
+    lanciato"): questa funzione viene chiamata una volta per ogni singolo run/seed
+    completato all'interno di uno sweep. Il file "{sweep}.xlsx" continua a essere
+    sovrascritto a ogni chiamata — di proposito, è la vista aggregata sempre
+    aggiornata su tutti i seed raccolti finora (lo stesso principio già accettato
+    per il foglio "Seed Aggregation" al suo interno). Oltre a quello, ora viene
+    salvato anche uno snapshot permanente in <sweep_dir>/history/, MAI
+    sovrascritto — uno per ogni esperimento lanciato, esattamente come richiesto.
+    Vedi generate_excel_report.py::save_report_with_history().
 
     Args:
         sweep_dir:   directory dove sono i JSON del sweep (e dove salvare l'Excel)
@@ -2316,8 +2327,11 @@ def _update_excel_report(sweep_dir: Path, named_sweep: bool = False) -> None:
         else:
             output_path = sweep_dir / "ChargeShield_FL_Results.xlsx"
 
-        wb.save(output_path)
-        logger.info(f"Report Excel aggiornato: {output_path.name}")
+        snapshot_path = gen.save_report_with_history(wb, output_path)
+        logger.info(
+            f"Report Excel aggiornato: {output_path.name} "
+            f"(snapshot permanente: {snapshot_path.relative_to(sweep_dir)})"
+        )
     except ImportError:
         logger.warning(
             "openpyxl non trovato — report Excel non generato. "
