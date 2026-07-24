@@ -96,6 +96,7 @@ priority experiment right now." It is exactly the failure mode PES was built to 
 | Config | ε | LiRA mean AUC | L(AUC) | strength(ε) | U_cost (loss increase vs no-DP) | PES_v1 |
 |---|---|---|---|---|---|---|
 | Central DP | 1.0 | **0.7430** | **0.486** | 0.500 | ×38.2 | **0.243** |
+| Central DP | 0.1 | **0.8118** | **0.624** | 0.909 | ×102.0 | **0.567** |
 
 (`mean_lira_auc_roc` from `summary`; `L(AUC) = clip(2*max(0, 0.7430224-0.5), 0, 1) = 0.4860`;
 `strength(1.0) = 1/(1+1) = 0.5`; `PES_v1 = 0.4860 * 0.5 = 0.2430`. `U_cost`: mean reconstruction
@@ -114,11 +115,36 @@ not just a qualitative "expected little/no suppression" prediction. `privacy_ris
 JSON is independently flagged `"HIGH"` by the existing (non-PES) risk heuristic, corroborating
 the PES reading.
 
-The matching ε=0.1 run (same config, tighter nominal budget) was still in progress as of
-2026-07-24 11:35 (`logs/central_dp_20260724_092615.log`, FL rounds done, shadow/LiRA training
-phase running) — its PES_v1 value should be added here once it completes; expect `strength(0.1) =
-1/(1.1) ≈ 0.909`, so if LiRA AUC holds up anywhere near 0.74, PES_v1 there would be higher still
-(≈0.44), the single most damning number this project would have produced to date.
+## Central DP, ε=0.1 — the most damning PES_v1 to date (real result, 2026-07-24, 14:49)
+
+`experiments/experiment_20260724_144952.json` (`dp_mode=central`, ε=0.1, 10 rounds, seed=42,
+n_shadow=16) completed the same day. Contrary to the naive expectation that a *tighter* nominal
+budget (ε=0.1 vs ε=1.0) should mean *more* protection, LiRA's mean AUC actually **increased** to
+0.8118 (max 0.9356, min 0.7014) — every single round beat the ε=1.0 run's per-round AUC. `L(AUC) =
+clip(2*max(0, 0.8117862-0.5), 0, 1) = 0.6236`; `strength(0.1) = 1/(1.1) = 0.9091`; `PES_v1 =
+0.6236 * 0.9091 = 0.5669` — more than double the ε=1.0 value, and the single largest PES_v1 number
+this project has produced.
+
+Read plainly, this is the sharpest version yet of the paper's central thesis: at ε=0.1 — a budget
+that reads, to anyone skimming a methods section, as "very strong differential privacy" — LiRA
+recovers membership at 0.81 AUC, i.e. the DP guarantee is not just "somewhat" misleading, it is
+*most* misleading exactly where the nominal claim is strongest. This is not a contradiction of the
+architectural explanation given for ε=1.0 above (Central DP still only noises the aggregate, never
+the raw per-client update LiRA attacks) — if anything it strengthens it: shrinking ε increases the
+noise added to the *aggregate*, which should further blur the global model's fine-grained fit, yet
+LiRA's signal comes from the per-client raw update, which the added aggregate noise never touches.
+`U_cost` is also severe here (×102.0 mean-loss increase vs no-DP) — worth flagging per the caveat
+above: at this level of degradation, the argument "the model works fine but is also risky" is
+harder to make than at ε=1.0 (×38.2), and a skeptical reviewer could ask whether the model is
+close to non-functional. This caveat does not erase the PES finding, but it belongs in the same
+sentence as the 0.567 number whenever this result is cited.
+
+**Both central-DP legs of Task #66 are now complete** (single seed=42 each). Before either number
+goes into the paper as a headline claim, the project's own established standard (5 seeds for every
+DP-FedAvg point in the existing sweep) should be applied here too — a single seed is not yet
+sufficient evidence against the possibility that this is seed-42-specific variance, especially
+given the round-8 anomaly precedent already found and documented for DP-FedAvg sweeps. Multi-seed
+Central DP repeats are the natural next step before this becomes a paper table.
 
 ## Naming
 
