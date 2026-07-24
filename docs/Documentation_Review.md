@@ -5,6 +5,15 @@
 **Date:** 2026-06-26
 **Subject:** ChargeShield-FL — Federated Learning Privacy Evaluation Framework for EV Charging Infrastructure
 
+> **Correction notice (2026-07-24).** This is a point-in-time simulated review
+> dated 2026-06-26 — kept as historical record, not corrected in place. It
+> praises "twelve nodes across four heterogeneous clusters" and "13,073 real EV
+> charging sessions" — both since superseded (2026-07-22, `19d4c19`): the
+> project now uses 3 real ACN-Data sites (Caltech/JPL/Office1), ≈66,713 combined
+> raw sessions across 2018-2021. Read this document as what a reviewer would
+> have said about the June 2026 state of the project, not as a description of
+> its current state.
+
 ---
 
 ## 1. Executive Summary

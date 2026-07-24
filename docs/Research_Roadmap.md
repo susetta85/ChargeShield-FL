@@ -6,6 +6,15 @@
 
 **Document Version:** 1.0 — June 2026
 
+> **Correction notice (2026-07-24).** Written before the 2026-07-22 migration
+> (`19d4c19`) to the **3 real ACN-Data sites** (Caltech/JPL/Office1). References
+> below to "ACN-Data JPL, 13,073 sessions" and to a paper-framing centered on
+> "DP suppresses MIA" reflect that earlier state. Current facts: 3 real sites,
+> ≈66,713 combined raw sessions (see `config/experiment.yaml`); current paper
+> positioning is the benchmark/framework framing in `docs/DSN2027_Positioning.md`,
+> not the single-attack framing implied in places below. Not yet propagated
+> through this document's prose.
+
 ---
 
 ## 1. Research Vision

@@ -5,6 +5,24 @@
 **Date:** 2026-06-26
 **Classification:** Public Research
 
+> **Correction notice (2026-07-24) — read before relying on any section below.**
+> This document was written on 2026-06-26 and describes a **superseded** topology:
+> "twelve heterogeneous charging nodes organized into four clusters" (highway/urban/
+> residential/corporate, all fictional same-site slices of one dataset) and "13,073
+> sessions" (JPL 2019+2020 only). Since 2026-07-22 (commit `19d4c19`), the project
+> uses the **3 real ACN-Data sites** — Caltech, JPL, Office 1 — as FL clients, each
+> with its own genuine `site_id`, combining all available years (2018-2021, Office 1
+> has no 2018 data). Combined raw session count across all 3 sites/years:
+> **≈66,713** (Caltech ≈31,404, JPL ≈33,629, Office 1 ≈1,680 — see
+> `config/experiment.yaml`). Two synthetic clients are added *only* for the separate
+> IDS/Byzantine validation sweep (never for privacy measurements). See
+> `README.md` ("Real multi-site experiment") and `docs/DSN2027_Positioning.md` for
+> the current architecture and paper framing; this document's prose below has not
+> been rewritten to match and should be read as a historical first draft, not
+> current fact. This notice is added here; a full inline rewrite of this document's
+> prose (topology diagram, cluster descriptions, dataset section) is tracked as an
+> open task and not yet done.
+
 ---
 
 ## Abstract

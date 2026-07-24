@@ -2,6 +2,18 @@
 
 **Version:** 1.0.0 | **Status:** DSN 2027 Submission Draft | **Date:** 2026-06-26
 
+> **Correction notice (2026-07-24).** This document (2026-06-26) uses **N = 13,073**
+> (ACN-Data JPL 2019+2020 only) throughout its formulas and prose. Since
+> `19d4c19` (2026-07-22) the project uses **3 real sites** (Caltech, JPL, Office 1),
+> all years 2018-2021 (Office 1: 2019-2021 only) — combined raw total **≈66,713**
+> sessions (Caltech ≈31,404, JPL ≈33,629, Office 1 ≈1,680; see
+> `config/experiment.yaml`). Every `N = 13,073` below is stale; the formulas
+> themselves (privacy budget composition, δ ≈ 1/N, sample-size-vs-power
+> reasoning) remain structurally valid but need re-deriving with the current
+> per-site N before being quoted in the paper. Not yet propagated through this
+> document's prose — see `README.md`/`docs/DSN2027_Positioning.md` for current
+> facts.
+
 ---
 
 ## Abstract

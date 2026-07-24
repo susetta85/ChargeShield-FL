@@ -5,6 +5,16 @@
 **Status:** Research Contribution — Primary Architectural Contribution  
 **Author note:** This document describes the ML Plane as a standalone architectural contribution within the ChargeShield-FL evaluation framework. It is intended to be self-contained and suitable for expansion into an independent paper section or workshop submission targeting venues such as DSN, CPS-SPC, or IEEE S&P workshops on privacy in cyber-physical systems.
 
+> **Correction notice (2026-07-24).** The ML Plane design/rationale below is
+> current and unaffected by this note. The incidental dataset references
+> ("ACN-Data JPL, 13,073 real EV sessions from 2019-2020") predate the
+> 2026-07-22 migration to 3 real sites (Caltech/JPL/Office1, ≈66,713 combined
+> raw sessions across 2018-2021 — see `config/experiment.yaml`) and are stale.
+> Also note: as of 2026-07-22/23 the ML Plane is genuinely wired into the real
+> pipeline (`scripts/run_experiments.py`), not only tested in isolation as an
+> earlier draft of this document may still imply in places — see README's
+> "Sprint 10b" entry.
+
 ---
 
 ## Abstract

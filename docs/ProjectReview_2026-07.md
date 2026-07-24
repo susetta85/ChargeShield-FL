@@ -3,6 +3,14 @@
 **Reviewer role:** Senior Researcher (Distributed Systems / OT-ICS) + FL/Privacy Expert + DSN PC Reviewer perspective  
 **Scope:** Security · Scalability · Test Coverage · Documentation · FedMIA Pipeline · FedProx / Split Correctness
 
+> **Correction notice (2026-07-24).** Dated review snapshot, kept as historical
+> record. Its "13,073 sessions" performance/scaling estimates (RAM footprint,
+> forward-pass counts) predate the 2026-07-22 3-real-sites migration (`19d4c19`)
+> — current combined raw total is ≈66,713 sessions across Caltech/JPL/Office1,
+> roughly 5× larger, so the specific numbers in §"Performance" below are stale
+> (the qualitative conclusion — not a bottleneck at this scale — likely still
+> holds, but was not re-verified at the new scale as part of this notice).
+
 ---
 
 ## 1. Executive Summary

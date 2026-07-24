@@ -5,6 +5,13 @@
 **Document status:** Living document, last revised 2026-06-26  
 **Classification:** Internal research roadmap
 
+> **Correction notice (2026-07-24).** Sprint 2 description below ("ACN-Data JPL,
+> 13,073 sessions", 4-cluster/12-node topology) predates the 2026-07-22 migration
+> to the **3 real ACN-Data sites** (Caltech/JPL/Office1, `19d4c19`). Current
+> combined raw total: ≈66,713 sessions (Caltech ≈31,404, JPL ≈33,629, Office 1
+> ≈1,680). See `README.md`/`docs/DSN2027_Positioning.md` for current architecture
+> and paper framing. Not yet propagated through this document's prose.
+
 ---
 
 ## Table of Contents

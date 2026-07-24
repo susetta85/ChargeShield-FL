@@ -41,6 +41,16 @@ ChargeShield-FL fills this gap by providing a fully reproducible, containerised 
 
 ## Architecture Overview
 
+> **Correction notice (2026-07-24):** the diagram below still shows the original
+> 4-cluster topology (Highway/Urban/Residential/Corporate — same-site slices, not
+> real distinct sites) and the NVFLARE deployment as if it were live. Current
+> state: FL clients are the 3 real ACN-Data sites (Caltech/JPL/Office1, see
+> "Dataset Pipeline" in Components below); NVFLARE is scaffold-only and has never
+> actually run (see `docs/NVFlareIntegration.md`); all real results so far come
+> from the single-process simulation in `scripts/run_experiments.py`. Diagram not
+> yet redrawn to match — treat it as illustrative of the target design, not the
+> current runnable system.
+
 ```
 +-----------------------------------------------------------------------------+
 |                          ChargeShield-FL Topology                           |
@@ -118,9 +128,9 @@ ChargeShield-FL fills this gap by providing a fully reproducible, containerised 
 | CUSUM IDS Baseline | Sequential CUSUM statistic | Detects distributional drift in incoming gradient magnitudes; triggers alert when cumulative sum exceeds threshold |
 | Krum IDS Baseline | Multi-Krum filter | Rejects client updates that are Euclidean outliers relative to the median neighbourhood; provides Byzantine resilience baseline |
 | Cosine Similarity IDS | Pairwise cosine distance | Flags updates that deviate in direction from the running aggregate; identifies gradient inversion style anomalies |
-| Network Fabric | Containerlab + Docker + OrbStack | Emulates the heterogeneous charging network topology; manages container lifecycle and inter-node routing |
-| Transport Security | mTLS + WireGuard | Provides mutual authentication and encrypted tunnels between FL clients and server; eliminates passive eavesdropping from the threat model |
-| Dataset Pipeline | ACN-Data JPL 2019+2020 | Preprocesses, splits, and distributes 13,073 real EV sessions across cluster clients according to cluster power profile |
+| Network Fabric | Containerlab + Docker + OrbStack | **Not yet functional** (2026-07-24): `containerlab/topology.clab.yml` does not exist; this row describes the planned, not current, state — see `docs/NVFlareIntegration.md` |
+| Transport Security | mTLS + WireGuard | Provisioned by `nvflare provision` (certs generated); not yet exercised by a live deployment — same caveat as above |
+| Dataset Pipeline | ACN-Data, 3 real sites (Caltech/JPL/Office1) | Preprocesses, splits, and distributes ≈66,713 combined real EV sessions (2018-2021, Office 1 2019-2021 only) across the 3 real-site FL clients by genuine `site_id` — corrected 2026-07-24, was "ACN-Data JPL 2019+2020, 13,073 sessions" pre-2026-07-22 migration |
 | Experiment Orchestrator | GNU Make + Python | Drives round sweeps, DP budget sweeps, result logging, and AUC-ROC aggregation via Makefile targets |
 
 ---
