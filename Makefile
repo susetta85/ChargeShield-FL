@@ -525,15 +525,17 @@ _check-nvflare-deps:
 # ogni volta per evitare stato residuo tra run successivi.
 NVFLARE_SIM_WORKSPACE := nvflare/sim_workspace
 
-# Smoke test: UN solo client (caltech) — valida il round-trip DXO/Executor
-# (START_RUN → _setup() → execute() → aggregate()) senza dover far funzionare
-# correttamente tutti e tre i siti insieme al primo tentativo. Vedi
-# docs/NVFlareIntegration.md "Suggested next steps" #1.
+# CHARGESHIELD_PROJECT_ROOT (2026-07-24, fix da bug reale trovato al primo run):
+# chargeshield_executor.py/chargeshield_aggregator.py risolvevano la project
+# root con Path(__file__).resolve().parents[N], che si è rotto non appena
+# `nvflare simulator` ha copiato quei file dentro il workspace a una profondità
+# diversa (vedi commenti nei due file). Passare la root esplicitamente qui
+# elimina la dipendenza da "dove NVFLARE decide di copiare il codice".
 .PHONY: nvflare-sim-smoke
 nvflare-sim-smoke: _check-nvflare-deps
 	@echo "→ NVFLARE simulator — smoke test (1 client: caltech)..."
 	@rm -rf $(NVFLARE_SIM_WORKSPACE)
-	$(NVFLARE) simulator nvflare/jobs/chargeshield_poc \
+	CHARGESHIELD_PROJECT_ROOT=$(CURDIR) $(NVFLARE) simulator nvflare/jobs/chargeshield_poc \
 		-w $(NVFLARE_SIM_WORKSPACE) \
 		-n 1 -c caltech
 	@echo "✓ Smoke test NVFLARE completato — controlla $(NVFLARE_SIM_WORKSPACE)/ e experiments/nvflare_*"
@@ -543,7 +545,7 @@ nvflare-sim-smoke: _check-nvflare-deps
 nvflare-sim: _check-nvflare-deps
 	@echo "→ NVFLARE simulator — 3 siti reali (caltech, jpl, office1)..."
 	@rm -rf $(NVFLARE_SIM_WORKSPACE)
-	$(NVFLARE) simulator nvflare/jobs/chargeshield_poc \
+	CHARGESHIELD_PROJECT_ROOT=$(CURDIR) $(NVFLARE) simulator nvflare/jobs/chargeshield_poc \
 		-w $(NVFLARE_SIM_WORKSPACE) \
 		-n 3 -c caltech,jpl,office1
 	@echo "✓ NVFLARE simulator completato — controlla $(NVFLARE_SIM_WORKSPACE)/, experiments/nvflare_ids_audit_results.json, experiments/nvflare_fl_results.pkl"

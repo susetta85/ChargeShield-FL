@@ -4,7 +4,16 @@ ChargeShieldAggregator — NVFLARE server-side Aggregator custom (fase 2+3, 2026
 
 STATO: scritto e ragionato manualmente in un sandbox dove `nvflare`/`torch`
 non sono installabili (stesso limite di chargeshield_executor.py — vedi
-docs/NVFlareIntegration.md). NON eseguito, NON testato.
+docs/NVFlareIntegration.md).
+
+AGGIORNAMENTO (2026-07-24): PRIMO run reale (`make nvflare-sim-smoke`, sulla
+macchina dell'utente, nvflare 2.8.1) — ha trovato e permesso di correggere due
+bug reali: (1) risoluzione di _PROJECT_ROOT rotta dal modo in cui `nvflare
+simulator` copia questo file nel workspace (vedi commento sotto); (2)
+_ensure_components() trattava un fallimento parziale come "già inizializzato"
+(vedi commento su self._components_ready nell'__init__). Fix applicati ma non
+ancora verificati da una riesecuzione riuscita al momento di questo commit —
+vedi docs/NVFlareIntegration.md per lo stato aggiornato.
 
 Cosa fa (fase 2 — sostituisce l'aggregatore built-in con le classi VERE e
 già testate della simulazione, invece di InTimeAccumulateWeightedAggregator):
@@ -154,7 +163,35 @@ import sys
 from pathlib import Path
 from typing import Any
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[4]  # .../ChargeShield-FL
+# BUG REALE trovato al primo run vero (2026-07-24, `make nvflare-sim-smoke`) —
+# vedi il commento identico e più dettagliato in chargeshield_executor.py.
+# In breve: `parents[4]` assumeva questo file fermo in nvflare/jobs/
+# chargeshield_poc/app/custom/, ma `nvflare simulator` lo copia dentro il
+# workspace (osservato: nvflare/sim_workspace/server/simulate_job/
+# app_server/custom/) a una profondità diversa — risolveva _PROJECT_ROOT
+# dentro sim_workspace/, causando "Auditor config not found:
+# .../sim_workspace/config/auditor.yaml" in _ensure_components().
+def _find_project_root() -> Path:
+    env_root = __import__("os").environ.get("CHARGESHIELD_PROJECT_ROOT")
+    if env_root:
+        return Path(env_root).resolve()
+    here = Path(__file__).resolve()
+    for candidate in (here, *here.parents):
+        pyproject = candidate / "pyproject.toml"
+        if pyproject.is_file():
+            try:
+                if 'name = "chargeshield-fl"' in pyproject.read_text():
+                    return candidate
+            except OSError:
+                continue
+    raise RuntimeError(
+        "Impossibile trovare la project root di ChargeShield-FL: imposta "
+        "CHARGESHIELD_PROJECT_ROOT nell'ambiente, oppure esegui tramite "
+        "'make nvflare-sim'/'make nvflare-sim-smoke' (che la impostano già)."
+    )
+
+
+_PROJECT_ROOT = _find_project_root()  # .../ChargeShield-FL
 _SRC = _PROJECT_ROOT / "src"
 if _SRC.exists() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
@@ -260,6 +297,23 @@ class ChargeShieldAggregator(Aggregator):
         self._auditor = None
         self._ids = None
         self._gm = None  # GradientManager (fase 3) — serve per dp_mode="dp-fedavg"/"central"
+        # BUG REALE trovato al primo run vero (2026-07-24, `make nvflare-sim-smoke`):
+        # _ensure_components() usava "if self._fedavg is not None: return" come
+        # guardia di "già inizializzato". Al round 0, PrivacyAuditor(...) ha
+        # sollevato FileNotFoundError (per il bug _PROJECT_ROOT sopra, ora
+        # corretto) A META' di _ensure_components() — DOPO che self._fedavg era
+        # già stato assegnato, ma PRIMA di self._gm. La chiamata a
+        # _ensure_components() del round SUCCESSIVO ha quindi visto
+        # self._fedavg non-None, concluso "già pronto" e saltato la
+        # re-inizializzazione — lasciando self._gm permanentemente None anche
+        # dopo che la causa originale (path sbagliato) sarebbe stata risolta.
+        # Sintomo osservato: "AttributeError: 'NoneType' object has no
+        # attribute 'privatize'" in aggregate() al round 1 — un crash che
+        # sembrava un bug diverso, ma era solo il secondo effetto dello stesso
+        # fallimento parziale. Fix: flag esplicito impostato SOLO a fine
+        # inizializzazione riuscita, cosi' un fallimento parziale permette un
+        # retry completo al prossimo round invece di un "successo" fittizio.
+        self._components_ready = False
 
         self._weight_keys: list[str] | None = None
         self._round_updates: list[Any] = []   # GradientUpdate raccolti questo round
@@ -292,7 +346,14 @@ class ChargeShieldAggregator(Aggregator):
     # ── Lazy init ────────────────────────────────────────────────────────────
 
     def _ensure_components(self) -> None:
-        if self._fedavg is not None:
+        # Fix 2026-07-24 (bug reale, vedi commento su self._components_ready
+        # nell'__init__): guardia sul flag esplicito, non su "self._fedavg is
+        # not None" — quella permetteva a un fallimento parziale (un'eccezione
+        # a metà inizializzazione) di essere scambiato per "già pronto" al
+        # round successivo, lasciando self._gm/_auditor/_ids permanentemente
+        # None. Con questo fix, un'eccezione qui NON imposta _components_ready,
+        # quindi il prossimo round ritenta l'inizializzazione completa da zero.
+        if self._components_ready:
             return
         from ml.fedavg_aggregator import FedAvgAggregator
         from ml.gradient_manager import GradientManager
@@ -319,6 +380,7 @@ class ChargeShieldAggregator(Aggregator):
             "delta": self._delta,
             "max_grad_norm": self._max_grad_norm,
         })
+        self._components_ready = True  # solo qui, dopo che TUTTO sopra è riuscito
         logger.info(
             f"ChargeShieldAggregator inizializzato — FedAvgAggregator + "
             f"PrivacyAuditor + ChargingIDS + GradientManager (fase 3, dp_mode={self._dp_mode})"

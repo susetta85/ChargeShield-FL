@@ -1,12 +1,57 @@
 # NVFLARE / Containerlab Integration — Status and Plan
 
 **Started:** 2026-07-22
-**Status:** Skeleton only — job scaffold + client Executor + custom Aggregator + DP wiring + structured exports (fase 1-5) written, **not executed, not tested**.
+**Status:** Job scaffold + client Executor + custom Aggregator + DP wiring + structured exports (fase 1-5) written. **First real execution attempt: 2026-07-24** (see "First real run" section below) — found and fixed 2 real bugs; re-run pending confirmation as of this writing.
 
 **Update (2026-07-22, later same day):** the 4 fictional same-site "clusters" (`highway`/`urban`/`residential`/`corporate`) referenced throughout the fase 1-5 sections below have been replaced project-wide with the 3 real ACN-Data sites (`caltech`/`jpl`/`office1` — see README "Real multi-site experiment" and the JPL/Caltech mislabeling correction in the same section). `nvflare/project.yml`, `chargeshield_executor.py`, `config_fed_client.json`, and `config_fed_server.json` (`min_clients: 4→3`) were all updated to match. The fase 1-5 narrative and `VERIFY:` points below are left as originally written (historical record of that work) except where explicitly annotated as updated; read `highway`/`urban`/`residential`/`corporate` in what follows as referring to the old 4-cluster scheme this superseded, not the current client set.
 **Why:** the environment used to write this code cannot install `torch` (proxy blocks `download.pytorch.org`) or, by extension, verify `nvflare` behaviour (nvflare depends on torch). Every NVFLARE API call below was written from documented/standard NVFLARE 2.x patterns and careful reading of the existing `src/ml/`/`src/auditor/`/`src/ids/` code, but **none of it has run**. Treat this as a first draft to debug on a machine with the real dependencies installed, not as working code. **Update (2026-07-24)**: re-checked — `pip install torch`/`pip install nvflare==2.7.2` now resolve their dependency graphs fine in this sandbox (no proxy block observed today), but the actual wheel downloads are large enough (CUDA toolkit dependencies pulled in alongside torch) to exceed this session's per-command execution time budget, so a full install still wasn't completed here. This is a sandbox time-limit constraint, not necessarily a hard network block anymore — worth trying a plain `pip install torch nvflare==2.7.2` on a normal (non-time-boxed) machine before assuming it will fail the same way.
 
 This document exists because the prior state of the repo's Containerlab/NVFLARE scaffolding was audited (2026-07-21, see `docs/CaseStudies.md` §2.4.3's "the privacy pipeline does not run on the containerised network" limitation) and found to be unused: `src/flare/flare_connector.py` is an explicit Sprint-3 placeholder that never imports `nvflare` and simulates gradients with `random.gauss()`; `nvflare/project.yml` only provisions PKI/network participants, no job/app existed; the `docker/` Dockerfiles are orphaned (unreferenced, and their `CMD`s have no `if __name__ == "__main__"` guard, so they'd crash on start). This document and the files under `nvflare/jobs/chargeshield_poc/` are the first concrete step toward closing that gap — not a completed integration.
+
+## First real run (2026-07-24) — `make nvflare-sim-smoke`, real bugs found and fixed
+
+The user ran `make install-flare` (nvflare 2.8.1 installed successfully — no proxy/dependency issue
+on the real machine, unlike this sandbox) followed by `make nvflare-sim-smoke` (`-n 1 -c caltech`).
+This is the **first execution of any of this code, ever**, in any environment. It crashed, exactly
+as expected for code that had only ever been `py_compile`-checked — but it crashed in an
+informative way, and both root causes were real, fixable bugs rather than fundamental design
+problems:
+
+1. **`_PROJECT_ROOT` resolution broke.** Both `chargeshield_executor.py` and
+   `chargeshield_aggregator.py` computed `_PROJECT_ROOT = Path(__file__).resolve().parents[4]`,
+   correct only if the file stayed at its original location
+   (`nvflare/jobs/chargeshield_poc/app/custom/`). `nvflare simulator` instead copies `custom/` into
+   the workspace (observed: `nvflare/sim_workspace/server/simulate_job/app_server/custom/`), a
+   different depth — so `_PROJECT_ROOT` resolved to a path *inside* `sim_workspace/`, and every
+   downstream path built from it (dataset directory, `config/auditor.yaml`) pointed nowhere real.
+   Observed symptoms: `[caltech] Directory dataset non trovata:
+   .../sim_workspace/datasets/acn/caltech` and `FileNotFoundError: Auditor config not found:
+   .../sim_workspace/config/auditor.yaml`. **Fixed**: both files now use `_find_project_root()`,
+   which checks the `CHARGESHIELD_PROJECT_ROOT` environment variable first (now set by `make
+   nvflare-sim`/`nvflare-sim-smoke` to `$(CURDIR)`) and falls back to walking up from `__file__`
+   looking for `pyproject.toml` with `name = "chargeshield-fl"`, for anyone invoking `nvflare
+   simulator` directly without the Makefile.
+2. **`ChargeShieldAggregator._ensure_components()`'s "already initialized" guard was fragile.**
+   It checked `if self._fedavg is not None: return`. At round 0, `PrivacyAuditor.__init__()` raised
+   `FileNotFoundError` (bug 1 above) — *after* `self._fedavg` had already been assigned but
+   *before* `self._gm` was. The next round's call to `_ensure_components()` saw `self._fedavg` set
+   and concluded initialization was complete, permanently skipping re-init — so `self._gm` stayed
+   `None` forever, even once bug 1 was fixed. This surfaced as a second, seemingly unrelated crash:
+   `AttributeError: 'NoneType' object has no attribute 'privatize'` in `aggregate()` at round 1.
+   **Fixed**: a new `self._components_ready` flag, set to `True` only after every component in
+   `_ensure_components()` has been constructed successfully — so a partial failure now causes a
+   full retry on the next round instead of a false "already done."
+
+**Invalidation check**: neither bug touches `scripts/run_experiments.py` or anything the
+single-process simulation depends on — these are NVFLARE-job-only files. No existing experiment
+result is affected. Both fixes are `py_compile`-verified only from this side (no torch/nvflare in
+this sandbox); **not yet confirmed by a successful re-run** as of this writing — that confirmation
+has to happen on the user's machine (`make nvflare-sim-smoke` again).
+
+Also noted, not yet acted on: the simulator printed `WARNING: 'nvflare simulator' is deprecated.
+Use 'python job.py' with SimEnv instead.` — nvflare 2.8.1 (installed) vs. `>=2.7.2` (pinned in
+`pyproject.toml`) still works today via the deprecated path, but migrating to the `SimEnv` API is
+worth a follow-up task before this becomes a hard blocker in a future nvflare release.
 
 ## Review indipendente post-fase-5 (2026-07-22, notte) — bug reali trovati e corretti
 

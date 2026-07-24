@@ -4,9 +4,15 @@ ChargeShieldExecutor — NVFLARE client-side Executor (2026-07-22).
 
 STATO: scritto e ragionato manualmente in un sandbox dove `nvflare` e `torch`
 non sono installabili (proxy blocca download.pytorch.org; nvflare non
-verificabile senza torch). NON eseguito, NON testato. Vedi
-docs/NVFlareIntegration.md per lo stato completo, cosa è verificato solo per
-lettura del codice sorgente di src/ml/, e i prossimi passi.
+verificabile senza torch). Vedi docs/NVFlareIntegration.md per lo stato
+completo, cosa è verificato solo per lettura del codice sorgente di src/ml/,
+e i prossimi passi.
+
+AGGIORNAMENTO (2026-07-24): PRIMO run reale (`make nvflare-sim-smoke`, sulla
+macchina dell'utente, nvflare 2.8.1) — ha trovato e permesso di correggere un
+bug reale nella risoluzione di _PROJECT_ROOT (vedi commento sotto). Fix
+applicato ma non ancora verificato da una riesecuzione riuscita al momento di
+questo commit — vedi docs/NVFlareIntegration.md per lo stato aggiornato.
 
 Cosa fa (fase 1 — SOLO round-trip, nessun DP/IDS ancora):
     1. Riceve il modello globale dal server (Shareable/DXO).
@@ -95,11 +101,45 @@ from pathlib import Path
 from typing import Any
 
 # ── Path setup: rende importabile src/ (stesso layout di scripts/run_experiments.py) ──
-# VERIFY: in un vero deploy NVFLARE, src/ deve essere sul PYTHONPATH del processo
-# client (es. copiato dentro custom/, o PYTHONPATH impostato nello startup kit
-# generato da `nvflare provision`). Qui si assume che il repo sia montato allo
-# stesso path relativo usato da scripts/run_experiments.py.
-_PROJECT_ROOT = Path(__file__).resolve().parents[4]  # .../ChargeShield-FL
+# BUG REALE trovato al primo run vero (2026-07-24, `make nvflare-sim-smoke`,
+# prima esecuzione in assoluto di questo file): `Path(__file__).resolve().
+# parents[4]` assumeva che questo file restasse per sempre a
+# nvflare/jobs/chargeshield_poc/app/custom/ (dove parents[4] è davvero la
+# project root). Ma `nvflare simulator` COPIA custom/ dentro il workspace
+# (osservato: nvflare/sim_workspace/<client>/simulate_job/app_<client>/custom/,
+# una profondità diversa) — da lì, parents[4] risolve dentro sim_workspace/,
+# non la project root. Effetto reale: "Directory dataset non trovata:
+# .../sim_workspace/datasets/acn/caltech" — ogni client avrebbe caricato 0
+# sessioni, esattamente il tipo di fallimento silenzioso già temuto (qui però
+# loggato ad ERROR, non silenzioso — solo scoperto perché qualcuno ha letto i
+# log, non perché il codice l'ha impedito).
+#
+# Fix: _find_project_root() risolve la project root in modo indipendente da
+# dove NVFLARE fisicamente copia questo file — priorità a una variabile
+# d'ambiente esplicita (settata da `make nvflare-sim*`), poi risalita da
+# __file__ cercando pyproject.toml di chargeshield-fl come fallback per chi
+# lancia nvflare manualmente senza passare dal Makefile.
+def _find_project_root() -> Path:
+    env_root = __import__("os").environ.get("CHARGESHIELD_PROJECT_ROOT")
+    if env_root:
+        return Path(env_root).resolve()
+    here = Path(__file__).resolve()
+    for candidate in (here, *here.parents):
+        pyproject = candidate / "pyproject.toml"
+        if pyproject.is_file():
+            try:
+                if 'name = "chargeshield-fl"' in pyproject.read_text():
+                    return candidate
+            except OSError:
+                continue
+    raise RuntimeError(
+        "Impossibile trovare la project root di ChargeShield-FL: imposta "
+        "CHARGESHIELD_PROJECT_ROOT nell'ambiente, oppure esegui tramite "
+        "'make nvflare-sim'/'make nvflare-sim-smoke' (che la impostano già)."
+    )
+
+
+_PROJECT_ROOT = _find_project_root()  # .../ChargeShield-FL
 _SRC = _PROJECT_ROOT / "src"
 if _SRC.exists() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
