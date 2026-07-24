@@ -1,7 +1,7 @@
 # NVFLARE / Containerlab Integration — Status and Plan
 
 **Started:** 2026-07-22
-**Status:** Job scaffold + client Executor + custom Aggregator + DP wiring + structured exports (fase 1-5) written. **First real execution: 2026-07-24** (see "First real run" section below) — 4 real bugs found and fixed across three attempts; **the third attempt completed all 10 rounds successfully** (`make nvflare-sim-smoke`, 1 client/caltech, `min_clients=1`: "Round 9 finished" → "Finished ScatterAndGather Training", no errors). This confirms the DXO/Executor/Aggregator/DP/IDS-export pipeline runs end-to-end for a single client. **Not yet run**: the 3-real-site shape (`make nvflare-sim`, `-n 3 -c caltech,jpl,office1`) — that is the next concrete step, not yet attempted.
+**Status:** Job scaffold + client Executor + custom Aggregator + DP wiring + structured exports (fase 1-5) written. **First real execution: 2026-07-24** (see "First real run" section below) — 4 real bugs found and fixed across three attempts; **the third attempt completed all 10 rounds successfully** (`make nvflare-sim-smoke`, 1 client/caltech, `min_clients=1`: "Round 9 finished" → "Finished ScatterAndGather Training", no errors). This confirms the DXO/Executor/Aggregator/DP/IDS-export pipeline runs end-to-end for a single client. **Same day, follow-up fix**: raw exports are now timestamped per run (see "Fix 2026-07-24: export non più sovrascritti tra run" below) so a second/accidental run can no longer silently overwrite a prior run's results. **Not yet run**: the 3-real-site shape (`make nvflare-sim`, `-n 3 -c caltech,jpl,office1`) — that is the next concrete step, not yet attempted.
 
 **Update (2026-07-22, later same day):** the 4 fictional same-site "clusters" (`highway`/`urban`/`residential`/`corporate`) referenced throughout the fase 1-5 sections below have been replaced project-wide with the 3 real ACN-Data sites (`caltech`/`jpl`/`office1` — see README "Real multi-site experiment" and the JPL/Caltech mislabeling correction in the same section). `nvflare/project.yml`, `chargeshield_executor.py`, `config_fed_client.json`, and `config_fed_server.json` (`min_clients: 4→3`) were all updated to match. The fase 1-5 narrative and `VERIFY:` points below are left as originally written (historical record of that work) except where explicitly annotated as updated; read `highway`/`urban`/`residential`/`corporate` in what follows as referring to the old 4-cluster scheme this superseded, not the current client set.
 **Why:** the environment used to write this code cannot install `torch` (proxy blocks `download.pytorch.org`) or, by extension, verify `nvflare` behaviour (nvflare depends on torch). Every NVFLARE API call below was written from documented/standard NVFLARE 2.x patterns and careful reading of the existing `src/ml/`/`src/auditor/`/`src/ids/` code, but **none of it has run**. Treat this as a first draft to debug on a machine with the real dependencies installed, not as working code. **Update (2026-07-24)**: re-checked — `pip install torch`/`pip install nvflare==2.7.2` now resolve their dependency graphs fine in this sandbox (no proxy block observed today), but the actual wheel downloads are large enough (CUDA toolkit dependencies pulled in alongside torch) to exceed this session's per-command execution time budget, so a full install still wasn't completed here. This is a sandbox time-limit constraint, not necessarily a hard network block anymore — worth trying a plain `pip install torch nvflare==2.7.2` on a normal (non-time-boxed) machine before assuming it will fail the same way.
@@ -99,6 +99,38 @@ Use 'python job.py' with SimEnv instead.` — nvflare 2.8.1 (installed) vs. `>=2
 `pyproject.toml`) still works today via the deprecated path, but migrating to the `SimEnv` API is
 worth a follow-up task before this becomes a hard blocker in a future nvflare release.
 
+## Fix 2026-07-24: export non più sovrascritti tra run
+
+Dopo il primo `nvflare-sim-smoke` riuscito (sezione sopra), l'utente ha per sbaglio avviato e
+subito interrotto un secondo run — senza danno in quel caso, ma ha fatto notare un rischio reale:
+`ChargeShieldAggregator.__init__` scriveva i due export raw fase 4/5
+(`experiments/nvflare_ids_audit_results.json`, `experiments/nvflare_fl_results.pkl`) con nomi
+**fissi**. A differenza di `scripts/run_experiments.py`, che già produce un
+`experiment_{timestamp}.json` univoco per ogni run della simulazione single-process, un secondo run
+NVFLARE (anche solo uno smoke test di verifica) avrebbe silenziosamente sovrascritto l'export del
+run precedente — inclusi risultati riusciti, senza alcun avviso.
+
+**Fix**: `ChargeShieldAggregator.__init__` ora cattura un timestamp una sola volta all'avvio (`_run_ts
+= datetime.now().strftime("%Y%m%d_%H%M%S")`) e lo inserisce nel nome di entrambi i file
+(`nvflare_ids_audit_results_<timestamp>.json`, `nvflare_fl_results_<timestamp>.pkl`). I default in
+`config_fed_server.json` restano invariati (nomi "puliti", senza timestamp) — il timestamp è
+aggiunto a runtime, non in config. `scripts/run_nvflare_mia.py` (che consuma il dump pickle) non ha
+più un default fisso per `--fl-results`: se omesso, una nuova `_resolve_fl_results_path()` sceglie
+automaticamente il `nvflare_fl_results_*.pkl` più recente per data di modifica sotto `experiments/`,
+avvisando (via `logger.warning`) se ne trova più di uno.
+
+Verificato: `python3 -m py_compile` su entrambi i file modificati (`chargeshield_aggregator.py`,
+`run_nvflare_mia.py`) e l'intera test suite non-torch (71 passed, nessuna regressione) — non
+eseguito con torch/nvflare reali in questo sandbox, stesso limite di sempre. Non tocca la
+simulazione single-process né alcun risultato pubblicato (Central DP, PES_v1): riguarda solo i due
+export raw NVFLARE.
+
+**Non ancora deciso**: se estendere la stessa garanzia di unicità-per-run ai report Excel della
+pipeline principale (`scripts/run_experiments.py`/`run_sweep.py`). Questi ultimi seguono di
+proposito un design "aggregato per sweep-dir" (più run/seed nello stesso file, per il foglio "Seed
+Aggregation" mean±std) — non un file-per-run — quindi non è lo stesso problema e non va cambiato
+senza una decisione esplicita.
+
 ## Review indipendente post-fase-5 (2026-07-22, notte) — bug reali trovati e corretti
 
 Dopo la fase 5, è stata condotta una review indipendente (agente separato, nessun contesto della conversazione originale) su fase 3+4+5. Ha trovato due bug funzionali reali (non solo VERIFY/ipotesi) e un'osservazione minore:
@@ -140,8 +172,9 @@ Entrambi i lati (`chargeshield_executor.py`, `chargeshield_aggregator.py`) sono 
 
 `ChargeShieldAggregator` ora scrive due file dopo ogni round (path configurabili in `config_fed_server.json`, entrambi sotto `experiments/` — stessa directory, già in `.gitignore`, usata dalla simulazione):
 
-- `experiments/nvflare_ids_audit_results.json` (fase 4): cronologia IDS/Auditor per round, stesso formato di `ids_results` in `run_ids()` — alerts, `byzantine_detected`, `low_similarity_nodes`, più un blocco `per_client_audit` (privacy_score/epsilon/threats_detected).
-- `experiments/nvflare_fl_results.pkl` (fase 5): dump **pickle** (non JSON — contiene `GradientUpdate` con `torch.Tensor`) con esattamente lo stesso schema che `run_fl_rounds()` produce in memoria per la simulazione: `mean_loss`, `n_participants`, `updates`, `raw_updates`, `raw_global_weights`, `global_weights` per round.
+- `experiments/nvflare_ids_audit_results_<timestamp>.json` (fase 4): cronologia IDS/Auditor per round, stesso formato di `ids_results` in `run_ids()` — alerts, `byzantine_detected`, `low_similarity_nodes`, più un blocco `per_client_audit` (privacy_score/epsilon/threats_detected).
+- `experiments/nvflare_fl_results_<timestamp>.pkl` (fase 5): dump **pickle** (non JSON — contiene `GradientUpdate` con `torch.Tensor`) con esattamente lo stesso schema che `run_fl_rounds()` produce in memoria per la simulazione: `mean_loss`, `n_participants`, `updates`, `raw_updates`, `raw_global_weights`, `global_weights` per round.
+  (Nomi fissi, senza `<timestamp>`, fino al fix 2026-07-24 descritto più sotto — vedi "Fix 2026-07-24: export non più sovrascritti tra run".)
 
 **Decisione di design per la fase 5** (perché LiRA non gira "dal vivo" dentro `aggregate()`): `run_lira()` è già, anche nella simulazione, un'analisi post-hoc che itera sull'intero dict `fl_results` dopo che tutti i round sono finiti, e ha richiesto cinque round di fix empirici (vedi la sua docstring in `scripts/run_experiments.py`) trovati eseguendo davvero il codice. Riscriverla alla cieca per girare dentro l'Aggregator, senza poter eseguire nulla in questo sandbox, sarebbe un secondo tentativo con alta probabilità di bug nuovi e silenziosi. Scelta fatta: `ChargeShieldAggregator` si limita a esportare il dump; un nuovo script, `scripts/run_nvflare_mia.py`, lo carica e chiama `run_lira()`/`run_ids()`/`run_fedmia()`/`run_fedmia_shadow()`/`save_results()` **invariati** — zero rischio di regressione sulla logica di attacco già validata su `nodp-sweep1`/`dp-sweep1`.
 
@@ -266,7 +299,7 @@ exactly the kind that need a real `nvflare simulator` run to resolve, not more r
    `execute()`/`accept()` boundary that no amount of reading could rule out in advance.
 3. ~~Write a custom server-side Controller/Aggregator...~~ **Done 2026-07-22** — `ChargeShieldAggregator` (`app/custom/chargeshield_aggregator.py`) wraps `FedAvgAggregator` for the averaging and `PrivacyAuditor`/`ChargingIDS` for per-round analysis, mirroring `run_ids()`. Not yet done: exporting IDS/Auditor results anywhere structured (currently log-only — see "What is explicitly NOT done yet").
 4. ~~Add DP: call `GradientManager.privatize()`/`clip_only()` inside the Executor's `execute()`...~~ **Done 2026-07-22 (fase 3)** — see the "DP wiring" section above for the full client/server split. Both files still only `py_compile`-checked, not executed.
-5. ~~Export IDS/Auditor results somewhere structured...~~ **Done 2026-07-22 (fase 4)** — `ChargeShieldAggregator._export_results()` writes the full per-round history to `experiments/nvflare_ids_audit_results.json` (overwritten after every round). See "What is explicitly NOT done yet" above for the one open verification point (working-directory/deployment assumption).
+5. ~~Export IDS/Auditor results somewhere structured...~~ **Done 2026-07-22 (fase 4)** — `ChargeShieldAggregator._export_results()` writes the full per-round history to `experiments/nvflare_ids_audit_results_<timestamp>.json` (overwritten only within a single run, across rounds — **not** across different runs, since 2026-07-24, see below). See "What is explicitly NOT done yet" above for the one open verification point (working-directory/deployment assumption).
 6. ~~Solve raw-update extraction for LiRA/Shadow...~~ **Done 2026-07-22 (fase 5)**, scoped as an offline step by design — `ChargeShieldAggregator._export_fl_results()` dumps the exact `run_fl_rounds()`-shaped data per round, and `scripts/run_nvflare_mia.py` runs the existing, already-validated `run_lira()`/`run_ids()`/`run_fedmia()` against it unchanged. See the dedicated section above for why this wasn't ported to run live inside `aggregate()`.
 7. Only after 1-6 work against the NVFLARE simulator: wire this same job into `topology.clab.yml`/Docker — fix the orphaned `docker/charging-node` build, point the topology at whatever image actually gets built, reconcile the two PKI trees (`certs/` vs. the NVFLARE-provisioned workspace). Target environment: OrbStack's Linux VM on macOS (Containerlab needs Linux), even though single-process simulation experiments run natively on the physical machine for speed. **Found 2026-07-24, still true, not fixed (correctly out of scope until steps 1-6 pass)**: the existing `topology.clab.yml` is misplaced (lives at the repo root, not under `containerlab/` where its own header comment and every reference to it — including this document — assume) and is Sprint-5 vintage: 12 fictional OT "charging nodes" (`highway-01..03`/`urban-01..03`/etc.) plus 4 fictional FL clients (`highway`/`urban`/`residential`/`corporate`), OCPP/MQTT protocol simulation that was never wired to anything real, and Docker images (`chargeshield-fl:latest`, `chargeshield/charging-node:latest`) with no confirmed working build. None of this matches the current 3-real-site (`caltech`/`jpl`/`office1`) design, and rewriting it now would be guessing at a container topology before step 1 even confirms the simulator-level job works — left as-is deliberately, flagged here so nobody deploys it by mistake before it's rewritten as part of step 7.
 

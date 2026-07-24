@@ -10,10 +10,12 @@
 # COSA FA QUESTO SCRIPT E PERCHÉ ESISTE SEPARATO DA run_experiments.py:
 #   ChargeShieldAggregator (nvflare/jobs/chargeshield_poc/app/custom/
 #   chargeshield_aggregator.py) esporta, dopo ogni round di un vero job
-#   NVFLARE, un dump pickle (default: experiments/nvflare_fl_results.pkl) con
-#   ESATTAMENTE la stessa struttura dati che run_fl_rounds() produce in memoria
-#   durante la simulazione single-process (mean_loss, n_participants, updates,
-#   raw_updates, raw_global_weights, global_weights — un dict per round).
+#   NVFLARE, un dump pickle (experiments/nvflare_fl_results_<timestamp>.pkl —
+#   nome univoco per run dal 2026-07-24, per non sovrascrivere run precedenti;
+#   prima di quel fix era un nome fisso) con ESATTAMENTE la stessa struttura
+#   dati che run_fl_rounds() produce in memoria durante la simulazione
+#   single-process (mean_loss, n_participants, updates, raw_updates,
+#   raw_global_weights, global_weights — un dict per round).
 #
 #   run_lira()/run_ids()/run_fedmia()/run_fedmia_shadow()/save_results() sono
 #   già scritte per consumare esattamente quella struttura — e sono già state
@@ -37,9 +39,10 @@
 # non equivalente esatto al bypass di run_fl_rounds()).
 #
 # Usage:
-#   python scripts/run_nvflare_mia.py --config config/experiment.yaml \
-#       --fl-results experiments/nvflare_fl_results.pkl
-#   python scripts/run_nvflare_mia.py --fl-results experiments/nvflare_fl_results.pkl \
+#   python scripts/run_nvflare_mia.py --config config/experiment.yaml
+#       # (senza --fl-results: usa il dump nvflare_fl_results_*.pkl più recente)
+#   python scripts/run_nvflare_mia.py \
+#       --fl-results experiments/nvflare_fl_results_20260724_162431.pkl \
 #       --n-shadow 8 --sweep-dir experiments/nvflare-run1
 
 from __future__ import annotations
@@ -241,8 +244,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", type=Path, default=Path("config/experiment.yaml"))
     parser.add_argument(
         "--fl-results", type=Path,
-        default=Path("experiments/nvflare_fl_results.pkl"),
-        help="Path al dump pickle prodotto da ChargeShieldAggregator (fase 5).",
+        default=None,
+        help=(
+            "Path al dump pickle prodotto da ChargeShieldAggregator (fase 5). "
+            "Se omesso, usa il file 'experiments/nvflare_fl_results_*.pkl' più "
+            "recente (fix 2026-07-24: da quando ogni run NVFLARE genera un "
+            "nome univoco con timestamp — vedi chargeshield_aggregator.py — "
+            "non esiste più un unico 'nvflare_fl_results.pkl' fisso da usare "
+            "come default)."
+        ),
     )
     parser.add_argument(
         "--sweep-dir", type=Path, default=None,
@@ -273,11 +283,41 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _resolve_fl_results_path(explicit: Path | None) -> Path:
+    """Se --fl-results non è passato esplicitamente, sceglie il dump pickle
+    NVFLARE più recente per data di modifica — fix 2026-07-24: da quando
+    ChargeShieldAggregator inserisce un timestamp univoco nel nome (per non
+    sovrascrivere i risultati di run precedenti, vedi il suo __init__), non
+    esiste più un singolo 'nvflare_fl_results.pkl' fisso da usare come
+    default."""
+    if explicit is not None:
+        return explicit
+    candidates = sorted(
+        Path("experiments").glob("nvflare_fl_results_*.pkl"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if not candidates:
+        raise FileNotFoundError(
+            "Nessun 'experiments/nvflare_fl_results_*.pkl' trovato — esegui prima "
+            "'make nvflare-sim-smoke'/'make nvflare-sim', oppure passa --fl-results "
+            "esplicitamente."
+        )
+    if len(candidates) > 1:
+        logger.warning(
+            f"Trovati {len(candidates)} dump NVFLARE — uso il più recente: "
+            f"{candidates[0].name} (altri: {[p.name for p in candidates[1:]]})"
+        )
+    return candidates[0]
+
+
 def main() -> None:
     args = parse_args()
+    args.fl_results = _resolve_fl_results_path(args.fl_results)
 
     logger.info("=" * 60)
     logger.info("ChargeShield-FL — Analisi post-hoc su dump NVFLARE (fase 5)")
+    logger.info(f"Dump NVFLARE: {args.fl_results}")
     logger.info("=" * 60)
 
     cfg = load_config(args.config, {"epsilon": None, "rounds": None})

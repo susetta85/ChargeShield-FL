@@ -293,8 +293,27 @@ class ChargeShieldAggregator(Aggregator):
         self._cosine_threshold = cosine_threshold
         self._krum_threshold = krum_threshold
         self._dp_mode = dp_mode
-        self._results_export_path = _PROJECT_ROOT / results_export_path
-        self._fl_results_export_path = _PROJECT_ROOT / fl_results_export_path
+        # Fix 2026-07-24 (segnalato dall'utente dopo aver quasi perso i
+        # risultati di uno smoke test riuscito a causa di un secondo run
+        # avviato per sbaglio): a differenza di experiment_{timestamp}.json
+        # nella simulazione (già unico per ogni run), questi due path erano
+        # nomi FISSI — ogni nuovo run NVFLARE sovrascriveva silenziosamente
+        # l'export del run precedente, riuscito o no. Ora un timestamp
+        # catturato UNA volta qui (all'avvio di questo Aggregator, quindi una
+        # volta per run) viene inserito nel nome file, stesso principio del
+        # resto del progetto — nessun run futuro sovrascrive un run passato.
+        # config_fed_server.json resta invariato (i due valori di default
+        # sopra restano "puliti"); il timestamp è aggiunto qui, non lì.
+        from datetime import datetime as _datetime
+
+        _run_ts = _datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        def _with_run_timestamp(path_str: str, ts: str) -> Path:
+            p = _PROJECT_ROOT / path_str
+            return p.with_name(f"{p.stem}_{ts}{p.suffix}")
+
+        self._results_export_path = _with_run_timestamp(results_export_path, _run_ts)
+        self._fl_results_export_path = _with_run_timestamp(fl_results_export_path, _run_ts)
         # Cronologia IDS/Auditor per-round (fase 4) — {round_num: {...}},
         # scritta per intero su self._results_export_path dopo ogni round.
         self._audit_history: dict[int, dict[str, Any]] = {}
