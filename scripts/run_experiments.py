@@ -1843,9 +1843,18 @@ def run_registered_attacks(
     """
     from plugins.attacks import ATTACK_REGISTRY
 
+    # Fix 2026-07-24 (review indipendente, stesso giorno): questo loop iterava
+    # una tupla hardcoded ("yeom", "shadow", "lira") invece di ATTACK_REGISTRY
+    # stesso — la docstring sopra e il commento in
+    # src/plugins/attacks/__init__.py promettono entrambi che registrare un
+    # nuovo attacco lì basta, "non serve toccare questa funzione". Con la
+    # tupla hardcoded era falso: un quarto attacco registrato non sarebbe mai
+    # stato eseguito, in silenzio. Iterare ATTACK_REGISTRY.items() mantiene lo
+    # stesso ordine di oggi (yeom, shadow, lira — un dict Python preserva
+    # l'ordine di inserimento, e __init__.py li registra in quest'ordine) e
+    # rende la promessa vera per davvero.
     mia_results: dict[int, dict[str, Any]] = {}
-    for attack_name in ("yeom", "shadow", "lira"):
-        attack_cls = ATTACK_REGISTRY[attack_name]
+    for attack_name, attack_cls in ATTACK_REGISTRY.items():
         attack = attack_cls()
         try:
             attack_results = attack.run(
