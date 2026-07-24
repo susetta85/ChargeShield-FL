@@ -52,6 +52,10 @@ help:
 	@echo "  make experiment-dry        Dry run (verifica config e dataset)"
 	@echo "  make install           Installa dipendenze runtime (torch, numpy, ecc.) — nuovo ambiente"
 	@echo "  make install-dev       Installa runtime + dev tools (pytest, ruff, mypy)"
+	@echo "  make install-flare     Installa torch + nvflare==2.7.2 (extra 'flare' di pyproject.toml)"
+	@echo "  make nvflare-sim-smoke Simulatore NVFLARE, 1 client (caltech) — smoke test round-trip"
+	@echo "  make nvflare-sim       Simulatore NVFLARE, 3 siti reali (caltech, jpl, office1)"
+	@echo "  make clean-nvflare-sim Rimuovi workspace del simulatore NVFLARE"
 	@echo "  make test              Tutti i test unitari"
 	@echo "  make test-sprint4      Solo Sprint 4"
 	@echo "  make test-sprint5      Solo Sprint 5"
@@ -483,6 +487,73 @@ install-dev:
 test-coverage: install-dev
 	$(PYTEST) tests/ -v --cov=src --cov-report=term-missing
 
+# ─── NVFLARE Simulator (2026-07-24) ───────────────────────────────────────────
+# Esecuzione REALE del job nvflare/jobs/chargeshield_poc/ tramite
+# `nvflare simulator` — processi/thread locali, NESSUN bisogno di Docker o
+# Containerlab (a differenza di build/provision/deploy sopra, che restano per
+# la fase Containerlab, deliberatamente successiva — vedi docs/
+# NVFlareIntegration.md, "Suggested next steps" #7: quello resta il PROSSIMO
+# passo dopo che questi target avranno validato il job). Mai eseguito prima
+# d'ora in nessun ambiente (torch/nvflare non installabili nel sandbox usato
+# per scrivere il codice) — il primo run è quasi certamente il primo posto
+# dove emergeranno bug reali (vedi i punti VERIFY ancora aperti in
+# docs/NVFlareIntegration.md: contatori di round locali vs fl_ctx).
+#
+# install-flare installa l'extra "flare" di pyproject.toml (nvflare==2.7.2,
+# che porta con sé torch>=2.0 tramite le dipendenze runtime base).
+.PHONY: install-flare
+install-flare:
+	@echo "→ Installazione runtime + NVFLARE 2.7.2 (torch incluso)..."
+	pip install -e ".[flare]" --break-system-packages
+	@echo "✓ Installato. Verifica: python3 -c 'import nvflare; print(nvflare.__version__)'"
+
+.PHONY: _check-nvflare-deps
+_check-nvflare-deps:
+	@$(PYTHON) -c "import nvflare, torch" 2>/dev/null || \
+		(echo ""; \
+		 echo "╔══════════════════════════════════════════════════════╗"; \
+		 echo "║  NVFLARE/torch MANCANTI — esegui prima:              ║"; \
+		 echo "║                                                      ║"; \
+		 echo "║    make install-flare                                ║"; \
+		 echo "║                                                      ║"; \
+		 echo "╚══════════════════════════════════════════════════════╝"; \
+		 echo ""; exit 1)
+
+# Directory separata dal workspace di provisioning Containerlab (nvflare/workspace,
+# variabile WORKSPACE sopra) — `nvflare simulator` genera il proprio workspace
+# locale ad ogni run (nessun PKI/provisioning reale coinvolto), ricreato da zero
+# ogni volta per evitare stato residuo tra run successivi.
+NVFLARE_SIM_WORKSPACE := nvflare/sim_workspace
+
+# Smoke test: UN solo client (caltech) — valida il round-trip DXO/Executor
+# (START_RUN → _setup() → execute() → aggregate()) senza dover far funzionare
+# correttamente tutti e tre i siti insieme al primo tentativo. Vedi
+# docs/NVFlareIntegration.md "Suggested next steps" #1.
+.PHONY: nvflare-sim-smoke
+nvflare-sim-smoke: _check-nvflare-deps
+	@echo "→ NVFLARE simulator — smoke test (1 client: caltech)..."
+	@rm -rf $(NVFLARE_SIM_WORKSPACE)
+	$(NVFLARE) simulator nvflare/jobs/chargeshield_poc \
+		-w $(NVFLARE_SIM_WORKSPACE) \
+		-n 1 -c caltech
+	@echo "✓ Smoke test NVFLARE completato — controlla $(NVFLARE_SIM_WORKSPACE)/ e experiments/nvflare_*"
+
+# Run con i 3 siti reali insieme — SOLO dopo che nvflare-sim-smoke passa.
+.PHONY: nvflare-sim
+nvflare-sim: _check-nvflare-deps
+	@echo "→ NVFLARE simulator — 3 siti reali (caltech, jpl, office1)..."
+	@rm -rf $(NVFLARE_SIM_WORKSPACE)
+	$(NVFLARE) simulator nvflare/jobs/chargeshield_poc \
+		-w $(NVFLARE_SIM_WORKSPACE) \
+		-n 3 -c caltech,jpl,office1
+	@echo "✓ NVFLARE simulator completato — controlla $(NVFLARE_SIM_WORKSPACE)/, experiments/nvflare_ids_audit_results.json, experiments/nvflare_fl_results.pkl"
+
+.PHONY: clean-nvflare-sim
+clean-nvflare-sim:
+	@echo "→ Rimozione workspace del simulatore NVFLARE..."
+	rm -rf $(NVFLARE_SIM_WORKSPACE)
+	@echo "✓ Rimosso"
+
 # ─── Lint ─────────────────────────────────────────────────────────────────────
 .PHONY: lint
 lint:
@@ -511,7 +582,7 @@ clean-experiments:
 	@echo "✓ Esperimenti rimossi"
 
 .PHONY: clean-all
-clean-all: clean clean-workspace destroy
+clean-all: clean clean-workspace clean-nvflare-sim destroy
 	@echo "✓ Pulizia completa"
 
 # ─── All ──────────────────────────────────────────────────────────────────────

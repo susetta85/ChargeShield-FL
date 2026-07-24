@@ -48,6 +48,12 @@ workspace/
 startup/
 prod_*/
 
+# NVFLARE simulator workspace (2026-07-24, `make nvflare-sim`/`nvflare-sim-smoke`) —
+# rigenerato da zero ad ogni run; separato dal workspace di provisioning
+# Containerlab sopra (che ha certificati mTLS reali generati da `nvflare
+# provision`, questo no — il simulatore non fa provisioning).
+nvflare/sim_workspace/
+
 # mTLS certificates
 certs/
 certs/

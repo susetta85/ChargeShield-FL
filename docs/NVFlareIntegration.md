@@ -147,28 +147,28 @@ exactly the kind that need a real `nvflare simulator` run to resolve, not more r
 ## Suggested next steps (in order)
 
 1. Install `nvflare==2.7.2` + `torch` in a real environment (not this sandbox — see the 2026-07-24
-   update above; a plain `pip install` may just work outside this session's time-boxed shell).
-   Run `nvflare simulator` against `nvflare/jobs/chargeshield_poc/` — updated 2026-07-24 for the
-   current 3-real-site client set (`caltech`/`jpl`/`office1`, not the old 4-cluster scheme this
-   command previously assumed):
+   update above; a plain `pip install` may just work outside this session's time-boxed shell) and
+   run `nvflare simulator` against `nvflare/jobs/chargeshield_poc/`. **Automated 2026-07-24** —
+   both steps are now Makefile targets instead of commands to remember/retype:
    ```bash
-   cd ChargeShield-FL
-   nvflare simulator nvflare/jobs/chargeshield_poc \
-       -w /tmp/chargeshield_nvflare_sim \
-       -n 1 -c caltech
+   make install-flare        # pip install -e ".[flare]" — torch + nvflare==2.7.2
+   make nvflare-sim-smoke    # nvflare simulator, -n 1 -c caltech — validates the transport
+                             # contract (DXO round-trip, Executor _setup()/execute()) without
+                             # needing all three sites to behave correctly at once
+   make nvflare-sim          # once the smoke test passes: -n 3 -c caltech,jpl,office1,
+                             # the real 3-site deployment shape
+   make clean-nvflare-sim    # wipe nvflare/sim_workspace/ between attempts
    ```
-   Start with `-n 1` (single client, validates the transport contract — DXO round-trip, Executor
-   `_setup()`/`execute()` — without needing all three sites to behave correctly at once). Once that
-   completes without crashing, scale to the real deployment shape:
-   ```bash
-   nvflare simulator nvflare/jobs/chargeshield_poc \
-       -w /tmp/chargeshield_nvflare_sim \
-       -n 3 -c caltech,jpl,office1
-   ```
-   `nvflare simulator` runs everything in local processes/threads — no `nvflare provision`, no
-   Containerlab, no Docker needed for this step (see "Not on Containerlab" above). Expect the first
-   run to fail somewhere — that is normal for code that has never executed once; the point is to
-   find out *where*, which is far cheaper to do here than after also standing up containers.
+   All four targets are self-contained in `Makefile` (`_check-nvflare-deps` guards the two
+   simulator targets the same way `_check-deps` already guards every `experiment-*` target — clear
+   error pointing at `make install-flare` instead of a raw `ModuleNotFoundError`). `-w
+   nvflare/sim_workspace` (gitignored, wiped and regenerated on every run — separate from
+   `nvflare/workspace`, the Containerlab-provisioning workspace above, which has real mTLS certs
+   the simulator doesn't need). `nvflare simulator` runs everything in local processes/threads — no
+   `nvflare provision`, no Containerlab, no Docker needed for this step (see "Not on Containerlab"
+   above). Expect the first run to fail somewhere — that is normal for code that has never executed
+   once; the point is to find out *where*, which is far cheaper to do here than after also standing
+   up containers.
 2. Fix whatever breaks. The two real open `VERIFY:` points after 2026-07-24's documentation-based
    pass are both about the local round-number counters (points 3/6 above) — expect the first crash
    or silent-wrong-result to involve those, or something in the numpy/tensor conversion at the
