@@ -210,11 +210,11 @@ chargeshield-fl/
 
 **`src/ids/`** — Intrusion detection subsystem. The `ChargingIDS` class wraps the autoencoder defined in `src/core/autoencoder.py` and adds threshold-based anomaly detection logic. It reads from the same gradient store as the auditor, but its operational role is detection rather than evaluation: it is intended to be deployed in production, whereas the auditor is an experimental instrument.
 
-**`src/plugins/attacks/`** — Attack plugins, **status corrected 2026-07-24 (independent review, see `docs/DSN2027_Positioning.md`)**. This section previously described a `BaseAttack` interface and an `ATTACK_REGISTRY` as already existing and already used by `fedmia.py`. Neither exists in the code today: there is no `BaseAttack` class anywhere in `src/` (confirmed by search), `src/plugins/attacks/__init__.py` is empty, and `fedmia.py` does not inherit from anything or register itself anywhere. `fedmia.py` is also confirmed **not called** by the live pipeline (`run_ids()`/`ChargeShieldAggregator` never instantiate it) — the docstring's own claim of being "used by `ChargingIDS` for per-node IDS" is itself stale. `docs/Architecture.md` §4.4 honestly flags the registry as "not yet implemented... a design goal for a future sprint" — treat that as the current status, not the paragraph above (kept below only as the *intended design*, not a description of working code).
+**`src/plugins/attacks/`** — Attack plugins. **Status corrected 2026-07-24, then implemented for real later the same day (user requested it explicitly — see `docs/DSN2027_Positioning.md`).** Earlier the same day this section was found to describe a `BaseAttack`/`ATTACK_REGISTRY` mechanism that didn't exist. It now does: `BaseAttack` lives in `src/core/base_attack.py` (not `src/core/base_auditor.py`, despite what an earlier draft of this section claimed), and `src/plugins/attacks/__init__.py` exports `ATTACK_REGISTRY: dict[str, type[BaseAttack]]` mapping `"yeom"`/`"shadow"`/`"lira"` to `YeomAttack`/`ShadowAttack`/`LiRAAttack` (each in its own file). `scripts/run_experiments.py::run_registered_attacks()` iterates the registry and is the actual dispatch path used by both `run_experiments.py::main()` and `scripts/run_nvflare_mia.py::main()` — not a parallel structure nobody calls. The three existing classes are intentionally thin wrappers: each `run()` lazily imports and calls the original, unmodified `run_fedmia()`/`run_fedmia_shadow()`/`run_lira()` — see `src/core/base_attack.py`'s docstring for why (avoiding any risk to the empirically-validated logic in those functions). `fedmia.py` itself is unrelated to this registry — it remains a standalone file, unregistered, still confirmed unused by the live pipeline (see the corrected note below); it was never one of the three attacks this fix registered.
 
-> **Two distinct FedMIA mechanisms — intended design, not yet implemented as such.** Do not conflate the plugin with the experiment-level evaluator:
-> - `src/plugins/attacks/fedmia.py` — the **shadow-model plugin**, intended to be used by `ChargingIDS` for per-node IDS via a `BaseAttack` subclass registered in an `ATTACK_REGISTRY`. Today it is a standalone file with no base class, no registry, and is not actually invoked by `ChargingIDS` or anything else in the live pipeline.
-> - `scripts/run_experiments.py::run_fedmia()` — the **loss-based experiment evaluator** (Yeom et al., 2018), and the one that actually runs. It loads each round's `global_weights` into a fresh `Autoencoder`, computes membership scores as `-MSE` (negative reconstruction error), and reports per-round AUC-ROC via `sklearn.metrics.roc_auc_score`. JSON output: `per_round[round]["auc_roc"]` and summary fields `mean_auc_roc`, `max_auc_roc`, `min_auc_roc`.
+> **Two distinct FedMIA mechanisms.** Do not conflate the plugin with the experiment-level evaluator:
+> - `src/plugins/attacks/fedmia.py` — a **shadow-model plugin**, originally intended for `ChargingIDS`'s per-node IDS. Confirmed (2026-07-24) not actually invoked by `ChargingIDS` or anything else in the live pipeline, and not part of `ATTACK_REGISTRY` (it isn't one of the three experiment-level attacks — registering it would require deciding what `run()` should do for an attack nothing currently calls, a separate decision from today's fix).
+> - `scripts/run_experiments.py::run_fedmia()` — the **loss-based experiment evaluator** (Yeom et al., 2018), wrapped as `YeomAttack` in the registry above, and the one that actually runs. It loads each round's `global_weights` into a fresh `Autoencoder`, computes membership scores as `-MSE` (negative reconstruction error), and reports per-round AUC-ROC via `sklearn.metrics.roc_auc_score`. JSON output: `per_round[round]["auc_roc"]` and summary fields `mean_auc_roc`, `max_auc_roc`, `min_auc_roc`.
 
 **`src/auditor/`** — The privacy auditor orchestrates the complete audit workflow: it invokes the configured attack plugin, computes differential privacy accounting (tracking (epsilon, delta) expenditure across rounds), and produces the structured audit report that constitutes a primary experimental output.
 
@@ -679,107 +679,72 @@ Add a docstring citing the dataset's DOI or access URL, the version used, and th
 
 ### 5.4 Adding a New Attack Plugin
 
-**Status note (2026-07-24, independent review):** the steps below describe the *intended* extension
-point, not one that works today. `BaseAttack` (imported below from `src/core/base_auditor.py`) does
-not exist in the current codebase, and there is no `ATTACK_REGISTRY` to register a new class into —
-see the corrected note in section 4 above and `docs/DSN2027_Positioning.md`. Following this section
-literally today will raise `ImportError`. Until the base class and registry are actually
-implemented, adding a new attack in practice means writing a new `run_<attack_name>()` function in
-`scripts/run_experiments.py` alongside `run_fedmia()`/`run_lira()`/`run_ids()`, following their
-existing pattern (load `global_weights`/`raw_updates` per round, compute a membership score,
-report AUC-ROC) — not the plugin-class pattern below.
+**Status note (2026-07-24): implemented for real, same day as the correction below it.** An earlier
+version of this section (correction still visible in git history) described a `BaseAttack`/
+`ATTACK_REGISTRY` mechanism that did not exist in the code — following it literally raised
+`ImportError`. That gap is now closed: `BaseAttack` lives in `src/core/base_attack.py`, and
+`src/plugins/attacks/ATTACK_REGISTRY` is a real registry, used as the actual dispatch path by
+`scripts/run_experiments.py::run_registered_attacks()`. The steps below describe the **real,
+current contract** — narrower and simpler than the fictional example this section used to show
+(no `MIAConfig`/`GradientManager` constructor, no `train_shadow_model()`/`infer_membership()`
+split): one `run()` method matching the signature `run_fedmia()`/`run_fedmia_shadow()`/`run_lira()`
+already used in `scripts/run_experiments.py`, because the registry was built to wrap those existing,
+validated functions rather than to impose a new shape on them.
 
-**When to use this extension point (once implemented).** A new attack plugin is required when evaluating a MIA strategy not yet implemented in the framework. This is intended to become the most common extension point for research contributions.
+**When to use this extension point.** A new attack plugin is required when evaluating a MIA strategy not yet implemented in the framework. Yeom/Shadow/LiRA are already registered this way (see `src/plugins/attacks/{yeom,shadow,lira}.py`) — use them as the reference examples alongside the one below.
 
 **Step 1: Create the attack plugin class.**
 
-Create `src/plugins/attacks/<attack_name>.py` inheriting from `BaseAttack`:
+Create `src/plugins/attacks/<attack_name>.py` inheriting from `BaseAttack`
+(`src/core/base_attack.py`):
 
 ```python
 # src/plugins/attacks/nasr_mia.py
-import numpy as np
-import torch
-from src.core.base_auditor import BaseAttack
-from src.ml.gradient_manager import GradientManager
-from src.core.config import MIAConfig
+"""
+NasrMIA — white-box membership inference attack after Nasr et al. (2019).
+
+Reference:
+    Nasr, M., Shokri, R., & Houmansadr, A. (2019). Comprehensive privacy
+    analysis of deep learning: Passive and active white-box inference
+    attacks against centralized and federated learning. IEEE S&P 2019.
+"""
+from __future__ import annotations
+
+from typing import Any
+
+from core.base_attack import BaseAttack
+
 
 class NasrMIA(BaseAttack):
-    """
-    White-box membership inference attack after Nasr et al. (2019).
+    name = "nasr_mia"
 
-    This attack trains a binary classifier that receives as input the
-    gradient norm, loss value, and per-layer gradient statistics of a
-    target sample's forward-backward pass. It is more powerful than
-    black-box attacks (which observe only model outputs) because it
-    exploits gradient information available to a malicious aggregator
-    or a passive gradient eavesdropper.
-
-    Reference:
-        Nasr, M., Shokri, R., & Houmansadr, A. (2019).
-        Comprehensive privacy analysis of deep learning: Passive and
-        active white-box inference attacks against centralized and
-        federated learning.
-        In IEEE S&P 2019.
-    """
-
-    def __init__(
+    def run(
         self,
-        config: MIAConfig,
-        gradient_manager: GradientManager,
-    ) -> None:
-        super().__init__(config, gradient_manager)
-        self._shadow_epochs: int = config.shadow_model_epochs
-        self._threshold: float = config.attack_threshold
-        self._attack_model: torch.nn.Module | None = None
+        cfg: dict,
+        train_sessions: list[dict[str, Any]],
+        holdout_sessions: list[dict[str, Any]],
+        fl_results: dict[int, dict[str, Any]],
+        **kwargs: Any,
+    ) -> dict[int, dict[str, Any]]:
+        """Must return {round_num: {"auc_roc": float, ...}} — same contract
+        as run_fedmia()/run_fedmia_shadow()/run_lira(). If the new attack
+        needs extra parameters (like LiRA's n_shadow), read them from
+        **kwargs with a sensible default — see src/plugins/attacks/lira.py.
+        Real attacks needing torch should import it lazily inside run(),
+        not at module level — see src/plugins/attacks/yeom.py's docstring
+        for why (keeps this module importable/testable without torch)."""
+        import torch  # noqa: PLC0415 — lazy, see docstring above
 
-    def train_shadow_model(self, shadow_dataset) -> None:
-        """
-        Train the shadow model on a dataset with known membership labels.
-
-        The shadow model must have the same architecture as the target FL model.
-        """
-        # 1. Train shadow FL model using shadow_dataset.
-        # 2. Record gradient statistics for member and non-member samples.
-        # 3. Train binary attack classifier on these statistics.
-        ...
-
-    def infer_membership(self, target_gradients: torch.Tensor) -> np.ndarray:
-        """
-        Infer membership for a batch of gradient tensors.
-
-        Returns:
-            Binary array of shape (batch_size,) where 1 indicates
-            the attack predicts the corresponding sample is a training member.
-        """
-        if self._attack_model is None:
-            raise RuntimeError("Call train_shadow_model() before infer_membership().")
-        features = self._extract_attack_features(target_gradients)
-        logits = self._attack_model(features)
-        return (torch.sigmoid(logits) > self._threshold).numpy().astype(int)
-
-    def compute_advantage(
-        self,
-        member_gradients: torch.Tensor,
-        non_member_gradients: torch.Tensor,
-    ) -> float:
-        """
-        Compute the MIA advantage: |TPR - FPR|.
-
-        A value near 0 indicates the attack cannot distinguish members
-        from non-members (strong privacy). A value near 1 indicates
-        near-perfect membership inference (severe privacy violation).
-        """
-        member_preds = self.infer_membership(member_gradients)
-        non_member_preds = self.infer_membership(non_member_gradients)
-        tpr = member_preds.mean()
-        fpr = non_member_preds.mean()
-        return abs(tpr - fpr)
-
-    def _extract_attack_features(
-        self, gradients: torch.Tensor
-    ) -> torch.Tensor:
-        # Compute per-layer gradient norm, mean, variance, and L2 norm.
-        ...
+        results: dict[int, dict[str, Any]] = {}
+        for round_num, round_data in sorted(fl_results.items()):
+            global_weights = round_data.get("global_weights")
+            if global_weights is None:
+                continue
+            # ... compute per-layer gradient statistics, train/apply a
+            # shadow attack classifier, produce a membership score per
+            # session, then an AUC-ROC via sklearn.metrics.roc_auc_score ...
+            results[round_num] = {"auc_roc": 0.5}  # placeholder
+        return results
 ```
 
 **Step 2: Register the attack plugin.**
@@ -787,20 +752,22 @@ class NasrMIA(BaseAttack):
 Add to `src/plugins/attacks/__init__.py`:
 
 ```python
-ATTACK_REGISTRY: dict[str, type] = {
-    "fedmia": FedMIA,
-    "nasr_mia": NasrMIA,
+from plugins.attacks.nasr_mia import NasrMIA
+
+ATTACK_REGISTRY: dict[str, type[BaseAttack]] = {
+    YeomAttack.name: YeomAttack,
+    ShadowAttack.name: ShadowAttack,
+    LiRAAttack.name: LiRAAttack,
+    NasrMIA.name: NasrMIA,
 }
 ```
 
-**Step 3: Reference the plugin in configuration.**
-
-```yaml
-mia:
-  plugin: nasr_mia
-  shadow_model_epochs: 50
-  attack_threshold: 0.5
-```
+That's it — no changes needed to `scripts/run_experiments.py::main()` or
+`scripts/run_nvflare_mia.py::main()`: both already iterate `ATTACK_REGISTRY` via
+`run_registered_attacks()`. (There is currently no `config/experiment.yaml`-level toggle to
+enable/disable individual registered attacks per run — today all registered attacks always run,
+same as the pre-registry behaviour where `run_fedmia`/`run_fedmia_shadow`/`run_lira` were always
+all three called. Adding an opt-in/opt-out config flag is a reasonable follow-up, not yet done.)
 
 **Step 4: Implement the evaluation metrics.**
 

@@ -71,10 +71,8 @@ from run_experiments import (  # noqa: E402
     enrich_sessions,
     load_config,
     normalize_sessions,
-    run_fedmia,
-    run_fedmia_shadow,
     run_ids,
-    run_lira,
+    run_registered_attacks,
     save_results,
 )
 
@@ -484,33 +482,21 @@ def main() -> None:
     except Exception as exc:  # noqa: BLE001
         logger.error(f"run_ids() fallita: {exc}", exc_info=True)
 
-    # ── Yeom (run_fedmia) + Shadow (run_fedmia_shadow) — sul modello globale ─
-    mia_results: dict = {}
-    try:
-        mia_results = run_fedmia(cfg, train_sessions, holdout_sessions, fl_results)
-    except Exception as exc:  # noqa: BLE001
-        logger.error(f"run_fedmia() fallita: {exc}", exc_info=True)
-
-    try:
-        shadow_results = run_fedmia_shadow(cfg, train_sessions, holdout_sessions, fl_results)
-        for rnd, data in shadow_results.items():
-            mia_results.setdefault(rnd, {}).update(data)
-    except Exception as exc:  # noqa: BLE001
-        logger.error(f"run_fedmia_shadow() fallita: {exc}", exc_info=True)
-
-    # ── LiRA — l'attacco primario, sul singolo update per-client ────────────
+    # ── Yeom + Shadow + LiRA — tramite il registro pluggable ────────────────
+    # Fix 2026-07-24: questo blocco chiamava run_fedmia()/run_fedmia_shadow()/
+    # run_lira() direttamente, duplicando (quasi identica) la stessa logica di
+    # dispatch/merge/error-handling di scripts/run_experiments.py::main().
+    # Ora entrambi i punti chiamano run_registered_attacks() (definita in
+    # run_experiments.py, itera src/plugins/attacks/ATTACK_REGISTRY) — un solo
+    # punto di verità invece di due copie che potevano divergere. Stesso
+    # comportamento di prima: yeom, poi shadow, poi lira, merge per round,
+    # un attacco fallito non blocca gli altri né il salvataggio finale.
     n_shadow = args.n_shadow if args.n_shadow is not None else cfg.get("lira", {}).get("n_shadow", 8)
-    try:
-        lira_results = run_lira(
-            cfg, train_sessions, holdout_sessions, fl_results,
-            n_shadow=n_shadow, shadow_epochs_cap=args.shadow_epochs_cap,
-            no_dp=no_dp, dp_mode=dp_mode,
-            cluster_membership=cluster_membership,
-        )
-        for rnd, data in lira_results.items():
-            mia_results.setdefault(rnd, {}).update(data)
-    except Exception as exc:  # noqa: BLE001
-        logger.error(f"run_lira() fallita: {exc}", exc_info=True)
+    mia_results = run_registered_attacks(
+        cfg, train_sessions, holdout_sessions, fl_results,
+        n_shadow=n_shadow, shadow_epochs_cap=args.shadow_epochs_cap,
+        no_dp=no_dp, dp_mode=dp_mode, cluster_membership=cluster_membership,
+    )
 
     result_file = save_results(cfg, mia_results, ids_results, fl_results=fl_results, sweep_dir=args.sweep_dir)
     logger.info(f"Analisi NVFLARE completata — risultati in {result_file}")

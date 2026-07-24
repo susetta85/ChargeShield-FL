@@ -1,9 +1,14 @@
 # DSN 2027 Positioning — Framework, not FedMIA Paper
 
-Status: draft v1, ready to fold into the actual paper draft. Owner task: #62. **Updated 2026-07-24**
-(independent review): corrected two overclaims about `src/plugins/attacks/` being "already"
-pluggable — it is designed for pluggability but not yet implemented as such (no shared base class
-or registry). See the "Correction" notes inline below.
+Status: draft v1, ready to fold into the actual paper draft. Owner task: #62. **Updated 2026-07-24
+(independent review, same day):** corrected two overclaims about `src/plugins/attacks/` being
+"already" pluggable when it wasn't yet. **Updated again 2026-07-24 (later the same day, user
+requested it be made real rather than just described honestly):** the gap is now closed —
+`BaseAttack` (`src/core/base_attack.py`) and a real registry (`src/plugins/attacks/ATTACK_REGISTRY`)
+now exist, and `scripts/run_experiments.py`'s `main()` dispatches through the registry instead of
+calling `run_fedmia`/`run_fedmia_shadow`/`run_lira` by name. The corrected "not yet implemented"
+notes below are kept as a dated record of what was found and why the fix was scoped the way it
+was — see "Implemented 2026-07-24" note after each for the current status.
 
 ## Why this reframe
 
@@ -32,6 +37,25 @@ plus a small registry) before claiming it in a submission. This is a real, scope
 piece of work (it touches `run_experiments.py`, `run_lira()`, `run_ids()` — code that already
 produced published Central DP numbers), not a doc-only fix, so it should be a deliberate decision,
 not something silently done in passing.
+
+**Implemented 2026-07-24 (later the same day):** done, as a thin wrapper layer rather than a
+rewrite, specifically to avoid the regression risk flagged above. `src/core/base_attack.py` defines
+`BaseAttack`; `src/plugins/attacks/{yeom,shadow,lira}.py` each implement it by calling the existing,
+unmodified `run_fedmia()`/`run_fedmia_shadow()`/`run_lira()` — zero change to their internal logic,
+so none of the empirically-validated fixes documented in those functions' docstrings (LiRA alone
+has 5 rounds of them) are at risk. `src/plugins/attacks/ATTACK_REGISTRY` maps name → class. A new
+`run_registered_attacks()` in `run_experiments.py` iterates the registry (same execution order,
+same per-attack error handling, same per-round merge logic as the pre-refactor direct calls) and is
+now the single call site used by both `run_experiments.py::main()` and
+`scripts/run_nvflare_mia.py::main()` — previously two near-duplicate copies of the same dispatch
+logic that could silently diverge. Adding a new attack now genuinely means "add a file + one
+registry entry," not touching either `main()`. Verified: `py_compile` on all changed/new files; the
+new `BaseAttack`/registry layer is fully unit-tested without torch (`tests/test_attack_registry.py`,
+8 tests — subclass contract, abstract-method enforcement, registry membership); the dispatcher
+function itself and both `main()` changes could only be `py_compile`-checked, not executed, in this
+sandbox (torch unavailable) — same limitation as the rest of this project's FL/attack code. The
+existing torch-dependent integration tests (`tests/test_run_experiments_integration.py`) still call
+`run_fedmia()`/`run_lira()` directly and are unaffected, since those functions are unchanged.
 
 ## New Abstract (replaces the current README abstract for paper purposes)
 
@@ -115,14 +139,16 @@ supports a list that keeps growing:
    originally claimed "real NVFLARE federation... not a simulated stand-in," directly
    contradicting the validation-status section below — same overclaim caught by the same
    independent review, missed in this second location on the first pass.)
-2. **An attack interface designed for pluggability** — the goal is that any membership-inference,
-   gradient-inversion, or property-inference attack can be dropped in against the same harness and
-   compared on equal footing. Today Yeom/Shadow/LiRA are implemented as separate functions called
-   directly by `run_experiments.py`, not yet behind a common registered interface —
-   `src/plugins/attacks/` currently holds only one unused file (`fedmia.py`); a shared `BaseAttack`
-   class and registry (see `docs/Architecture.md` §4.4) is the concrete next step to make this
-   contribution fully real rather than aspirational. Gradient Inversion is tracked as the next
-   module once that interface exists (Task #64/roadmap).
+2. **A pluggable attack interface** (`src/core/base_attack.py`'s `BaseAttack`, registered in
+   `src/plugins/attacks/ATTACK_REGISTRY`) — **implemented for real 2026-07-24**, closing the gap
+   this bullet used to describe as aspirational. Yeom/Shadow/LiRA are now registered classes;
+   `run_experiments.py::main()` dispatches through the registry rather than calling each attack by
+   name, and the same dispatcher is shared with `scripts/run_nvflare_mia.py`. Adding a new attack —
+   Gradient Inversion is next (Task #64/roadmap) — means adding one file and one registry entry,
+   not touching either `main()`. The three existing wrappers are intentionally thin: each calls the
+   original, unmodified `run_fedmia()`/`run_fedmia_shadow()`/`run_lira()`, so none of their
+   empirically-validated fixes (LiRA alone has 5 documented rounds of them) were touched by this
+   refactor.
 3. **An empirical audit of DP's real-world guarantee** across three placements (DP-FedAvg,
    Central, Local) and a realistic ε range, on real session data rather than a synthetic or
    IID-shuffled proxy for it.
@@ -147,12 +173,12 @@ supports a list that keeps growing:
   of the same harness, not vague future work with no interface to attach to.
 
 **Correction (2026-07-24):** this section previously also claimed `src/plugins/attacks/fedmia.py`
-"is already isolated behind a plugin boundary" and needed no changes. That is not accurate —
-see the correction under "Why this reframe" above: there is no shared attack base class or
-registry today, `fedmia.py` is confirmed unused by the live pipeline, and making the
-pluggable-attack contribution fully true (item 2 of the list above) **does** require code changes,
-scoped but real. Whether to do that work now or describe the interface as "designed for" rather
-than "already" pluggable in the paper is an open decision, not yet made.
+"is already isolated behind a plugin boundary" and needed no changes. That was not accurate at the
+time — see the correction under "Why this reframe" above. **Update, later the same day:** the
+pluggable-attack contribution (item 2 above) is now genuinely real — a `BaseAttack` class and
+registry exist and are the actual dispatch path in `run_experiments.py`. `fedmia.py` itself remains
+untouched and still unused by the live pipeline (it's a different thing — an IDS-facing shadow
+plugin, not one of the three experiment-level attacks); it was never part of what needed fixing here.
 
 ## Suggested introduction restructuring
 

@@ -1791,6 +1791,82 @@ def run_lira(
     return lira_results
 
 
+# ── Dispatch pluggable degli attacchi (src/plugins/attacks/) ───────────────────
+
+def run_registered_attacks(
+    cfg: dict,
+    train_sessions: list[dict[str, Any]],
+    holdout_sessions: list[dict[str, Any]],
+    fl_results: dict[int, dict[str, Any]],
+    **attack_kwargs: Any,
+) -> dict[int, dict[str, Any]]:
+    """
+    Esegue tutti gli attacchi in ATTACK_REGISTRY (src/plugins/attacks/) e fonde
+    i risultati per round in un unico dict.
+
+    Fix 2026-07-24 — implementazione reale della "pluggable attack interface"
+    descritta in docs/DSN2027_Positioning.md e docs/DeveloperGuide.md (prima
+    di questo fix quei documenti descrivevano un meccanismo di plugin/registro
+    che non esisteva nel codice — src/plugins/attacks/ conteneva solo un file
+    inutilizzato, senza classe base né registro; vedi le correzioni datate
+    2026-07-24 in entrambi i documenti per la storia completa).
+
+    Sostituisce due copie quasi-identiche della stessa logica di dispatch che
+    esistevano prima: questa in main() sotto, e un'altra in
+    scripts/run_nvflare_mia.py::main() (analisi post-hoc sui dump NVFLARE).
+    Entrambe ora chiamano questa funzione — stesso comportamento garantito
+    da un solo punto di verità, non due copie che potevano divergere.
+
+    Aggiungere un nuovo attacco: registralo in
+    src/plugins/attacks/__init__.py::ATTACK_REGISTRY — non serve toccare
+    questa funzione né i suoi due call site.
+
+    Comportamento preservato IDENTICO alla versione pre-refactor (chiamate
+    dirette a run_fedmia()/run_fedmia_shadow()/run_lira()): stesso ordine di
+    esecuzione (yeom, shadow, lira), stessa policy in caso di eccezione
+    (logga e continua con gli altri, non solleva — un attacco fallito non
+    deve impedire il salvataggio degli altri risultati), stessa logica di
+    merge per round (round assente → assegna il dict; round presente →
+    update in-place, i.e. shadow/lira aggiungono campi a un round già
+    popolato da yeom senza sovrascriverlo). Zero cambio di comportamento
+    numerico: ogni classe wrapper in src/plugins/attacks/ chiama la funzione
+    esistente, invariata, con gli stessi argomenti (vedi src/core/base_attack.py
+    per il razionale — queste funzioni hanno anni di fix empirici dietro,
+    non riscritte qui).
+
+    Args:
+        attack_kwargs: passati a TUTTI gli attacchi registrati; ciascuna
+            classe legge solo le chiavi che le servono (vedi
+            src/plugins/attacks/lira.py per l'esempio — n_shadow,
+            shadow_epochs_cap, no_dp, dp_mode, cluster_membership sono usati
+            solo da LiRA, ignorati da Yeom/Shadow).
+    """
+    from plugins.attacks import ATTACK_REGISTRY
+
+    mia_results: dict[int, dict[str, Any]] = {}
+    for attack_name in ("yeom", "shadow", "lira"):
+        attack_cls = ATTACK_REGISTRY[attack_name]
+        attack = attack_cls()
+        try:
+            attack_results = attack.run(
+                cfg, train_sessions, holdout_sessions, fl_results, **attack_kwargs
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                f"{attack_cls.__name__} ({attack_name}) fallito: {exc}. "
+                "I risultati degli altri attacchi (e FL) vengono comunque salvati. "
+                "Controllare il log per la causa (es. NaN negli score MIA).",
+                exc_info=True,
+            )
+            continue
+        for rnd, data in attack_results.items():
+            if rnd in mia_results:
+                mia_results[rnd].update(data)
+            else:
+                mia_results[rnd] = data
+    return mia_results
+
+
 # ── IDS Evaluation ─────────────────────────────────────────────────────────────
 
 def run_ids(
@@ -2608,61 +2684,22 @@ def main() -> None:
             "usare un run con byzantine_attack.enabled=false (solo 3 client reali)."
         )
     else:
-        # run_fedmia, run_fedmia_shadow e run_ids non devono impedire il salvataggio.
-        # Con try/except, save_results() viene sempre chiamato anche in caso di errore.
-        try:
-            mia_results = run_fedmia(cfg, train_sessions, holdout_sessions, fl_results)
-        except Exception as exc:  # noqa: BLE001
-            logger.error(
-                f"run_fedmia() fallita: {exc}. "
-                "I risultati FL vengono comunque salvati con mia_results={}. "
-                "Controllare il log per la causa (es. NaN negli score MIA).",
-                exc_info=True,
-            )
-
-        # Shadow MIA (Carlini 2022) — attacco calibrato più potente di Yeom 2018.
-        # Affianca run_fedmia() senza sostituirlo: entrambe le metriche vengono salvate.
-        shadow_mia_results: dict = {}
-        try:
-            shadow_mia_results = run_fedmia_shadow(
-                cfg, train_sessions, holdout_sessions, fl_results
-            )
-            # Merge nei mia_results per round: aggiunge campi shadow_* al dict esistente
-            for rnd, shadow_data in shadow_mia_results.items():
-                if rnd in mia_results:
-                    mia_results[rnd].update(shadow_data)
-                else:
-                    mia_results[rnd] = shadow_data
-        except Exception as exc:  # noqa: BLE001
-            logger.error(
-                f"run_fedmia_shadow() fallita: {exc}. Continuazione senza shadow MIA.",
-                exc_info=True,
-            )
-
-        # LiRA (Carlini 2022, Eq. 2) — server-side attack sul singolo update di ogni
-        # client, PRE-aggregazione FedAvg ma POST-privatizzazione DP (fix 2026-07-21c —
-        # in precedenza attaccava raw_updates, pre-DP per costruzione, vedi run_lira()).
-        # Threat model: aggregatore semi-onesto intercetta gli update locali prima di FedAvg.
-        # Più forte di Yeom e shadow-global perché usa i modelli locali (segnale non ancora
-        # distrutto dall'averaging FedAvg). Documentato nel paper come attacco primario.
+        # Fix 2026-07-24: i tre attacchi (Yeom, Shadow, LiRA) non vengono più
+        # chiamati per nome qui — main() itera ATTACK_REGISTRY tramite
+        # run_registered_attacks() (src/plugins/attacks/, vedi la sua docstring
+        # per il razionale completo e la garanzia di comportamento identico
+        # alla versione pre-refactor). run_ids() resta chiamato direttamente
+        # sotto: non è un "attacco" nel senso di questa interfaccia (produce
+        # audit/detection, non un punteggio di membership), quindi resta fuori
+        # dal registro — coerente con come i due concetti erano già separati
+        # prima di questo fix.
         n_shadow = args.n_shadow if args.n_shadow is not None else cfg.get("lira", {}).get("n_shadow", 8)
         shadow_cap = args.shadow_epochs_cap  # None → local_epochs; int → override per smoke
-        try:
-            lira_results = run_lira(
-                cfg, train_sessions, holdout_sessions, fl_results,
-                n_shadow=n_shadow, shadow_epochs_cap=shadow_cap, no_dp=args.no_dp,
-                dp_mode=args.dp_mode, cluster_membership=cluster_membership,
-            )
-            for rnd, lira_data in lira_results.items():
-                if rnd in mia_results:
-                    mia_results[rnd].update(lira_data)
-                else:
-                    mia_results[rnd] = lira_data
-        except Exception as exc:  # noqa: BLE001
-            logger.error(
-                f"run_lira() fallita: {exc}. Continuazione senza LiRA.",
-                exc_info=True,
-            )
+        mia_results = run_registered_attacks(
+            cfg, train_sessions, holdout_sessions, fl_results,
+            n_shadow=n_shadow, shadow_epochs_cap=shadow_cap, no_dp=args.no_dp,
+            dp_mode=args.dp_mode, cluster_membership=cluster_membership,
+        )
 
     ids_results: dict = {}
     if not args.skip_ids:
