@@ -6,7 +6,10 @@ Implementa un autoencoder PyTorch per il rilevamento di anomalie
 nelle sessioni di ricarica EV.
 
 Ruolo nel framework:
-- È il modello ML distribuito tramite FL tra i 12 nodi
+- È il modello ML distribuito tramite FL tra i client (i 3 siti reali
+  ACN-Data — Caltech/JPL/Office1 — negli esperimenti di privacy; +2 client
+  sintetici solo nello sweep IDS/Byzantine separato — aggiornato 2026-07-24,
+  era "12 nodi" dal vecchio schema fittizio a 4 cluster ormai superato)
 - Ogni nodo addestra l'autoencoder sui propri dati locali
 - FedAvg aggrega i pesi di encoder e decoder
 - Le anomalie vengono rilevate tramite errore di ricostruzione (MSE)

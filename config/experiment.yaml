@@ -80,7 +80,12 @@ output:
 #   32 = paper quality (slow ma risultati statisticamente solidi)
 # shadow_epochs vengono calcolati automaticamente: min(epochs * rounds/4, 300)
 lira:
-  n_shadow: 8
+  # 2026-07-24: allineato al default del Makefile (N_SHADOW 8→16, 2026-07-23,
+  # dopo l'instabilità di calibrazione vista al round 8 con soli 8 shadow/
+  # cluster). Questo valore si applica solo se run_experiments.py viene
+  # invocato direttamente senza --n-shadow (i target Makefile lo passano
+  # sempre esplicitamente, quindi non erano affetti).
+  n_shadow: 16
 
 # ── Sprint 8: Byzantine Attack Simulation ─────────────────────────────────────
 # Inietta un gradient scaling attack su un nodo per validare l'IDS.

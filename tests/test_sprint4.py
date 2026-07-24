@@ -154,7 +154,7 @@ def ids():
     detector = ChargingIDS(
         byzantine_tolerance=1,
         cosine_threshold=0.3,
-        krum_threshold=0.8,
+        krum_threshold=3.5,  # 2026-07-24: allineato alla soglia ricalibrata (era 0.8, pre n=5 fix)
     )
     detector.reset()
     return detector

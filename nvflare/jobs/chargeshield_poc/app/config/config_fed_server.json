@@ -1,5 +1,5 @@
 {
-  "_comment": "ChargeShield-FL — server-side config, NVFLARE 2.7.2. FASE 2+3+4+5 (2026-07-22, NON verificato — vedi docs/NVFlareIntegration.md): l'aggregatore built-in InTimeAccumulateWeightedAggregator e' stato sostituito da ChargeShieldAggregator (app/custom/chargeshield_aggregator.py), che avvolge le classi VERE e gia' testate della simulazione — FedAvgAggregator (src/ml/fedavg_aggregator.py) per la media pesata, PrivacyAuditor + ChargingIDS (src/auditor, src/ids) per l'analisi IDS/privacy per-round, GradientManager per la DP server-side (fase 3: privatize per-client in dp_mode='dp-fedavg', privatize_aggregate sull'aggregato in dp_mode='central'). dp_mode/epsilon/delta DEVONO combaciare con i valori equivalenti in config_fed_client.json — nessuna validazione incrociata automatica. FASE 4: results_export_path — dove viene scritta (overwrite dopo ogni round) la cronologia JSON di IDS/Auditor. FASE 5: fl_results_export_path — dump pickle per-round (updates/raw_updates/global_weights) consumato offline da scripts/run_nvflare_mia.py per LiRA/Shadow/Yeom. FIX 2026-07-22 (3 siti reali): min_clients 4→3 in entrambi i punti sotto (aggregator e scatter_and_gather) — nvflare/project.yml ora provisiona solo 3 client reali (caltech/jpl/office1); i 2 client sintetici per la validazione IDS/Krum (n=5, vedi config/experiment.yaml byzantine_attack) esistono SOLO nella simulazione single-process (scripts/run_experiments.py), non ancora portati su NVFLARE — krum_threshold qui resta quello calibrato per il caso n=3 senza attacco (byzantine_tolerance=0), NON il caso n=5 del sweep IDS.",
+  "_comment": "ChargeShield-FL — server-side config, NVFLARE 2.7.2. FASE 2+3+4+5 (2026-07-22, NON verificato — vedi docs/NVFlareIntegration.md): l'aggregatore built-in InTimeAccumulateWeightedAggregator e' stato sostituito da ChargeShieldAggregator (app/custom/chargeshield_aggregator.py), che avvolge le classi VERE e gia' testate della simulazione — FedAvgAggregator (src/ml/fedavg_aggregator.py) per la media pesata, PrivacyAuditor + ChargingIDS (src/auditor, src/ids) per l'analisi IDS/privacy per-round, GradientManager per la DP server-side (fase 3: privatize per-client in dp_mode='dp-fedavg', privatize_aggregate sull'aggregato in dp_mode='central'). dp_mode/epsilon/delta DEVONO combaciare con i valori equivalenti in config_fed_client.json — nessuna validazione incrociata automatica. FASE 4: results_export_path — dove viene scritta (overwrite dopo ogni round) la cronologia JSON di IDS/Auditor. FASE 5: fl_results_export_path — dump pickle per-round (updates/raw_updates/global_weights) consumato offline da scripts/run_nvflare_mia.py per LiRA/Shadow/Yeom. FIX 2026-07-22 (3 siti reali): min_clients 4→3 in entrambi i punti sotto (aggregator e scatter_and_gather) — nvflare/project.yml ora provisiona solo 3 client reali (caltech/jpl/office1); i 2 client sintetici per la validazione IDS/Krum (n=5, vedi config/experiment.yaml byzantine_attack) esistono SOLO nella simulazione single-process (scripts/run_experiments.py), non ancora portati su NVFLARE — krum_threshold qui resta quello calibrato per il caso n=3 senza attacco (byzantine_tolerance=0), NON il caso n=5 del sweep IDS. FIX 2026-07-24 (review indipendente, non verificato — vedi docs/NVFlareIntegration.md VERIFY): 'aggregator' spostato PRIMA di 'persistor' in components[]. chargeshield_aggregator.py inserisce src/ in sys.path a livello di modulo (righe 159-160); NVFLARE costruisce i componenti in ordine di lista, e persistor.args.model.path='core.autoencoder.Autoencoder' richiede src/ già in sys.path quando viene istanziato — con l'ordine precedente (persistor prima) il primo avvio reale avrebbe probabilmente sollevato ModuleNotFoundError: core. Non testato (torch/nvflare non installabili in questo sandbox).",
   "format_version": 2,
   "server": {
     "heart_beat_timeout": 600
@@ -7,21 +7,6 @@
   "task_data_filters": [],
   "task_result_filters": [],
   "components": [
-    {
-      "id": "persistor",
-      "path": "nvflare.app_opt.pt.file_model_persistor.PTFileModelPersistor",
-      "args": {
-        "model": {
-          "path": "core.autoencoder.Autoencoder",
-          "args": { "input_dim": 6 }
-        }
-      }
-    },
-    {
-      "id": "shareable_generator",
-      "path": "nvflare.app_common.shareablegenerators.full_model_shareable_generator.FullModelShareableGenerator",
-      "args": {}
-    },
     {
       "id": "aggregator",
       "path": "chargeshield_aggregator.ChargeShieldAggregator",
@@ -38,6 +23,21 @@
         "results_export_path": "experiments/nvflare_ids_audit_results.json",
         "fl_results_export_path": "experiments/nvflare_fl_results.pkl"
       }
+    },
+    {
+      "id": "persistor",
+      "path": "nvflare.app_opt.pt.file_model_persistor.PTFileModelPersistor",
+      "args": {
+        "model": {
+          "path": "core.autoencoder.Autoencoder",
+          "args": { "input_dim": 6 }
+        }
+      }
+    },
+    {
+      "id": "shareable_generator",
+      "path": "nvflare.app_common.shareablegenerators.full_model_shareable_generator.FullModelShareableGenerator",
+      "args": {}
     }
   ],
   "workflows": [

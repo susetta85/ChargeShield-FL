@@ -27,7 +27,10 @@ dev = [
     "ruff>=0.1",
 ]
 flare = [
-    "nvflare>=2.4",
+    "nvflare>=2.7.2",  # 2026-07-24: era >=2.4, ma tutto il codice NVFLARE custom
+                       # (nvflare/jobs/chargeshield_poc/) è scritto specificamente
+                       # contro le API/semantiche di 2.7.2 (stessa versione in
+                       # Dockerfile.flare) — >=2.4 non lo escludeva ma non lo dichiarava
 ]
 
 
