@@ -184,18 +184,55 @@ _CLUSTER_IDS = ["caltech", "jpl", "office1"]
 # Duplicate qui (non importate da scripts/run_experiments.py) perché quel modulo
 # chiama logging.basicConfig() a livello di modulo — importarlo da dentro un
 # processo client NVFLARE reale riconfigurerebbe silenziosamente il logging
-# dell'intero processo. Stessa formula esatta, nessuna deviazione di logica.
+# dell'intero processo.
+#
+# BUG REALE trovato da review indipendente (2026-07-24, round successivo al
+# primo run reale): questa funzione NON era "stessa formula esatta" come
+# dichiarato — mancava del tutto il fix timezone del 2026-07-22 applicato al
+# vero enrich_sessions() in scripts/run_experiments.py (vedi quella funzione:
+# ACN-Data porta un suffisso "GMT" fuorviante, connectionTime/disconnectTime
+# sono in realtà UTC, e hour_of_day va calcolato sull'ora LOCALE del sito via
+# il campo "timezone" di ogni sessione, non su start.hour grezzo — altrimenti
+# sfasato di 7-8h da quanto la feature dichiara di rappresentare). La versione
+# NVFLARE usava ancora `float(start.hour)` diretto (comportamento pre-fix):
+# ogni client NVFLARE avrebbe addestrato su un hour_of_day sistematicamente
+# sbagliato, mai confrontabile con i risultati della simulazione. Non
+# catturato dal controllo empirico "2652/2652 sessioni valide" del
+# 2026-07-22 (docs/NVFlareIntegration.md) perché quel controllo verifica solo
+# che le feature esistano e siano nel range [0,1] atteso dopo normalizzazione
+# — un offset costante ma sbagliato supera comunque quel controllo. Fix:
+# stessa identica logica ZoneInfo di scripts/run_experiments.py::
+# enrich_sessions(), portata qui parola per parola.
 def _enrich_sessions(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Aggiunge hour_of_day/duration_hours dai timestamp — vedi
-    scripts/run_experiments.py::enrich_sessions() per l'originale."""
+    """Aggiunge hour_of_day/duration_hours dai timestamp — stessa logica di
+    scripts/run_experiments.py::enrich_sessions() (localizzazione timezone
+    inclusa, fix 2026-07-24)."""
     from datetime import datetime
+    from zoneinfo import ZoneInfo
 
     enriched = []
     for s in sessions:
         try:
             start = datetime.fromisoformat(s["start_time"])
             end = datetime.fromisoformat(s["end_time"])
-            s["hour_of_day"] = float(start.hour)
+
+            tz_name = s.get("timezone")
+            if tz_name:
+                try:
+                    local_start = start.replace(tzinfo=ZoneInfo("UTC")).astimezone(
+                        ZoneInfo(tz_name)
+                    )
+                    hour_of_day = float(local_start.hour)
+                except Exception:
+                    # Timezone IANA sconosciuta/malformata — fallback all'ora
+                    # grezza invece di scartare la sessione (stesso principio
+                    # dell'originale: un hour_of_day leggermente sfasato è
+                    # preferibile a perdere il campione).
+                    hour_of_day = float(start.hour)
+            else:
+                hour_of_day = float(start.hour)  # nessun timezone noto — fallback
+
+            s["hour_of_day"] = hour_of_day
             s["duration_hours"] = max(0.0, (end - start).total_seconds() / 3600.0)
             enriched.append(s)
         except (KeyError, ValueError):

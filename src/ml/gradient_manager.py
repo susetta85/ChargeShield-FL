@@ -323,11 +323,31 @@ class GradientManager(AbstractMLModel):
         all'aggregato — non uno per client. Questo beneficia della riduzione
         di sensitività 1/n della media: se ogni update è clippato a
         max_grad_norm, la sensitività della MEDIA di n update è
-        max_grad_norm/n (assumendo pesi ~uniformi tra client; qui n_participants
-        è un'approssimazione — con pesi molto sbilanciati per n_samples la
-        sensitività reale sarebbe più alta di max_grad_norm/n, ma per i 4
-        cluster ~equamente dimensionati di questo esperimento l'approssimazione
-        è ragionevole. Documentare questa assunzione nel paper.).
+        max_grad_norm/n (assumendo pesi ~uniformi tra client).
+
+        LIMITE NOTO, NON RISOLTO (trovato/confermato 2026-07-24, review
+        indipendente round 4): `n_participants` qui è un conteggio semplice
+        dei client (sempre 3 per l'esperimento reale — vedi
+        `FedAvgAggregator.aggregate()`, che passa `n_participants=len(valid)`,
+        NON pesato per n_samples), mentre `FedAvgAggregator.aggregate()` fa
+        una media VERAMENTE pesata per n_samples (vedi quel metodo). Con i 3
+        siti reali ACN-Data (Caltech/JPL/Office1) le dimensioni NON sono
+        equamente distribuite (Office1 ha un ordine di grandezza in meno di
+        sessioni rispetto a Caltech/JPL — vedi README "Dataset"): la vera
+        sensitività della media pesata è max_grad_norm × max_i(n_i/N_totale),
+        non max_grad_norm/3. Se il client più grande pesa, es., il 50% del
+        totale, la sensitività reale è ~1.5× più alta di quella assunta qui —
+        `sigma_central` sotto-stima quindi il rumore necessario per la
+        garanzia (ε,δ) nominale dichiarata. Questo NON invalida le misure di
+        AUC-ROC (LiRA/Yeom/Shadow misurano leakage empirico, non dipendono da
+        questa formula), ma va dichiarato esplicitamente nel paper come limite
+        della garanzia DP formale sotto Central DP con siti non bilanciati —
+        non corretto qui perché la correzione (sensitività basata sul vero
+        peso massimo per-round, non un conteggio costante) è una decisione
+        metodologica, non un bugfix ovvio, e cambiarla alla cieca
+        invaliderebbe silenziosamente ogni numero PES/ε già pubblicato
+        (docs/PrivacyExposureScore_v1.md) senza poter verificare l'effetto
+        per esecuzione reale in questo sandbox.
 
         Args:
             global_weights:  pesi aggregati (puliti) da FedAvgAggregator

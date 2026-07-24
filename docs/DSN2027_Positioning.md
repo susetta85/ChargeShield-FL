@@ -48,12 +48,23 @@ originally claimed results came from "a genuine multi-site NVFLARE federation wi
 aggregation, and IDS all active simultaneously." That is not what happened and must not reach a
 submission. Concretely:
 
-- All reported numbers (`experiments/experiment_*.json`, `dp-sweep*/`, `nodp-sweep1/`) come from
-  the single-process Python simulation in `scripts/run_experiments.py` — real ACN-Data, real DP/
-  attack/IDS code, but one process, not a deployed multi-container NVFLARE federation.
-- `nvflare/jobs/chargeshield_poc/` (the actual NVFLARE job/app) is scaffold-only per
-  `docs/NVFlareIntegration.md`: "not executed, not tested" — it has never been run, because this
-  project's environment cannot install `torch`/`nvflare` (see that doc for why).
+- All reported numbers (`experiments/experiment_*.json`, `dp-sweep*/`, `nodp-sweep1/`, and the
+  Central DP results — see below) come from the single-process Python simulation in
+  `scripts/run_experiments.py` — real ACN-Data, real DP/attack/IDS code, but one process, not a
+  deployed multi-container NVFLARE federation.
+- **Updated 2026-07-24, later the same day**: `nvflare/jobs/chargeshield_poc/` was executed for the
+  first time via `nvflare simulator` (`make nvflare-sim-smoke`/`make nvflare-sim`, local
+  processes/threads, no Docker/Containerlab) — it is no longer accurate to say it "has never been
+  run." Two real bugs were found and fixed on that first run (a path-resolution bug and an
+  initialization-state bug — see `docs/NVFlareIntegration.md`'s "First real run" section for the
+  full account); confirmation of a fully successful multi-round re-run is still pending as of this
+  writing. What has **not** changed: this NVFLARE execution has not yet produced any
+  privacy-measurement number used anywhere in this project — it validates the infrastructure
+  (transport, DP wiring, IDS/audit export), not a new source of LiRA/Yeom/Shadow AUC data. The
+  Containerlab/Docker multi-container deployment (the stronger claim the original overclaimed
+  sentence was really describing) genuinely has not been attempted — `containerlab/topology.clab.yml`
+  remains stale/unrewritten (see that document's own note) and is deliberately deferred until after
+  the simulator-level job is fully validated.
 - DP and Byzantine/IDS are **not** measured together in one privacy-leakage run today:
   `run_experiments.py` explicitly skips FedMIA/Shadow/LiRA whenever `byzantine_attack.enabled` is
   true (Byzantine sweeps validate Krum detection only, in `experiments/ids_validation/`, and are
@@ -62,9 +73,12 @@ submission. Concretely:
   project has produced.
 
 The honest version of the claim: real dataset, real DP mechanism code, real attack code, all in a
-validated single-process simulation; a real multi-container NVFLARE deployment of the same
-pipeline is designed and scaffolded but not yet executed, and is future/ongoing work rather than
-part of the DSN 2027 results. The paper should say exactly that, not the stronger claim above.
+validated single-process simulation, now including a real Central DP result (see
+`docs/PrivacyExposureScore_v1.md`); a matching NVFLARE job for the same pipeline has now run once
+(simulator mode only) and found/fixed real bugs, but has not yet produced a privacy-measurement
+result of its own, and the full multi-container Containerlab deployment remains future/ongoing work
+rather than part of the DSN 2027 results. The paper should say exactly that, not the stronger claim
+above.
 
 (The bracketed sentence is intentionally left open — it should be filled in once the Central DP
 + multi-seed results are in, so the abstract states a real number rather than an anticipated

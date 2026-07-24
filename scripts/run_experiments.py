@@ -399,6 +399,26 @@ def run_fl_rounds(
             cluster_sessions[cid] = sessions[start:end]
 
     # Inizializza trainer per ogni cluster
+    #
+    # LIMITE NOTO, NON RISOLTO (osservazione review indipendente round 4,
+    # 2026-07-24): a differenza di run_lira()/run_fedmia_shadow() (che
+    # chiamano torch.manual_seed() esplicitamente subito prima di ogni
+    # Autoencoder(...)), i 3 trainer reali qui sotto vengono costruiti uno
+    # dopo l'altro senza un manual_seed() dedicato per ciascuno — l'init dei
+    # pesi dipende dalla sequenza corrente del generatore RNG globale (seedato
+    # una volta sola in main(), vedi torch.manual_seed(seed) più sopra nel
+    # flusso). Funziona correttamente OGGI (verificato: i pesi del round 1
+    # sono bit-identici tra experiment_20260724_111109.json [ε=1.0] e
+    # experiment_20260724_144952.json [ε=0.1], stesso seed=42, stesso ordine
+    # di operazioni prima di questo punto) ma è fragile: qualunque futura
+    # modifica che inserisca un draw casuale in più prima di questo loop
+    # desincronizzerebbe silenziosamente i pesi iniziali dei 3 siti, senza
+    # sollevare errori. Non corretto qui (aggiungere un manual_seed() per
+    # cluster cambierebbe i pesi iniziali rispetto a OGNI esperimento già
+    # pubblicato, invalidando silenziosamente la comparabilità storica, senza
+    # possibilità di verificarne l'effetto per esecuzione reale in questo
+    # sandbox) — lasciato come nota per un refactor deliberato, non un
+    # blind-fix.
     trainers: dict[str, AutoencoderTrainer] = {}
     for cid in cluster_ids:
         # Propaga il seed sperimentale nella config ml così AutoencoderTrainer

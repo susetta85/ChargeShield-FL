@@ -271,7 +271,20 @@ class ChargeShieldAggregator(Aggregator):
     ):
         super().__init__()
         self._auditor_config_path = str(_PROJECT_ROOT / auditor_config_path)
-        self._min_clients = min_clients
+        # Fix 2026-07-24 (bug reale trovato dall'utente sul primo
+        # `make nvflare-sim-smoke -n 1`): min_clients=3 è corretto per il
+        # deploy reale (3 siti ACN-Data), ma rende STRUTTURALMENTE impossibile
+        # completare un'aggregazione con lo smoke test a 1 solo client (vedi
+        # FedAvgAggregator.aggregate(): "partecipanti validi insufficienti:
+        # 1 < 3" ogni round, aggregato sempre None) — non un crash, ma un
+        # round vuoto per sempre, che impedisce allo smoke test di validare
+        # qualunque cosa oltre al semplice round-trip DXO/accept(). Override
+        # via env var (settata da `make nvflare-sim-smoke` a 1) permette allo
+        # smoke test di completare un'aggregazione vera con un solo client,
+        # senza toccare il default/config reale per il deploy a 3 siti.
+        self._min_clients = int(
+            __import__("os").environ.get("CHARGESHIELD_MIN_CLIENTS", min_clients)
+        )
         self._max_grad_norm = max_grad_norm
         self._epsilon = epsilon
         self._delta = delta

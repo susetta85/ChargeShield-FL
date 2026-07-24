@@ -42,11 +42,51 @@ problems:
    `_ensure_components()` has been constructed successfully — so a partial failure now causes a
    full retry on the next round instead of a false "already done."
 
-**Invalidation check**: neither bug touches `scripts/run_experiments.py` or anything the
-single-process simulation depends on — these are NVFLARE-job-only files. No existing experiment
-result is affected. Both fixes are `py_compile`-verified only from this side (no torch/nvflare in
-this sandbox); **not yet confirmed by a successful re-run** as of this writing — that confirmation
-has to happen on the user's machine (`make nvflare-sim-smoke` again).
+**Second attempt, same day, after fixing 1-2 above**: the user re-ran `make nvflare-sim-smoke` and
+it progressed much further (round 1 accepted caltech's contribution — the DXO/Executor/Aggregator
+round-trip genuinely works now) but then hit a third issue, and the user correctly noticed and
+interrupted the run rather than assuming it would resolve itself:
+
+3. **`min_clients=3` (correct for the real 3-site deployment) made the 1-client smoke test
+   structurally unable to ever complete an aggregation.** Observed: `Round 2 — partecipanti validi
+   insufficienti: 1 < 3 (update raccolti: 1, di cui 0 invalidi)`, followed by `FedAvgAggregator non
+   ha prodotto un aggregato — restituisco Shareable vuoto`. Not a crash (no exception) — `-n 1
+   -c caltech` will only ever collect 1 valid update per round, and `FedAvgAggregator.aggregate()`
+   correctly refuses to aggregate below its configured `min_participants`, so every round after the
+   first produces an empty, no-op global model forever. This is a mismatch between what the
+   "smoke test" was documented to validate (the transport contract, which it now does) and what
+   `-n 1` can structurally deliver against a config hardcoded for 3 real sites. **Fixed**: a new
+   `CHARGESHIELD_MIN_CLIENTS` environment variable read by `ChargeShieldAggregator.__init__`,
+   defaulting to the config value (3) but overridable — `make nvflare-sim-smoke` now sets it to `1`,
+   so the 1-client smoke test can complete a genuine (if trivial) single-client aggregation instead
+   of silently producing empty rounds forever. `make nvflare-sim` (the real 3-site run) does not set
+   this override, so the real deployment's `min_clients=3` is untouched.
+
+A round-4 independent code review (separate from the two real-execution attempts above) found one
+more real bug in the same files, not yet exercised by either attempt because it doesn't crash —
+it silently produces wrong data instead:
+
+4. **The Executor's duplicated `_enrich_sessions()` was missing the 2026-07-22 timezone-localization
+   fix already applied to the simulation's `enrich_sessions()`.** It still computed `hour_of_day`
+   as `float(start.hour)` on the raw UTC timestamp — exactly the pre-fix behavior that was found and
+   corrected in `scripts/run_experiments.py` on 2026-07-22 (ACN-Data's timestamps carry a misleading
+   "GMT" suffix but are genuine UTC; the real local hour requires localizing via each session's
+   `timezone` field). This directly contradicted the function's own comment claiming "stessa formula
+   esatta, nessuna deviazione di logica" (same exact formula, no deviation) relative to the
+   simulation — true for `_compute_feature_stats()`/`_normalize_sessions()`, false for
+   `_enrich_sessions()`. Not caught by the 2026-07-22 "2652/2652 sessioni valide, feature nel range
+   [0,1] atteso" empirical check (see fase 3-5 section above) because that check verifies
+   non-emptiness and post-normalization range, not whether the underlying value is *correct* — a
+   consistent-but-wrong offset passes both checks. **Fixed**: ported the identical `ZoneInfo`-based
+   localization block from `scripts/run_experiments.py::enrich_sessions()`.
+
+**Invalidation check**: none of the four bugs touch `scripts/run_experiments.py` or anything the
+single-process simulation depends on — these are NVFLARE-job-only files (the executor/aggregator
+under `nvflare/jobs/chargeshield_poc/`). No existing experiment result (including the Central DP
+numbers reported elsewhere in this document and in `docs/PrivacyExposureScore_v1.md`) is affected.
+All four fixes are `py_compile`-verified only from this side (no torch/nvflare in this sandbox);
+**not yet confirmed by a successful multi-round re-run** as of this writing — that confirmation has
+to happen on the user's machine (`make nvflare-sim-smoke` again, then `make nvflare-sim`).
 
 Also noted, not yet acted on: the simulator printed `WARNING: 'nvflare simulator' is deprecated.
 Use 'python job.py' with SimEnv instead.` — nvflare 2.8.1 (installed) vs. `>=2.7.2` (pinned in

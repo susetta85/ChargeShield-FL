@@ -531,11 +531,21 @@ NVFLARE_SIM_WORKSPACE := nvflare/sim_workspace
 # `nvflare simulator` ha copiato quei file dentro il workspace a una profondità
 # diversa (vedi commenti nei due file). Passare la root esplicitamente qui
 # elimina la dipendenza da "dove NVFLARE decide di copiare il codice".
+# CHARGESHIELD_MIN_CLIENTS=1 (2026-07-24, fix da bug reale trovato dall'utente
+# sul primo tentativo): config_fed_server.json ha min_clients=3 hardcoded (corretto
+# per il deploy reale a 3 siti), ma questo rende STRUTTURALMENTE impossibile
+# completare un'aggregazione con un solo client — FedAvgAggregator.aggregate()
+# avrebbe sempre restituito None ("partecipanti validi insufficienti: 1 < 3"),
+# non un crash ma un round vuoto per sempre, che impediva allo smoke test di
+# validare qualunque cosa oltre al semplice round-trip DXO/accept(). L'override
+# (letto da ChargeShieldAggregator.__init__) permette allo smoke test di
+# completare un'aggregazione vera con un client solo.
 .PHONY: nvflare-sim-smoke
 nvflare-sim-smoke: _check-nvflare-deps
-	@echo "→ NVFLARE simulator — smoke test (1 client: caltech)..."
+	@echo "→ NVFLARE simulator — smoke test (1 client: caltech, min_clients=1)..."
 	@rm -rf $(NVFLARE_SIM_WORKSPACE)
-	CHARGESHIELD_PROJECT_ROOT=$(CURDIR) $(NVFLARE) simulator nvflare/jobs/chargeshield_poc \
+	CHARGESHIELD_PROJECT_ROOT=$(CURDIR) CHARGESHIELD_MIN_CLIENTS=1 \
+		$(NVFLARE) simulator nvflare/jobs/chargeshield_poc \
 		-w $(NVFLARE_SIM_WORKSPACE) \
 		-n 1 -c caltech
 	@echo "✓ Smoke test NVFLARE completato — controlla $(NVFLARE_SIM_WORKSPACE)/ e experiments/nvflare_*"
