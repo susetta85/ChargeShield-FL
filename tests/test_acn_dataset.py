@@ -42,8 +42,18 @@ def ds():
 # --- Test caricamento ---
 
 def test_load_total_sessions(ds):
-    """Il dataset combinato 2019+2020 deve contenere esattamente 13073 sessioni."""
-    assert len(ds) == 13073
+    """Il dataset combinato JPL 2019+2020 deve contenere esattamente 22984 sessioni.
+
+    NOTA (2026-07-24, trovato da review — bug reale, non solo stale):
+    era 13073 fino al commit 19d4c19 (2026-07-22, integrazione 3 siti reali),
+    che ha sostituito i file datasets/acn/jpl/acndata_sessions_2019.json e
+    2020.json con il corpus JPL completo (17411 + 5573 = 22984 sessioni). Il
+    test non era mai stato aggiornato — falliva silenziosamente perché nessuno
+    lo eseguiva più dopo quel commit (la CI/i test runnati in questo progetto
+    sono lanciati manualmente, non automaticamente ad ogni commit). Il numero
+    22984 è verificato leggendo len(_items) direttamente dai due file JSON.
+    """
+    assert len(ds) == 22984
 
 
 def test_load_single_file():
