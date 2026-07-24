@@ -210,11 +210,11 @@ chargeshield-fl/
 
 **`src/ids/`** — Intrusion detection subsystem. The `ChargingIDS` class wraps the autoencoder defined in `src/core/autoencoder.py` and adds threshold-based anomaly detection logic. It reads from the same gradient store as the auditor, but its operational role is detection rather than evaluation: it is intended to be deployed in production, whereas the auditor is an experimental instrument.
 
-**`src/plugins/attacks/`** — Attack plugins. Each plugin implements the `BaseAttack` interface defined in `src/core/base_auditor.py`. The plugin directory is intentionally shallow: each attack is a single self-contained file. The `fedmia.py` plugin implements the FedMIA shadow-model attack, which exploits gradient update magnitudes and direction cosines to distinguish members from non-members in the training set; this plugin is loaded by `ChargingIDS` for per-node intrusion detection and remains **unchanged**. New attacks are added by dropping a new file into this directory and registering the class name in `config/experiment.yaml`.
+**`src/plugins/attacks/`** — Attack plugins, **status corrected 2026-07-24 (independent review, see `docs/DSN2027_Positioning.md`)**. This section previously described a `BaseAttack` interface and an `ATTACK_REGISTRY` as already existing and already used by `fedmia.py`. Neither exists in the code today: there is no `BaseAttack` class anywhere in `src/` (confirmed by search), `src/plugins/attacks/__init__.py` is empty, and `fedmia.py` does not inherit from anything or register itself anywhere. `fedmia.py` is also confirmed **not called** by the live pipeline (`run_ids()`/`ChargeShieldAggregator` never instantiate it) — the docstring's own claim of being "used by `ChargingIDS` for per-node IDS" is itself stale. `docs/Architecture.md` §4.4 honestly flags the registry as "not yet implemented... a design goal for a future sprint" — treat that as the current status, not the paragraph above (kept below only as the *intended design*, not a description of working code).
 
-> **Two distinct FedMIA mechanisms.** Do not conflate the plugin with the experiment-level evaluator:
-> - `src/plugins/attacks/fedmia.py` — the **shadow-model plugin** used by `ChargingIDS` for per-node IDS. It is a `BaseAttack` subclass, registered in `ATTACK_REGISTRY`, and runs within the FL pipeline.
-> - `scripts/run_experiments.py::run_fedmia()` — the **loss-based experiment evaluator** (Yeom et al., 2018). It loads each round's `global_weights` into a fresh `Autoencoder`, computes membership scores as `-MSE` (negative reconstruction error), and reports per-round AUC-ROC via `sklearn.metrics.roc_auc_score`. JSON output: `per_round[round]["auc_roc"]` and summary fields `mean_auc_roc`, `max_auc_roc`, `min_auc_roc`.
+> **Two distinct FedMIA mechanisms — intended design, not yet implemented as such.** Do not conflate the plugin with the experiment-level evaluator:
+> - `src/plugins/attacks/fedmia.py` — the **shadow-model plugin**, intended to be used by `ChargingIDS` for per-node IDS via a `BaseAttack` subclass registered in an `ATTACK_REGISTRY`. Today it is a standalone file with no base class, no registry, and is not actually invoked by `ChargingIDS` or anything else in the live pipeline.
+> - `scripts/run_experiments.py::run_fedmia()` — the **loss-based experiment evaluator** (Yeom et al., 2018), and the one that actually runs. It loads each round's `global_weights` into a fresh `Autoencoder`, computes membership scores as `-MSE` (negative reconstruction error), and reports per-round AUC-ROC via `sklearn.metrics.roc_auc_score`. JSON output: `per_round[round]["auc_roc"]` and summary fields `mean_auc_roc`, `max_auc_roc`, `min_auc_roc`.
 
 **`src/auditor/`** — The privacy auditor orchestrates the complete audit workflow: it invokes the configured attack plugin, computes differential privacy accounting (tracking (epsilon, delta) expenditure across rounds), and produces the structured audit report that constitutes a primary experimental output.
 
@@ -679,7 +679,17 @@ Add a docstring citing the dataset's DOI or access URL, the version used, and th
 
 ### 5.4 Adding a New Attack Plugin
 
-**When to use this extension point.** A new attack plugin is required when evaluating a MIA strategy not yet implemented in the framework. This is the most common extension point for research contributions.
+**Status note (2026-07-24, independent review):** the steps below describe the *intended* extension
+point, not one that works today. `BaseAttack` (imported below from `src/core/base_auditor.py`) does
+not exist in the current codebase, and there is no `ATTACK_REGISTRY` to register a new class into —
+see the corrected note in section 4 above and `docs/DSN2027_Positioning.md`. Following this section
+literally today will raise `ImportError`. Until the base class and registry are actually
+implemented, adding a new attack in practice means writing a new `run_<attack_name>()` function in
+`scripts/run_experiments.py` alongside `run_fedmia()`/`run_lira()`/`run_ids()`, following their
+existing pattern (load `global_weights`/`raw_updates` per round, compute a membership score,
+report AUC-ROC) — not the plugin-class pattern below.
+
+**When to use this extension point (once implemented).** A new attack plugin is required when evaluating a MIA strategy not yet implemented in the framework. This is intended to become the most common extension point for research contributions.
 
 **Step 1: Create the attack plugin class.**
 

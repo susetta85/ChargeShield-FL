@@ -1,6 +1,9 @@
 # DSN 2027 Positioning — Framework, not FedMIA Paper
 
-Status: draft v1, ready to fold into the actual paper draft. Owner task: #62.
+Status: draft v1, ready to fold into the actual paper draft. Owner task: #62. **Updated 2026-07-24**
+(independent review): corrected two overclaims about `src/plugins/attacks/` being "already"
+pluggable — it is designed for pluggability but not yet implemented as such (no shared base class
+or registry). See the "Correction" notes inline below.
 
 ## Why this reframe
 
@@ -10,11 +13,25 @@ paper's contribution is spent, and every future addition (Gradient Inversion, Pr
 Inference, Secure Aggregation) reads as a new, disconnected paper rather than growth of the same
 line of work.
 
-The reframe costs almost nothing in engineering terms, because the architecture already supports
-it: `src/plugins/attacks/` already treats FedMIA as a swappable module, the IDS/defence stack
-(`src/ids/`, `src/auditor/`) is already decoupled from any specific attack, and the three DP
-placements (DP-FedAvg / Central / Local) are already attack-agnostic knobs. What changes is the
-narrative layer — abstract, introduction, contributions — not the code.
+Most of the reframe costs nothing in engineering terms, because most of the architecture already
+supports it: the IDS/defence stack (`src/ids/`, `src/auditor/`) is already decoupled from any
+specific attack, and the three DP placements (DP-FedAvg / Central / Local) are already
+attack-agnostic knobs — switching between them is a config flag, not a code change. What changes
+for those two pieces is the narrative layer — abstract, introduction, contributions — not the code.
+
+**Correction (2026-07-24, caught by independent review):** this section originally also claimed
+`src/plugins/attacks/` "already treats FedMIA as a swappable module." That overstates the current
+code: the directory holds a single file, `fedmia.py`, confirmed unused by the live pipeline
+(`run_ids()`/`ChargeShieldAggregator` never instantiate it), with no shared base class and an empty
+`__init__.py` — there is no registration mechanism to swap a different attack in. `docs/Architecture.md`
+§4.4 already says this honestly: *"PluginRegistry and filesystem-based plugin discovery are not yet
+implemented... a design goal for a future sprint."* The paper must describe the attack interface as
+**designed for pluggability, not yet plug-and-play** — either make that the honest wording, or
+implement a minimal `BaseAttack` interface (Yeom/Shadow/LiRA as classes against a common contract,
+plus a small registry) before claiming it in a submission. This is a real, scoped, non-trivial
+piece of work (it touches `run_experiments.py`, `run_lira()`, `run_ids()` — code that already
+produced published Central DP numbers), not a doc-only fix, so it should be a deliberate decision,
+not something silently done in passing.
 
 ## New Abstract (replaces the current README abstract for paper purposes)
 
@@ -98,10 +115,14 @@ supports a list that keeps growing:
    originally claimed "real NVFLARE federation... not a simulated stand-in," directly
    contradicting the validation-status section below — same overclaim caught by the same
    independent review, missed in this second location on the first pass.)
-2. **A pluggable attack interface** (`src/plugins/attacks/`) that lets any membership-inference,
-   gradient-inversion, or property-inference attack be dropped in against the same harness and
-   compared on equal footing — today populated with Yeom/Shadow/LiRA; Gradient Inversion tracked
-   as the next module (Task #64/roadmap).
+2. **An attack interface designed for pluggability** — the goal is that any membership-inference,
+   gradient-inversion, or property-inference attack can be dropped in against the same harness and
+   compared on equal footing. Today Yeom/Shadow/LiRA are implemented as separate functions called
+   directly by `run_experiments.py`, not yet behind a common registered interface —
+   `src/plugins/attacks/` currently holds only one unused file (`fedmia.py`); a shared `BaseAttack`
+   class and registry (see `docs/Architecture.md` §4.4) is the concrete next step to make this
+   contribution fully real rather than aspirational. Gradient Inversion is tracked as the next
+   module once that interface exists (Task #64/roadmap).
 3. **An empirical audit of DP's real-world guarantee** across three placements (DP-FedAvg,
    Central, Local) and a realistic ε range, on real session data rather than a synthetic or
    IID-shuffled proxy for it.
@@ -115,9 +136,8 @@ supports a list that keeps growing:
 
 ## What does NOT need to change
 
-- No code changes are required for the reframe itself — `src/plugins/attacks/fedmia.py` is
-  already isolated behind a plugin boundary, and the DP/IDS modules never assumed FedMIA was the
-  only attack that would ever run against them.
+- The DP/IDS modules never assumed FedMIA was the only attack that would ever run against them —
+  no changes needed there for the reframe.
 - The existing experiment pipeline, Makefile targets, and result JSON schema stay exactly as
   they are — the benchmark framing describes what the project already does, it does not require
   redoing it.
@@ -125,6 +145,14 @@ supports a list that keeps growing:
   Inference before DSN 2027 — the "roadmap" framing works even if LiRA remains the only attack
   in the submitted paper, as long as the paper is honest that the others are planned extensions
   of the same harness, not vague future work with no interface to attach to.
+
+**Correction (2026-07-24):** this section previously also claimed `src/plugins/attacks/fedmia.py`
+"is already isolated behind a plugin boundary" and needed no changes. That is not accurate —
+see the correction under "Why this reframe" above: there is no shared attack base class or
+registry today, `fedmia.py` is confirmed unused by the live pipeline, and making the
+pluggable-attack contribution fully true (item 2 of the list above) **does** require code changes,
+scoped but real. Whether to do that work now or describe the interface as "designed for" rather
+than "already" pluggable in the paper is an open decision, not yet made.
 
 ## Suggested introduction restructuring
 

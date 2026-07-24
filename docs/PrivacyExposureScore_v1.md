@@ -3,6 +3,20 @@
 Status: **draft v1, in use for internal ranking only — not yet peer-reviewed or paper-ready.**
 Owner task: #63 (v1, this document) / #64 (v2/full, blocked on Gradient Inversion).
 
+## Portability beyond this project (added 2026-07-24)
+
+PES v1's inputs are deliberately generic, not ChargeShield-FL-specific: any attack AUC-ROC
+(∈ [0.5, 1.0], from *any* membership-inference attack, not just LiRA) and any nominal DP budget ε
+(from *any* DP mechanism, not just this project's three placements). Nothing in the formula below
+references EV charging data, ACN-Data, or this project's FL pipeline. A researcher benchmarking a
+different FL/DP setup — a different dataset, a different attack, a different aggregation scheme —
+could compute PES on their own AUC/ε pairs with no adaptation. That portability is what makes it a
+candidate community metric rather than a one-off number for this paper's results table, alongside
+the benchmark/framework positioning in `docs/DSN2027_Positioning.md`. What is *not* yet portable:
+the "v1" scope excludes gradient-reconstruction and attribute-recovery terms (see below) because
+this project doesn't yet measure them — a full v2 metric, once Gradient Inversion lands, would
+need those terms validated on more than one dataset before claiming general applicability.
+
 ## Why a new metric
 
 "Attack AUC-ROC" alone tells you whether an attack beats chance, but it does not tell you
