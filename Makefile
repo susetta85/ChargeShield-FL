@@ -115,20 +115,24 @@ logs:
 
 # ─── Controllo dipendenze ─────────────────────────────────────────────────────
 # _check-deps: verifica che torch (e le altre dipendenze) siano installate.
-# Se mancano, suggerisce 'make install' invece di crashare con un errore criptico.
+# Fix 2026-07-24 (richiesta esplicita dell'utente — "vorrei che l'ambiente
+# venisse configurato all'avvio dalla macchina"): prima si limitava a
+# STAMPARE un avviso e uscire con errore, lasciando all'utente il compito di
+# ricordarsi di lanciare 'make install' a mano prima di ogni sessione di
+# lavoro su una macchina nuova o dopo una pulizia dell'ambiente. Ora, se le
+# dipendenze mancano, le installa da solo chiamando 'make install' — nessun
+# passo manuale separato da ricordare prima dei run reali. Se le dipendenze
+# ci sono già, l'import silenzioso non fa nulla (nessun overhead su ogni
+# singolo esperimento lanciato in sequenza).
 # Tutti i target sperimentali dipendono da questo.
 .PHONY: _check-deps
 _check-deps:
 	@$(PYTHON) -c "import torch, numpy, sklearn, openpyxl, yaml" 2>/dev/null || \
 		(echo ""; \
-		 echo "╔══════════════════════════════════════════════════════╗"; \
-		 echo "║  DIPENDENZE MANCANTI — esegui prima:                 ║"; \
-		 echo "║                                                      ║"; \
-		 echo "║    make install                                      ║"; \
-		 echo "║                                                      ║"; \
-		 echo "║  Installa: torch, numpy, scikit-learn, openpyxl...  ║"; \
-		 echo "╚══════════════════════════════════════════════════════╝"; \
-		 echo ""; exit 1)
+		 echo "→ Dipendenze mancanti (torch/numpy/sklearn/openpyxl/yaml) — installazione automatica..."; \
+		 $(MAKE) install; \
+		 echo "✓ Dipendenze installate — proseguo con il target richiesto."; \
+		 echo "")
 
 # ─── Esperimento FL ───────────────────────────────────────────────────────────
 .PHONY: experiment
@@ -507,17 +511,17 @@ install-flare:
 	pip install -e ".[flare]" --break-system-packages
 	@echo "✓ Installato. Verifica: python3 -c 'import nvflare; print(nvflare.__version__)'"
 
+# Stesso principio di _check-deps sopra (fix 2026-07-24): installazione
+# automatica invece di solo avvisare, così anche i target nvflare-sim* non
+# richiedono un 'make install-flare' manuale separato prima del primo uso.
 .PHONY: _check-nvflare-deps
 _check-nvflare-deps:
 	@$(PYTHON) -c "import nvflare, torch" 2>/dev/null || \
 		(echo ""; \
-		 echo "╔══════════════════════════════════════════════════════╗"; \
-		 echo "║  NVFLARE/torch MANCANTI — esegui prima:              ║"; \
-		 echo "║                                                      ║"; \
-		 echo "║    make install-flare                                ║"; \
-		 echo "║                                                      ║"; \
-		 echo "╚══════════════════════════════════════════════════════╝"; \
-		 echo ""; exit 1)
+		 echo "→ NVFLARE/torch mancanti — installazione automatica..."; \
+		 $(MAKE) install-flare; \
+		 echo "✓ Dipendenze installate — proseguo con il target richiesto."; \
+		 echo "")
 
 # Directory separata dal workspace di provisioning Containerlab (nvflare/workspace,
 # variabile WORKSPACE sopra) — `nvflare simulator` genera il proprio workspace

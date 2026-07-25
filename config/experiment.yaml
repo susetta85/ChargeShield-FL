@@ -3,8 +3,20 @@
 
 experiment:
   name: chargeshield_fedmia_baseline
-  #fl_rounds: 10
-  fl_rounds: 100  #esperimenti finali paper
+  # fl_rounds qui sotto è SOLO il default per chi invoca run_experiments.py
+  # direttamente senza --rounds. Fix 2026-07-24 (trovato verificando i
+  # parametri prima del consolidamento multi-seed): ogni target Makefile
+  # reale (experiment-nodp/-dp/-central-dp/-local-dp e le loro varianti
+  # -sweep) passa sempre --rounds 10 esplicitamente, che ha precedenza su
+  # questo valore — quindi TUTTI i risultati reali prodotti finora (inclusi
+  # i due Central DP ε=1.0/ε=0.1 già pubblicati in
+  # docs/PrivacyExposureScore_v1.md) usano 10 round, non 100. Il commento
+  # "esperimenti finali paper" che etichettava 100 qui era fuorviante: 100
+  # non è mai stato usato per nessun risultato reale di questo progetto, e
+  # cambiarlo ora per il consolidamento multi-seed renderebbe i nuovi run
+  # incomparabili con gli ancoraggi single-seed che devono confermare.
+  # 10 resta il protocollo stabilito finché non si decide altrimenti.
+  fl_rounds: 10
   seed: 42        # riproducibilità: usato da random.shuffle prima della split FL
   # Differential Privacy
   epsilon: 1.0
