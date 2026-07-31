@@ -128,11 +128,12 @@ logs:
 .PHONY: _check-deps
 _check-deps:
 	@$(PYTHON) -c "import torch, numpy, sklearn, openpyxl, yaml" 2>/dev/null || \
-		(echo ""; \
-		 echo "→ Dipendenze mancanti (torch/numpy/sklearn/openpyxl/yaml) — installazione automatica..."; \
-		 $(MAKE) install; \
-		 echo "✓ Dipendenze installate — proseguo con il target richiesto."; \
-		 echo "")
+		(echo "" && \
+		 echo "→ Dipendenze mancanti (torch/numpy/sklearn/openpyxl/yaml) — installazione automatica..." && \
+		 $(MAKE) install && \
+		 echo "✓ Dipendenze installate — proseguo con il target richiesto." && \
+		 echo "") || \
+		(echo "✗ Installazione automatica fallita (make install) — impossibile proseguire." >&2; exit 1)
 
 # ─── Esperimento FL ───────────────────────────────────────────────────────────
 .PHONY: experiment
@@ -517,11 +518,12 @@ install-flare:
 .PHONY: _check-nvflare-deps
 _check-nvflare-deps:
 	@$(PYTHON) -c "import nvflare, torch" 2>/dev/null || \
-		(echo ""; \
-		 echo "→ NVFLARE/torch mancanti — installazione automatica..."; \
-		 $(MAKE) install-flare; \
-		 echo "✓ Dipendenze installate — proseguo con il target richiesto."; \
-		 echo "")
+		(echo "" && \
+		 echo "→ NVFLARE/torch mancanti — installazione automatica..." && \
+		 $(MAKE) install-flare && \
+		 echo "✓ Dipendenze installate — proseguo con il target richiesto." && \
+		 echo "") || \
+		(echo "✗ Installazione automatica fallita (make install-flare) — impossibile proseguire." >&2; exit 1)
 
 # Directory separata dal workspace di provisioning Containerlab (nvflare/workspace,
 # variabile WORKSPACE sopra) — `nvflare simulator` genera il proprio workspace

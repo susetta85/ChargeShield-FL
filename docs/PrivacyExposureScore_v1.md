@@ -62,6 +62,8 @@ visible; see caveat below.
 
 ## Computed on real experiment data (2026-07-22, single seed=42, DP-FedAvg only)
 
+> **Nota sul vintage dei dati (aggiunta 2026-07-25).** Questi run (`experiments/experiment_20260722_*.json`) usano `n_shadow=8`, lo stesso valore instabile che ha portato all'archiviazione di `nodp-sweep1`/`dp-sweep1`/`dp-sweep2` in `experiments/_archive_invalid_n_shadow8/` (n_shadow alzato a 16 il 2026-07-23 per un'instabilità di calibrazione LiRA vista al round 8). A differenza della sezione Central DP più sotto, che usa correttamente n_shadow=16, questa tabella non lo segnalava. In pratica l'impatto sul PES_v1 qui riportato è basso: tutti i valori sono 0 perché LiRA resta sotto 0.5 in ogni configurazione, quindi anche con n_shadow=16 il verdetto qualitativo ("DP-FedAvg sopprime LiRA nel range testato") difficilmente cambierebbe — ma questi numeri non dovrebbero essere citati come dato finale nel paper senza prima essere rieseguiti a n_shadow=16, coerentemente con il resto del consolidamento multi-seed in corso (vedi README Sprint 10n / task #78).
+
 | Config | ε | LiRA mean AUC | L(AUC) | strength(ε) | U_cost (loss increase vs no-DP) | PES_v1 |
 |---|---|---|---|---|---|---|
 | no-DP | — | 0.5845 | 0.169 | 0 (n/a) | 0 (baseline) | 0.000 |
