@@ -27,12 +27,28 @@
 #     dentro la propria sweep-dir (experiments/<sweep>/sweep_log.txt) —
 #     nessuna duplicazione persa, solo un log aggiuntivo con anche eventuali
 #     errori di shell/exit code non catturati nel log applicativo.
+#   - Fix 2026-07-31 (l'utente ha segnalato che `tail -f logs/consolidation_master.log`
+#     non mostrava alcun progresso): l'output di ogni step veniva scritto SOLO nel
+#     suo file di log per-step (`> "$step_log" 2>&1`), mai su stdout — quindi il
+#     master log (che è solo lo stdout dello script, catturato da `nohup ... >
+#     logs/consolidation_master.log`) conteneva solo gli echo di intestazione, mai
+#     l'avanzamento reale. Ora ogni step usa `tee` per scrivere ENTRAMBI i file in
+#     tempo reale; l'exit code reale del comando (non quello di `tee`) viene letto
+#     da `${PIPESTATUS[0]}`, sicuro qui perché lo script è bash (non lo sarebbe in
+#     POSIX sh puro, dove non esiste `PIPESTATUS`).
 #   - Alla fine stampa un riepilogo: quali step sono riusciti/falliti,
 #     tempo totale e per-step.
 #
-# USO CONSIGLIATO (girare anche chiudendo il terminale, seguirlo dal vivo):
-#   nohup ./scripts/run_multiseed_consolidation.sh > logs/consolidation_master.log 2>&1 &
+# USO CONSIGLIATO (girare anche chiudendo il terminale/schermo, seguirlo dal vivo):
+#   mkdir -p logs
+#   nohup caffeinate -dimsu ./scripts/run_multiseed_consolidation.sh > logs/consolidation_master.log 2>&1 &
+#   disown
 #   tail -f logs/consolidation_master.log
+# NOTA: `caffeinate` impedisce lo sleep automatico del Mac mentre lo script gira,
+# ma NON impedisce lo sleep se chiudi il coperchio del portatile senza monitor/
+# tastiera esterni collegati — quello è uno sleep hardware che nessun comando
+# software evita. Lascia il coperchio aperto (schermo spento va bene) o collega
+# un monitor esterno.
 #
 # PER LE PROSSIME VOLTE: modifica l'array STEPS sotto con i comandi che ti
 # servono (nuovo sweep, nuovo epsilon, altri seed, ecc.) e rilancia lo
@@ -101,11 +117,11 @@ for i in "${!STEPS[@]}"; do
     echo "  inizio:  $(date '+%Y-%m-%d %H:%M:%S')"
 
     step_start=$(date +%s)
-    if eval "$cmd" > "$step_log" 2>&1; then
-        rc=0
+    eval "$cmd" 2>&1 | tee "$step_log"
+    rc=${PIPESTATUS[0]}
+    if [ "$rc" -eq 0 ]; then
         status="OK"
     else
-        rc=$?
         status="FALLITO (exit $rc)"
     fi
     step_end=$(date +%s)
