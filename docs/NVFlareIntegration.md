@@ -301,6 +301,41 @@ exactly the kind that need a real `nvflare simulator` run to resolve, not more r
 4. ~~Add DP: call `GradientManager.privatize()`/`clip_only()` inside the Executor's `execute()`...~~ **Done 2026-07-22 (fase 3)** — see the "DP wiring" section above for the full client/server split. Both files still only `py_compile`-checked, not executed.
 5. ~~Export IDS/Auditor results somewhere structured...~~ **Done 2026-07-22 (fase 4)** — `ChargeShieldAggregator._export_results()` writes the full per-round history to `experiments/nvflare_ids_audit_results_<timestamp>.json` (overwritten only within a single run, across rounds — **not** across different runs, since 2026-07-24, see below). See "What is explicitly NOT done yet" above for the one open verification point (working-directory/deployment assumption).
 6. ~~Solve raw-update extraction for LiRA/Shadow...~~ **Done 2026-07-22 (fase 5)**, scoped as an offline step by design — `ChargeShieldAggregator._export_fl_results()` dumps the exact `run_fl_rounds()`-shaped data per round, and `scripts/run_nvflare_mia.py` runs the existing, already-validated `run_lira()`/`run_ids()`/`run_fedmia()` against it unchanged. See the dedicated section above for why this wasn't ported to run live inside `aggregate()`.
-7. Only after 1-6 work against the NVFLARE simulator: wire this same job into `topology.clab.yml`/Docker — fix the orphaned `docker/charging-node` build, point the topology at whatever image actually gets built, reconcile the two PKI trees (`certs/` vs. the NVFLARE-provisioned workspace). Target environment: OrbStack's Linux VM on macOS (Containerlab needs Linux), even though single-process simulation experiments run natively on the physical machine for speed. **Found 2026-07-24, still true, not fixed (correctly out of scope until steps 1-6 pass)**: the existing `topology.clab.yml` is misplaced (lives at the repo root, not under `containerlab/` where its own header comment and every reference to it — including this document — assume) and is Sprint-5 vintage: 12 fictional OT "charging nodes" (`highway-01..03`/`urban-01..03`/etc.) plus 4 fictional FL clients (`highway`/`urban`/`residential`/`corporate`), OCPP/MQTT protocol simulation that was never wired to anything real, and Docker images (`chargeshield-fl:latest`, `chargeshield/charging-node:latest`) with no confirmed working build. None of this matches the current 3-real-site (`caltech`/`jpl`/`office1`) design, and rewriting it now would be guessing at a container topology before step 1 even confirms the simulator-level job works — left as-is deliberately, flagged here so nobody deploys it by mistake before it's rewritten as part of step 7.
+7. **Rewritten 2026-07-31 (user-requested: a real multi-container deployment is needed, not just the simulator)** — `containerlab/topology.clab.yml` (moved from the repo root, where it lived misplaced relative to its own header comment and every doc reference to it) rewritten from scratch for the actual 3-real-site architecture instead of the Sprint-5 vintage 4-fictional-cluster + 12-OT-node + separate-auditor/ids/mqtt-broker-container design, which never matched the code that was actually built (PrivacyAuditor/ChargingIDS run server-side inside `ChargeShieldAggregator`, not as separate network services — confirmed by reading `config_fed_server.json`'s `components[]`). The new topology has exactly 5 nodes matching `nvflare/project.yml`'s real participants: `server`, `caltech`, `jpl`, `office1`, `fl-admin`, star-topology links to `server`, no OT/OCPP/MQTT layer. `Dockerfile.flare` fixed to set `CHARGESHIELD_PROJECT_ROOT=/app` (missing entirely before — without it, `_find_project_root()` fails or silently loads 0 sessions inside a container, the same bug class already found and fixed for `nvflare simulator` on 2026-07-24) and its header comment corrected to stop describing "auditor"/"IDS" as separate container roles.
 
-Steps 1-2 are a few hours of real debugging once someone has `nvflare` installed. Steps 4-6 are the "multi-week" part of the original estimate — this document doesn't shrink that estimate, it just gives it a concrete starting point.
+   **Runbook (not yet executed — no Docker/Containerlab available in the sandbox that wrote this; the user runs each step on their own Mac via OrbStack's Linux VM and reports back what breaks, same validation pattern as the simulator work in steps 1-2 above):**
+   ```bash
+   # 1. Build the image (from repo root)
+   docker build -f Dockerfile.flare -t chargeshield-fl:latest .
+
+   # 2. Provision real mTLS startup kits for server/caltech/jpl/office1/admin
+   #    (regenerate if nvflare/workspace/ already has a stale highway/urban/etc.
+   #    provisioning from before the 3-real-site migration — see Sprint 10e's
+   #    note on nvflare/workspace/ reappearing with stale names)
+   rm -rf nvflare/workspace
+   nvflare provision -p nvflare/project.yml -w nvflare/workspace
+
+   # 3. Deploy the containers (Containerlab needs Linux — run this inside
+   #    OrbStack's Linux VM, not natively on macOS)
+   sudo containerlab deploy -t containerlab/topology.clab.yml
+
+   # 4. Containers start in idle (no job running yet — see Dockerfile.flare's
+   #    CMD). Submit the job from the fl-admin container's NVFLARE admin
+   #    console (exact submit_job invocation to be confirmed on first real
+   #    attempt — this is the one part of the runbook genuinely unverified
+   #    even on paper, since job submission over a provisioned mTLS
+   #    federation was never exercised by the simulator-mode work in
+   #    steps 1-6, which bypasses provisioning/submission entirely).
+   ```
+   **Expect the first attempt to fail somewhere** — most likely candidates, in rough order of
+   suspicion: (a) `nvflare provision`'s output directory naming (`prod_00` is nvflare's default
+   first-provisioning folder name; a second `provision` run without wiping `nvflare/workspace`
+   first produces `prod_01`, silently breaking every bind path in the topology that hardcodes
+   `prod_00`); (b) the admin console's exact job-submission command/API, untested end-to-end here;
+   (c) container-to-container DNS resolution for the `fed_learn_port`/`admin_port` NVFLARE expects
+   from `nvflare/project.yml`, which Containerlab's bridged networking may or may not satisfy without
+   extra config; (d) file permission mismatches between the containers' user and the bind-mounted
+   host directories. None of these were fixable by more reading — they need a real first run,
+   exactly like the 3 real bugs the simulator work found on its first execution (Sprint 10f).
+
+Steps 1-2 are a few hours of real debugging once someone has `nvflare` installed. Steps 4-6 are the "multi-week" part of the original estimate — this document doesn't shrink that estimate, it just gives it a concrete starting point. Step 7 (this pass) only prepared the configuration correctly on paper; it has not yet been executed once, so treat every claim in it as "should work by design," not "verified."

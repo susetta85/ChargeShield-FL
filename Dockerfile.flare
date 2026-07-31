@@ -1,5 +1,16 @@
 # ChargeShield-FL — Dockerfile.flare
-# Immagine base per tutti i container FL (server, client, auditor, IDS)
+# Immagine base per i container FL (server + client caltech/jpl/office1 +
+# admin console) — vedi containerlab/topology.clab.yml.
+#
+# CORREZIONE 2026-07-31: questo file diceva "server, client, auditor, IDS"
+# come se fossero 4 ruoli/servizi distinti — non lo sono. PrivacyAuditor
+# (src/auditor/) e ChargingIDS (src/ids/) girano DENTRO al processo server
+# NVFLARE (incapsulati in ChargeShieldAggregator, vedi
+# nvflare/jobs/chargeshield_poc/app/custom/chargeshield_aggregator.py e
+# config_fed_server.json), non come container/servizi di rete separati.
+# La vecchia topologia Sprint 5 li descriveva come tali per un design mai
+# realmente costruito così — vedi la nota in cima a
+# containerlab/topology.clab.yml per i dettagli completi.
 #
 # Build:
 #   docker build -f Dockerfile.flare -t chargeshield-fl:latest .
@@ -10,6 +21,16 @@
 #     `nvflare provision` e montati in /workspace/startup/ via
 #     Containerlab binds — NON configurati in questo Dockerfile
 #   - PyTorch CPU-only (no CUDA): compatibile con OrbStack su Mac
+#   - CHARGESHIELD_PROJECT_ROOT=/app (fix 2026-07-31): senza questa variabile,
+#     chargeshield_executor.py/chargeshield_aggregator.py non trovano
+#     src/config/datasets quando NVFLARE li carica dentro il job deployment —
+#     stessa classe di bug già trovata e corretta il 2026-07-24 per
+#     `nvflare simulator` (_find_project_root() la richiede esplicitamente,
+#     o incappa nello stesso fallimento silenzioso "0 sessioni caricate" già
+#     documentato in quel fix). NON verificato in un container reale: nessun
+#     ambiente Docker è disponibile nel sandbox che ha scritto questo file —
+#     vedi docs/NVFlareIntegration.md per il runbook e cosa verificare al
+#     primo avvio reale.
 
 FROM python:3.10-slim
 
@@ -51,6 +72,14 @@ COPY config/ /app/config/
 
 # Aggiunge src/ al PYTHONPATH per gli import (es. from ml.base_ml import ...)
 ENV PYTHONPATH="/app/src"
+
+# Fix 2026-07-31 (vedi nota in cima al file): senza questa, _find_project_root()
+# in chargeshield_executor.py/chargeshield_aggregator.py non sa dove sia la
+# project root dentro il container e fallisce (o carica 0 sessioni in
+# silenzio). containerlab/topology.clab.yml la ribadisce per-nodo, ma va
+# impostata anche qui per chiunque avvii l'immagine senza passare da
+# Containerlab (es. un test rapido con `docker run`).
+ENV CHARGESHIELD_PROJECT_ROOT="/app"
 
 # ── Workspace NVFLARE ─────────────────────────────────────────────────────────
 # Containerlab monta il workspace provisionato via binds:

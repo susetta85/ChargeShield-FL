@@ -1,0 +1,129 @@
+# containerlab/topology.clab.yml
+# ChargeShield-FL — Topologia multi-container (riscritta 2026-07-31)
+#
+# STATO: riscritta da zero per i 3 siti reali ACN-Data (caltech/jpl/office1),
+# sostituendo la vecchia topologia Sprint 5 (4 cluster fittizi highway/urban/
+# residential/corporate + 12 "charging node" OT + container separati auditor/
+# ids/mqtt-broker). Quella vecchia versione era disallineata su due fronti:
+#   1. nvflare/project.yml e config_fed_server.json/config_fed_client.json
+#      sono stati aggiornati ai 3 siti reali il 2026-07-22 (Sprint 10) — la
+#      vecchia topologia bindava ancora percorsi workspace highway/urban/ecc.
+#      che nvflare provision non genera più da tempo.
+#   2. L'architettura REALE (verificata leggendo chargeshield_aggregator.py e
+#      config_fed_server.json) non ha PrivacyAuditor/ChargingIDS come servizi
+#      di rete separati con propria porta: girano DENTRO al processo server
+#      NVFLARE, incapsulati in ChargeShieldAggregator (components[] in
+#      config_fed_server.json). I container "auditor"/"ids"/"mqtt-broker" e i
+#      12 nodi OT (OCPP/MQTT mai wired a nulla — src/adapters/ocpp16_adapter.py,
+#      src/nodes/charging_node.py sono codice morto confermato, vedi header di
+#      quei file) descrivevano un'architettura mai realmente costruita.
+#
+# Questa versione riflette SOLO quello che il codice fa davvero oggi:
+# server NVFLARE (esegue ChargeShieldAggregator = FedAvg + PrivacyAuditor +
+# ChargingIDS, tutto server-side) + 3 client reali (ChargeShieldExecutor,
+# uno per sito) + console admin.
+#
+# NON ANCORA VERIFICATO END-TO-END — nessun ambiente Docker/Containerlab è
+# disponibile nel sandbox che ha scritto questo file. Vedi
+# docs/NVFlareIntegration.md, sezione "Containerlab — primo tentativo reale"
+# per il runbook completo e cosa aspettarsi possa andare storto al primo giro
+# (per analogia con `make nvflare-sim-smoke`, che alla prima esecuzione reale
+# ha rivelato 3 bug che nessuna lettura statica del codice aveva previsto).
+#
+# Deploy (sulla VM Linux di OrbStack, non nativamente su macOS):
+#   1. docker build -f Dockerfile.flare -t chargeshield-fl:latest .
+#   2. nvflare provision -p nvflare/project.yml -w nvflare/workspace
+#   3. sudo containerlab deploy -t containerlab/topology.clab.yml
+#   4. Sottomettere il job (i container partono in idle finché non arriva un
+#      job — vedi runbook in docs/NVFlareIntegration.md per il comando
+#      esatto di submit_job via FLARE admin console):
+#        nvflare/jobs/chargeshield_poc/ (deploy_map: "@ALL", si autodistribuisce
+#        a tutti e 5 i partecipanti alla sottomissione — non serve copiarlo
+#        dentro le immagini Docker).
+
+name: chargeshield-fl
+
+topology:
+  defaults:
+    kind: linux
+    image: chargeshield-fl:latest
+    cpu: 1.0
+    memory: 1024m
+    env:
+      # Necessario: senza questa, ChargeShieldExecutor/ChargeShieldAggregator
+      # non trovano src/config/datasets (stesso bug già trovato e fixato per
+      # `nvflare simulator`, 2026-07-24 — vedi chargeshield_executor.py,
+      # _find_project_root()). /app è dove questo Dockerfile copia src/+config/
+      # e dove bindiamo datasets/ ed experiments/ sotto.
+      CHARGESHIELD_PROJECT_ROOT: /app
+    binds:
+      # Codice e config (read-only — build-time nell'immagine, ribindati qui
+      # solo per poter aggiornare senza rebuildare durante lo sviluppo).
+      - src/:/app/src:ro
+      - config/:/app/config:ro
+      # Dataset ACN reale — condiviso in sola lettura a tutti i nodi; ogni
+      # client seleziona la propria sottocartella (datasets/acn/<sito>/) via
+      # cluster_id, derivato dal nome NVFLARE del sito (non da questo bind).
+      - datasets/acn/:/app/datasets/acn:ro
+      # Output — scrittura condivisa, stessa directory che la simulazione
+      # single-process usa (results_export_path/fl_results_export_path in
+      # config_fed_server.json puntano qui).
+      - experiments/:/app/experiments:rw
+
+  nodes:
+
+    # ─── NVFLARE Server ───────────────────────────────────────────────
+    # Esegue ChargeShieldAggregator: FedAvg (src/ml/fedavg_aggregator.py) +
+    # PrivacyAuditor (src/auditor/) + ChargingIDS (src/ids/) — tutto
+    # server-side, nessun servizio di rete separato per questi due ultimi.
+    server:
+      cpu: 2.0
+      memory: 2048m
+      env:
+        CHARGESHIELD_PROJECT_ROOT: /app
+      binds:
+        - nvflare/workspace/chargeshield_fl/prod_00/server/startup:/workspace/startup:ro
+        - nvflare/workspace/chargeshield_fl/prod_00/server/local:/workspace/local:rw
+        - nvflare/workspace/chargeshield_fl/prod_00/server/transfer:/workspace/transfer:rw
+
+    # ─── FL Admin Console ─────────────────────────────────────────────
+    # Da qui si sottomette il job (nvflare/jobs/chargeshield_poc) alla
+    # federazione una volta che server+client sono up.
+    fl-admin:
+      cpu: 0.5
+      memory: 256m
+      binds:
+        - "nvflare/workspace/chargeshield_fl/prod_00/admin@chargeshield.local/startup:/workspace/startup:ro"
+        - "nvflare/workspace/chargeshield_fl/prod_00/admin@chargeshield.local/local:/workspace/local:rw"
+        # Il job va sottomesso da qui — bind read-only dell'intera cartella job.
+        - nvflare/jobs/:/workspace/jobs:ro
+
+    # ─── FL Client: Caltech ───────────────────────────────────────────
+    caltech:
+      binds:
+        - nvflare/workspace/chargeshield_fl/prod_00/caltech/startup:/workspace/startup:ro
+        - nvflare/workspace/chargeshield_fl/prod_00/caltech/local:/workspace/local:rw
+        - nvflare/workspace/chargeshield_fl/prod_00/caltech/transfer:/workspace/transfer:rw
+
+    # ─── FL Client: JPL ───────────────────────────────────────────────
+    jpl:
+      binds:
+        - nvflare/workspace/chargeshield_fl/prod_00/jpl/startup:/workspace/startup:ro
+        - nvflare/workspace/chargeshield_fl/prod_00/jpl/local:/workspace/local:rw
+        - nvflare/workspace/chargeshield_fl/prod_00/jpl/transfer:/workspace/transfer:rw
+
+    # ─── FL Client: Office1 ───────────────────────────────────────────
+    office1:
+      binds:
+        - nvflare/workspace/chargeshield_fl/prod_00/office1/startup:/workspace/startup:ro
+        - nvflare/workspace/chargeshield_fl/prod_00/office1/local:/workspace/local:rw
+        - nvflare/workspace/chargeshield_fl/prod_00/office1/transfer:/workspace/transfer:rw
+
+  links:
+    # Topologia a stella: ogni client + la console admin parlano solo col
+    # server (fed_learn_port/admin_port da nvflare/project.yml) — nessun link
+    # OT/OCPP/MQTT, perché quello strato non esiste nel codice reale.
+    - endpoints: [caltech:eth1, server:eth1]
+    - endpoints: [jpl:eth1, server:eth2]
+    - endpoints: [office1:eth1, server:eth3]
+    - endpoints: [fl-admin:eth1, server:eth4]
