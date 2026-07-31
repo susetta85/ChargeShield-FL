@@ -10,6 +10,98 @@ calling `run_fedmia`/`run_fedmia_shadow`/`run_lira` by name. The corrected "not 
 notes below are kept as a dated record of what was found and why the fix was scoped the way it
 was — see "Implemented 2026-07-24" note after each for the current status.
 
+> **Updated 2026-07-31 (user-requested correction, most important framing note in this document):**
+> everything below still holds, but the emphasis was in the wrong place. **FedMIA/Yeom/Shadow/LiRA
+> are not the contribution — they are the case study.** The framework's actual novel components are
+> the **ML Plane** (`src/ml/ml_plane.py`, `MLPlaneListener`) and the **Privacy Auditor**
+> (`src/auditor/privacy_auditor.py`), both domain-agnostic pieces of infrastructure that exist
+> independently of which attack is plugged in. See the new "The actual contribution: ML Plane +
+> Privacy Auditor" section below, inserted before the older "Reframed contribution list," which now
+> describes the attack suite's role as case-study validation rather than as a contribution in its
+> own right.
+
+## The actual contribution: ML Plane + Privacy Auditor
+
+This is the framing that should lead the paper's contributions section. Everything under
+"Reframed contribution list" below is still accurate, but item 2 there (the pluggable attack
+interface) and the whole Yeom/Shadow/LiRA suite are **the case study used to validate this
+architecture**, not the architecture itself.
+
+1. **The ML Plane** (`src/ml/ml_plane.py`) is a domain-agnostic, event-driven observability
+   substrate for FL training. `AbstractMLModel` (`src/ml/base_ml.py`) gives every training/DP/
+   aggregation component (`AutoencoderTrainer`, `GradientManager`, `FedAvgAggregator`) an
+   `emit_event()`/`subscribe()` pair; `MLPlane.wire(*components)` subscribes itself to all of them
+   as a single hub, and `FLArtifactCollector` is the first real consumer, assembling each round's
+   raw and privatized updates without the training loop itself knowing anything is listening. None
+   of this is EV-specific or attack-specific — it would wire up identically for any FL training
+   loop (image classifiers, LLM fine-tuning, tabular models) that emits the same three event kinds
+   (local update produced, update privatized, round aggregated). This is the part of the codebase
+   that should be pitched as reusable open-source infrastructure, not the autoencoder or the
+   ACN-Data adapter.
+2. **The Privacy Auditor** (`src/auditor/privacy_auditor.py`, `PrivacyAuditor.audit()`) is a
+   generic, config-driven (`config/auditor.yaml`) membership-inference-risk auditor: given any
+   node's model update as a flat dict of numeric weights, it computes a gradient-sensitivity proxy,
+   tracks cumulative differential-privacy budget consumption per node across rounds, and flags
+   threats (`GRADIENT_EXPLOSION`, `PRIVACY_BUDGET_NEAR_EXHAUSTION`/`_EXHAUSTED`) — all without any
+   dependency on EV charging semantics, the autoencoder architecture, or a specific attack. It is
+   the framework's real-time, always-on privacy telemetry layer, complementary to (and independent
+   of) whichever benchmark attack (Yeom/Shadow/LiRA today) is run offline against the same round
+   data for a full post-hoc leakage measurement.
+   >  **Accuracy note on "activated by the ML Plane" (2026-07-31):** today this is true at the
+   >  *data-flow* level, not yet at the *code* level. `run_ids()` (simulation) and
+   >  `ChargeShieldAggregator`'s equivalent logic (NVFLARE) call `PrivacyAuditor.audit()`
+   >  imperatively, once per node per round, immediately after aggregation — reading the raw
+   >  updates the ML Plane's `FLArtifactCollector` already assembled that round. `PrivacyAuditor`
+   >  itself does **not** subclass `MLPlaneListener` and is not registered via
+   >  `MLPlane.subscribe()`, unlike `FLArtifactCollector`. So the honest claim is: *the Privacy
+   >  Auditor's input is entirely sourced from what the ML Plane observes*, not yet *the Privacy
+   >  Auditor is a live ML Plane subscriber*. Making it a literal subscriber (so `audit()` fires
+   >  from an event callback instead of a loop in `run_ids()`) is a small, well-scoped refactor —
+   >  not done in this pass, flagged here so the paper's architecture diagram doesn't overstate the
+   >  current wiring.
+3. **Empirical goal these two components exist to demonstrate:** that differential privacy applied
+   to the FL *communication channel* (DP-FedAvg noises each client's clipped update before it
+   leaves the client; Central DP noises only the server-side aggregate) does not eliminate the
+   *privacy leakage* the Privacy Auditor and the LiRA case-study attack can both detect from the
+   raw per-client updates a semi-honest aggregator can observe before that noising happens (for
+   DP-FedAvg, after clipping but this is what the client actually sends; for Central DP, the raw
+   per-client contribution before the single aggregate noise draw). In other words: **protecting
+   the channel is not the same as protecting the computation.** The current Central DP result
+   (LiRA AUC 0.743 at ε=1.0, 0.812 at ε=0.1 — see `docs/PrivacyExposureScore_v1.md`) is exactly this
+   phenomenon measured, not a LiRA-specific curiosity: it is the framework (ML Plane feeding both
+   the Privacy Auditor and the case-study attacks a consistent view of the raw update) doing its
+   job of exposing a leakage channel that a purely ε-based compliance check would miss entirely.
+4. **Why FedMIA/Yeom/Shadow/LiRA are the case study, not the contribution:** they are one
+   concrete, swappable instantiation of "an attack that reads what the ML Plane observes and the
+   Privacy Auditor already flags as risky." Registering a second attack (Gradient Inversion, next
+   on the roadmap) validates the same ML Plane + Privacy Auditor architecture against a different
+   adversarial capability, without either component changing. If Yeom/Shadow/LiRA were removed
+   entirely and replaced with three different attacks tomorrow, the ML Plane and Privacy Auditor
+   would not need to change — that is the test for "is X the contribution or the case study," and
+   the attack suite fails it (by design) while the ML Plane and Privacy Auditor pass it.
+5. **Reusability beyond EV charging — what is generic vs. what is domain-specific today.** For the
+   "open-source framework usable for other scenarios" claim to be defensible rather than asserted,
+   it needs to name which parts:
+   - **Generic today, no EV/charging assumptions anywhere in the code:** `MLPlane`/`AbstractMLModel`/
+     `MLPlaneListener` (`src/ml/base_ml.py`, `ml_plane.py`); `PrivacyAuditor`/`AbstractPrivacyAuditor`
+     (`src/auditor/`, `src/core/base_auditor.py` — operates on a flat numeric `model_update` dict,
+     nothing domain-specific); `BaseAttack`/`ATTACK_REGISTRY` (`src/core/base_attack.py`,
+     `src/plugins/attacks/`); the three DP-mode implementations in `GradientManager`
+     (`src/ml/gradient_manager.py` — dp-fedavg/central/local are generic mechanisms, not EV-specific
+     math); `ChargingIDS`'s Krum/CUSUM/Cosine-Similarity core (`src/ids/charging_ids.py` — Byzantine-
+     robust aggregation checks that apply to any FL client population, despite the EV-flavoured
+     class name).
+   - **Domain-specific today — what an adopter targeting a different scenario would replace:**
+     `ACNDataset` (`src/adapters/acn_dataset.py`, EV-session-schema-specific), the `Autoencoder`
+     architecture and its 6 input features (`src/core/autoencoder.py`, tuned to EV session numeric
+     fields), the `sites`/cluster naming in `config/experiment.yaml`, and the OCPP/MQTT protocol
+     adapters (`src/adapters/ocpp16_adapter.py` etc. — themselves confirmed dead/unwired scaffolding
+     as of Sprint 10d, not a real dependency of the current pipeline).
+   - The class name `ChargingIDS` is itself slightly misleading for the "generic framework" claim —
+     its Krum/CUSUM/Cosine-Similarity logic has no EV-specific code path, only an EV-flavoured name;
+     worth a rename (e.g. `ByzantineDetector`) if/when this becomes an actual public framework
+     release, flagged here as a low-priority naming cleanup, not a functional gap.
+
 ## Why this reframe
 
 The project's original framing was "we show FedMIA still works despite DP" — a single-attack,
@@ -59,28 +151,35 @@ existing torch-dependent integration tests (`tests/test_run_experiments_integrat
 
 ## New Abstract (replaces the current README abstract for paper purposes)
 
+> **Updated 2026-07-31 to lead with the ML Plane + Privacy Auditor architecture rather than the
+> attack suite** — see "The actual contribution" section above for the full rationale.
+
 > Federated Learning (FL) is increasingly proposed as the privacy-preserving path for training
 > shared models over critical infrastructure — smart grids, EV charging networks, industrial
 > control systems — where centralising raw operational data is both a regulatory liability and a
 > security risk. Whether FL actually delivers on that promise in realistic, production-style
 > deployments is an empirical question that current research answers piecemeal: one paper per
-> attack, one dataset per paper, rarely a production FL framework, rarely an industrial dataset.
-> We present **ChargeShield-FL**, an open, reproducible benchmark for measuring how much privacy
-> leakage survives standard FL mitigations in a realistic critical-infrastructure setting, using
-> real EV charging session data (ACN-Data, 3 sites: Caltech, JPL, Office 1) in a multi-site FL
-> simulation with the real differential-privacy, Byzantine-robust-aggregation, and
-> intrusion-detection code paths this project implements — not synthetic data standing in for any
-> of the three. (A companion NVFLARE job/app implementing the same pipeline on a genuine
+> attack, one dataset per paper, rarely a production FL framework, rarely an industrial dataset. We
+> present **ChargeShield-FL**, built around two domain-agnostic components: the **ML Plane**, an
+> event-driven observability substrate that any FL training loop can wire into without coupling
+> the training code to whatever monitors it, and the **Privacy Auditor**, a config-driven,
+> real-time membership-inference-risk auditor that consumes what the ML Plane observes to flag
+> per-node, per-round privacy risk independent of any specific attack. Using real EV charging
+> session data (ACN-Data, 3 sites: Caltech, JPL, Office 1) as our case study — not synthetic data
+> standing in for a real deployment — we instantiate a pluggable benchmark attack suite
+> (Yeom/Shadow/LiRA today; gradient inversion and property inference as planned extensions) against
+> this architecture to answer the practically relevant question: **does differential privacy
+> applied to the FL communication channel actually stop the privacy leakage the Privacy Auditor is
+> built to detect, or only make the channel itself look private while the underlying computation
+> still leaks?** (A companion NVFLARE job/app implementing the same pipeline on a genuine
 > multi-container federation exists as a scaffold and is planned validation work, not a claim of
-> this paper — see "Current validation status" below.) Privacy attacks (membership inference
-> today; gradient inversion and property inference as planned extensions) are implemented as
-> pluggable modules against a common measurement harness, so the benchmark's value compounds with
-> each new attack or defence added, rather than resetting with every new paper. Our first results,
-> using a likelihood-ratio membership inference attack (LiRA), show [result — to be finalised once
-> Central DP + multi-seed results land]: differential privacy's nominal guarantee (ε) does not
-> reliably predict the empirical protection an attacker experiences, and the gap between the two
-> is largest under exactly the DP placement (central, aggregate-only noising) that many production
-> FL deployments favour for utility reasons.
+> this paper — see "Current validation status" below.) Our first results, using the LiRA case-study
+> attack, show [result — to be finalised once Central DP + multi-seed results land]: differential
+> privacy's nominal guarantee (ε) does not reliably predict the empirical protection an attacker
+> experiences, and the gap between the two is largest under exactly the DP placement (central,
+> aggregate-only noising) that many production FL deployments favour for utility reasons — evidence
+> that channel-level DP and computation-level privacy are not the same guarantee, which is the
+> architectural point the ML Plane and Privacy Auditor exist to make measurable in the first place.
 
 ### Current validation status — do not overclaim this in the paper
 
@@ -126,6 +225,15 @@ above.
 one.)
 
 ## Reframed contribution list
+
+> **Note (2026-07-31):** read this list alongside "The actual contribution: ML Plane + Privacy
+> Auditor" above, not instead of it. Items 1, 3, and 4 below are genuine supporting contributions.
+> Item 2 (the pluggable attack interface, and by extension Yeom/Shadow/LiRA themselves) is the
+> **case-study validation layer** for the ML Plane + Privacy Auditor architecture, not a
+> stand-alone contribution — kept in this list because "pluggable" is itself a real, useful
+> property of the harness, but the paper should not present "we made the attacks pluggable" as
+> equal in weight to "we built a reusable FL privacy-observability architecture and used it to show
+> DP-on-the-channel doesn't stop leakage."
 
 Where the old framing had one contribution ("we show LiRA beats DP"), the benchmark framing
 supports a list that keeps growing:
