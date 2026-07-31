@@ -360,17 +360,28 @@ experiment-nodp-sweep: _check-deps
 	LOG="$$SWEEP_DIR/sweep_log.txt"; \
 	echo "→ no-DP multi-seed sweep #$$SWEEP_NUM — seeds: $(SEEDS)" | tee "$$LOG"; \
 	echo "  n_shadow=$(N_SHADOW), rounds=10, no-DP" | tee -a "$$LOG"; \
+	FAILED=0; \
 	for seed in $(SEEDS); do \
 		echo "=== seed=$$seed ===" | tee -a "$$LOG"; \
-		$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
+		{ $(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
 			--config config/experiment.yaml \
 			--no-dp \
 			--rounds 10 \
 			--seed $$seed \
 			--n-shadow $(N_SHADOW) \
-			--sweep-dir "$$SWEEP_DIR" 2>&1 | tee -a "$$LOG"; \
+			--sweep-dir "$$SWEEP_DIR"; echo $$? > /tmp/_cs_rc_$$$$; } 2>&1 | tee -a "$$LOG"; \
+		RC=$$(cat /tmp/_cs_rc_$$$$ 2>/dev/null || echo 1); rm -f /tmp/_cs_rc_$$$$; \
+		if [ "$$RC" != "0" ]; then \
+			echo "✗ seed=$$seed FALLITO (exit $$RC)" | tee -a "$$LOG"; \
+			FAILED=$$((FAILED + 1)); \
+		fi; \
 	done; \
-	echo "✓ no-DP sweep #$$SWEEP_NUM completato — controlla Seed Aggregation nell'Excel" | tee -a "$$LOG"
+	if [ $$FAILED -eq 0 ]; then \
+		echo "✓ no-DP sweep #$$SWEEP_NUM completato — controlla Seed Aggregation nell'Excel" | tee -a "$$LOG"; \
+	else \
+		echo "✗ no-DP sweep #$$SWEEP_NUM: $$FAILED/$(words $(SEEDS)) seed falliti — NON e' completo, vedi $$LOG" | tee -a "$$LOG"; \
+		exit 1; \
+	fi
 
 .PHONY: experiment-dp-sweep
 experiment-dp-sweep: _check-deps
@@ -382,17 +393,28 @@ experiment-dp-sweep: _check-deps
 	LOG="$$SWEEP_DIR/sweep_log.txt"; \
 	echo "→ DP multi-seed sweep #$$SWEEP_NUM — ε=$(EPS), seeds: $(SEEDS)" | tee "$$LOG"; \
 	echo "  n_shadow=$(N_SHADOW), rounds=10, DP ε=$(EPS)" | tee -a "$$LOG"; \
+	FAILED=0; \
 	for seed in $(SEEDS); do \
 		echo "=== seed=$$seed ===" | tee -a "$$LOG"; \
-		$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
+		{ $(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
 			--config config/experiment.yaml \
 			--epsilon $(EPS) \
 			--rounds 10 \
 			--seed $$seed \
 			--n-shadow $(N_SHADOW) \
-			--sweep-dir "$$SWEEP_DIR" 2>&1 | tee -a "$$LOG"; \
+			--sweep-dir "$$SWEEP_DIR"; echo $$? > /tmp/_cs_rc_$$$$; } 2>&1 | tee -a "$$LOG"; \
+		RC=$$(cat /tmp/_cs_rc_$$$$ 2>/dev/null || echo 1); rm -f /tmp/_cs_rc_$$$$; \
+		if [ "$$RC" != "0" ]; then \
+			echo "✗ seed=$$seed FALLITO (exit $$RC)" | tee -a "$$LOG"; \
+			FAILED=$$((FAILED + 1)); \
+		fi; \
 	done; \
-	echo "✓ DP sweep #$$SWEEP_NUM completato (ε=$(EPS)) — confronta con no-DP in Seed Aggregation" | tee -a "$$LOG"
+	if [ $$FAILED -eq 0 ]; then \
+		echo "✓ DP sweep #$$SWEEP_NUM completato (ε=$(EPS)) — confronta con no-DP in Seed Aggregation" | tee -a "$$LOG"; \
+	else \
+		echo "✗ DP sweep #$$SWEEP_NUM (ε=$(EPS)): $$FAILED/$(words $(SEEDS)) seed falliti — NON e' completo, vedi $$LOG" | tee -a "$$LOG"; \
+		exit 1; \
+	fi
 
 # Central DP multi-seed sweep (2026-07-22) — CS4 candidate, docs/CaseStudies.md §2.4.3.
 .PHONY: experiment-central-dp-sweep
@@ -405,18 +427,29 @@ experiment-central-dp-sweep: _check-deps
 	LOG="$$SWEEP_DIR/sweep_log.txt"; \
 	echo "→ Central DP multi-seed sweep #$$SWEEP_NUM — ε=$(EPS), seeds: $(SEEDS)" | tee "$$LOG"; \
 	echo "  n_shadow=$(N_SHADOW), rounds=10, Central DP ε=$(EPS)" | tee -a "$$LOG"; \
+	FAILED=0; \
 	for seed in $(SEEDS); do \
 		echo "=== seed=$$seed ===" | tee -a "$$LOG"; \
-		$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
+		{ $(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
 			--config config/experiment.yaml \
 			--epsilon $(EPS) \
 			--rounds 10 \
 			--seed $$seed \
 			--n-shadow $(N_SHADOW) \
 			--dp-mode central \
-			--sweep-dir "$$SWEEP_DIR" 2>&1 | tee -a "$$LOG"; \
+			--sweep-dir "$$SWEEP_DIR"; echo $$? > /tmp/_cs_rc_$$$$; } 2>&1 | tee -a "$$LOG"; \
+		RC=$$(cat /tmp/_cs_rc_$$$$ 2>/dev/null || echo 1); rm -f /tmp/_cs_rc_$$$$; \
+		if [ "$$RC" != "0" ]; then \
+			echo "✗ seed=$$seed FALLITO (exit $$RC)" | tee -a "$$LOG"; \
+			FAILED=$$((FAILED + 1)); \
+		fi; \
 	done; \
-	echo "✓ Central DP sweep #$$SWEEP_NUM completato — atteso: LiRA NON soppressa (vedi CaseStudies.md §2.4.3)" | tee -a "$$LOG"
+	if [ $$FAILED -eq 0 ]; then \
+		echo "✓ Central DP sweep #$$SWEEP_NUM completato — atteso: LiRA NON soppressa (vedi CaseStudies.md §2.4.3)" | tee -a "$$LOG"; \
+	else \
+		echo "✗ Central DP sweep #$$SWEEP_NUM (ε=$(EPS)): $$FAILED/$(words $(SEEDS)) seed falliti — NON e' completo, vedi $$LOG" | tee -a "$$LOG"; \
+		exit 1; \
+	fi
 
 # Local DP multi-seed sweep (2026-07-22).
 .PHONY: experiment-local-dp-sweep
@@ -429,18 +462,29 @@ experiment-local-dp-sweep: _check-deps
 	LOG="$$SWEEP_DIR/sweep_log.txt"; \
 	echo "→ Local DP multi-seed sweep #$$SWEEP_NUM — ε=$(EPS), seeds: $(SEEDS)" | tee "$$LOG"; \
 	echo "  n_shadow=$(N_SHADOW), rounds=10, Local DP ε=$(EPS)" | tee -a "$$LOG"; \
+	FAILED=0; \
 	for seed in $(SEEDS); do \
 		echo "=== seed=$$seed ===" | tee -a "$$LOG"; \
-		$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
+		{ $(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
 			--config config/experiment.yaml \
 			--epsilon $(EPS) \
 			--rounds 10 \
 			--seed $$seed \
 			--n-shadow $(N_SHADOW) \
 			--dp-mode local \
-			--sweep-dir "$$SWEEP_DIR" 2>&1 | tee -a "$$LOG"; \
+			--sweep-dir "$$SWEEP_DIR"; echo $$? > /tmp/_cs_rc_$$$$; } 2>&1 | tee -a "$$LOG"; \
+		RC=$$(cat /tmp/_cs_rc_$$$$ 2>/dev/null || echo 1); rm -f /tmp/_cs_rc_$$$$; \
+		if [ "$$RC" != "0" ]; then \
+			echo "✗ seed=$$seed FALLITO (exit $$RC)" | tee -a "$$LOG"; \
+			FAILED=$$((FAILED + 1)); \
+		fi; \
 	done; \
-	echo "✓ Local DP sweep #$$SWEEP_NUM completato — IDS degradato per design (vedi docstring run_ids())" | tee -a "$$LOG"
+	if [ $$FAILED -eq 0 ]; then \
+		echo "✓ Local DP sweep #$$SWEEP_NUM completato — IDS degradato per design (vedi docstring run_ids())" | tee -a "$$LOG"; \
+	else \
+		echo "✗ Local DP sweep #$$SWEEP_NUM (ε=$(EPS)): $$FAILED/$(words $(SEEDS)) seed falliti — NON e' completo, vedi $$LOG" | tee -a "$$LOG"; \
+		exit 1; \
+	fi
 
 
 .PHONY: experiment-dry
