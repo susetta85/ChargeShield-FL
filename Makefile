@@ -257,6 +257,41 @@ SEED     ?= 42
 # Override: make experiment-nodp-sweep SEEDS="42 123 456"
 SEEDS    ?= 42 123 456 789 1234
 
+# Lock anti-concorrenza per gli sweep multi-seed (2026-07-31, trovato un caso reale:
+# due 'make experiment-*-sweep' avviati per errore in parallelo hanno fatto
+# competere due training FL/LiRA per la stessa CPU/RAM sulla stessa macchina —
+# uno dei due e' stato terminato silenziosamente dall'OS (probabile OOM kill: il
+# processo e' sparito senza alcun traceback Python nel suo stesso log, senza
+# produrre risultati). Le run FL/LiRA sono deliberatamente CPU/RAM-intensive
+# (50 epoche/round, fino a 16 shadow model per cluster) — due insieme sulla
+# stessa macchina non sono solo piu' lente, rischiano di far fallire una delle
+# due senza alcun errore visibile. Questo lock blocca un secondo sweep finche'
+# il primo non e' finito (o la sua lock e' stale, cioe' il PID che la deteneva
+# non esiste piu' — es. macchina riavviata, processo killato manualmente).
+SWEEP_LOCK := $(EXPERIMENTS)/.sweep_running.lock
+
+.PHONY: _sweep_lock
+_sweep_lock:
+	@mkdir -p $(EXPERIMENTS); \
+	if [ -f "$(SWEEP_LOCK)" ]; then \
+		OLD_PID=$$(head -1 "$(SWEEP_LOCK)" | cut -d' ' -f1); \
+		OLD_INFO=$$(cat "$(SWEEP_LOCK)"); \
+		if [ -n "$$OLD_PID" ] && kill -0 "$$OLD_PID" 2>/dev/null; then \
+			echo "✗ Un altro sweep e' gia' in corso (PID $$OLD_PID): $$OLD_INFO"; \
+			echo "  Due sweep FL/LiRA in parallelo competono per CPU/RAM sulla stessa"; \
+			echo "  macchina e possono causare un OOM kill silenzioso (visto il 2026-07-31"; \
+			echo "  su dp-sweep3 — processo sparito senza traceback, nessun risultato)."; \
+			echo "  Attendi che finisca, oppure interrompilo (kill $$OLD_PID) se e' bloccato,"; \
+			echo "  prima di lanciarne un altro. Se sei SICURO che non stia girando nulla"; \
+			echo "  (es. la macchina e' stata riavviata), rimuovi il lock a mano:"; \
+			echo "    rm $(SWEEP_LOCK)"; \
+			exit 1; \
+		else \
+			echo "⚠ Lock stale trovato ($$OLD_INFO, PID non piu' attivo) — lo rimuovo e procedo."; \
+			rm -f "$(SWEEP_LOCK)"; \
+		fi; \
+	fi
+
 # Smoke test: 5 round, no-DP, n_shadow=2, shadow-epochs-cap=20 — verifica pipeline rapida.
 # --shadow-epochs-cap 20: LiRA usa max 20 epoche per shadow model invece di 250 (formula default).
 #   Riduce il tempo da ~30 min a ~3-5 min. NON usare nei run sperimentali reali.
@@ -351,8 +386,10 @@ experiment-local-dp: _check-deps
 # SEED deve restare in every-run single target; SEEDS è per il loop multi-seed.
 
 .PHONY: experiment-nodp-sweep
-experiment-nodp-sweep: _check-deps
+experiment-nodp-sweep: _check-deps _sweep_lock
 	@mkdir -p $(EXPERIMENTS); \
+	echo "$$$$ experiment-nodp-sweep avviato $$(date '+%Y-%m-%d %H:%M:%S')" > $(SWEEP_LOCK); \
+	trap 'rm -f $(SWEEP_LOCK)' EXIT INT TERM; \
 	SWEEP_NUM=$$(find $(EXPERIMENTS) -maxdepth 1 -type d -name 'nodp-sweep[0-9]*' 2>/dev/null | wc -l | tr -d ' '); \
 	SWEEP_NUM=$$((SWEEP_NUM + 1)); \
 	SWEEP_DIR=$(EXPERIMENTS)/nodp-sweep$$SWEEP_NUM; \
@@ -384,8 +421,10 @@ experiment-nodp-sweep: _check-deps
 	fi
 
 .PHONY: experiment-dp-sweep
-experiment-dp-sweep: _check-deps
+experiment-dp-sweep: _check-deps _sweep_lock
 	@mkdir -p $(EXPERIMENTS); \
+	echo "$$$$ experiment-dp-sweep avviato $$(date '+%Y-%m-%d %H:%M:%S')" > $(SWEEP_LOCK); \
+	trap 'rm -f $(SWEEP_LOCK)' EXIT INT TERM; \
 	SWEEP_NUM=$$(find $(EXPERIMENTS) -maxdepth 1 -type d -name 'dp-sweep[0-9]*' 2>/dev/null | wc -l | tr -d ' '); \
 	SWEEP_NUM=$$((SWEEP_NUM + 1)); \
 	SWEEP_DIR=$(EXPERIMENTS)/dp-sweep$$SWEEP_NUM; \
@@ -418,8 +457,10 @@ experiment-dp-sweep: _check-deps
 
 # Central DP multi-seed sweep (2026-07-22) — CS4 candidate, docs/CaseStudies.md §2.4.3.
 .PHONY: experiment-central-dp-sweep
-experiment-central-dp-sweep: _check-deps
+experiment-central-dp-sweep: _check-deps _sweep_lock
 	@mkdir -p $(EXPERIMENTS); \
+	echo "$$$$ experiment-central-dp-sweep avviato $$(date '+%Y-%m-%d %H:%M:%S')" > $(SWEEP_LOCK); \
+	trap 'rm -f $(SWEEP_LOCK)' EXIT INT TERM; \
 	SWEEP_NUM=$$(find $(EXPERIMENTS) -maxdepth 1 -type d -name 'central-sweep[0-9]*' 2>/dev/null | wc -l | tr -d ' '); \
 	SWEEP_NUM=$$((SWEEP_NUM + 1)); \
 	SWEEP_DIR=$(EXPERIMENTS)/central-sweep$$SWEEP_NUM; \
@@ -453,8 +494,10 @@ experiment-central-dp-sweep: _check-deps
 
 # Local DP multi-seed sweep (2026-07-22).
 .PHONY: experiment-local-dp-sweep
-experiment-local-dp-sweep: _check-deps
+experiment-local-dp-sweep: _check-deps _sweep_lock
 	@mkdir -p $(EXPERIMENTS); \
+	echo "$$$$ experiment-local-dp-sweep avviato $$(date '+%Y-%m-%d %H:%M:%S')" > $(SWEEP_LOCK); \
+	trap 'rm -f $(SWEEP_LOCK)' EXIT INT TERM; \
 	SWEEP_NUM=$$(find $(EXPERIMENTS) -maxdepth 1 -type d -name 'local-sweep[0-9]*' 2>/dev/null | wc -l | tr -d ' '); \
 	SWEEP_NUM=$$((SWEEP_NUM + 1)); \
 	SWEEP_DIR=$(EXPERIMENTS)/local-sweep$$SWEEP_NUM; \
