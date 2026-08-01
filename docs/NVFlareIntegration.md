@@ -303,7 +303,25 @@ exactly the kind that need a real `nvflare simulator` run to resolve, not more r
 6. ~~Solve raw-update extraction for LiRA/Shadow...~~ **Done 2026-07-22 (fase 5)**, scoped as an offline step by design — `ChargeShieldAggregator._export_fl_results()` dumps the exact `run_fl_rounds()`-shaped data per round, and `scripts/run_nvflare_mia.py` runs the existing, already-validated `run_lira()`/`run_ids()`/`run_fedmia()` against it unchanged. See the dedicated section above for why this wasn't ported to run live inside `aggregate()`.
 7. **Rewritten 2026-07-31 (user-requested: a real multi-container deployment is needed, not just the simulator)** — `containerlab/topology.clab.yml` (moved from the repo root, where it lived misplaced relative to its own header comment and every doc reference to it) rewritten from scratch for the actual 3-real-site architecture instead of the Sprint-5 vintage 4-fictional-cluster + 12-OT-node + separate-auditor/ids/mqtt-broker-container design, which never matched the code that was actually built (PrivacyAuditor/ChargingIDS run server-side inside `ChargeShieldAggregator`, not as separate network services — confirmed by reading `config_fed_server.json`'s `components[]`). The new topology has exactly 5 nodes matching `nvflare/project.yml`'s real participants: `server`, `caltech`, `jpl`, `office1`, `fl-admin`, star-topology links to `server`, no OT/OCPP/MQTT layer. `Dockerfile.flare` fixed to set `CHARGESHIELD_PROJECT_ROOT=/app` (missing entirely before — without it, `_find_project_root()` fails or silently loads 0 sessions inside a container, the same bug class already found and fixed for `nvflare simulator` on 2026-07-24) and its header comment corrected to stop describing "auditor"/"IDS" as separate container roles.
 
-   **Runbook (not yet executed — no Docker/Containerlab available in the sandbox that wrote this; the user runs each step on their own Mac via OrbStack's Linux VM and reports back what breaks, same validation pattern as the simulator work in steps 1-2 above):**
+   **Update 2026-08-01 — first real attempt, bug found and fixed:** the user ran steps 1-3 for
+   real on their Mac (Debian VM via OrbStack). `docker build` and `nvflare provision` succeeded,
+   but `containerlab deploy` failed immediately with `stat .../containerlab/nvflare/workspace/
+   chargeshield_fl/prod_00/caltech/local: no such file or directory` — note the `containerlab/`
+   wrongly prepended to the path. Root cause: **containerlab resolves relative bind-mount source
+   paths relative to the directory containing the `.clab.yml` file itself, not relative to the
+   directory the command is invoked from.** Every bind in `topology.clab.yml` was written as if
+   relative to the repo root (`src/`, `nvflare/workspace/...`, etc.) — correct for readability but
+   wrong for containerlab's actual resolution rule, since the file lives in `containerlab/`, one
+   level below the repo root. Fixed by prefixing every relative bind source with `../` (e.g.
+   `../src/:/app/src:ro`, `../nvflare/workspace/.../caltech/local:/workspace/local:rw`), for all 4
+   default binds and all 12 per-node binds (server/fl-admin/caltech/jpl/office1). Verified the
+   fixed file still parses as valid YAML with the same 5 nodes and 12 total binds via PyYAML in
+   the sandbox (containerlab itself still unavailable there, so the actual `deploy` retry has to
+   happen on the user's machine again). This is the first of the "expect the first attempt to
+   fail somewhere" candidates below to actually be hit — worth noting it wasn't even on the
+   predicted list, which was about provisioning/networking/permissions, not path resolution.
+
+   **Runbook (user reruns `containerlab deploy` with the fixed topology; steps 1-2 already done once above, no need to rebuild the image or reprovision unless something else changed):**
    ```bash
    # 1. Build the image (from repo root)
    docker build -f Dockerfile.flare -t chargeshield-fl:latest .

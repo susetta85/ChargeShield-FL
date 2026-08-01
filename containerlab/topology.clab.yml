@@ -57,18 +57,28 @@ topology:
       # e dove bindiamo datasets/ ed experiments/ sotto.
       CHARGESHIELD_PROJECT_ROOT: /app
     binds:
+      # NOTA (fix 2026-08-01, primo deploy reale): containerlab risolve i path
+      # relativi nei bind rispetto alla directory del file .clab.yml stesso
+      # (containerlab/), non rispetto alla cwd da cui si lancia il comando.
+      # Tutti i path qui sotto sono quindi scritti come "../<path-da-project-root>"
+      # per puntare correttamente alla project root, indipendentemente da dove
+      # containerlab deploy viene invocato. Bug reale trovato al primo deploy
+      # (errore: "stat .../containerlab/nvflare/workspace/.../caltech/local:
+      # no such file or directory" — containerlab aveva anteposto containerlab/
+      # al path relativo).
+      #
       # Codice e config (read-only — build-time nell'immagine, ribindati qui
       # solo per poter aggiornare senza rebuildare durante lo sviluppo).
-      - src/:/app/src:ro
-      - config/:/app/config:ro
+      - ../src/:/app/src:ro
+      - ../config/:/app/config:ro
       # Dataset ACN reale — condiviso in sola lettura a tutti i nodi; ogni
       # client seleziona la propria sottocartella (datasets/acn/<sito>/) via
       # cluster_id, derivato dal nome NVFLARE del sito (non da questo bind).
-      - datasets/acn/:/app/datasets/acn:ro
+      - ../datasets/acn/:/app/datasets/acn:ro
       # Output — scrittura condivisa, stessa directory che la simulazione
       # single-process usa (results_export_path/fl_results_export_path in
       # config_fed_server.json puntano qui).
-      - experiments/:/app/experiments:rw
+      - ../experiments/:/app/experiments:rw
 
   nodes:
 
@@ -82,9 +92,9 @@ topology:
       env:
         CHARGESHIELD_PROJECT_ROOT: /app
       binds:
-        - nvflare/workspace/chargeshield_fl/prod_00/server/startup:/workspace/startup:ro
-        - nvflare/workspace/chargeshield_fl/prod_00/server/local:/workspace/local:rw
-        - nvflare/workspace/chargeshield_fl/prod_00/server/transfer:/workspace/transfer:rw
+        - ../nvflare/workspace/chargeshield_fl/prod_00/server/startup:/workspace/startup:ro
+        - ../nvflare/workspace/chargeshield_fl/prod_00/server/local:/workspace/local:rw
+        - ../nvflare/workspace/chargeshield_fl/prod_00/server/transfer:/workspace/transfer:rw
 
     # ─── FL Admin Console ─────────────────────────────────────────────
     # Da qui si sottomette il job (nvflare/jobs/chargeshield_poc) alla
@@ -93,31 +103,31 @@ topology:
       cpu: 0.5
       memory: 256m
       binds:
-        - "nvflare/workspace/chargeshield_fl/prod_00/admin@chargeshield.local/startup:/workspace/startup:ro"
-        - "nvflare/workspace/chargeshield_fl/prod_00/admin@chargeshield.local/local:/workspace/local:rw"
+        - "../nvflare/workspace/chargeshield_fl/prod_00/admin@chargeshield.local/startup:/workspace/startup:ro"
+        - "../nvflare/workspace/chargeshield_fl/prod_00/admin@chargeshield.local/local:/workspace/local:rw"
         # Il job va sottomesso da qui — bind read-only dell'intera cartella job.
-        - nvflare/jobs/:/workspace/jobs:ro
+        - ../nvflare/jobs/:/workspace/jobs:ro
 
     # ─── FL Client: Caltech ───────────────────────────────────────────
     caltech:
       binds:
-        - nvflare/workspace/chargeshield_fl/prod_00/caltech/startup:/workspace/startup:ro
-        - nvflare/workspace/chargeshield_fl/prod_00/caltech/local:/workspace/local:rw
-        - nvflare/workspace/chargeshield_fl/prod_00/caltech/transfer:/workspace/transfer:rw
+        - ../nvflare/workspace/chargeshield_fl/prod_00/caltech/startup:/workspace/startup:ro
+        - ../nvflare/workspace/chargeshield_fl/prod_00/caltech/local:/workspace/local:rw
+        - ../nvflare/workspace/chargeshield_fl/prod_00/caltech/transfer:/workspace/transfer:rw
 
     # ─── FL Client: JPL ───────────────────────────────────────────────
     jpl:
       binds:
-        - nvflare/workspace/chargeshield_fl/prod_00/jpl/startup:/workspace/startup:ro
-        - nvflare/workspace/chargeshield_fl/prod_00/jpl/local:/workspace/local:rw
-        - nvflare/workspace/chargeshield_fl/prod_00/jpl/transfer:/workspace/transfer:rw
+        - ../nvflare/workspace/chargeshield_fl/prod_00/jpl/startup:/workspace/startup:ro
+        - ../nvflare/workspace/chargeshield_fl/prod_00/jpl/local:/workspace/local:rw
+        - ../nvflare/workspace/chargeshield_fl/prod_00/jpl/transfer:/workspace/transfer:rw
 
     # ─── FL Client: Office1 ───────────────────────────────────────────
     office1:
       binds:
-        - nvflare/workspace/chargeshield_fl/prod_00/office1/startup:/workspace/startup:ro
-        - nvflare/workspace/chargeshield_fl/prod_00/office1/local:/workspace/local:rw
-        - nvflare/workspace/chargeshield_fl/prod_00/office1/transfer:/workspace/transfer:rw
+        - ../nvflare/workspace/chargeshield_fl/prod_00/office1/startup:/workspace/startup:ro
+        - ../nvflare/workspace/chargeshield_fl/prod_00/office1/local:/workspace/local:rw
+        - ../nvflare/workspace/chargeshield_fl/prod_00/office1/transfer:/workspace/transfer:rw
 
   links:
     # Topologia a stella: ogni client + la console admin parlano solo col
