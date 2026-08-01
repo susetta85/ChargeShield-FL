@@ -429,6 +429,18 @@ experiment-dp-sweep: _check-deps _sweep_lock
 	SWEEP_NUM=$$((SWEEP_NUM + 1)); \
 	SWEEP_DIR=$(EXPERIMENTS)/dp-sweep$$SWEEP_NUM; \
 	mkdir -p "$$SWEEP_DIR"; \
+	EXISTING_JSON=$$(find "$$SWEEP_DIR" -maxdepth 1 -name 'experiment_*.json' 2>/dev/null | head -1); \
+	if [ -n "$$EXISTING_JSON" ]; then \
+		EXISTING_EPS=$$($(PYTHON) -c "import json,sys; print(json.load(open(sys.argv[1]))['config'].get('epsilon'))" "$$EXISTING_JSON" 2>/dev/null); \
+		if [ -n "$$EXISTING_EPS" ] && [ "$$EXISTING_EPS" != "$(EPS)" ]; then \
+			echo "✗ $$SWEEP_DIR contiene già risultati con epsilon=$$EXISTING_EPS, diverso da EPS=$(EPS) richiesto ora."; \
+			echo "  Scrivere qui mischierebbe epsilon diversi nello stesso Seed Aggregation — esattamente"; \
+			echo "  il bug reale trovato il 2026-08-01 (SWEEP_NUM riconta solo le cartelle, non sa"; \
+			echo "  quale epsilon già contengono). Passa --sweep-dir esplicito verso una cartella"; \
+			echo "  nuova, o sposta/archivia $$SWEEP_DIR prima di riusarla."; \
+			exit 1; \
+		fi; \
+	fi; \
 	LOG="$$SWEEP_DIR/sweep_log.txt"; \
 	echo "→ DP multi-seed sweep #$$SWEEP_NUM — ε=$(EPS), seeds: $(SEEDS)" | tee "$$LOG"; \
 	echo "  n_shadow=$(N_SHADOW), rounds=10, DP ε=$(EPS)" | tee -a "$$LOG"; \
@@ -465,6 +477,18 @@ experiment-central-dp-sweep: _check-deps _sweep_lock
 	SWEEP_NUM=$$((SWEEP_NUM + 1)); \
 	SWEEP_DIR=$(EXPERIMENTS)/central-sweep$$SWEEP_NUM; \
 	mkdir -p "$$SWEEP_DIR"; \
+	EXISTING_JSON=$$(find "$$SWEEP_DIR" -maxdepth 1 -name 'experiment_*.json' 2>/dev/null | head -1); \
+	if [ -n "$$EXISTING_JSON" ]; then \
+		EXISTING_EPS=$$($(PYTHON) -c "import json,sys; print(json.load(open(sys.argv[1]))['config'].get('epsilon'))" "$$EXISTING_JSON" 2>/dev/null); \
+		if [ -n "$$EXISTING_EPS" ] && [ "$$EXISTING_EPS" != "$(EPS)" ]; then \
+			echo "✗ $$SWEEP_DIR contiene già risultati con epsilon=$$EXISTING_EPS, diverso da EPS=$(EPS) richiesto ora."; \
+			echo "  Scrivere qui mischierebbe epsilon diversi nello stesso Seed Aggregation — esattamente"; \
+			echo "  il bug reale trovato il 2026-08-01 (SWEEP_NUM riconta solo le cartelle, non sa"; \
+			echo "  quale epsilon già contengono). Passa --sweep-dir esplicito verso una cartella"; \
+			echo "  nuova, o sposta/archivia $$SWEEP_DIR prima di riusarla."; \
+			exit 1; \
+		fi; \
+	fi; \
 	LOG="$$SWEEP_DIR/sweep_log.txt"; \
 	echo "→ Central DP multi-seed sweep #$$SWEEP_NUM — ε=$(EPS), seeds: $(SEEDS)" | tee "$$LOG"; \
 	echo "  n_shadow=$(N_SHADOW), rounds=10, Central DP ε=$(EPS)" | tee -a "$$LOG"; \
@@ -502,6 +526,18 @@ experiment-local-dp-sweep: _check-deps _sweep_lock
 	SWEEP_NUM=$$((SWEEP_NUM + 1)); \
 	SWEEP_DIR=$(EXPERIMENTS)/local-sweep$$SWEEP_NUM; \
 	mkdir -p "$$SWEEP_DIR"; \
+	EXISTING_JSON=$$(find "$$SWEEP_DIR" -maxdepth 1 -name 'experiment_*.json' 2>/dev/null | head -1); \
+	if [ -n "$$EXISTING_JSON" ]; then \
+		EXISTING_EPS=$$($(PYTHON) -c "import json,sys; print(json.load(open(sys.argv[1]))['config'].get('epsilon'))" "$$EXISTING_JSON" 2>/dev/null); \
+		if [ -n "$$EXISTING_EPS" ] && [ "$$EXISTING_EPS" != "$(EPS)" ]; then \
+			echo "✗ $$SWEEP_DIR contiene già risultati con epsilon=$$EXISTING_EPS, diverso da EPS=$(EPS) richiesto ora."; \
+			echo "  Scrivere qui mischierebbe epsilon diversi nello stesso Seed Aggregation — esattamente"; \
+			echo "  il bug reale trovato il 2026-08-01 (SWEEP_NUM riconta solo le cartelle, non sa"; \
+			echo "  quale epsilon già contengono). Passa --sweep-dir esplicito verso una cartella"; \
+			echo "  nuova, o sposta/archivia $$SWEEP_DIR prima di riusarla."; \
+			exit 1; \
+		fi; \
+	fi; \
 	LOG="$$SWEEP_DIR/sweep_log.txt"; \
 	echo "→ Local DP multi-seed sweep #$$SWEEP_NUM — ε=$(EPS), seeds: $(SEEDS)" | tee "$$LOG"; \
 	echo "  n_shadow=$(N_SHADOW), rounds=10, Local DP ε=$(EPS)" | tee -a "$$LOG"; \
