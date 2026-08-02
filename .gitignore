@@ -54,6 +54,12 @@ prod_*/
 # provision`, questo no — il simulatore non fa provisioning).
 nvflare/sim_workspace/
 
+# File di firma scritti da `submit_job` dentro nvflare/jobs/ stesso al momento
+# della sottomissione (2026-08-02, primo submit_job reale — vedi
+# nvflare/lighter/utils.py:sign_folders). Rigenerati ad ogni submit, non vanno
+# tracciati.
+nvflare/jobs/**/.__nvfl_sig.json
+
 # mTLS certificates
 certs/
 certs/

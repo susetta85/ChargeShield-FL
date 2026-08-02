@@ -105,8 +105,15 @@ topology:
       binds:
         - "../nvflare/workspace/chargeshield_fl/prod_00/admin@chargeshield.local/startup:/workspace/startup:ro"
         - "../nvflare/workspace/chargeshield_fl/prod_00/admin@chargeshield.local/local:/workspace/local:rw"
-        # Il job va sottomesso da qui — bind read-only dell'intera cartella job.
-        - ../nvflare/jobs/:/workspace/jobs:ro
+        # Il job va sottomesso da qui. FIX 2026-08-02 (primo submit_job reale):
+        # era montato :ro, ma `submit_job` scrive un file di firma
+        # (.__nvfl_sig.json) dentro la cartella del job stesso prima
+        # dell'upload (nvflare/lighter/utils.py:sign_folders) — con :ro fallisce
+        # con "OSError: Read-only file system". Deve essere :rw. Nota: questo
+        # scrive i file di firma anche nella cartella reale del repo
+        # (nvflare/jobs/chargeshield_poc/), non solo nel container — vedi
+        # .gitignore/pulizia post-submit in docs/NVFlareIntegration.md.
+        - ../nvflare/jobs/:/workspace/jobs:rw
 
     # ─── FL Client: Caltech ───────────────────────────────────────────
     caltech:

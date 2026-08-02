@@ -303,6 +303,32 @@ exactly the kind that need a real `nvflare simulator` run to resolve, not more r
 6. ~~Solve raw-update extraction for LiRA/Shadow...~~ **Done 2026-07-22 (fase 5)**, scoped as an offline step by design — `ChargeShieldAggregator._export_fl_results()` dumps the exact `run_fl_rounds()`-shaped data per round, and `scripts/run_nvflare_mia.py` runs the existing, already-validated `run_lira()`/`run_ids()`/`run_fedmia()` against it unchanged. See the dedicated section above for why this wasn't ported to run live inside `aggregate()`.
 7. **Rewritten 2026-07-31 (user-requested: a real multi-container deployment is needed, not just the simulator)** — `containerlab/topology.clab.yml` (moved from the repo root, where it lived misplaced relative to its own header comment and every doc reference to it) rewritten from scratch for the actual 3-real-site architecture instead of the Sprint-5 vintage 4-fictional-cluster + 12-OT-node + separate-auditor/ids/mqtt-broker-container design, which never matched the code that was actually built (PrivacyAuditor/ChargingIDS run server-side inside `ChargeShieldAggregator`, not as separate network services — confirmed by reading `config_fed_server.json`'s `components[]`). The new topology has exactly 5 nodes matching `nvflare/project.yml`'s real participants: `server`, `caltech`, `jpl`, `office1`, `fl-admin`, star-topology links to `server`, no OT/OCPP/MQTT layer. `Dockerfile.flare` fixed to set `CHARGESHIELD_PROJECT_ROOT=/app` (missing entirely before — without it, `_find_project_root()` fails or silently loads 0 sessions inside a container, the same bug class already found and fixed for `nvflare simulator` on 2026-07-24) and its header comment corrected to stop describing "auditor"/"IDS" as separate container roles.
 
+   **Update 2026-08-02 — job submission attempted, second real bug found and fixed:** with the
+   path-resolution fix above applied, all 5 containers deployed and came up `running`
+   (`sudo containerlab inspect` confirmed it). The user connected to the FLARE admin console
+   (`bash /workspace/startup/fl_admin.sh`, logged in as `admin@chargeshield.local`) and ran
+   `submit_job /workspace/jobs/chargeshield_poc`. It failed with `OSError: [Errno 30] Read-only
+   file system: '/workspace/jobs/chargeshield_poc/.__nvfl_sig.json'` (the `AttributeError:
+   'AdminClient' object has no attribute 'do_submit_job'` printed just above it is a normal
+   internal fallback in NVFLARE's CLI dispatcher, not the real error — the actual handler runs via
+   `default()`/`push_folder()`). Root cause: `submit_job` writes a signature file into the job
+   folder itself before uploading it (`nvflare/lighter/utils.py:sign_folders()`), but
+   `topology.clab.yml`'s `fl-admin` node bound `../nvflare/jobs/:/workspace/jobs:ro` — read-only,
+   because at design time this bind was assumed to be pure upload source, not something NVFLARE
+   writes into first. Fixed by changing that one bind to `:rw`. Side effect worth knowing: this
+   writes `.__nvfl_sig.json` files into the real `nvflare/jobs/chargeshield_poc/` directory on the
+   host (not just inside the container), regenerated on every submit — added to `.gitignore`
+   (`nvflare/jobs/**/.__nvfl_sig.json`) so they don't get committed by accident.
+
+   Because bind mounts are fixed at container creation, this fix requires a redeploy, not just a
+   config edit:
+   ```bash
+   sudo containerlab destroy -t containerlab/topology.clab.yml
+   sudo containerlab deploy -t containerlab/topology.clab.yml
+   ```
+   No need to rebuild the Docker image or reprovision — only the bind changed. Then repeat the
+   `fl_admin.sh` → login → `submit_job` sequence.
+
    **Update 2026-08-01 — first real attempt, bug found and fixed:** the user ran steps 1-3 for
    real on their Mac (Debian VM via OrbStack). `docker build` and `nvflare provision` succeeded,
    but `containerlab deploy` failed immediately with `stat .../containerlab/nvflare/workspace/
