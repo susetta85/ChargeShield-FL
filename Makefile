@@ -384,6 +384,24 @@ experiment-local-dp: _check-deps
 #
 # SEEDS override: make experiment-nodp-sweep SEEDS="42 123 456"  (3 seed per test rapido)
 # SEED deve restare in every-run single target; SEEDS è per il loop multi-seed.
+#
+# FIX 2026-08-03 (root cause trovata per i crash "Fatal Python error:
+# init_sys_streams: OSError: Bad file descriptor" — vedi experiments/
+# _archive_20260731_stalled_or_crashed/central-sweep1..4, ogni seed falliva
+# istantaneamente, "0 min", nessun round FL mai iniziato): tutte e 4 le
+# invocazioni di run_experiments.py qui sotto ora hanno `< /dev/null`. Il
+# problema si presenta quando questi target girano in background per ore
+# (nohup/caffeinate, il pattern consigliato per i sweep lunghi — vedi
+# scripts/run_multiseed_consolidation.sh): `nohup` protegge solo da SIGHUP,
+# NON scollega stdin. Se il terminale/sessione SSH che ha lanciato il
+# comando viene chiuso mentre lo sweep gira ancora, il file descriptor 0
+# ereditato da ogni processo Python lanciato DOPO quel momento diventa
+# invalido — Python fallisce al proprio avvio con esattamente questo
+# errore, per ogni seed successivo, indipendentemente da qualunque cosa nel
+# codice del progetto. Il fix di Sprint 10o (exit-code reale invece di
+# "✓ completato" falso) rendeva l'errore visibile correttamente ma non lo
+# preveniva. `< /dev/null` dà a ogni processo Python un fd 0 sempre valido,
+# indipendente dal terminale chiamante.
 
 .PHONY: experiment-nodp-sweep
 experiment-nodp-sweep: _check-deps _sweep_lock
@@ -406,7 +424,7 @@ experiment-nodp-sweep: _check-deps _sweep_lock
 			--rounds 10 \
 			--seed $$seed \
 			--n-shadow $(N_SHADOW) \
-			--sweep-dir "$$SWEEP_DIR"; echo $$? > /tmp/_cs_rc_$$$$; } 2>&1 | tee -a "$$LOG"; \
+			--sweep-dir "$$SWEEP_DIR" < /dev/null; echo $$? > /tmp/_cs_rc_$$$$; } 2>&1 | tee -a "$$LOG"; \
 		RC=$$(cat /tmp/_cs_rc_$$$$ 2>/dev/null || echo 1); rm -f /tmp/_cs_rc_$$$$; \
 		if [ "$$RC" != "0" ]; then \
 			echo "✗ seed=$$seed FALLITO (exit $$RC)" | tee -a "$$LOG"; \
@@ -453,7 +471,7 @@ experiment-dp-sweep: _check-deps _sweep_lock
 			--rounds 10 \
 			--seed $$seed \
 			--n-shadow $(N_SHADOW) \
-			--sweep-dir "$$SWEEP_DIR"; echo $$? > /tmp/_cs_rc_$$$$; } 2>&1 | tee -a "$$LOG"; \
+			--sweep-dir "$$SWEEP_DIR" < /dev/null; echo $$? > /tmp/_cs_rc_$$$$; } 2>&1 | tee -a "$$LOG"; \
 		RC=$$(cat /tmp/_cs_rc_$$$$ 2>/dev/null || echo 1); rm -f /tmp/_cs_rc_$$$$; \
 		if [ "$$RC" != "0" ]; then \
 			echo "✗ seed=$$seed FALLITO (exit $$RC)" | tee -a "$$LOG"; \
@@ -502,7 +520,7 @@ experiment-central-dp-sweep: _check-deps _sweep_lock
 			--seed $$seed \
 			--n-shadow $(N_SHADOW) \
 			--dp-mode central \
-			--sweep-dir "$$SWEEP_DIR"; echo $$? > /tmp/_cs_rc_$$$$; } 2>&1 | tee -a "$$LOG"; \
+			--sweep-dir "$$SWEEP_DIR" < /dev/null; echo $$? > /tmp/_cs_rc_$$$$; } 2>&1 | tee -a "$$LOG"; \
 		RC=$$(cat /tmp/_cs_rc_$$$$ 2>/dev/null || echo 1); rm -f /tmp/_cs_rc_$$$$; \
 		if [ "$$RC" != "0" ]; then \
 			echo "✗ seed=$$seed FALLITO (exit $$RC)" | tee -a "$$LOG"; \
@@ -551,7 +569,7 @@ experiment-local-dp-sweep: _check-deps _sweep_lock
 			--seed $$seed \
 			--n-shadow $(N_SHADOW) \
 			--dp-mode local \
-			--sweep-dir "$$SWEEP_DIR"; echo $$? > /tmp/_cs_rc_$$$$; } 2>&1 | tee -a "$$LOG"; \
+			--sweep-dir "$$SWEEP_DIR" < /dev/null; echo $$? > /tmp/_cs_rc_$$$$; } 2>&1 | tee -a "$$LOG"; \
 		RC=$$(cat /tmp/_cs_rc_$$$$ 2>/dev/null || echo 1); rm -f /tmp/_cs_rc_$$$$; \
 		if [ "$$RC" != "0" ]; then \
 			echo "✗ seed=$$seed FALLITO (exit $$RC)" | tee -a "$$LOG"; \

@@ -1,6 +1,27 @@
 #!/usr/bin/env bash
 # scripts/run_multiseed_consolidation.sh
 #
+# FIX 2026-08-03 (root cause finally found for the "Fatal Python error:
+# init_sys_streams: OSError: Bad file descriptor" crashes archived in
+# experiments/_archive_20260731_stalled_or_crashed/central-sweep1..4 — every
+# seed of every central-DP sweep run that way crashed instantly at Python
+# startup, "0 min" duration, no FL round ever begun): the recommended launch
+# command below was `nohup caffeinate ... &` with NO stdin redirection.
+# `nohup` only guards against SIGHUP, it does NOT detach stdin — every
+# `python3` subprocess this script later spawns (one per seed, potentially
+# hours apart) inherits fd 0 from the terminal/pty that started it. If that
+# terminal is later closed (or an SSH session drops), fd 0 becomes invalid;
+# every subsequent Python interpreter fails at its own startup trying to wrap
+# it into sys.stdin, with exactly this error — independent of anything in
+# this project's own code, and not caught by the Sprint 10o Makefile exit-code
+# fix (that fix made the failure get *reported* correctly instead of silently
+# claiming success — it could not and did not fix the underlying crash).
+# Fixed here defensively so it's safe regardless of how this script is
+# invoked: redirect this script's own stdin from /dev/null immediately, so
+# every child process inherits a valid, always-open fd 0 instead of the
+# calling terminal's.
+exec < /dev/null
+#
 # ChargeShield-FL — esecuzione automatica e sequenziale di più esperimenti,
 # uno alla volta, con log per-step e riepilogo finale.
 #
