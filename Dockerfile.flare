@@ -38,6 +38,22 @@ LABEL maintainer="ChargeShield-FL"
 LABEL version="0.5.0"
 LABEL description="NVFLARE 2.7.2 + PyTorch + ChargeShield-FL"
 
+# Fix 2026-08-03 (primo deploy reale, job osservato a ~5h/round invece di
+# qualche minuto): nessun file del progetto fissava il numero di thread di
+# PyTorch/BLAS. Per default torch apre tanti thread quanti i core LOGICI
+# dell'host (qui: 12, la VM Debian su OrbStack), ma ogni container client è
+# limitato a cpu: 1.0 in containerlab/topology.clab.yml — un mismatch che
+# sotto la CPU quota di Docker/cgroup causa un noto problema di throttling
+# (molti thread in competizione per una quota minuscola, ciascuno rallentato
+# a runtime invece che schedulato in modo pulito), non spiegabile dal solo
+# calcolo (31k+ sessioni ACN reali × 50 epoch × batch 32 dovrebbe richiedere
+# minuti, non ore, su un singolo core dedicato senza contesa). Se in futuro
+# il limite cpu: per i client in topology.clab.yml cambia, questi valori
+# vanno aggiornati di conseguenza (o rimossi per lasciare che torch scelga
+# da solo, se il container ha davvero accesso a più core).
+ENV OMP_NUM_THREADS=1
+ENV MKL_NUM_THREADS=1
+
 # ── System dependencies ───────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \

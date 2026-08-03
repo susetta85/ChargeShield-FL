@@ -329,6 +329,37 @@ exactly the kind that need a real `nvflare simulator` run to resolve, not more r
    No need to rebuild the Docker image or reprovision — only the bind changed. Then repeat the
    `fl_admin.sh` → login → `submit_job` sequence.
 
+   **Update 2026-08-03 — job actually ran, third real finding: CPU thread oversubscription, not a
+   hang.** With both fixes above applied, the job ran for real: all 3 clients registered, trained,
+   and by the time an unrelated OrbStack auto-update rebooted the host VM (see below), 4 of 10
+   rounds had completed and exported real data (`experiments/nvflare_ids_audit_results_
+   20260802_130114_141883.json` / matching `.pkl`, config confirms `dp_mode=dp-fedavg,
+   epsilon=1.0`). Initial concern was that ~5 hours/round was a hang or a deadlock; investigation
+   found it wasn't — `docker stats` during a later run showed `caltech`/`jpl` at ~97% CPU (real
+   work), `office1` near 0% (its site is much smaller, finished its round already), and client logs
+   showed `31404 sessioni caricate da 4 file` for Caltech alone — the real multi-year dataset, not
+   the small slice used by earlier smoke tests, so real per-round compute is legitimately larger
+   than assumed. `AutoencoderTrainer.train_local()` was re-checked and found efficient (tensor
+   conversion and `DataLoader` built once outside the epoch loop, no O(n²) pattern) — ruling out an
+   application-level bug. The likely actual cause: no file in the project ever pinned PyTorch's
+   thread count. PyTorch defaults to spawning as many threads as the host's logical CPUs (12 on
+   this VM), while `topology.clab.yml`'s client nodes are capped to `cpu: 1.0` — under Docker's
+   CFS cgroup quota, that mismatch is a well-documented cause of severe throttling/thrashing
+   (many threads fighting over a tiny quota), independent of and on top of whatever the "real"
+   1-core-limited runtime would be. Fixed by adding `ENV OMP_NUM_THREADS=1` / `ENV
+   MKL_NUM_THREADS=1` to `Dockerfile.flare`, matching the `cpu: 1.0` default — if that per-client
+   CPU limit is ever raised in `topology.clab.yml`, these should be raised (or removed) to match.
+   Requires an image rebuild and a `--reconfigure` redeploy to take effect; not yet independently
+   re-measured against a clean unthrottled baseline (no non-Docker environment with 31k+ real
+   sessions and a hard 1-CPU limit to compare against), so treat the "this fixes it" claim as the
+   leading hypothesis, not confirmed — worth timing round 1 of the next run and reporting back.
+
+   Separately: an OrbStack host-VM auto-update triggered a reboot mid-run, which reset all
+   container state (clients re-registered fresh, the job's `RUNNING` status in `list_jobs`
+   survived the reboot as stale, inaccurate state). Until this pipeline is stable enough to
+   trust for a long unattended run, disable OrbStack's automatic updates for the duration of any
+   multi-hour job.
+
    **Update 2026-08-01 — first real attempt, bug found and fixed:** the user ran steps 1-3 for
    real on their Mac (Debian VM via OrbStack). `docker build` and `nvflare provision` succeeded,
    but `containerlab deploy` failed immediately with `stat .../containerlab/nvflare/workspace/
