@@ -57,8 +57,12 @@ nvflare/sim_workspace/
 # File di firma scritti da `submit_job` dentro nvflare/jobs/ stesso al momento
 # della sottomissione (2026-08-02, primo submit_job reale — vedi
 # nvflare/lighter/utils.py:sign_folders). Rigenerati ad ogni submit, non vanno
-# tracciati.
+# tracciati. Aggiunto anche .__nvfl_submitter.crt (2026-08-03, trovato in una
+# review post-submit: sign_folders copia anche il certificato del submitter
+# in ogni sottocartella del job, non solo il file di firma — mancava dal
+# primo giro).
 nvflare/jobs/**/.__nvfl_sig.json
+nvflare/jobs/**/.__nvfl_submitter.crt
 
 # mTLS certificates
 certs/
