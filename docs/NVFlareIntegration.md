@@ -360,6 +360,32 @@ exactly the kind that need a real `nvflare simulator` run to resolve, not more r
    trust for a long unattended run, disable OrbStack's automatic updates for the duration of any
    multi-hour job.
 
+   **Update 2026-08-03 (later) — job completed for real, fourth real finding: no genuine hold-out
+   existed for the offline MIA analysis.** With the thread-pin fix applied, a resubmitted job ran
+   to completion (all 10 rounds). Before running `scripts/run_nvflare_mia.py` on its dump, a check
+   of `datasets/acn/` found every downloaded year for every site already used for training
+   (Caltech/JPL 2018-2021, Office1 2019-2021 — `config_fed_client.json`'s `dataset_path` points at
+   the parent `datasets/acn` directory, and `ChargeShieldExecutor._setup()` loads every `.json` file
+   under each site's subdirectory). `run_nvflare_mia.py` already refused to guess a held-out year
+   automatically in this mode (see its own `ValueError` in `main()`) precisely to avoid silently
+   picking a file that was actually part of training — a real, not hypothetical, risk. Downloading
+   an additional year (2022) was attempted and found not viable — ACN-Data has no further sessions
+   available for these 3 sites beyond what's already downloaded.
+
+   Root fix (structural, not a workaround): `ChargeShieldExecutor._setup()` now applies the same
+   seed-based 80/20 split `scripts/run_experiments.py::main()` already uses for the local
+   simulation — `random.seed(seed); random.shuffle(sessions)`, 80% train / 20% reserved, computed
+   independently per site — instead of training on 100% of each site's data. `run_nvflare_mia.py`'s
+   `load_client_sessions()` reconstructs the identical per-site split (same file load order, same
+   enrichment, same seed) to recover the 20% as a genuine non-member pool, with no external file
+   needed; `--holdout-dataset` remains available as an explicit override. This means the job that
+   had just completed (trained on 100% of the data, pre-fix) is superseded — it needs to be
+   resubmitted with the fixed `chargeshield_executor.py` before its dump is usable for MIA analysis.
+   Since this file isn't baked into the Docker image (NVFLARE distributes job code at submission
+   time via `deploy_map`), this only requires `submit_job` again — no rebuild, no `containerlab
+   --reconfigure`. Verified via `py_compile` on both changed files and the full 83-test suite; not
+   yet run for real (pending a fresh `submit_job` and then `run_nvflare_mia.py` against its dump).
+
    **Update 2026-08-01 — first real attempt, bug found and fixed:** the user ran steps 1-3 for
    real on their Mac (Debian VM via OrbStack). `docker build` and `nvflare provision` succeeded,
    but `containerlab deploy` failed immediately with `stat .../containerlab/nvflare/workspace/

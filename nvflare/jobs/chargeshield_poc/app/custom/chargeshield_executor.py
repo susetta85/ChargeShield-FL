@@ -48,6 +48,18 @@ Cosa NON fa ancora (fasi successive, vedi docs/NVFlareIntegration.md):
       mirroring run_ids() (che nella simulazione osserva gli update non
       ancora aggregati, non i singoli client).
 
+FIX 2026-08-03 (primo job NVFLARE reale completato, poi bloccato provando a
+lanciare scripts/run_nvflare_mia.py sul suo dump): _setup() caricava il 100%
+delle sessioni disponibili per il training, senza riservare alcun hold-out —
+a differenza della simulazione locale (scripts/run_experiments.py::main(),
+split 80/20 PRIMA del training FL). Senza un hold-out genuino, l'analisi MIA
+offline non ha nessun pool non-member da usare, e scaricare un anno ACN-Data
+aggiuntivo si è rivelato non praticabile (nessun anno oltre a quelli già
+usati esiste per questi 3 siti). Fix: stesso split seed-based 80/20 della
+simulazione, dentro _setup() — vedi commento lì per il dettaglio. Il job già
+completato con questo file pre-fix si allenava sul 100% dei dati ed è da
+considerare superato, non direttamente confrontabile con run successivi.
+
 Punti da VERIFICARE appena nvflare è installabile (marcati inline con "VERIFY:"):
     - Il formato esatto di dxo.data (dict[str, np.ndarray] atteso, chiavi = nomi
       state_dict) prodotto da FullModelShareableGenerator per un PTFileModelPersistor.
@@ -96,6 +108,7 @@ reale) chiamati in _setup() prima dello split per-cluster.
 from __future__ import annotations
 
 import logging
+import random
 import sys
 from pathlib import Path
 from typing import Any
@@ -438,25 +451,57 @@ class ChargeShieldExecutor(Executor):
         # scartata silenziosamente e self._sessions produceva un tensore vuoto.
         all_sessions = _enrich_sessions(all_sessions)
 
-        # Normalizzazione [0,1]: calcolata sulle sessioni DI QUESTO SITO
-        # (non più su un pool condiviso multi-cluster, dato che ogni client ora
-        # ha davvero solo i propri dati). NOTA/limite noto: questo significa
-        # min/max leggermente diversi tra siti (es. il kWh massimo osservato a
-        # Caltech vs JPL) invece di un'unica scala globale condivisa come nella
-        # simulazione (scripts/run_experiments.py::compute_feature_stats() su
-        # train_sessions di TUTTI i siti insieme) — una differenza reale tra i
-        # due percorsi codice, accettabile per un primo draft (i range delle
-        # feature ACN-Data non variano di ordini di grandezza tra siti), ma da
-        # tenere presente se si confrontano risultati NVFLARE vs simulazione.
-        feature_stats = _compute_feature_stats(all_sessions, AutoencoderTrainer.CONTINUOUS_FEATURES)
+        # FIX 2026-08-03 (bug reale trovato provando a lanciare per la prima
+        # volta scripts/run_nvflare_mia.py sul dump del primo job NVFLARE
+        # completato: ogni sito aveva già usato TUTTI gli anni scaricati per
+        # il training — datasets/acn/<sito>/ non ha alcun anno "mai visto",
+        # quindi nessun hold-out genuino esisteva per calcolare gli AUC di
+        # membership inference. Scaricare un anno in più (es. 2022) non era
+        # praticabile: verificato che ACN-Data non ne ha per questi 3 siti).
+        # Fix strutturale, non un ripiego: split seed-based 80/20 PRIMA del
+        # training, stessa identica logica di scripts/run_experiments.py::
+        # main() (random.seed(seed); random.shuffle(sessions); split
+        # all'80%) — invece che un secondo dataset esterno, ogni sito
+        # riserva ora il 20% delle proprie sessioni come hold-out, mai
+        # passato a train_local(). scripts/run_nvflare_mia.py::
+        # load_client_sessions() ricostruisce lo STESSO split (stesso seed,
+        # stesso ordine di caricamento file, stessa enrichment) per
+        # ottenere il 20% hold-out senza bisogno di alcun file esterno —
+        # zero data leakage, stessa garanzia anti-leakage della simulazione
+        # locale. Invalida il primo job NVFLARE completato (si era allenato
+        # sul 100% dei dati, non più confrontabile con questo split) — va
+        # ripetuto (solo submit_job, nessun rebuild: questo file non è
+        # incluso nell'immagine Docker, viene ridistribuito ad ogni
+        # sottomissione del job).
+        seed = self._trainer_cfg.get("seed", 42)
+        random.seed(seed)
+        random.shuffle(all_sessions)
+        split = max(1, int(len(all_sessions) * 0.8))
+        train_sessions = all_sessions[:split]
+        n_holdout = len(all_sessions) - len(train_sessions)
+
+        # Normalizzazione [0,1]: calcolata SOLO su train_sessions (no leakage
+        # dall'hold-out riservato sopra — stesso principio di
+        # scripts/run_experiments.py::main()). Calcolata sulle sessioni DI
+        # QUESTO SITO (non più su un pool condiviso multi-cluster, dato che
+        # ogni client ora ha davvero solo i propri dati). NOTA/limite noto:
+        # questo significa min/max leggermente diversi tra siti (es. il kWh
+        # massimo osservato a Caltech vs JPL) invece di un'unica scala
+        # globale condivisa come nella simulazione (scripts/run_experiments.py
+        # ::compute_feature_stats() su train_sessions di TUTTI i siti
+        # insieme) — una differenza reale tra i due percorsi codice,
+        # accettabile per un primo draft (i range delle feature ACN-Data non
+        # variano di ordini di grandezza tra siti), ma da tenere presente se
+        # si confrontano risultati NVFLARE vs simulazione.
+        feature_stats = _compute_feature_stats(train_sessions, AutoencoderTrainer.CONTINUOUS_FEATURES)
         self._sessions = _normalize_sessions(
-            all_sessions, feature_stats, AutoencoderTrainer.CONTINUOUS_FEATURES
+            train_sessions, feature_stats, AutoencoderTrainer.CONTINUOUS_FEATURES
         )
 
         logger.info(
             f"[{self._cluster_id}] ChargeShieldExecutor pronto — "
-            f"{len(self._sessions)} sessioni caricate da {len(json_files)} file "
-            f"in {dataset_dir}"
+            f"{len(self._sessions)} sessioni di training (hold-out riservato: "
+            f"{n_holdout}) caricate da {len(json_files)} file in {dataset_dir}"
         )
 
     # ── Task execution ───────────────────────────────────────────────────────

@@ -119,11 +119,30 @@ def load_nvflare_fl_results(path: Path) -> tuple[dict[int, dict[str, Any]], dict
 
 def load_client_sessions(
     client_config_path: Path,
-) -> tuple[list[dict[str, Any]], dict[str, list[int]] | None]:
+    seed: int = 42,
+) -> tuple[list[dict[str, Any]], dict[str, list[int]] | None, list[dict[str, Any]]]:
     """
-    Ricostruisce ESATTAMENTE le sessioni (enriched, NON shuffled, ordine
-    originale del file) che i client NVFLARE reali hanno visto — leggendo
-    "dataset_path" da config_fed_client.json invece di assumerlo.
+    Ricostruisce ESATTAMENTE le sessioni (enriched) che i client NVFLARE
+    reali hanno visto in TRAINING — leggendo "dataset_path" da
+    config_fed_client.json invece di assumerlo — e, separatamente, l'insieme
+    hold-out riservato da ChargeShieldExecutor._setup() e MAI passato al
+    training.
+
+    FIX 2026-08-03 (bug reale trovato al primo tentativo di eseguire questo
+    script su un dump NVFLARE reale completato: ogni sito aveva già usato
+    TUTTI gli anni ACN-Data scaricati per il training — nessun hold-out
+    genuino esisteva su disco, e scaricarne uno aggiuntivo si è rivelato non
+    praticabile, vedi chargeshield_executor.py). Invece di richiedere un file
+    esterno mai visto da alcun client, questa funzione ricostruisce lo STESSO
+    split seed-based 80/20 che ChargeShieldExecutor._setup() applica ora
+    prima del training (stesso ordine di caricamento file, stessa
+    enrichment, stesso seed) — il 20% escluso dal training è per costruzione
+    lo stesso hold-out che il client reale ha riservato, senza bisogno di
+    alcun dato esterno. Richiede che il dump NVFLARE analizzato provenga da
+    un job lanciato DOPO questo fix — un dump del vecchio comportamento
+    (100% training, nessun hold-out riservato) non ha un hold-out genuino da
+    ricostruire, qualunque split si applichi qui sarebbe usato anche nel
+    training reale (data leakage silenzioso).
 
     FIX 2026-07-22 (review indipendente): la prima stesura di questo script
     caricava le sessioni via load_sessions(cfg) da config/experiment.yaml
@@ -139,7 +158,12 @@ def load_client_sessions(
     da quella reale, rendendo gli AUC di LiRA/Shadow/Yeom non significativi
     SENZA generare alcun errore visibile (fallimento silenzioso, il più
     pericoloso). Fix: legge lo stesso "dataset_path" dal config del client
-    reale e applica la stessa pipeline (ACNDataset → enrich, NESSUNO shuffle).
+    reale e applica la stessa pipeline (ACNDataset → enrich). Nota
+    (aggiornata 2026-08-03): all'epoca di questo fix non c'era ancora alcuno
+    shuffle in nessuno dei due percorsi — lo split seed-based 80/20 introdotto
+    sopra è arrivato dopo, e ha reso questa frase storica ("NESSUNO shuffle")
+    non più accurata: oggi lo shuffle c'è, deliberatamente, in entrambi i
+    file, con lo stesso seed.
 
     FIX 2026-07-22 (review indipendente pre-push, 3 siti reali): questa
     funzione assumeva ancora "dataset_path" = UN singolo file JSON condiviso
@@ -178,7 +202,8 @@ def load_client_sessions(
                 "nessuna sottodirectory sito (es. caltech/jpl/office1) — non è "
                 "possibile ricostruire le sessioni dei client reali."
             )
-        sessions: list[dict[str, Any]] = []
+        train_sessions: list[dict[str, Any]] = []
+        holdout_sessions: list[dict[str, Any]] = []
         cluster_membership: dict[str, list[int]] = {}
         for site_dir in site_dirs:
             json_files = sorted(site_dir.glob("*.json"))
@@ -190,16 +215,31 @@ def load_client_sessions(
                 ds = ACNDataset()
                 ds.load(str(jf))
                 site_sessions.extend(ds.get_sample(i) for i in range(len(ds)))
-            start = len(sessions)
-            sessions.extend(site_sessions)
-            cluster_membership[site_dir.name] = list(range(start, len(sessions)))
-        sessions = enrich_sessions(sessions)
+            # Enrichment PRIMA dello split, per-sito — stesso ordine di
+            # operazioni di chargeshield_executor.py::_setup() (2026-08-03).
+            site_sessions = enrich_sessions(site_sessions)
+            # FIX 2026-08-03: stesso split seed-based 80/20 di
+            # ChargeShieldExecutor._setup() — vedi docstring della funzione.
+            # Applicato PER SITO con lo stesso seed, perché ogni client reale
+            # fa lo split indipendentemente sulle proprie sole sessioni.
+            random.seed(seed)
+            random.shuffle(site_sessions)
+            split = max(1, int(len(site_sessions) * 0.8))
+            site_train = site_sessions[:split]
+            site_holdout = site_sessions[split:]
+
+            start = len(train_sessions)
+            train_sessions.extend(site_train)
+            cluster_membership[site_dir.name] = list(range(start, len(train_sessions)))
+            holdout_sessions.extend(site_holdout)
+
         logger.info(
-            f"Sessioni multi-sito ricostruite da {dataset_path} — {len(sessions)} "
-            f"totali su {len(cluster_membership)} siti reali: "
+            f"Sessioni multi-sito ricostruite da {dataset_path} — "
+            f"{len(train_sessions)} train / {len(holdout_sessions)} hold-out "
+            f"su {len(cluster_membership)} siti reali (seed={seed}): "
             + ", ".join(f"{k}={len(v)}" for k, v in cluster_membership.items())
         )
-        return sessions, cluster_membership
+        return train_sessions, cluster_membership, holdout_sessions
 
     ds = ACNDataset()
     ds.load(str(dataset_path))
@@ -207,9 +247,10 @@ def load_client_sessions(
     sessions = enrich_sessions(sessions)
     logger.info(
         f"Sessioni client ricostruite da {dataset_path.name} (stesso file, stesso "
-        f"ordine, nessuno shuffle — mirroring chargeshield_executor.py): {len(sessions)}"
+        f"ordine, nessuno shuffle — design a file singolo pre-2026-07-22, hold-out "
+        f"da passare esplicitamente via --holdout-dataset): {len(sessions)}"
     )
-    return sessions, None
+    return sessions, None, []
 
 
 def load_holdout_sessions(holdout_dataset_path: Path) -> list[dict[str, Any]]:
@@ -268,11 +309,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--holdout-dataset", type=Path, default=None,
         help=(
-            "Dataset MAI usato da alcun client NVFLARE, per il pool non-member "
-            "di LiRA/Shadow/Yeom (es. datasets/acn/jpl/acndata_sessions_2020.json "
-            "se i client hanno usato il file *_2019.json). Default: stesso nome "
-            "file di dataset_path in --client-config con l'anno successivo, se "
-            "individuabile automaticamente — altrimenti obbligatorio."
+            "Override esplicito del pool non-member per LiRA/Shadow/Yeom. "
+            "Di default (2026-08-03) NON serve passarlo: load_client_sessions() "
+            "ricostruisce da sola l'hold-out 80/20 che ChargeShieldExecutor "
+            "riserva ora prima del training (stesso seed, stesso ordine di "
+            "caricamento). Passa questo argomento solo se vuoi usare un file "
+            "diverso (es. un anno genuinamente mai scaricato)."
         ),
     )
     parser.add_argument("--seed", type=int, default=None)
@@ -386,60 +428,32 @@ def main() -> None:
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    train_sessions, cluster_membership = load_client_sessions(args.client_config)
+    train_sessions, cluster_membership, holdout_sessions = load_client_sessions(
+        args.client_config, seed=seed,
+    )
 
     if args.holdout_dataset is not None:
-        holdout_path = args.holdout_dataset
-    else:
-        import json as _json
-        with open(args.client_config) as f:
-            _client_cfg = _json.load(f)
-        _client_dataset = _client_cfg["executors"][0]["executor"]["args"]["dataset_path"]
-        _dataset_path_resolved = PROJECT_ROOT / _client_dataset
-        if _dataset_path_resolved.is_dir():
-            # FIX 2026-07-22 (review indipendente pre-push): con la directory
-            # multi-sito, chargeshield_executor.py::_setup() carica GIÀ TUTTI
-            # gli anni disponibili per ogni sito (vedi load_client_sessions())
-            # — a differenza del vecchio design a file singolo, non esiste più
-            # un "anno successivo" mai visto da nessun client da dedurre
-            # automaticamente: ogni anno scaricato per un sito è già stato
-            # usato per il training di quel sito. Dedurre automaticamente un
-            # file "successivo" qui rischierebbe di scegliere silenziosamente
-            # un file che in realtà FA PARTE del training set (falso
-            # hold-out, AUC di membership inference non validi senza alcun
-            # errore visibile) — l'esatto tipo di fallimento silenzioso che
-            # questo stesso file ha già dovuto correggere una volta (vedi
-            # load_client_sessions()). Richiede --holdout-dataset esplicito:
-            # un file/anno GENUINAMENTE mai incluso in nessuna sottodirectory
-            # sito passata a load_client_sessions() (es. un anno scaricato
-            # apposta e tenuto fuori da datasets/acn/, o un mese/sotto-periodo
-            # riservato manualmente prima del deployment NVFLARE).
-            raise ValueError(
-                "'dataset_path' è una directory multi-sito (3 siti reali, tutti "
-                "gli anni disponibili già usati per il training) — non esiste più "
-                "un 'anno successivo' automaticamente deducibile come hold-out "
-                "genuino. Specifica esplicitamente --holdout-dataset con un file "
-                "MAI incluso in nessuna sottodirectory sito caricata da "
-                "load_client_sessions() (vedi log sopra per l'elenco file usati)."
-            )
-        # Tentativo automatico (solo design a file singolo, pre-2026-07-22):
-        # sostituisce l'anno nel nome file con il successivo (es. *_2019.json
-        # -> *_2020.json), entrambi presenti nel repo, mai toccati dallo
-        # stesso client in quel design.
-        import re
-        _m = re.search(r"(19|20)\d{2}", _client_dataset)
-        if not _m:
-            raise ValueError(
-                f"Impossibile dedurre --holdout-dataset da {_client_dataset!r} "
-                "(nessun anno a 4 cifre nel nome file) — specificalo esplicitamente."
-            )
-        _year = int(_m.group(0))
-        holdout_path = PROJECT_ROOT / _client_dataset.replace(str(_year), str(_year + 1))
+        # Override esplicito: ignora l'hold-out ricostruito sopra e usa un
+        # file passato a mano (utile per confrontare contro un anno/periodo
+        # genuinamente esterno, se in futuro ne esiste uno disponibile).
         logger.warning(
-            f"--holdout-dataset non specificato — dedotto automaticamente: "
-            f"{holdout_path} (verifica che sia corretto per il tuo run reale)."
+            "--holdout-dataset esplicito passato — ignoro l'hold-out 80/20 "
+            "ricostruito da load_client_sessions() e uso questo file al suo posto."
         )
-    holdout_sessions = load_holdout_sessions(holdout_path)
+        holdout_sessions = load_holdout_sessions(args.holdout_dataset)
+    elif not holdout_sessions:
+        # Design a file singolo (pre-2026-07-22) o dump precedente al fix
+        # 2026-08-03: nessun hold-out ricostruibile automaticamente da
+        # load_client_sessions() — serve un file esplicito, non lo si deduce
+        # più "alla cieca" (vedi FIX 2026-08-03 nel docstring di
+        # load_client_sessions() per il perché).
+        raise ValueError(
+            "Nessun hold-out disponibile: load_client_sessions() non ne ha "
+            "ricostruito uno (design a file singolo, o dump di un job NVFLARE "
+            "precedente al fix 2026-08-03 che allenava sul 100% dei dati). "
+            "Specifica --holdout-dataset esplicitamente con un file mai usato "
+            "per il training di nessun client."
+        )
 
     logger.info(
         f"Train (client reali): {len(train_sessions)} sessioni — "
