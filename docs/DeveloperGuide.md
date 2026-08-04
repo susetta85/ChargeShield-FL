@@ -10,6 +10,42 @@
 
 ---
 
+> ⚠️ **WARNING (2026-08-04, found by independent review): most of this document describes an
+> aspirational/early-design architecture that does NOT match the current repository.** Do not
+> follow its Repository Structure, Makefile Reference, or Extension Points sections literally —
+> they were never reconciled with the real implementation (same class of drift already fixed in
+> `docs/Architecture.md`, `docs/DSN2027_Positioning.md`, and this project's README, none of which
+> have this problem). Concretely wrong, confirmed by reading the real files:
+> - **No `infra/` directory exists.** The real files are `Dockerfile.flare` (repo root),
+>   `containerlab/topology.clab.yml`, and `nvflare/project.yml` — not `infra/docker/`,
+>   `infra/topology.clab.yml`, `infra/project.yml`.
+> - **`make build`/`make provision`/`make deploy`/`make clean-workspace` (§7) do not exist** in the
+>   real `Makefile`. The real targets are `make install`, `make experiment-nodp-sweep` /
+>   `-dp-sweep` / `-central-dp-sweep` / `-local-dp-sweep`, `make nvflare-sim*`, and others — run
+>   `make help` (or read the `Makefile` directly) for the real list.
+> - **`chargeshield/node|server|auditor|ids` container images (§7-8) do not exist.** The real
+>   deployment is a single image, `chargeshield-fl:latest` (built from `Dockerfile.flare`), used by
+>   all 5 Containerlab nodes (`server`, `fl-admin`, `caltech`, `jpl`, `office1`) — `PrivacyAuditor`
+>   and `ChargingIDS` run **inside** the server process (`ChargeShieldAggregator`), not as separate
+>   containers/images. See `containerlab/topology.clab.yml`'s own header comment for the full
+>   history of this exact confusion in an earlier (Sprint 5) design.
+> - **The 4-cluster `highway`/`urban`/`residential`/`corporate` OCPP topology (§3, §6, §9) is
+>   fictional/historical.** The real deployment is 3 real ACN-Data sites (`caltech`/`jpl`/`office1`)
+>   — see `nvflare/project.yml`, `config/experiment.yaml`.
+> - **`src/adapters/pecanstreet_dataset.py`, `src/adapters/iso15118_adapter.py`,
+>   `src/plugins/attacks/nasr_mia.py`, `src/ids/lstm_ids.py` (§5) do not exist.** The real dataset
+>   adapter is `src/adapters/acn_dataset.py`; the real attack registry is `src/plugins/attacks/`
+>   (`ATTACK_REGISTRY`, see `docs/Architecture.md` §4.4); the real IDS is `src/ids/` (Krum/CUSUM/
+>   cosine similarity, not LSTM-based).
+>
+> For an accurate picture of the real architecture, read `README.md`, `docs/Architecture.md`, and
+> `docs/NVFlareIntegration.md` instead — those are kept in sync with the code (see their own dated
+> Sprint changelogs). This document needs a full rewrite (tracked as a low-priority backlog item,
+> "Riscrittura completa prosa docs storici") rather than another patch — the problem isn't a few
+> stale references, it's this file's entire premise.
+
+---
+
 ## Table of Contents
 
 1. [Philosophy and Design Principles](#1-philosophy-and-design-principles)

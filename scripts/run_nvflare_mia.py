@@ -428,8 +428,32 @@ def main() -> None:
     np.random.seed(seed)
     torch.manual_seed(seed)
 
+    # FIX 2026-08-04 (review indipendente): il seed per RICOSTRUIRE lo split
+    # 80/20 train/hold-out deve essere quello che ChargeShieldExecutor._setup()
+    # ha realmente usato — letto da --client-config (l'unico che il client reale
+    # legge, via "args"."seed" in config_fed_client.json) — non quello di
+    # config/experiment.yaml o --seed (che qui governano solo la randomness del
+    # resto di questa analisi offline: init degli shadow model, ecc.). Prima di
+    # questo fix i due valori coincidevano solo per coincidenza (entrambi 42):
+    # se in futuro cambia l'uno senza l'altro, la ricostruzione del train/hold-out
+    # diverge silenziosamente da quella reale — la stessa classe di bug "nessun
+    # errore visibile" che load_client_sessions() già documenta di voler evitare.
+    import json as _json
+    with open(args.client_config) as _f:
+        _client_split_seed = (
+            _json.load(_f)["executors"][0]["executor"]["args"].get("seed", 42)
+        )
+    if _client_split_seed != seed:
+        logger.warning(
+            f"Seed di config/experiment.yaml (o --seed, ora {seed}) diverso dal "
+            f"seed reale del client NVFLARE in {args.client_config} "
+            f"({_client_split_seed}) — uso quest'ultimo per ricostruire lo split "
+            "80/20 train/hold-out (deve combaciare con quanto il client ha "
+            "realmente fatto), l'altro resta usato per il resto di questa analisi."
+        )
+
     train_sessions, cluster_membership, holdout_sessions = load_client_sessions(
-        args.client_config, seed=seed,
+        args.client_config, seed=_client_split_seed,
     )
 
     if args.holdout_dataset is not None:
