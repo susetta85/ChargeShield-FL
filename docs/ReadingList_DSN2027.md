@@ -9,6 +9,17 @@ Mark items `[x]` as you finish a full-text read. Snippet-only entries in `docs/L
 are `unconfirmed` on several fields precisely because they haven't been read yet — reading an item
 here is what upgrades it from "found by search" to "verified."
 
+**Update (2026-08-07):** all 9 Tier 0/Tier 1 papers below were fetched and their bibliographic
+metadata + abstract confirmed for real (correct title/authors/venue/year, abstract matches how this
+project cites them) — see the `[abstract-confirmed 2026-08-07]` tags below. This is **not** the
+same as the full-text read the checkbox `[x]` requires: in particular, LiRA's exact per-round
+warm-started shadow/likelihood-ratio construction (the single most citation-sensitive detail, since
+it's implemented not just cited) still needs a real methodology-section read before the paper cites
+it as "matching," and the two Tier 1 gap-claim papers (FEDLAD, the battery paper) were only
+confirmed at the abstract level, not deep enough to fully certify the "no industrial dataset" /
+"no adversarial privacy test" claims yet — abstracts are *consistent* with those claims, not proof
+of them. Checkboxes stay unchecked until that full-text pass happens.
+
 ---
 
 ## Tier 0 — Foundational papers this project's code directly implements or descends from
@@ -22,20 +33,43 @@ would be citing our own method incorrectly.
   **LiRA**, the project's primary attack (★). Confirm our per-round warm-started shadow retraining
   and likelihood-ratio scoring match the paper's actual construction, not just its name — this is
   the single most citation-sensitive paper in the bibliography since it's implemented, not just
-  cited.
+  cited. `[abstract-confirmed 2026-08-07]` Real paper, correctly attributed (Carlini/Chien/Nasr/
+  Song/Terzis/Tramèr, submitted 2021-12-07, v2 2022-04-12, cs.CR). Abstract confirms the core
+  framing this project relies on: LiRA is explicitly a *likelihood-ratio* attack designed to be
+  evaluated at low false-positive rates rather than average-case accuracy — still need the actual
+  methodology section (shadow-model training procedure, per-example variance estimation) to confirm
+  our per-round warm-start variant is a faithful adaptation, not just a same-named attack.
 - [ ] **Shokri, Stronati, Song, Shmatikov (2017)** — "Membership Inference Attacks Against Machine
   Learning Models," IEEE S&P 2017. [arXiv:1610.05820](https://arxiv.org/abs/1610.05820) — origin
   of MIA as a field; needed for the related-work opening paragraph and to correctly position Yeom
-  (our weakest attack) and LiRA relative to the attack's evolution.
+  (our weakest attack) and LiRA relative to the attack's evolution. `[abstract-confirmed 2026-08-07]`
+  Real paper (Shokri/Stronati/Song/Shmatikov, IEEE S&P 2017, arXiv v1 2016-10-18/v2 2017-03-31).
+  Abstract confirms the "shadow model" idea originates here (train an attack model to recognize
+  differences in target-model behavior on member vs. non-member inputs) — the direct ancestor of
+  this project's own Shadow attack, not just of LiRA.
 - [ ] **McMahan, Ramage, Talwar, Zhang (2018)** — "Learning Differentially Private Recurrent
   Language Models," ICLR 2018. [arXiv:1710.06963](https://arxiv.org/abs/1710.06963) — this is the
   literal mechanism our `dp-fedavg` mode implements (per-client clip+noise before aggregation).
   Must be cited as the source of that specific DP placement, not a generic "DP-SGD" citation.
+  `[abstract-confirmed 2026-08-07]` Real paper (McMahan/Ramage/Talwar/Zhang, ICLR 2018, arXiv
+  submitted 2017-10-18, camera-ready v3 2018-02-24). Abstract confirms it adds *user-level* DP to
+  Federated Averaging itself — matches this project's per-client (not per-example) clip+noise
+  placement. **Important nuance to resolve on full read**: after the 2026-08-06 finding that
+  `dp-fedavg`≡`local` numerically in this project's simulation, worth checking whether McMahan et
+  al.'s own protocol assumes the *server* or the *user's device* executes the per-user clip+noise
+  step — that would tell us which of our two mode names this paper is actually the correct citation
+  for.
 - [ ] **Zhu, Liu, Han (2019)** — "Deep Leakage from Gradients," NeurIPS 2019.
   [arXiv:1906.08935](https://arxiv.org/pdf/1906.08935) — foundational Gradient Inversion attack
   (DLG). Read before Task #64 starts: our autoencoder's 6-feature tabular gradients are a very
   different attack surface than DLG's image gradients, and the paper needs to say precisely how
-  and why, not just gesture at "GI exists."
+  and why, not just gesture at "GI exists." `[abstract-confirmed 2026-08-07]` Real paper (Zhu/Liu/
+  Han, NeurIPS 2019, arXiv v1 2019-06-21/v2 2019-12-19). Abstract confirms DLG's headline result is
+  *pixel-wise accurate* image recovery and *token-wise matching* text recovery from raw gradients —
+  a much stronger reconstruction claim than membership inference. Confirms the gap ChargeShield-FL's
+  own Sprint 14 needs to address explicitly: our target (6-feature tabular EV session records) has
+  no pixel/token structure for DLG's optimization-based matching loss to exploit directly — the
+  future Gradient Inversion module cannot just port DLG's loss function unchanged.
 - [ ] **Bonawitz, Ivanov, Kreuter, Marcedone, McMahan, Patel, et al. (2017)** — "Practical Secure
   Aggregation for Privacy-Preserving Machine Learning," ACM CCS 2017.
   [ACM DOI](https://dl.acm.org/doi/10.1145/3133956.3133982) ·
@@ -43,7 +77,12 @@ would be citing our own method incorrectly.
   **not** implement. Needed to correctly frame, in the threat model section, *why* our
   honest-but-curious server can see raw pre-aggregation updates at all (SecAgg is simply absent
   from the pipeline, not defeated by it) — an important precision to get right so the paper isn't
-  read as claiming to break SecAgg.
+  read as claiming to break SecAgg. `[abstract-confirmed 2026-08-07]` Real paper (Bonawitz/Ivanov/
+  Kreuter/Marcedone/McMahan/Patel/Ramage/Segal/Seth, ACM CCS 2017, pp. 1175-1191). Abstract confirms
+  SecAgg's actual guarantee: the server learns only the *sum* of user updates, never any individual
+  contribution. Confirms the framing this project needs — ChargeShield-FL's threat model has no
+  such protocol running at all, so the server sees each client's update individually by design; the
+  paper should say this plainly rather than imply SecAgg was "bypassed."
 
 ## Tier 1 — Load-bearing for the paper's central "no benchmark exists" gap claim
 
@@ -58,21 +97,46 @@ claim before submission.
   FEDLAD benchmarks GIA defenses on benchmark-image data; we benchmark MIA (and later GIA) on a
   real multi-site industrial deployment. Read in full to confirm it really has no industrial
   dataset / production framework (currently `unconfirmed` from the snippet).
+  `[abstract-confirmed 2026-08-07, gap claim STILL open]` Real paper, real venue framing ("FEDLAD
+  Framework... a comprehensive benchmark for evaluating Deep Leakage attacks and defenses within a
+  realistic Federated context"). Abstract confirms it is squarely a **Gradient Inversion (Deep
+  Leakage) benchmark**, not an MIA benchmark — good, sharpens the contrast sentence (FEDLAD = GIA
+  benchmark; ChargeShield-FL = MIA benchmark now, GIA later, on real industrial data either way).
+  The abstract does **not** state what datasets FEDLAD actually uses — "no industrial dataset"
+  remains unconfirmed pending an actual methodology-section read; do not cite this as settled yet.
 - [ ] **"Exploring the Vulnerabilities of Federated Learning: A Deep Dive into Gradient Inversion
   Attacks"** — [arXiv:2503.11514](https://arxiv.org/abs/2503.11514), 2026. Most directly relevant
   paper to read *before* starting the Gradient Inversion module (Task #64) — it's a systematic
   empirical comparison of GIA methods and their limiting factors, exactly the design space Task
-  #64 will need to navigate.
-- [ ] **"Privacy-preserving collaborative battery fault warning ... via heterogeneous data from
-  charging stations"** — Nature Communications, 2025 (exact arXiv/DOI to be confirmed on read).
-  Real multi-site charging data, "privacy-preserving" framing — the single most important gap
-  check in the EV+FL category: if it claims privacy-preservation without adversarially testing
-  that claim with an attack, it is exactly the failure mode ChargeShield-FL's whole framing argues
-  against, and becomes a strong contrastive citation.
+  #64 will need to navigate. `[abstract-confirmed 2026-08-07]` Real paper. Abstract confirms a
+  3-way GIA taxonomy — optimization-based (OP-GIA), generation-based (GEN-GIA), analytics-based
+  (ANA-GIA) — with a clear empirical verdict: **OP-GIA is the most practical setting despite
+  unsatisfactory performance; GEN-GIA has too many dependencies; ANA-GIA is easily detectable.**
+  Directly actionable for Sprint 14 scoping: start the Gradient Inversion module with an
+  optimization-based approach (DLG-style) rather than a generative or analytics-based one, per this
+  paper's own recommendation — worth a full read once Sprint 14 actually starts, not urgent now.
+- [ ] **"Privacy-preserving collaborative battery fault warning for massive electric vehicles by
+  heterogeneous data from charging stations"** — Nature Communications, published 2025-12-19.
+  [nature.com/articles/s41467-025-67703-7](https://www.nature.com/articles/s41467-025-67703-7) ·
+  [PubMed](https://pubmed.ncbi.nlm.nih.gov/41419740/). `[abstract-confirmed 2026-08-07, gap claim
+  STRENGTHENED]` Exact title/venue/DOI now confirmed (was only approximately known before). Uses
+  **personalized federated learning** across EV charging-station data owners for battery fault
+  detection, explicitly framed as privacy-preserving because it "integrates the information of all
+  data owners without data sharing." The abstract summary available makes **no mention whatsoever**
+  of any adversarial privacy evaluation (no MIA, no DP, no leakage test) — consistent with, though
+  not full-text-proof of, the predicted gap: a real EV+FL industrial paper that asserts privacy
+  preservation on architectural grounds ("no raw data shared") without testing that claim the way
+  ChargeShield-FL does. Strong candidate contrastive citation; a full read would need to confirm
+  the "no data sharing" claim isn't accompanied by an attack evaluation buried later in the paper.
 - [ ] **"A survey of privacy-preserving federated learning for intrusion detection systems"** —
-  Artificial Intelligence Review (Springer), 2026 (exact arXiv/DOI to be confirmed on read). Most
-  recent FL-IDS survey found; good structural reference for positioning our combined
-  IDS+DP+MIA pipeline as comparatively rare in the literature.
+  Bunko, Johnstone, Yang, Scott. *Artificial Intelligence Review* (Springer), 2026.
+  [link.springer.com/article/10.1007/s10462-026-11519-4](https://link.springer.com/article/10.1007/s10462-026-11519-4).
+  `[abstract-confirmed 2026-08-07]` Exact authors/DOI now confirmed. Abstract states explicitly:
+  **"there was no systematic review of privacy-preserving federated learning for IDS prior to this
+  survey"** — confirms this is genuinely the first FL-IDS-privacy survey, a clean, quotable
+  structural citation for positioning ChargeShield-FL's combined IDS+DP+MIA pipeline (the survey
+  itself frames prior work as siloed: FL-broadly, or IDS-without-privacy, or PPFL-without-IDS —
+  exactly the three-way combination this project's benchmark covers in one harness).
 
 ## Tier 2 — Closest prior threat-model precedent
 
