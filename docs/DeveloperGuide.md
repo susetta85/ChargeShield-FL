@@ -10,39 +10,47 @@
 
 ---
 
-> ⚠️ **WARNING (2026-08-04, found by independent review): most of this document describes an
-> aspirational/early-design architecture that does NOT match the current repository.** Do not
-> follow its Repository Structure, Makefile Reference, or Extension Points sections literally —
-> they were never reconciled with the real implementation (same class of drift already fixed in
-> `docs/Architecture.md`, `docs/DSN2027_Positioning.md`, and this project's README, none of which
-> have this problem). Concretely wrong, confirmed by reading the real files:
-> - **No `infra/` directory exists.** The real files are `Dockerfile.flare` (repo root),
->   `containerlab/topology.clab.yml`, and `nvflare/project.yml` — not `infra/docker/`,
->   `infra/topology.clab.yml`, `infra/project.yml`.
-> - **`make build`/`make provision`/`make deploy`/`make clean-workspace` (§7) do not exist** in the
->   real `Makefile`. The real targets are `make install`, `make experiment-nodp-sweep` /
->   `-dp-sweep` / `-central-dp-sweep` / `-local-dp-sweep`, `make nvflare-sim*`, and others — run
->   `make help` (or read the `Makefile` directly) for the real list.
-> - **`chargeshield/node|server|auditor|ids` container images (§7-8) do not exist.** The real
->   deployment is a single image, `chargeshield-fl:latest` (built from `Dockerfile.flare`), used by
->   all 5 Containerlab nodes (`server`, `fl-admin`, `caltech`, `jpl`, `office1`) — `PrivacyAuditor`
->   and `ChargingIDS` run **inside** the server process (`ChargeShieldAggregator`), not as separate
->   containers/images. See `containerlab/topology.clab.yml`'s own header comment for the full
->   history of this exact confusion in an earlier (Sprint 5) design.
-> - **The 4-cluster `highway`/`urban`/`residential`/`corporate` OCPP topology (§3, §6, §9) is
->   fictional/historical.** The real deployment is 3 real ACN-Data sites (`caltech`/`jpl`/`office1`)
->   — see `nvflare/project.yml`, `config/experiment.yaml`.
-> - **`src/adapters/pecanstreet_dataset.py`, `src/adapters/iso15118_adapter.py`,
->   `src/plugins/attacks/nasr_mia.py`, `src/ids/lstm_ids.py` (§5) do not exist.** The real dataset
->   adapter is `src/adapters/acn_dataset.py`; the real attack registry is `src/plugins/attacks/`
->   (`ATTACK_REGISTRY`, see `docs/Architecture.md` §4.4); the real IDS is `src/ids/` (Krum/CUSUM/
->   cosine similarity, not LSTM-based).
+> ⚠️ **PARTIAL WARNING (updated 2026-08-07 — narrower than before).** §3 (Repository Structure),
+> §5 (Extension Points), §6 (Configuration System), §7 (Makefile Reference), and §8 (Certificate
+> Management) were rewritten on 2026-08-07 against the real repository (`ls`, `grep "^[a-zA-Z_.-]*:"
+> Makefile`, `config/experiment.yaml`, `nvflare/jobs/chargeshield_poc/`, `src/`) and now describe
+> what the code actually does — no more `infra/` directory, no more per-role Docker images, no more
+> 4-cluster fictional OCPP topology, no more fictional `make certs`/OpenSSL CA hierarchy, no more
+> Pydantic config schema or `no_hardcoded` linter, no more "six Excel sheets" (it's eleven). §5 is
+> the one partial exception: only §5.4 (`ATTACK_REGISTRY`) is a real, live extension mechanism;
+> §5.1/5.2/5.3/5.5 are now explicitly flagged inline as illustrative sketches for extending
+> confirmed-dead code, not as mechanisms that exist today. Treat §3/§5/§6/§7/§8 as reliable — each
+> now says plainly which parts are real and which are aspirational, rather than presenting
+> everything as equally current.
 >
-> For an accurate picture of the real architecture, read `README.md`, `docs/Architecture.md`, and
-> `docs/NVFlareIntegration.md` instead — those are kept in sync with the code (see their own dated
-> Sprint changelogs). This document needs a full rewrite (tracked as a low-priority backlog item,
-> "Riscrittura completa prosa docs storici") rather than another patch — the problem isn't a few
-> stale references, it's this file's entire premise.
+> **Sections 1, 2, 4, 9, 10, and 11 were NOT part of this pass and are still largely
+> aspirational/superseded** — read them as historical first-draft design notes, not current fact:
+> - §1/§2 describe a Pydantic-validated `ConfigLoader`, a `LayerViolationError` import-graph
+>   enforcer, and a CI `no_hardcoded_config` linter — none of these exist. Real configuration
+>   loading is a single `yaml.safe_load()` call in `scripts/run_experiments.py::load_config()`;
+>   there is no schema validation layer.
+> - §4 describes a 9-step constructor-injection orchestrator (`ConfigLoader`, `DatasetFactory`,
+>   `AdapterFactory`, `AttackFactory`, `FlareConnector`) that does not exist. The real orchestration
+>   is the imperative `scripts/run_experiments.py::main()`, which instantiates `ACNDataset`,
+>   `AutoencoderTrainer`, `FedAvgAggregator`, `ChargingIDS`, and `PrivacyAuditor` directly.
+> - §9/§10 describe four per-role Docker images (`chargeshield/node|server|auditor|ids`) and a
+>   12-node, 4-cluster (`highway`/`urban`/`residential`/`corporate`) Containerlab topology with a
+>   WireGuard overlay and a `scripts/validate_topology.py` pre-flight check. None of this exists.
+>   The real topology (`containerlab/topology.clab.yml`) has 5 nodes (`server`, `fl-admin`,
+>   `caltech`, `jpl`, `office1`) sharing one image (`chargeshield-fl:latest`, built from
+>   `Dockerfile.flare`) — see the rewritten §3/§7/§8 below for the accurate version of this.
+> - §11 describes `src/flare/flare_connector.py` (`FLAREConnector`) as the NVFLARE integration
+>   layer. That file is confirmed dead code (see its own module-level status header, "non importato
+>   da alcuna pipeline attiva") — it never imports `nvflare` and simulates FedAvg with
+>   `random.gauss()`. The real NVFLARE integration is
+>   `nvflare/jobs/chargeshield_poc/app/custom/{chargeshield_executor,chargeshield_aggregator}.py` —
+>   see `docs/NVFlareIntegration.md`.
+>
+> Rewriting §1/§2/§4/§9/§10/§11 for real is tracked as a follow-up (same backlog item, "Riscrittura
+> completa prosa docs storici" — not done in this pass). For an accurate, currently-maintained
+> picture of the whole architecture in the meantime, read `README.md`, `docs/Architecture.md`
+> (which carries its own dated correction notice at the top for the same class of drift), and
+> `docs/NVFlareIntegration.md`.
 
 ---
 
@@ -156,113 +164,204 @@ This section motivates the four primary architectural decisions that define the 
 
 ## 3. Repository Structure
 
-The following directory tree describes the complete layout of the ChargeShield-FL repository. Every directory and file is described in terms of its role, its dependencies, and the rationale for its placement.
+**Rewritten 2026-08-07 against the real repository** (previous revisions of this section described
+an `infra/`-based, per-role-Docker, 4-cluster-OCPP layout that was never built — see the git history
+of this file, or `docs/Architecture.md`'s own correction notice, for that superseded design). The
+tree below is the actual top-level layout as of this writing.
 
 ```
 chargeshield-fl/
 ├── config/
-│   ├── experiment.yaml              # Global experiment parameters
-│   └── nodes/
-│       ├── cluster_a.yaml           # Highway cluster (4 nodes, OCPP 1.6, 150kW DC)
-│       ├── cluster_b.yaml           # Urban cluster (3 nodes, OCPP 1.6, 22kW AC)
-│       ├── cluster_c.yaml           # Residential cluster (3 nodes, MQTT v5, 7kW AC)
-│       └── cluster_d.yaml           # Corporate cluster (2 nodes, OCPP 2.0.1, 50kW DC)
+│   ├── experiment.yaml              # THE config read by scripts/run_experiments.py — FL rounds,
+│   │                                 # DP (epsilon/delta/max_grad_norm), the 3 real ACN-Data
+│   │                                 # sites, ML hyperparameters, LiRA n_shadow, Byzantine sweep
+│   ├── auditor.yaml                 # Read by PrivacyAuditor + ChargingIDS (both simulation and
+│   │                                 # ChargeShieldAggregator) — DP mechanism/budget, alert threshold
+│   ├── clusters.yaml, datasets.yaml, framework.yaml,
+│   │   nodes.yaml, protocols.yaml, flare.yaml,
+│   │   nodes/cluster_{highway,urban,residential,corporate}.yaml
+│   │                                 # LEGACY — read only by the confirmed-dead code below
+│   │                                 # (src/nodes/, src/adapters/ocpp16_adapter.py,
+│   │                                 # src/flare/flare_connector.py). Not read by
+│   │                                 # scripts/run_experiments.py or the NVFLARE custom app.
+│   │                                 # Kept for that dead code's own tests; not part of the real
+│   │                                 # experiment configuration surface — see §6.
 ├── src/
-│   ├── core/
-│   │   ├── __init__.py
-│   │   ├── base_node.py             # Abstract base class for all charging nodes
-│   │   ├── base_dataset.py          # Abstract base class for all dataset adapters
-│   │   ├── base_adapter.py          # Abstract base class for protocol adapters
-│   │   ├── base_auditor.py          # Abstract base class for the privacy auditor
-│   │   ├── base_ids.py              # Abstract base class for intrusion detection
-│   │   └── autoencoder.py           # Protocol-agnostic autoencoder model definition
-│   ├── nodes/
-│   │   ├── __init__.py
-│   │   └── charging_node.py         # Concrete FL client node for EV charging
+│   ├── core/                        # Abstract base classes + autoencoder architecture.
+│   │   ├── autoencoder.py           # The real model: 6→...→570-param encoder/decoder, used by
+│   │   │                             # AutoencoderTrainer, run_fedmia(), run_lira(), etc.
+│   │   ├── base_attack.py           # BaseAttack ABC — the one real, live extension point (§5.4).
+│   │   ├── base_node.py, base_adapter.py, base_dataset.py,
+│   │   │   base_auditor.py, base_ids.py
+│   │   │                             # Abstract interfaces for the OT-layer/node abstraction below
+│   │   │                             # — see the "confirmed dead code" note under src/nodes/.
+│   ├── nodes/charging_node.py       # CONFIRMED DEAD CODE — not imported by run_experiments.py,
+│   │                                 # the NVFLARE custom app, or any live script. Its own module
+│   │                                 # header says so explicitly ("non importato da alcuna
+│   │                                 # pipeline attiva"). Scaffolding from an early OT-protocol
+│   │                                 # design that ACN-Data (a pre-recorded session dataset, not a
+│   │                                 # live OCPP/MQTT feed) never needed.
 │   ├── adapters/
-│   │   ├── __init__.py
-│   │   ├── ocpp16_adapter.py        # OCPP 1.6 WebSocket protocol adapter
-│   │   ├── acn_dataset.py           # ACN-Data (Caltech/JPL) dataset loader
-│   │   └── elaadnl_dataset.py       # ElaadNL public dataset loader
+│   │   ├── acn_dataset.py           # THE real dataset loader — used by run_experiments.py and by
+│   │   │                             # chargeshield_executor.py (NVFLARE). Loads ACN-Data JSON.
+│   │   ├── elaadnl_dataset.py       # Present, not wired into the live pipeline (ACN-Data only).
+│   │   └── ocpp16_adapter.py        # CONFIRMED DEAD CODE, same status as src/nodes/ above.
 │   ├── ml/
-│   │   ├── __init__.py
-│   │   ├── base_ml.py               # Abstract local training interface
-│   │   ├── autoencoder_trainer.py   # Concrete autoencoder local trainer
-│   │   ├── gradient_manager.py      # Gradient snapshot/versioning/store
-│   │   └── fedavg_aggregator.py     # FedAvg and FedProx server-side aggregation
-│   ├── ids/
-│   │   ├── __init__.py
-│   │   └── charging_ids.py          # Autoencoder-based IDS for charging sessions
-│   ├── plugins/
-│   │   └── attacks/
-│   │       ├── __init__.py
-│   │       └── fedmia.py            # FedMIA membership inference attack plugin
-│   ├── auditor/
-│   │   ├── __init__.py
-│   │   └── privacy_auditor.py       # Orchestrates DP accounting and MIA evaluation
-│   └── flare/
-│       ├── __init__.py
-│       └── flare_connector.py       # NVFLARE runtime bridge and lifecycle hooks
-├── tests/
-│   ├── conftest.py                  # Shared pytest fixtures
-│   ├── test_sprint4.py              # 52 integration tests for Sprint 4 deliverables
-│   └── test_sprint5.py              # 25 integration tests for Sprint 5 deliverables
-├── infra/
-│   ├── topology.clab.yml            # Containerlab network topology definition
-│   ├── project.yml                  # NVFLARE provisioning manifest
-│   ├── docker/
-│   │   ├── Dockerfile.node          # FL client node image
-│   │   ├── Dockerfile.server        # FL server/aggregator image
-│   │   ├── Dockerfile.auditor       # Privacy auditor image
-│   │   └── Dockerfile.ids           # IDS image
-│   └── wireguard/
-│       └── wg0.conf.template        # WireGuard VPN configuration template
-├── certs/                           # Generated at runtime; gitignored
-│   ├── ca/
-│   ├── nodes/
-│   └── server/
-├── workspace/                       # NVFLARE provisioning output; gitignored
-├── results/                         # Experiment outputs; gitignored
-├── Makefile
-├── pyproject.toml        ← dipendenze runtime + dev extras (torch, pytest, ruff, ...)
+│   │   ├── base_ml.py               # GradientUpdate/AggregatedUpdate dataclasses, MLPlaneEvent.
+│   │   ├── autoencoder_trainer.py   # Local training loop (used by both the simulation and
+│   │   │                             # ChargeShieldExecutor).
+│   │   ├── gradient_manager.py      # DP clipping/noising — clip_only()/privatize()/
+│   │   │                             # privatize_aggregate(), one GradientManager per dp_mode.
+│   │   ├── fedavg_aggregator.py     # FedAvg/FedProx server-side aggregation.
+│   │   └── ml_plane.py              # MLPlane + FLArtifactCollector — the real event hub wired
+│   │                                 # into run_fl_rounds() (see §3's note below and Task 3(a)
+│   │                                 # cross-reference in docs/Architecture.md §4.5).
+│   ├── ids/charging_ids.py          # ChargingIDS — Krum + CUSUM + cosine-similarity Byzantine/
+│   │                                 # anomaly detection, called directly (no registry) by
+│   │                                 # run_ids() and by ChargeShieldAggregator._run_ids_analysis().
+│   ├── plugins/attacks/
+│   │   ├── __init__.py              # ATTACK_REGISTRY: dict[str, type[BaseAttack]] — real registry.
+│   │   ├── yeom.py, shadow.py, lira.py
+│   │   │                             # Thin BaseAttack wrappers around run_fedmia()/
+│   │   │                             # run_fedmia_shadow()/run_lira() (scripts/run_experiments.py)
+│   │   │                             # — see §5.4 for the full contract.
+│   │   └── fedmia.py                # CONFIRMED unused/orphaned — not in ATTACK_REGISTRY, not
+│   │                                 # called by ChargingIDS or anything else live. Do not confuse
+│   │                                 # with run_fedmia() above (different mechanism, same name).
+│   ├── auditor/privacy_auditor.py   # PrivacyAuditor — DP accounting + threat detection, called
+│   │                                 # imperatively (direct function call, not event subscription)
+│   │                                 # from run_ids() / ChargeShieldAggregator — see §5's note and
+│   │                                 # docs/Architecture.md §4.5.
+│   └── flare/flare_connector.py     # CONFIRMED DEAD CODE — Sprint-3 placeholder that never
+│                                     # imports nvflare and simulates FedAvg with random.gauss().
+│                                     # The real NVFLARE bridge is nvflare/jobs/chargeshield_poc/
+│                                     # app/custom/ (see §11 note above and
+│                                     # docs/NVFlareIntegration.md).
+├── scripts/
+│   ├── run_experiments.py           # THE orchestrator — single-process FL simulation +
+│   │                                 # Yeom/Shadow/LiRA + IDS/Auditor, invoked by every
+│   │                                 # `make experiment*` target.
+│   ├── run_nvflare_mia.py           # Offline MIA/IDS analysis over a completed NVFLARE job's
+│   │                                 # pickled fl_results dump (see docs/NVFlareIntegration.md).
+│   ├── run_sweep.py, download_acn_sessions.py, generate_excel_report.py
+│   └── compare_results.py           # Confirmed orphaned (not called by the Makefile) — see its
+│                                     # own module header; no further action tracked here.
+├── tests/                           # pytest suite — `test_sprint4.py`/`test_sprint5.py` mock
+│                                     # NVFLARE; `test_run_experiments_integration.py` exercises
+│                                     # the real pipeline end-to-end with reduced parameters; both
+│                                     # skipped without torch (see `make test` vs. this repo's CI
+│                                     # invocation in the project instructions).
+├── nvflare/
+│   ├── jobs/chargeshield_poc/app/custom/
+│   │   ├── chargeshield_executor.py    # Real NVFLARE client Executor wrapping AutoencoderTrainer.
+│   │   └── chargeshield_aggregator.py  # Real NVFLARE server Aggregator wrapping FedAvgAggregator +
+│   │                                    # PrivacyAuditor + ChargingIDS + GradientManager.
+│   ├── project.yml                  # NVFLARE provisioning manifest — server + 3 real sites
+│   │                                 # (caltech/jpl/office1) + admin console.
+│   ├── sim_workspace/                # `nvflare simulator` scratch output — gitignored, regenerated
+│   │                                 # by `make nvflare-sim*` on every run.
+│   └── workspace/                    # `nvflare provision` output (certs, startup scripts per
+│                                     # participant) — gitignored, regenerated by `make provision`.
+├── containerlab/topology.clab.yml   # Real Containerlab topology — 5 nodes (server, fl-admin,
+│                                     # caltech, jpl, office1), single shared image, star topology.
+├── datasets/acn/{caltech,jpl,office1}/acndata_sessions_*.json
+│                                     # Real ACN-Data sessions, one subdirectory per real site.
+├── docker/{aggregator,auditor,charging-node,fl-admin,ids}/Dockerfile
+│                                     # ORPHANED — leftover per-role images from the superseded
+│                                     # Sprint 5 design. Not referenced by the Makefile, by
+│                                     # `containerlab/topology.clab.yml`, or by any script. The
+│                                     # single real image is `Dockerfile.flare` below.
+├── Dockerfile.flare                 # THE image used by every Containerlab node (`chargeshield-fl
+│                                     # :latest`) — NVFLARE 2.7.2 + PyTorch (CPU), see §7/§9.
+├── Dockerfile.node                  # ORPHANED — not referenced anywhere, same status as docker/.
+├── certs/                           # ORPHANED legacy PKI tree (4-cluster names: highway-01/
+│                                     # urban-02/etc.) from a pre-NVFLARE-provisioning mTLS design.
+│                                     # No Makefile target generates or reads it for the real
+│                                     # pipeline — see §8. The real mTLS material lives under
+│                                     # `nvflare/workspace/.../startup/`, generated by `make
+│                                     # provision` (NVFLARE's own CertBuilder).
+├── experiments/                     # Experiment JSON/Excel/pickle outputs — gitignored.
+├── Makefile                         # See §7 for the real target list.
+├── pyproject.toml                   # Runtime deps (torch, numpy, sklearn, pandas, openpyxl,
+│                                     # pyyaml) + dev extras (pytest, ruff, mypy) + flare extra
+│                                     # (nvflare==2.7.2).
 └── .gitignore
 ```
 
 ### Directory Roles
 
-**`config/`** — The sole location for all tunable parameters. The CI pipeline enforces that no file outside this directory defines experimental constants. The `experiment.yaml` file governs global parameters (FL rounds, DP budget, MIA configuration, output paths). Per-cluster YAML files govern node-specific parameters (IP address, protocol, power rating, dataset path, local training hyperparameters). The deliberate separation between global and per-cluster configuration reflects the physical reality of EV charging infrastructure: global FL policy (e.g., the number of aggregation rounds) is set by the fleet operator, while local parameters (e.g., the charging power rating) are fixed by hardware.
+**`config/`** — `experiment.yaml` and `auditor.yaml` are the two files actually read by the live
+pipeline (`scripts/run_experiments.py::load_config()` does a plain `yaml.safe_load()`; there is no
+Pydantic schema, no `ConfigLoader` class — see the warning banner above for what §1/§2/§4 still
+claim). Every other YAML file under `config/` (`clusters.yaml`, `datasets.yaml`, `framework.yaml`,
+`nodes.yaml`, `protocols.yaml`, `flare.yaml`, and everything under `config/nodes/`) is read only by
+the confirmed-dead OT-layer code (`src/nodes/`, `src/adapters/ocpp16_adapter.py`,
+`src/flare/flare_connector.py`) — see §6 for the real configuration surface.
 
-**`src/core/`** — The ontological foundation of the framework. Contains only abstract base classes and the autoencoder architecture definition. This directory has no dependencies on any external library except PyTorch (for tensor type annotations). Its stability is paramount: once a base class interface is published in a sprint, it must not be modified in a backward-incompatible way without a deprecation cycle.
+**`src/core/`** — Abstract base classes and the autoencoder architecture. `base_attack.py`
+(`BaseAttack`) is the one abstract interface with a real, live implementation graph (§5.4); the
+node/adapter/dataset/auditor/IDS base classes exist mainly to support the dead `src/nodes/`/
+`src/adapters/ocpp16_adapter.py`/`src/flare/` scaffolding — the real `ACNDataset`, `ChargingIDS`,
+and `PrivacyAuditor` classes are called directly by `scripts/run_experiments.py`, not through these
+interfaces.
 
-**`src/nodes/`** — Contains exactly one concrete node class per EV charging scenario type. At the time of writing, `ChargingNode` is the single concrete implementation used for all four cluster types; the cluster-specific behaviour (protocol, power rating, local batch size) is injected through the configuration system rather than through separate subclasses. If a fundamentally different node behaviour is required — for example, a Vehicle-to-Grid (V2G) bidirectional node — a new concrete class would be added here.
+> **`ACNDataset._parse_record()` error handling.** The private method `_parse_record()` wraps all `datetime` parsing in a `try/except ValueError` block. If a raw session record contains a malformed or missing timestamp string, the exception is caught and the record is silently dropped rather than crashing the entire dataset load, and logged at `WARNING` level.
 
-**`src/adapters/`** — Protocol adapters and dataset loaders. This directory is the integration boundary between the physical world (real charging protocols and real datasets) and the abstract world (the core interfaces). Adapters are allowed to import protocol libraries (`ocpp`, `paho.mqtt`) and dataset libraries (`pandas`, `h5py`) that are forbidden in `src/core/` and `src/nodes/`.
+**`src/nodes/`, `src/adapters/ocpp16_adapter.py`, `src/flare/flare_connector.py`** — Confirmed dead
+code from an early OT-protocol design (live OCPP/MQTT charging nodes) that ACN-Data — a
+pre-recorded, file-based session dataset — never actually needed. Each file's own module header
+carries an explicit "not wired" status note (added Sprint 10e). Left in the repository rather than
+deleted since they are not harmful, just unused; §5.1/§5.2/§5.5 below (extension points that would
+build on this layer) are historical and describe extending code that nothing currently calls.
 
-> **`ACNDataset._parse_record()` error handling.** The private method `_parse_record()` wraps all `datetime` parsing in a `try/except ValueError` block. If a raw CSV record contains a malformed or missing timestamp string in `connectionTime` or `disconnectTime`, the exception is caught and the record is silently dropped from the session list rather than crashing the entire dataset load. This guards against occasional corrupted rows in the ACN-Data export files. Any dropped record is logged at `WARNING` level so that data quality issues are visible in experiment logs without interrupting training.
+**`src/ml/`** — The real federated learning components. `AutoencoderTrainer` runs local training
+(shared verbatim between the simulation and `ChargeShieldExecutor`); `GradientManager` implements
+the three DP modes (`clip_only()`, `privatize()`, `privatize_aggregate()`); `FedAvgAggregator`
+implements FedAvg/FedProx server-side averaging; `ml_plane.py`'s `MLPlane`/`FLArtifactCollector`
+hub is wired into `run_fl_rounds()` to assemble each round's `GradientUpdate`s from
+`emit_event()`/`FLArtifactCollector`, as described in `docs/Architecture.md` §4.5 and confirmed by
+reading `src/ml/ml_plane.py` and `scripts/run_experiments.py::run_fl_rounds()` directly.
 
-**`src/ml/`** — Federated learning components: the local training loop, gradient management, and server-side aggregation. The `GradientManager` is architecturally critical: it maintains a versioned on-disk store of gradient snapshots indexed by (round, node_id, timestamp). This store is the only data pathway from the FL layer to the privacy audit layer, ensuring strict separation.
+> **`AutoencoderTrainer` DataLoader note.** The `DataLoader` used for local training is constructed with `drop_last=True`, to avoid a batch of size 1 producing zero-variance `BatchNorm1d` activations (NaN) and crashing the forward pass.
 
-> **`AutoencoderTrainer` DataLoader note (`src/ml/autoencoder_trainer.py`, line 178).** The `DataLoader` used for local training is constructed with `drop_last=True`. This discards any final incomplete batch whose size would be smaller than `batch_size`. The reason is BatchNorm1d correctness: a batch of exactly 1 sample yields zero variance, causing `BatchNorm1d` to produce NaN activations and crash the forward pass. Because the autoencoder uses `BatchNorm1d` in both encoder and decoder, this crash would occur silently on any node whose dataset partition produces a tail batch of size 1 after a local epoch. `drop_last=True` eliminates this failure mode unconditionally. For all realistic node dataset sizes in ChargeShield-FL, the data loss is less than one batch per epoch (< 1.5%).
+**`src/ids/`** — `ChargingIDS` (Krum + CUSUM + cosine-similarity, not LSTM-based) is instantiated
+and called directly by `run_ids()` (simulation) and `ChargeShieldAggregator._run_ids_analysis()`
+(NVFLARE) — no `IDS_REGISTRY` exists; see §5.5.
 
-**`src/ids/`** — Intrusion detection subsystem. The `ChargingIDS` class wraps the autoencoder defined in `src/core/autoencoder.py` and adds threshold-based anomaly detection logic. It reads from the same gradient store as the auditor, but its operational role is detection rather than evaluation: it is intended to be deployed in production, whereas the auditor is an experimental instrument.
+**`src/plugins/attacks/`** — `ATTACK_REGISTRY` (in `__init__.py`) is real and live: it maps
+`"yeom"`/`"shadow"`/`"lira"` to `YeomAttack`/`ShadowAttack`/`LiRAAttack`, each a thin `BaseAttack`
+wrapper (`src/core/base_attack.py`) around the original, unmodified `run_fedmia()`/
+`run_fedmia_shadow()`/`run_lira()` in `scripts/run_experiments.py`.
+`scripts/run_experiments.py::run_registered_attacks()` iterates this registry and is the actual
+dispatch path used by both `run_experiments.py::main()` and `scripts/run_nvflare_mia.py::main()`.
+`fedmia.py` in the same directory is unrelated to this registry: a standalone shadow-model plugin,
+confirmed unused by the live pipeline and not registered — see §5.4 for the full contract and the
+distinction from `run_fedmia()`.
 
-**`src/plugins/attacks/`** — Attack plugins. **Status corrected 2026-07-24, then implemented for real later the same day (user requested it explicitly — see `docs/DSN2027_Positioning.md`).** Earlier the same day this section was found to describe a `BaseAttack`/`ATTACK_REGISTRY` mechanism that didn't exist. It now does: `BaseAttack` lives in `src/core/base_attack.py` (not `src/core/base_auditor.py`, despite what an earlier draft of this section claimed), and `src/plugins/attacks/__init__.py` exports `ATTACK_REGISTRY: dict[str, type[BaseAttack]]` mapping `"yeom"`/`"shadow"`/`"lira"` to `YeomAttack`/`ShadowAttack`/`LiRAAttack` (each in its own file). `scripts/run_experiments.py::run_registered_attacks()` iterates the registry and is the actual dispatch path used by both `run_experiments.py::main()` and `scripts/run_nvflare_mia.py::main()` — not a parallel structure nobody calls. The three existing classes are intentionally thin wrappers: each `run()` lazily imports and calls the original, unmodified `run_fedmia()`/`run_fedmia_shadow()`/`run_lira()` — see `src/core/base_attack.py`'s docstring for why (avoiding any risk to the empirically-validated logic in those functions). `fedmia.py` itself is unrelated to this registry — it remains a standalone file, unregistered, still confirmed unused by the live pipeline (see the corrected note below); it was never one of the three attacks this fix registered.
+**`src/auditor/`** — `PrivacyAuditor` orchestrates DP accounting and produces the structured audit
+report per round. **It is called imperatively** — a direct function call from `run_ids()`
+(simulation) or from `ChargeShieldAggregator._run_ids_analysis()` (NVFLARE) — **not through an
+event-subscription mechanism.** `PrivacyAuditor` does not subclass any `MLPlaneListener`-style
+interface and does not call `MLPlane.subscribe()`; it simply consumes the `GradientUpdate`/delta
+data that `run_ids()`/`ChargeShieldAggregator` already assembled that round (from `MLPlane`'s
+`FLArtifactCollector` in the simulation path). See `docs/Architecture.md` §4.5 for the same
+clarification kept in sync there.
 
-> **Two distinct FedMIA mechanisms.** Do not conflate the plugin with the experiment-level evaluator:
-> - `src/plugins/attacks/fedmia.py` — a **shadow-model plugin**, originally intended for `ChargingIDS`'s per-node IDS. Confirmed (2026-07-24) not actually invoked by `ChargingIDS` or anything else in the live pipeline, and not part of `ATTACK_REGISTRY` (it isn't one of the three experiment-level attacks — registering it would require deciding what `run()` should do for an attack nothing currently calls, a separate decision from today's fix).
-> - `scripts/run_experiments.py::run_fedmia()` — the **loss-based experiment evaluator** (Yeom et al., 2018), wrapped as `YeomAttack` in the registry above, and the one that actually runs. It loads each round's `global_weights` into a fresh `Autoencoder`, computes membership scores as `-MSE` (negative reconstruction error), and reports per-round AUC-ROC via `sklearn.metrics.roc_auc_score`. JSON output: `per_round[round]["auc_roc"]` and summary fields `mean_auc_roc`, `max_auc_roc`, `min_auc_roc`.
+**`tests/`** — pytest suite. `test_sprint4.py`/`test_sprint5.py` mock NVFLARE; `test_run_experiments_integration.py` exercises the real `run_fl_rounds()`/`run_fedmia()`/`run_lira()`/`run_ids()` pipeline end-to-end with reduced parameters (seconds, not minutes). All three require `torch`.
 
-**`src/auditor/`** — The privacy auditor orchestrates the complete audit workflow: it invokes the configured attack plugin, computes differential privacy accounting (tracking (epsilon, delta) expenditure across rounds), and produces the structured audit report that constitutes a primary experimental output.
+**`nvflare/jobs/chargeshield_poc/app/custom/`** — The real NVFLARE integration: `chargeshield_executor.py` (client Executor) and `chargeshield_aggregator.py` (server Aggregator, replacing NVFLARE's built-in `InTimeAccumulateWeightedAggregator` with `FedAvgAggregator` + `PrivacyAuditor` + `ChargingIDS` + `GradientManager`). See `docs/NVFlareIntegration.md` for the full history, and this file's own module docstrings for the (small, documented) set of remaining open points around round-counting.
 
-> **`PrivacyAuditor.audit()` is actively called.** `audit()` is invoked from `run_ids()` on every FL round in which a new model update is available — it is no longer dead code. The method signature accepts `model_update: dict[str, Any]`, where each key is a layer name of the form `layer_i` and each value is a `list[float]` of the corresponding parameter values. This format matches the serialized `ModelUpdate` produced by `GradientManager.snapshot()`.
+**`docker/`, `Dockerfile.node`** — Orphaned. Five per-role Dockerfiles under `docker/` and a
+top-level `Dockerfile.node` are leftovers from the superseded Sprint 5 per-role container design;
+none are referenced by the `Makefile`, by `containerlab/topology.clab.yml`, or by any script. The
+one real image is `Dockerfile.flare` (§7/§9).
 
-**`src/flare/`** — NVFLARE integration bridge. The `FlareConnector` wraps the NVFLARE client and server APIs, translating between NVFLARE's training task abstraction and ChargeShield-FL's internal interfaces. This isolation ensures that upgrading NVFLARE from version 2.7.2 to a future version requires changes only in this directory.
-
-**`tests/`** — All pytest test files. The naming convention `test_sprint{N}.py` reflects the sprint-based development workflow: each sprint produces a corresponding test file that remains permanently in the repository. Tests are never deleted; if a sprint's deliverable is superseded, its tests are marked `xfail` with an explanatory message rather than removed.
-
-**`infra/`** — All infrastructure-as-code artefacts: Containerlab topology, NVFLARE project manifest, Dockerfiles, and WireGuard templates.
-
-**`certs/`**, **`workspace/`**, **`results/`** — Runtime-generated directories. All three are listed in `.gitignore`. The `certs/` directory contains mTLS certificates generated by `make certs`. The `workspace/` directory contains the NVFLARE provisioning output generated by `make provision`. The `results/` directory contains experiment outputs organised by configuration hash.
+**`certs/`** — Orphaned. A legacy PKI tree using the old 4-cluster names (`highway-01`, `urban-02`,
+etc.) plus `aggregator`/`auditor`/`ids`/`fl-admin`/`corporate-0N`/`residential-0N` entries from a
+pre-NVFLARE mTLS design. No Makefile target (`make certs` does not exist) generates or consumes
+this directory for the real deployment — mTLS material for the actual NVFLARE/Containerlab
+deployment is generated by `make provision` (NVFLARE's own `CertBuilder`, see §8) under
+`nvflare/workspace/chargeshield_fl/prod_00/<participant>/startup/`.
 
 ---
 
@@ -393,6 +492,22 @@ The gradient noise standard deviation is therefore `4.845 * max_grad_norm = 4.84
 ## 5. Extension Points
 
 ChargeShield-FL is designed to be extended without modifying existing code. This section provides step-by-step instructions and code skeletons for the five primary extension scenarios.
+
+> **Reality check (2026-08-07): only §5.4 describes a currently live, currently useful extension
+> point.** `ATTACK_REGISTRY` (`src/plugins/attacks/__init__.py`) is real, wired into
+> `scripts/run_experiments.py::run_registered_attacks()`, and is how `YeomAttack`/`ShadowAttack`/
+> `LiRAAttack` are actually dispatched — see §5.4 below. §5.1 (node types), §5.2 (protocol
+> adapters), §5.3 (dataset loaders' `DATASET_REGISTRY`), and §5.5 (IDS detectors' `IDS_REGISTRY`)
+> describe registries and base-class extension mechanisms that **do not exist in the code** —
+> `src/nodes/__init__.py` has no `NODE_REGISTRY`, `src/adapters/__init__.py` has no
+> `ADAPTER_REGISTRY`/`DATASET_REGISTRY`, and `src/ids/__init__.py` has no `IDS_REGISTRY`. They are
+> kept below as illustrative design sketches for extending `src/nodes/`, `src/adapters/
+> ocpp16_adapter.py`, and `src/ids/` — code that is itself confirmed dead/single-implementation
+> (see §3's "Directory Roles"). `ACNDataset` (the one dataset loader actually used) is instantiated
+> directly by `scripts/run_experiments.py`, not looked up through a registry; `ChargingIDS` is the
+> only IDS class in the live pipeline, instantiated directly by `run_ids()` /
+> `ChargeShieldAggregator`. Treat 5.1/5.2/5.3/5.5 as "if you were going to build this, here is a
+> reasonable shape" rather than "this mechanism exists today".
 
 ### 5.1 Adding a New Charging Node Type
 
@@ -896,171 +1011,155 @@ ids:
 
 ## 6. Configuration System
 
+**Rewritten 2026-08-07 against the real repository.** Previous revisions of this section described
+a Pydantic-validated `ExperimentConfig`/`ClusterConfig` schema, per-cluster YAML files, and a
+CI "no hardcoded values" linter — none of that exists. What follows is the actual configuration
+surface as read directly from `scripts/run_experiments.py` and the two YAML files it loads.
+
 ### 6.1 Overview
 
-ChargeShield-FL uses a two-level configuration system. The global configuration file `config/experiment.yaml` defines parameters that apply to the entire experiment. Per-cluster configuration files `config/nodes/cluster_{a,b,c,d}.yaml` define parameters specific to each cluster. All configuration files are validated against the Pydantic schema defined in `src/core/config.py` before any component is instantiated.
+`scripts/run_experiments.py::load_config()` (line 58) is the entire configuration-loading
+mechanism: it opens the file passed via `--config` (every real Makefile target passes
+`config/experiment.yaml`) and calls `yaml.safe_load()` on it — no schema class, no Pydantic
+validation, no `ConfigLoader`. A second file, `config/auditor.yaml`, is loaded separately by
+`PrivacyAuditor`/`ChargingIDS` for DP-budget and alert-threshold parameters. These two files are
+the entire real configuration surface. Every other YAML file under `config/`
+(`clusters.yaml`, `datasets.yaml`, `framework.yaml`, `nodes.yaml`, `protocols.yaml`, `flare.yaml`,
+and everything under `config/nodes/`) is read only by the confirmed-dead OT-layer code
+(`src/nodes/`, `src/adapters/ocpp16_adapter.py`, `src/flare/flare_connector.py` — see §3) and is
+irrelevant to any real experiment or NVFLARE run. Most values in `config/experiment.yaml` are also
+overridable via CLI flags (`--rounds`, `--epsilon`, `--seed`, `--n-shadow`, `--dp-mode`, `--no-dp`,
+`--byzantine`, `--byzantine-node`, `--scale-factor`, `--sweep-dir`, ...); every real Makefile
+experiment target (§7) passes these explicitly, so the YAML values below are only the defaults used
+when `run_experiments.py` is invoked directly without those flags.
 
-### 6.2 Global Configuration (`config/experiment.yaml`)
+### 6.2 Experiment Configuration (`config/experiment.yaml`)
+
+The real, current file (abridged; see the file itself for the full dated comments explaining each
+choice):
 
 ```yaml
-# config/experiment.yaml
-# Global experiment parameters for ChargeShield-FL.
-# All values are validated against src/core/config.py:ExperimentConfig.
-
 experiment:
-  name: chargeshield_fl_dsn2027
-  seed: 42                          # Global random seed for reproducibility
-  results_dir: results/             # Relative to repository root; created at runtime
-  log_level: INFO
-
-fl:
-  algorithm: fedavg                 # "fedavg" | "fedprox"
-  rounds: 100
-  proximal_mu: 0.0                  # 0.0 for FedAvg; set to 0.01 for FedProx
-  aggregation_fraction: 1.0         # Fraction of nodes participating per round
-  local_epochs: 5
-  local_batch_size: 32
-
-dp:
-  mechanism: gaussian
+  name: chargeshield_fedmia_baseline
+  fl_rounds: 10          # default only — every real Makefile target passes --rounds 10 explicitly
+  seed: 42
   epsilon: 1.0
   delta: 1.0e-5
   max_grad_norm: 1.0
-  # sigma is derived at runtime: max_grad_norm * sqrt(2*ln(1.25/delta)) / epsilon
 
-mia:
-  plugin: fedmia
-  shadow_model_epochs: 100
-  attack_threshold: 0.5
-  evaluate_every_n_rounds: 10
+# The 3 real ACN-Data sites — the only sites this dataset has (verified against
+# ev.caltech.edu/dataset). Each site combines all available years (2018-2021;
+# Office 1 has no 2018 data). Grouped by real site_id in group_indices_by_site().
+sites:
+  caltech:
+    - datasets/acn/caltech/acndata_sessions_2018.json
+    - datasets/acn/caltech/acndata_sessions_2019.json
+    - datasets/acn/caltech/acndata_sessions_2020.json
+    - datasets/acn/caltech/acndata_sessions_2021.json
+  jpl:
+    - datasets/acn/jpl/acndata_sessions_2018.json
+    - datasets/acn/jpl/acndata_sessions_2019.json
+    - datasets/acn/jpl/acndata_sessions_2020.json
+    - datasets/acn/jpl/acndata_sessions_2021.json
+  office1:
+    - datasets/acn/office1/acndata_sessions_2019.json
+    - datasets/acn/office1/acndata_sessions_2020.json
+    - datasets/acn/office1/acndata_sessions_2021.json
 
-ids:
-  detector: autoencoder
-  anomaly_threshold: 0.03
+ml:
+  input_dim: 6
+  lr: 0.001
+  epochs: 50              # per FL round, per client — deliberately high enough to overfit locally
+  batch_size: 32
+  proximal_mu: 0.01        # FedProx; cfg["ml"]["proximal_mu"], not cfg["experiment"]["proximal_mu"]
 
-nvflare:
-  project_yml: infra/project.yml
-  workspace_dir: workspace/
+output:
+  experiments_dir: experiments
 
-containerlab:
-  topology: infra/topology.clab.yml
+lira:
+  n_shadow: 16             # shadow models per cluster for LiRA IN/OUT calibration
+
+# Byzantine/Krum IDS validation sweep — NOT a privacy-measurement run.
+# enabled: true adds 2 synthetic clients (n=5) and skips Yeom/Shadow/LiRA entirely.
+byzantine_attack:
+  enabled: false
+  attack_type: gradient_scaling
+  byzantine_node: synthetic_1
+  scale_factor: 10
 ```
 
-### 6.3 Cluster Configuration (`config/nodes/cluster_a.yaml`)
+There is no `nvflare:`/`containerlab:` section in this file — the NVFLARE side is configured
+separately via `nvflare/project.yml` and `nvflare/jobs/chargeshield_poc/app/config/
+config_fed_{server,client}.json` (see `docs/NVFlareIntegration.md`), and Containerlab via
+`containerlab/topology.clab.yml` directly (no config-file indirection).
+
+### 6.3 Auditor Configuration (`config/auditor.yaml`)
+
+The second (and last) file actually read by the live pipeline, consumed by `PrivacyAuditor` and
+`ChargingIDS` (both the simulation path via `run_ids()` and the NVFLARE path via
+`ChargeShieldAggregator`):
 
 ```yaml
-# config/nodes/cluster_a.yaml
-# Highway charging cluster: 4 nodes, OCPP 1.6, 150kW DC fast charging.
-
-cluster_id: cluster_a
-cluster_name: highway
-node_type: charging
-protocol: ocpp16
-power_kw: 150.0
-charge_type: DC
-
-nodes:
-  - node_id: node_a1
-    hostname: node-a1              # Must match NVFLARE project.yml and Containerlab
-    ip: 192.168.1.1
-    port: 9001
-  - node_id: node_a2
-    hostname: node-a2
-    ip: 192.168.1.2
-    port: 9002
-  - node_id: node_a3
-    hostname: node-a3
-    ip: 192.168.1.3
-    port: 9003
-  - node_id: node_a4
-    hostname: node-a4
-    ip: 192.168.1.4
-    port: 9004
-
-dataset:
-  loader: acn
-  path: /data/acn/jpl_sessions.h5
-  batch_size: 64
-  num_workers: 4
-  split:
-    train: 0.7
-    val: 0.15
-    test: 0.15
-
-local_training:
-  epochs: 5
-  learning_rate: 0.001
-  weight_decay: 1.0e-4
-
-ids:
-  detector: autoencoder
-  anomaly_threshold: 0.03
-  feature_dim: 5
+auditor:
+  enabled: true
+  dp:
+    mechanism: Gaussian
+    epsilon: 1.0            # per-round DP budget; normally overridden by the experiment's epsilon
+    delta: 1.0e-5
+    max_grad_norm: 1.0
+    total_rounds_budget: 1000   # denominator for budget_ratio = cumulative_epsilon / (epsilon * this)
+  attacks:
+    - FedMIA
+  alert_threshold: 0.7
 ```
 
-### 6.4 No Hardcoded Values Policy — Enforcement
+### 6.4 "No Hardcoded Values" Policy — Not Enforced
 
-The following practices are enforced by automated checks and code review policy:
-
-1. **Numeric literals in `src/`.** The CI linter scans `src/` for floating-point literals and integer literals larger than 1 that are not used as loop bounds. Any match outside a test file causes the build to fail with a descriptive error message identifying the file and line.
-
-2. **String literals that look like paths.** Any string literal matching the pattern of a Unix absolute path in `src/` is flagged. Paths must come from `config.*.path` attributes.
-
-3. **IP address literals.** Any string matching the IPv4 pattern in `src/` is flagged.
-
-4. **Port number literals.** Any integer in the range 1024-65535 in `src/` (excluding loop bounds) is flagged.
-
-These checks are implemented in `scripts/lint_no_hardcoded.py` and run as a pre-commit hook and as a CI step before the test suite.
+**Correction (2026-08-07):** an earlier version of this section described a `scripts/
+lint_no_hardcoded.py` pre-commit/CI linter banning numeric/path/IP/port literals in `src/`. That
+script does not exist and never has (`ls scripts/` has no such file). There is no automated
+enforcement of a "no hardcoded values in `src/`" policy in this repository today; discipline around
+reading parameters from config (rather than hardcoding them) is a code-review convention, not a
+CI gate.
 
 ### 6.5 Configuration Validation
 
-Configuration validation uses Pydantic v2 validators. Example validators:
+There is no Pydantic (or any other schema) validation layer — `load_config()` is a bare
+`yaml.safe_load()` (§6.1). The one real runtime validation in this area is inside
+`GradientManager._compute_sigma()` (`src/ml/gradient_manager.py`, line 200), which every DP mode
+(`dp-fedavg`/`central`/`local`) goes through:
 
 ```python
-from pydantic import BaseModel, field_validator, model_validator
-import math
+# src/ml/gradient_manager.py:200 — the real method, not an illustration.
+def _compute_sigma(self) -> float:
+    """
+    sigma = max_grad_norm * sqrt(2 * ln(1.25 / delta)) / epsilon
 
-class DPConfig(BaseModel):
-    mechanism: str
-    epsilon: float
-    delta: float
-    max_grad_norm: float
-
-    @field_validator("epsilon")
-    @classmethod
-    def epsilon_must_be_positive(cls, v: float) -> float:
-        if v <= 0:
-            raise ValueError(f"epsilon must be positive; got {v}")
-        return v
-
-    @field_validator("delta")
-    @classmethod
-    def delta_must_be_valid_probability(cls, v: float) -> float:
-        if not (0 < v < 1.25):
-            raise ValueError(f"delta must be in (0, 1.25); got {v}")
-        return v
-
-    @model_validator(mode="after")
-    def sigma_must_be_finite(self) -> "DPConfig":
-        sigma = self.max_grad_norm * math.sqrt(
-            2 * math.log(1.25 / self.delta)
-        ) / self.epsilon
-        if not math.isfinite(sigma):
-            raise ValueError(
-                f"Derived sigma is not finite: epsilon={self.epsilon}, "
-                f"delta={self.delta}, max_grad_norm={self.max_grad_norm}"
-            )
-        return self
+    WARNING — weight perturbation, not DP-SGD: this noises the whole weight
+    vector after local training, not per-sample gradients. With epochs > 1
+    per round, sensitivity is not formally bounded by max_grad_norm; the
+    (epsilon, delta)-DP guarantee only holds for epochs=1. Treat epsilon as
+    an experimental noise parameter, not a formal DP guarantee, for
+    epochs > 1 (the real config uses epochs=50 — see §6.2).
+    """
+    if self.epsilon <= 0:
+        raise ValueError(f"epsilon deve essere > 0, ricevuto: {self.epsilon}")
+    if not (0 < self.delta < 1):
+        raise ValueError(f"delta deve essere in (0, 1), ricevuto: {self.delta}")
+    if self.delta > 1e-2:
+        logger.warning(f"delta={self.delta} è insolitamente alto per DP...")
+    return self.max_grad_norm * math.sqrt(2 * math.log(1.25 / self.delta)) / self.epsilon
 ```
 
-**Why delta < 1.25, not delta < 1.0.** The Gaussian Mechanism noise calibration formula is `sigma = max_grad_norm * sqrt(2 * ln(1.25 / delta)) / epsilon` (Dwork and Roth [2014], Theorem A.1). The constant 1.25 appears explicitly inside the logarithm: the formula requires `delta < 1.25` for the argument `ln(1.25 / delta)` to be positive, which is necessary for the noise standard deviation `sigma` to be real-valued and positive. Values of `delta` in (0, 1.0) — the conventional probability range — are universally valid. Values in [1.0, 1.25) are mathematically valid input to the formula but are never meaningful as a DP parameter (delta should be negligibly small, e.g., 1e-5). The upper bound 1.25 is therefore the tightest bound that keeps `sigma` well-defined; in practice, any `delta` used in research will be far below 1.0.
-
-**`_compute_sigma()` validation.** The `_compute_sigma()` method in `GradientManager` validates both parameters before computing `sigma`:
-
-- `epsilon > 0`: epsilon must be strictly positive; zero or negative values make the DP guarantee undefined.
-- `0 < delta < 1.25`: delta must be positive (zero would require infinite noise) and must satisfy the formula's domain constraint (delta >= 1.25 makes `ln(1.25 / delta)` non-positive, yielding an imaginary or zero sigma).
-
-Both checks raise `ValueError` with a descriptive message if violated. These runtime checks complement the Pydantic field-level validation and guard against any code path that constructs a `GradientManager` directly without going through the configuration loader.
+**Correction (2026-08-07): the real bound is `0 < delta < 1`, not `0 < delta < 1.25`.** An earlier
+version of this section claimed the code accepted `delta` up to 1.25, reasoning from the formula's
+mathematical domain (`ln(1.25 / delta)` stays positive for any `delta < 1.25`). That reasoning is
+correct about the *formula*, but the actual `if not (0 < self.delta < 1)` check in the code above is
+strictly tighter than the formula requires — it rejects any `delta >= 1` even though the formula
+itself would still produce a positive, finite `sigma` for `delta` in `[1, 1.25)`. There is also no
+Pydantic layer calling this — `_compute_sigma()` is the only validation, invoked directly from
+`GradientManager.__init__()` (line 65) whenever a `GradientManager` is constructed, which happens
+for every real DP mode (`dp-fedavg`/`central`/`local`, never for `no_dp`).
 
 ### 6.6 Excel Report Generation (`scripts/generate_excel_report.py`)
 
@@ -1074,16 +1173,20 @@ load_experiments(experiments_dir: Path | None = None) -> list[dict]
 
 `load_experiments` scans `experiments_dir` (defaults to `experiments/` relative to the repository root if `None`) for all `experiment_*.json` files, parses them, and returns a list of experiment result dictionaries. Passing an explicit `Path` is useful for tests that redirect output to a temporary directory.
 
-**Output: six Excel sheets.**
+**Output: eleven Excel sheets (corrected 2026-08-07 — a previous revision of this section said
+six; `wb.create_sheet()` is called eleven times).**
 
 | Sheet name | Contents |
 |---|---|
 | `Raw Data` | One row per experiment: timestamp, FL rounds, ε, δ, proximal μ, AUC-ROC mean/max/min, Privacy Risk, IDS alerts, Byzantine rounds |
-| `Heat Map` | AUC-ROC matrix: rows = FL round counts, columns = ε values; cells colour-coded green (≤0.52, DP effective) / orange (0.52–0.60) / red (>0.60, MIA effective) |
+| `Heat Map` | LiRA AUC-ROC matrix: rows = FL round counts, columns = ε values (`dp_mode=dp-fedavg` only — central/local DP are compared in `Comparison` instead) |
 | `Per Rounds` | AUC-ROC mean, min, max, std dev aggregated across all experiments with the same `fl_rounds` value |
 | `Per Epsilon` | AUC-ROC mean, min, max aggregated across all experiments with the same ε value; includes DP interpretation labels |
 | `Comparison` | Side-by-side metrics table: one column per experiment, rows = key metrics (rounds, ε, δ, μ, AUC-ROC mean/max/min, privacy risk, alerts) |
-| `AUC Progression` | Per-round AUC-ROC and FL training loss trajectory for each experiment; rows = round index, columns = (AUC, MemberScore) per experiment |
+| `AUC Progression` | Per-round Yeom AUC-ROC and FL training loss trajectory for each experiment |
+| `Attack Comparison` | Yeom (2018) vs. Shadow (Carlini) vs. LiRA (Carlini 2022, ★ primary) side by side per experiment |
+| `Yeom Per Round`, `Shadow Per Round`, `LiRA Per Round` | Per-round AUC-ROC trajectory for each of the three attacks individually |
+| `Seed Aggregation` | Mean ± std AUC-ROC per (rounds, ε, no-DP) group across seeds in the same sweep directory — falls back to N=1 if only one seed's JSON is present in that directory |
 
 The output workbook is written to `experiments/ChargeShield_FL_Results.xlsx` and is regenerated automatically after each experiment via `_update_excel_report()`.
 
@@ -1111,155 +1214,165 @@ The output workbook is written to `experiments/ChargeShield_FL_Results.xlsx` by 
 
 ## 7. Makefile Reference
 
-The `Makefile` provides a unified interface for all lifecycle operations. All targets that invoke external tools (Docker, Containerlab, NVFLARE) require that the corresponding tool be installed and in `PATH`. The `make help` target prints a formatted summary of all targets.
+**Rewritten 2026-08-07 against the real `Makefile`** (`grep "^[a-zA-Z_.-]*:" Makefile` plus reading
+each target's recipe). The previous revision of this section invented targets
+(`make certs`, `make clean-workspace` pointed at a nonexistent `infra/`) and omitted most of the
+real experiment targets, which are actually the ones used daily. `make help` prints a live summary;
+this section adds the "why" behind each group.
 
-### 7.1 Infrastructure Lifecycle
-
-| Target | Description |
-|---|---|
-| `make build` | Build all Docker images defined in `infra/docker/`. Images are tagged with the current Git commit hash. The build fails if any image fails to build cleanly. |
-| `make provision` | Run the NVFLARE provisioning workflow: reads `infra/project.yml`, generates the `workspace/` directory with mTLS certificates, startup scripts, and configuration for all FL participants. Requires Python and `nvflare>=2.7.2`. |
-| `make deploy` | Deploy the Containerlab topology defined in `infra/topology.clab.yml`. Creates Docker containers, virtual network interfaces, and routing tables as specified. Requires `containerlab>=0.50` and Docker. |
-| `make destroy` | Destroy the Containerlab topology and stop all associated containers. Does not remove Docker images or provisioned workspace. |
-| `make certs` | Generate the mTLS certificate authority and all node/server certificates. Outputs to `certs/`. This target is idempotent: if `certs/ca/ca.pem` already exists, it will not be regenerated unless `make certs FORCE=1` is specified. |
-| `make status` | Display the current status of all Containerlab nodes (running/stopped/error) and the NVFLARE server status. |
-| `make logs` | Tail the last 100 lines of logs from all running containers. Use `make logs NODE=node-a1` to tail a specific container. |
-
-### 7.2 Experiment Operations
+### 7.1 Setup
 
 | Target | Description |
 |---|---|
-| `make experiment` | Run a single experiment using the configuration in `config/experiment.yaml`. Outputs are written to `results/<config_hash>/`. This target executes the complete pipeline: FL training, DP accounting, MIA evaluation, and audit report generation. |
-| `make experiment-sweep` | Run a parameter sweep defined by the `sweep:` section of `config/experiment.yaml`. Each configuration combination is run sequentially, with results written to separate subdirectories. Use this target for ablation studies. |
-| `make experiment-dry` | Validate configuration and print the complete instantiation plan without executing any FL training or infrastructure operations. Use this to verify that a new configuration is syntactically valid and that all referenced files exist. |
+| `make install` | `pip install -e "." --break-system-packages` — runtime deps only (torch, numpy, scikit-learn, pandas, openpyxl, pyyaml). Run once on a new machine. |
+| `make install-dev` | Runtime + dev tools (`pytest`, `pytest-cov`, `ruff`, `mypy`) via `pip install -e ".[dev]"`. |
+| `make install-flare` | Runtime + `nvflare==2.7.2` via the `flare` extra in `pyproject.toml` (pulls in torch transitively). Needed for `nvflare-sim*` and any real NVFLARE/Containerlab run. |
+| `_check-deps` / `_check-nvflare-deps` | Internal (not meant to be called directly). Every `experiment-*` target depends on `_check-deps`; every `nvflare-sim*` target depends on `_check-nvflare-deps`. Both **auto-install** the missing dependencies by shelling out to `make install`/`make install-flare` if `import torch, numpy, ...` fails, rather than just printing a warning and exiting (fixed 2026-07-24 — previously required a separate manual `make install` step that was easy to forget on a fresh machine). |
 
-### 7.3 Testing
+### 7.2 Containerlab / NVFLARE Infrastructure Lifecycle
 
-| Target | Description |
-|---|---|
-| `make install-dev` | Install all Python dependencies (runtime + dev): `torch`, `numpy`, `scikit-learn`, `pandas`, `openpyxl`, `pyyaml`, `pytest`, `pytest-cov`, `ruff`, `mypy`. Runs `pip install -e ".[dev]"` from `pyproject.toml`. **Run this once after cloning the repository before executing any other target.** |
-| `make test` | Run the complete pytest test suite. Exits with a non-zero code if any test fails. |
-| `make test-sprint4` | Run only the tests in `tests/test_sprint4.py` (52 tests). Use during Sprint 4 development to get a fast feedback cycle. |
-| `make test-sprint5` | Run only the tests in `tests/test_sprint5.py` (~32 tests: AutoencoderTrainer, GradientManager, FedAvgAggregator, normalization). |
-| `make test-coverage` | Run the full test suite with coverage report (`--cov=src`). Depends on `install-dev`. |
-
-### 7.4 Cleanup
+These targets orchestrate the **real** 5-node Containerlab topology (`server`, `fl-admin`,
+`caltech`, `jpl`, `office1` — see `containerlab/topology.clab.yml`), not the fictional 12-node,
+4-cluster, per-role-image design an earlier revision of this document described.
 
 | Target | Description |
 |---|---|
-| `make clean` | Remove all build artefacts: `__pycache__`, `.pyc` files, pytest cache, mypy cache. Does not remove `certs/`, `workspace/`, or `results/`. |
-| `make clean-workspace` | Remove the `workspace/` directory generated by `make provision`. The next `make provision` will regenerate it from scratch. Use when changing `infra/project.yml`. |
-| `make clean-experiments` | Remove the `results/` directory. **This operation is irreversible.** Experimental results that have not been backed up externally will be lost. The Makefile prompts for confirmation before executing. |
+| `make build` | `docker build -f Dockerfile.flare -t chargeshield-fl:latest .` — the **one** image, shared by every Containerlab node. There is no `infra/docker/` and no per-role Dockerfile in the real deploy path (`docker/` and `Dockerfile.node` at repo root are orphaned leftovers — see §3). |
+| `make provision` | `nvflare provision -p nvflare/project.yml -w nvflare/workspace` — generates `nvflare/workspace/chargeshield_fl/prod_00/<participant>/startup/` with mTLS certs and startup scripts for all 5 participants + admin console. See §8. |
+| `make deploy` | `sudo containerlab deploy -t containerlab/topology.clab.yml --reconfigure`. |
+| `make destroy` | `sudo containerlab destroy -t containerlab/topology.clab.yml --cleanup`. |
+| `make status` | `docker ps --filter name=clab-chargeshield ...` — lists the running Containerlab containers. |
+| `make logs` | Tails `clab-chargeshield-fl-aggregator` and `clab-chargeshield-fl-caltech` specifically (hardcoded container names in the recipe, not a generic `NODE=` parameter). The Makefile's own comment flags this target as written before the topology existed and not independently re-verified since. |
 
-### 7.5 Help
+`containerlab/topology.clab.yml`'s own header notes it was rewritten 2026-07-31 for the 3 real
+sites and was **not yet verified end-to-end** at the time of that rewrite; a `containerlab/
+clab-chargeshield-fl/` state directory now present on the user's machine indicates at least one
+real `make deploy` has run since. The two NVFLARE jobs confirmed to have completed 10/10 rounds
+(§ referenced from the VERIFY-tag resolution in `chargeshield_executor.py`/
+`chargeshield_aggregator.py`) were run via `make nvflare-sim*` (§7.4), not necessarily via this
+Containerlab path — treat the two as separately-verified.
+
+### 7.3 Experiment Operations (single-process simulation)
+
+All of these run `scripts/run_experiments.py` directly (no Docker/NVFLARE involved) against the 3
+real ACN-Data sites, and depend on `_check-deps`.
 
 | Target | Description |
 |---|---|
-| `make help` | Print a formatted table of all Makefile targets with one-line descriptions. This is the canonical reference for daily use; the table above provides the extended descriptions. |
+| `make experiment` | Single run using `config/experiment.yaml` defaults verbatim (no CLI overrides). |
+| `make experiment-smoke` | 5 rounds, no-DP, `n_shadow=2`, `--shadow-epochs-cap 20` — pipeline sanity check only; AUC not interpretable. Output isolated to `experiments/smoke/`. |
+| `make experiment-nodp` / `experiment-dp` | Single-seed baseline (10 rounds): no-DP vs. DP-FedAvg at `EPS` (default 1.0). |
+| `make experiment-central-dp` / `experiment-local-dp` | Single-seed Central DP / Local DP at `EPS` — the two other DP placements besides DP-FedAvg (see `docs/CaseStudies.md` §2.4.3 for why Central DP is expected to show *no* LiRA suppression, and `run_ids()`'s docstring for why Local DP degrades IDS by design). |
+| `make experiment-nodp-sweep` / `-dp-sweep` / `-central-dp-sweep` / `-local-dp-sweep` | Multi-seed versions (`SEEDS`, default `"42 123 456 789 1234"`) of the four targets above, each writing to an auto-numbered `experiments/{nodp,dp,central,local}-sweep<N>/` and aggregated in the Excel `Seed Aggregation` sheet (§6.6). Guarded by `_sweep_lock` (only one multi-seed sweep may run at a time — a real OOM was caused by two running concurrently on 2026-07-31) and pass `< /dev/null` to every invocation (fixes a real "Bad file descriptor" crash when the launching terminal/SSH session closed mid-sweep, found 2026-08-03). |
+| `make experiment-sweep` | Legacy epsilon-only sweep (0.1/0.5/1.0/2.0/5.0, 100 rounds); does not isolate output into a sweep directory — prefer `experiment-full-sweep`. |
+| `make experiment-full-sweep` | Full rounds × epsilon grid (100/200/500/1000 × 0.1/0.5/1.0/2.0/5.0 = 20 runs) into an auto-numbered `experiments/full-sweep<N>/`. |
+| `make experiment-byzantine-sweep` | IDS/Krum validation only (5 seeds × 5 epsilons, `synthetic_1` scaled ×10) — writes to `experiments/ids_validation/`, deliberately **separate** from the MIA sweep directories; Yeom/Shadow/LiRA are skipped entirely for this target (see §6.2's `byzantine_attack` block). |
+| `make experiment-dry` | `--dry-run` — validates config/dataset without training. |
+
+`EPS` (default `1.0`), `N_SHADOW` (default `16`), `SEED` (default `42`), and `SEEDS` (default the
+5-seed list above) are overridable, e.g. `make experiment-dp EPS=0.1`.
+
+### 7.4 NVFLARE Simulator
+
+Runs the real `nvflare/jobs/chargeshield_poc/` job via `nvflare simulator` — local threads, no
+Docker/Containerlab required. Depends on `_check-nvflare-deps`.
+
+| Target | Description |
+|---|---|
+| `make nvflare-sim-smoke` | 1 client (`caltech`), `CHARGESHIELD_MIN_CLIENTS=1` override — round-trip smoke test. |
+| `make nvflare-sim` | All 3 real sites (`caltech,jpl,office1`) — the target that produced the completed 10/10-round runs referenced in `nvflare/jobs/chargeshield_poc/app/custom/chargeshield_{executor,aggregator}.py`'s module docstrings. |
+| `make clean-nvflare-sim` | Removes `nvflare/sim_workspace/` (regenerated fresh on every simulator run; unrelated to the Containerlab-provisioning `nvflare/workspace/` from §7.2). |
+
+### 7.5 Testing
+
+| Target | Description |
+|---|---|
+| `make test` | `pytest tests/ -v --tb=short` — full suite (requires `torch`; see §12). |
+| `make test-sprint4` / `test-sprint5` | Only the corresponding mock-NVFLARE test file. |
+| `make test-integration` | `tests/test_run_experiments_integration.py` — exercises the real `run_fl_rounds()`/`run_fedmia()`/`run_lira()`/`run_ids()` pipeline end-to-end with reduced parameters. |
+| `make test-coverage` | Full suite with `--cov=src --cov-report=term-missing`; depends on `install-dev`. |
+
+### 7.6 Lint and Cleanup
+
+| Target | Description |
+|---|---|
+| `make lint` | `ruff check src/ tests/`. |
+| `make clean` | Removes `__pycache__`, `.pyc`, `.pytest_cache/`, `.coverage`. |
+| `make clean-workspace` | Removes `nvflare/workspace/` (the `make provision` output). |
+| `make clean-experiments` | Removes the entire `experiments/` directory — **irreversible**, no confirmation prompt in the real recipe. |
+| `make clean-all` | `clean clean-workspace clean-nvflare-sim destroy`. |
+| `make all` | `build provision deploy experiment`. |
+
+### 7.7 Help
+
+`make help` prints a live, hand-maintained summary of the most commonly used targets (not literally
+every target above) — check it after any local `Makefile` edit, since it is not auto-generated and
+can drift from the recipes themselves.
 
 ---
 
 ## 8. Certificate Management
 
-ChargeShield-FL uses mutual TLS (mTLS) for all inter-component communication: between FL clients and the FL server, between the auditor and the gradient store, and between the IDS and the charging nodes. This section describes the certificate authority hierarchy, the generation workflow, and the policies governing certificate storage and rotation.
+**Rewritten 2026-08-07.** ChargeShield-FL does **not** run its own certificate authority or
+OpenSSL scripts — there is no `make certs` target and no `scripts/generate_certs.sh`. All mTLS
+material for the real deployment is generated by **NVFLARE's own provisioning tool**.
 
-### 8.1 Certificate Authority Hierarchy
+### 8.1 How Certificates Are Actually Generated
 
-ChargeShield-FL uses a two-tier certificate authority (CA) hierarchy:
-
-```
-Root CA (offline, 4096-bit RSA, validity: 10 years)
-└── Intermediate CA (online, 2048-bit RSA, validity: 1 year)
-    ├── FL Server certificate (2048-bit RSA, validity: 90 days)
-    ├── node-a1 client certificate (2048-bit RSA, validity: 90 days)
-    ├── node-a2 client certificate
-    ├── ... (one per node, 12 total)
-    └── auditor client certificate
-```
-
-The root CA private key is generated and used only during `make certs` and is not stored on any networked host. In production deployments, the root CA private key should be kept offline on an air-gapped machine or in a hardware security module (HSM). For the research prototype, it is stored at `certs/ca/ca.key` and listed in `.gitignore`.
-
-### 8.2 Certificate Generation
-
-`make certs` executes `scripts/generate_certs.sh`, which performs the following steps:
-
-1. **Generate root CA key and self-signed certificate.**
+`make provision` (§7.2) runs:
 
 ```bash
-openssl genrsa -out certs/ca/ca.key 4096
-openssl req -new -x509 -days 3650 \
-  -key certs/ca/ca.key \
-  -out certs/ca/ca.pem \
-  -subj "/C=IT/O=ChargeShield-FL/CN=ChargeShield-FL Root CA"
+nvflare provision -p nvflare/project.yml -w nvflare/workspace
 ```
 
-2. **Generate intermediate CA key, CSR, and certificate signed by root CA.**
+`nvflare/project.yml` declares five participants (`server`, `caltech`, `jpl`, `office1`,
+`admin@chargeshield.local`) and a `builders:` list that includes
+`nvflare.lighter.impl.cert.CertBuilder` alongside `WorkspaceBuilder`, `StaticFileBuilder`, and
+`SignatureBuilder`. `CertBuilder` generates a root CA and one signed certificate/key pair per
+participant, entirely inside NVFLARE's own provisioning logic — nothing in this repository invokes
+`openssl` directly. The output lands under:
 
-```bash
-openssl genrsa -out certs/ca/intermediate.key 2048
-openssl req -new \
-  -key certs/ca/intermediate.key \
-  -out certs/ca/intermediate.csr \
-  -subj "/C=IT/O=ChargeShield-FL/CN=ChargeShield-FL Intermediate CA"
-openssl x509 -req -days 365 -CA certs/ca/ca.pem -CAkey certs/ca/ca.key \
-  -in certs/ca/intermediate.csr -out certs/ca/intermediate.pem \
-  -extensions v3_intermediate_ca -extfile scripts/openssl.cnf
+```
+nvflare/workspace/chargeshield_fl/prod_00/
+├── server/startup/            # server cert + key + root CA
+├── caltech/startup/           # per-client cert + key
+├── jpl/startup/
+├── office1/startup/
+└── admin@chargeshield.local/startup/
 ```
 
-3. **Generate per-node client certificates.** For each node hostname (read from `config/nodes/*.yaml`):
+`containerlab/topology.clab.yml` bind-mounts exactly these `startup/` directories read-only into
+each corresponding container (e.g. `../nvflare/workspace/chargeshield_fl/prod_00/caltech/startup:
+/workspace/startup:ro`) — there is no separate certificate-distribution step for the Containerlab
+deployment.
 
-```bash
-openssl genrsa -out certs/nodes/${NODE}.key 2048
-openssl req -new \
-  -key certs/nodes/${NODE}.key \
-  -out certs/nodes/${NODE}.csr \
-  -subj "/C=IT/O=ChargeShield-FL/CN=${NODE}"
-openssl x509 -req -days 90 -CA certs/ca/intermediate.pem \
-  -CAkey certs/ca/intermediate.key \
-  -in certs/nodes/${NODE}.csr \
-  -out certs/nodes/${NODE}.pem \
-  -extensions v3_node_client -extfile scripts/openssl.cnf
-```
+### 8.2 Certificate Rotation
 
-4. **Generate FL server certificate with Subject Alternative Name entries.** The server certificate includes SAN entries for all hostnames and IP addresses at which the FL server is reachable, as required by modern TLS clients that do not fall back to Common Name matching.
+There is no rotation policy or cron job in this repository. Re-running `make provision` regenerates
+the entire `nvflare/workspace/` tree (including new certificates for all participants) from
+scratch; `make clean-workspace` removes it first if a clean regeneration is needed. There is no
+selective per-participant renewal — it is all-or-nothing, and every participant must be
+re-provisioned together since they share the same CA.
 
-### 8.3 Certificate Rotation
+### 8.3 Gitignore Policy
 
-Certificates are valid for 90 days. The `make certs` target checks the expiry of all existing certificates and regenerates any certificate that will expire within 14 days. Regenerating a certificate invalidates all active FL sessions on that node; plan rotations during maintenance windows.
+`nvflare/workspace/` (the entire provisioning output, including all private keys) is gitignored, as
+is `nvflare/sim_workspace/` (the simulator's own scratch workspace, unrelated to real certs — see
+§7.4). Nothing certificate-related is ever committed.
 
-Automated rotation can be configured as a cron job:
+### 8.4 Orphaned Legacy Material
 
-```cron
-0 2 * * * cd /path/to/chargeshield-fl && make certs >> /var/log/chargeshield-certs.log 2>&1
-```
+A `certs/` directory exists at the repository root with a **pre-NVFLARE-provisioning** PKI layout
+(`certs/ca/`, `certs/{highway,urban,residential,corporate}-0N/`, `certs/{aggregator,auditor,ids,
+fl-admin}/`) using the old fictional 4-cluster naming. No Makefile target and no script reads or
+writes this directory for the real pipeline — it predates the switch to NVFLARE's own
+`CertBuilder` and is safe to ignore (not deleted here, since removing files outside this
+review's stated scope carries its own risk — see §3's "Directory Roles").
 
-### 8.4 Gitignore Policy
-
-The following certificate files are listed in `.gitignore` and must never be committed to the repository:
-
-```gitignore
-# Certificate Authority private keys
-certs/ca/*.key
-
-# Node private keys
-certs/nodes/*.key
-
-# Server private key
-certs/server/*.key
-
-# NVFLARE provisioning workspace (contains embedded certificates)
-workspace/
-
-# WireGuard private keys and rendered configs
-infra/wireguard/*.key
-infra/wireguard/wg*.conf
-```
-
-The public certificates (`.pem` files) may be committed for reference, but in practice they are regenerated by `make certs` on each deployment and are also excluded from the repository to avoid accumulating stale certificates.
-
-### 8.5 WireGuard VPN
-
-Inter-cluster communication traverses a WireGuard VPN overlay network. WireGuard keys are generated by `make provision` from the template `infra/wireguard/wg0.conf.template`. The template uses placeholders for all IP addresses and public keys, which are substituted from cluster configuration files during provisioning. WireGuard private keys are stored only on the corresponding node and are never logged or transmitted.
+There is also no WireGuard layer anywhere in the real deployment: `containerlab/topology.clab.yml`
+connects its 5 nodes with plain Containerlab-managed Docker networking, and neither the topology
+file nor the Makefile references WireGuard, `wg0.conf`, or any VPN overlay. An earlier revision of
+this section described a WireGuard-based inter-cluster VPN; that was aspirational only.
 
 ---
 
