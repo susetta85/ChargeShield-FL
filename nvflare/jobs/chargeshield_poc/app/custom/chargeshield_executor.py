@@ -60,15 +60,35 @@ simulazione, dentro _setup() — vedi commento lì per il dettaglio. Il job già
 completato con questo file pre-fix si allenava sul 100% dei dati ed è da
 considerare superato, non direttamente confrontabile con run successivi.
 
-Punti da VERIFICARE appena nvflare è installabile (marcati inline con "VERIFY:"):
-    - Il formato esatto di dxo.data (dict[str, np.ndarray] atteso, chiavi = nomi
-      state_dict) prodotto da FullModelShareableGenerator per un PTFileModelPersistor.
-    - Come comunicare n_samples per la pesatura in InTimeAccumulateWeightedAggregator
-      (probabilmente DXO.meta[MetaKey.NUM_STEPS_CURRENT_ROUND] o simile — da
-      confermare contro la versione 2.7.2 pinnata in Dockerfile.flare).
+AGGIORNAMENTO (2026-08-07): due job NVFLARE reali completati end-to-end sulla
+macchina dell'utente (10/10 round, metriche non degeneri e distinte per sito
+— vedi experiments/nvflare_ids_audit_results_20260804_133100_58d089.json e il
+suo .pkl gemello nvflare_fl_results_20260804_133100_58d089.pkl) confermano
+empiricamente il formato dati usato qui (vedi sotto). Il conteggio del round
+resta invece un limite noto, non verificabile solo osservando run completati
+linearmente — vedi il punto dedicato sotto.
+
+Punti CONFERMATI empiricamente dal job reale del 2026-08-04 (10/10 round
+completati, metriche non degeneri — vedi
+experiments/nvflare_fl_results_20260804_133100_58d089.pkl), ex-"VERIFY":
+    - Il formato esatto di dxo.data (dict[str, np.ndarray], chiavi = nomi
+      state_dict) prodotto da FullModelShareableGenerator per un
+      PTFileModelPersistor: confermato — se il formato fosse stato sbagliato,
+      _sessions_to_tensor()/apply_global_model() avrebbero fallito o prodotto
+      NaN/errori invece di 10 round di loss/pesi sensati.
+
+Punto NON verificato (limite noto, non risolvibile osservando run completati
+con successo — marcato ancora inline con "VERIFY:"):
     - Se il round_num vada letto da fl_ctx (es. via AppConstants.CURRENT_ROUND)
-      invece che da un contatore locale (qui uso un contatore locale come
-      placeholder, quasi certamente sbagliato in un run multi-round reale).
+      invece che da un contatore locale incrementato ad ogni execute(). I job
+      completati sono sempre andati linearmente round 1→10 senza interruzioni:
+      un contatore locale e un contatore letto da fl_ctx produrrebbero lo
+      STESSO valore in quello scenario, quindi il successo dei job non prova
+      nulla su questo punto. Fallirebbe silenziosamente (round_num disallineato
+      tra client ed effettivo stato server, senza eccezioni) SOLO in scenari
+      non ancora testati: resume di un run interrotto, retry di un round
+      fallito, o esecuzione di un client che salta round — nessuno di questi
+      si è ancora presentato nei job reali eseguiti finora.
 
 FIX 2026-07-22 (review indipendente, punto A1 — bug reale nella prima stesura,
 non un semplice VERIFY): meta.json deploya un solo app/ a "@ALL" i siti, e
@@ -367,7 +387,14 @@ class ChargeShieldExecutor(Executor):
 
         self._trainer = None          # AutoencoderTrainer, creato in _setup()
         self._sessions: list[dict[str, Any]] = []
-        self._round_num = 0           # VERIFY: leggere da fl_ctx invece di contare localmente
+        # LIMITE NOTO (non un VERIFY generico): contatore locale, mai confrontato
+        # con AppConstants.CURRENT_ROUND da fl_ctx. I 2 job NVFLARE reali completati
+        # (10/10 round, sempre lineari 1→10 senza interruzioni) non possono
+        # confermare né smentire questo punto — un contatore locale e uno letto da
+        # fl_ctx producono lo stesso valore in un run lineare. Resterebbe
+        # silenziosamente disallineato solo in scenari mai testati: resume di un
+        # run interrotto, retry di un round fallito, client che salta un round.
+        self._round_num = 0
 
     # ── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -526,14 +553,20 @@ class ChargeShieldExecutor(Executor):
             logger.error(f"[{self._cluster_id}] DXO malformato: {exc}", exc_info=True)
             return make_reply(ReturnCode.BAD_TASK_DATA)
 
-        # VERIFY: assunto dxo.data = dict[str state_dict_key, np.ndarray],
-        # prodotto da FullModelShareableGenerator a partire dal modello
-        # persistito da PTFileModelPersistor. Se il formato reale differisce
-        # (es. tensori invece di ndarray, o chiavi diverse), questa conversione
-        # va adattata.
+        # CONFERMATO empiricamente dal job reale del 2026-08-04 (10/10 round
+        # completati, metriche non degeneri — vedi
+        # experiments/nvflare_fl_results_20260804_133100_58d089.pkl): dxo.data è
+        # dict[str state_dict_key, np.ndarray], prodotto da
+        # FullModelShareableGenerator a partire dal modello persistito da
+        # PTFileModelPersistor — se il formato fosse stato diverso (es. tensori
+        # invece di ndarray, o chiavi diverse), get_weight_keys()/apply_global_model()
+        # sotto avrebbero fallito con KeyError o crash invece di completare 10 round.
         global_weights_dict: dict[str, Any] = incoming_dxo.data or {}
 
-        self._round_num += 1  # VERIFY: leggere il round reale da fl_ctx, non contare localmente
+        # LIMITE NOTO (vedi commento su self._round_num nell'__init__): contatore
+        # locale mai confrontato con fl_ctx. Non testato in scenari di resume/
+        # retry/round-skip — solo run lineari 1→10 finora.
+        self._round_num += 1
 
         if global_weights_dict:
             weight_keys = self._trainer.get_weight_keys()
@@ -611,10 +644,18 @@ class ChargeShieldExecutor(Executor):
                 "loss": update.loss,
                 "cluster_id": self._cluster_id,
                 "dp_mode": self._dp_mode,
-                # VERIFY: chiave meta corretta per la pesatura letta da un
-                # eventuale futuro aggregatore NVFLARE built-in — irrilevante
-                # per ChargeShieldAggregator, che legge "n_samples" sopra
-                # direttamente (vedi chargeshield_aggregator.py).
+                # NON APPLICABILE ai job reali eseguiti finora (non un "VERIFY"
+                # confermabile da essi): la chiave "n_samples" qui è quella
+                # effettivamente letta da ChargeShieldAggregator.accept()
+                # (dxo.meta.get("n_samples", 0), vedi chargeshield_aggregator.py)
+                # — questo è confermato dai job reali. Resta invece non
+                # verificato (e non esercitato dai job reali, che usano sempre
+                # il ChargeShieldAggregator custom) se questa stessa chiave
+                # sarebbe quella giusta per un ipotetico futuro aggregatore
+                # built-in NVFLARE (es. InTimeAccumulateWeightedAggregator, che
+                # si aspetta probabilmente DXO.meta[MetaKey.NUM_STEPS_CURRENT_ROUND]
+                # o simile) — irrilevante finché non si sostituisce
+                # ChargeShieldAggregator con un aggregatore built-in.
             },
         )
         return outgoing_dxo.to_shareable()

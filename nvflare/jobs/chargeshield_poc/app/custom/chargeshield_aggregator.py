@@ -135,24 +135,46 @@ Cosa NON fa ancora (fase 6+, vedi docs/NVFlareIntegration.md):
       limite già segnalato nella review scalabilità/realismo di oggi per
       FedAvgAggregator (min_participants=tutti i client).
 
-Punti VERIFY: (stessa cautela di chargeshield_executor.py — marcati inline):
-    - Formato di dxo.data in ingresso (assunto identico a quanto emesso da
-      chargeshield_executor.py: dict[str state_dict_key, np.ndarray]).
-    - Come ottenere il node/cluster id di un client in accept() — qui uso
-      dxo.meta["cluster_id"] (che chargeshield_executor.py imposta), NON
-      fl_ctx/peer_ctx — da confermare che sia accessibile in questo punto
-      del ciclo di vita di un Aggregator NVFLARE.
-    - round_num: nessun contatore affidabile da fl_ctx trovato in questa fase
-      di scrittura (stesso limite dell'executor) — uso un contatore locale
-      incrementato ad ogni aggregate(), quasi certamente da sostituire con
-      AppConstants.CURRENT_ROUND letto da fl_ctx.
-    - Il formato di ritorno atteso da aggregate() — qui restituisco un DXO
-      DataKind.WEIGHTS con i pesi aggregati completi, assumendo che
-      FullModelShareableGenerator lo interpreti come il nuovo modello globale
-      (coerente con come InTimeAccumulateWeightedAggregator viene usato nella
-      config originale) — da verificare contro la vera classe base
-      `nvflare.app_common.abstract.aggregator.Aggregator` una volta
-      installabile nvflare.
+AGGIORNAMENTO (2026-08-07): due job NVFLARE reali completati end-to-end sulla
+macchina dell'utente (10/10 round, metriche per-cliente distinte e non
+degeneri — vedi experiments/nvflare_ids_audit_results_20260804_133100_58d089.json
+e il suo .pkl gemello nvflare_fl_results_20260804_133100_58d089.pkl) confermano
+empiricamente 3 dei 4 punti sotto elencati come "VERIFY". Il round_num resta
+l'unico limite noto non risolvibile solo osservando run completati linearmente.
+
+Punti CONFERMATI empiricamente dal job reale del 2026-08-04 (10/10 round
+completati, metriche non degeneri — vedi
+experiments/nvflare_fl_results_20260804_133100_58d089.pkl), ex-"VERIFY":
+    - Formato di dxo.data in ingresso (dict[str state_dict_key, np.ndarray],
+      identico a quanto emesso da chargeshield_executor.py): confermato — se
+      il formato fosse stato diverso, accept() avrebbe sollevato KeyError o
+      prodotto tensori corrotti invece di 10 round di aggregazione riuscita.
+    - Come ottenere il node/cluster id di un client in accept() — dxo.meta
+      ["cluster_id"] (impostato da chargeshield_executor.py): confermato
+      accessibile e corretto in questo punto del ciclo di vita
+      dell'Aggregator — il file di export mostra metriche per-client
+      correttamente distinte tra "caltech"/"jpl"/"office1" round dopo round,
+      non mescolate o mancanti.
+    - Il formato di ritorno atteso da aggregate() — un DXO DataKind.WEIGHTS
+      coi pesi aggregati completi: confermato che FullModelShareableGenerator
+      lo interpreta correttamente come nuovo modello globale — i client hanno
+      ricevuto e applicato con successo il modello di ogni round successivo
+      (altrimenti l'intero job non avrebbe completato 10 round con loss
+      sensata, si sarebbe bloccato o l'accuracy sarebbe rimasta a livello
+      random-init).
+
+Punto NON verificato (limite noto, non risolvibile osservando run completati
+con successo — resta marcato inline con "VERIFY:"):
+    - round_num: nessun contatore affidabile da fl_ctx trovato/provato in
+      questa fase di scrittura — uso un contatore locale incrementato ad ogni
+      aggregate(). I 2 job reali completati sono sempre andati linearmente
+      round 1→10 senza interruzioni: in quello scenario un contatore locale e
+      uno letto da fl_ctx (es. AppConstants.CURRENT_ROUND) coincidono, quindi
+      il loro successo non prova nulla su questo punto. Fallirebbe
+      silenziosamente (round_num disallineato rispetto allo stato server
+      reale, senza eccezioni) SOLO in scenari mai testati finora: resume di
+      un run interrotto, retry di un round fallito, o partecipazione parziale
+      con round saltati per qualche client.
 """
 
 from __future__ import annotations
@@ -360,7 +382,13 @@ class ChargeShieldAggregator(Aggregator):
 
         self._weight_keys: list[str] | None = None
         self._round_updates: list[Any] = []   # GradientUpdate raccolti questo round
-        self._round_num = 0                    # VERIFY: leggere da fl_ctx, non contare localmente
+        # LIMITE NOTO (non un VERIFY generico, vedi docstring del modulo):
+        # contatore locale, mai confrontato con AppConstants.CURRENT_ROUND da
+        # fl_ctx. I 2 job NVFLARE reali completati (10/10 round, sempre
+        # lineari 1→10) non possono confermare né smentire questo punto —
+        # fallirebbe silenziosamente solo in scenari di resume/retry/round-skip
+        # mai ancora testati.
+        self._round_num = 0
         # Modello globale distribuito ai client all'INIZIO del round corrente
         # (= output dell'aggregate() precedente) — usato sia come riferimento
         # per il delta peer-relative dell'IDS, sia come reference_weights per
@@ -444,8 +472,11 @@ class ChargeShieldAggregator(Aggregator):
             logger.error(f"ChargeShieldAggregator.accept: DXO malformato: {exc}", exc_info=True)
             return False
 
-        # VERIFY: assunto dxo.data = dict[str state_dict_key, np.ndarray],
-        # stesso formato emesso da chargeshield_executor.py.
+        # CONFERMATO empiricamente dal job reale del 2026-08-04 (10/10 round
+        # completati, metriche non degeneri — vedi
+        # experiments/nvflare_fl_results_20260804_133100_58d089.pkl): dxo.data
+        # è dict[str state_dict_key, np.ndarray], stesso formato emesso da
+        # chargeshield_executor.py.
         weights_dict: dict[str, Any] = dxo.data or {}
         if not weights_dict:
             logger.warning("ChargeShieldAggregator.accept: DXO senza pesi — scartato")
@@ -464,9 +495,12 @@ class ChargeShieldAggregator(Aggregator):
             logger.error(f"ChargeShieldAggregator.accept: chiave mancante {exc} — scartato")
             return False
 
-        # VERIFY: cluster_id preso da dxo.meta (impostato da chargeshield_executor.py),
-        # non da fl_ctx/peer info — da confermare che sia il modo corretto/più robusto
-        # di identificare il client mittente in un Aggregator NVFLARE.
+        # CONFERMATO empiricamente dal job reale del 2026-08-04: cluster_id
+        # preso da dxo.meta (impostato da chargeshield_executor.py), non da
+        # fl_ctx/peer info — accessibile in questo punto del ciclo di vita
+        # dell'Aggregator e sufficiente a identificare correttamente il client
+        # mittente (l'export finale mostra metriche per-cluster distinte e
+        # coerenti per caltech/jpl/office1 round dopo round, mai mescolate).
         node_id = dxo.meta.get("cluster_id", "unknown")
         n_samples = dxo.meta.get("n_samples", 0)
         loss = dxo.meta.get("loss")
@@ -492,7 +526,10 @@ class ChargeShieldAggregator(Aggregator):
         self._ensure_components()
         import numpy as np
 
-        self._round_num += 1  # VERIFY: leggere il round reale da fl_ctx
+        # LIMITE NOTO (vedi commento su self._round_num nell'__init__ e
+        # docstring del modulo): non testato in scenari di resume/retry/
+        # round-skip.
+        self._round_num += 1
         received_updates = self._round_updates
         self._round_updates = []
 
