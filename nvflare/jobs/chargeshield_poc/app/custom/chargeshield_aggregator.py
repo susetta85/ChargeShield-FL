@@ -175,6 +175,16 @@ con successo — resta marcato inline con "VERIFY:"):
       reale, senza eccezioni) SOLO in scenari mai testati finora: resume di
       un run interrotto, retry di un round fallito, o partecipazione parziale
       con round saltati per qualche client.
+
+Punti aggiuntivi CONFERMATI per nvflare-sim ma NON per un deployment
+Containerlab multi-container reale (2026-08-07, vedi i commenti inline su
+_export_results()/_export_fl_results()): l'accesso in scrittura di
+self._results_export_path/self._fl_results_export_path funziona nel run
+single-process (`nvflare simulator`) che ha prodotto i due file reali sopra
+citati, ma non è stato ancora esercitato in un deployment dove
+l'Aggregator gira in un container server separato con il proprio bind mount
+(containerlab/topology.clab.yml) — path assoluto e permessi in quello
+scenario restano da verificare al primo deploy Containerlab end-to-end.
 """
 
 from __future__ import annotations
@@ -759,13 +769,20 @@ class ChargeShieldAggregator(Aggregator):
         Scrive self._audit_history per intero su self._results_export_path
         (overwrite, non append) — chiamata alla fine di ogni round, cosi' il
         file riflette sempre lo stato piu' recente anche se il job si ferma
-        a meta'. VERIFY: assume che il processo server abbia accesso in
-        scrittura a _PROJECT_ROOT/experiments/ dalla macchina/container dove
-        gira l'Aggregator — non verificato in un vero deployment NVFLARE
-        multi-sito (in un deployment reale l'Aggregator gira SOLO lato
-        server, quindi e' un singolo processo/filesystem, non uno per client
-        — ma il path assoluto e la working directory effettiva al momento
-        dell'esecuzione non sono stati confermati).
+        a meta'.
+
+        CONFERMATO per il caso nvflare-sim (2026-08-04): l'accesso in
+        scrittura a _PROJECT_ROOT/experiments/ funziona — i due job reali
+        completati (10/10 round) hanno prodotto per davvero
+        experiments/nvflare_ids_audit_results_20260804_133100_58d089.json
+        via questo stesso metodo. Quel run è però un singolo processo Python
+        (client ed Aggregator nello stesso filesystem/working directory, via
+        `nvflare simulator` — vedi Makefile `nvflare-sim`), non un vero
+        deployment multi-container. NON ANCORA CONFERMATO per un deployment
+        Containerlab reale (server in un container separato con il proprio
+        bind mount — vedi containerlab/topology.clab.yml), dove path assoluto
+        e permessi di scrittura del container server non sono stati ancora
+        esercitati end-to-end.
         """
         try:
             self._results_export_path.parent.mkdir(parents=True, exist_ok=True)
@@ -827,9 +844,12 @@ class ChargeShieldAggregator(Aggregator):
         torch.Tensor, non serializzabili in JSON senza perdita di fedeltà —
         e la lettura (scripts/run_nvflare_mia.py) li passa direttamente,
         invariati, a run_lira()/run_ids() che si aspettano esattamente
-        questo tipo. VERIFY: stessa cautela sul path di _export_results()
-        (working directory/permessi di scrittura non confermati in un vero
-        deployment NVFLARE).
+        questo tipo.
+
+        Stessa nota di _export_results() sopra: CONFERMATO per nvflare-sim
+        (i .pkl reali in experiments/nvflare_fl_results_*.pkl sono prodotti
+        da questo stesso metodo), NON ANCORA CONFERMATO per un deployment
+        Containerlab multi-container reale.
         """
         import pickle
 
