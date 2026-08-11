@@ -1348,6 +1348,41 @@ def run_lira(
         for s in sessions
     }
 
+    # Fix 2026-08-11: simmetrico a _sample_to_cluster ma per i NON-member
+    # (holdout_sessions). Trovato investigando un'anomalia reale: il nodp-sweep1
+    # in corso mostrava lira_score_gap CRESCENTE (separazione IN/OUT reale e
+    # forte) ma AUC-ROC pooled piatto vicino al caso — la firma di un pool
+    # eterogeneo, non di segnale assente. Causa: il guard cross-cluster sopra
+    # (poche righe più in basso, "if is_member: ... skip mismatched pairs") è
+    # applicato SOLO ai member — ogni non-member viene invece valutato contro
+    # TUTTI i client/cluster senza restrizione, quindi entra fino a 3 volte in
+    # round_nonmember_scores, mescolando client con scale di loss potenzialmente
+    # diverse. Sotto DP con clipping per-client (central/dp-fedavg/local) tutti
+    # i client sono forzati in una scala di delta comparabile (max_grad_norm),
+    # quindi la mescolanza è quasi inerte — ma sotto --no-dp, senza alcun vincolo
+    # di norma, il client più piccolo (office1, ~1341 sessioni contro
+    # ~25-27k di caltech/jpl) può divergere di scala in modo scorrelato
+    # round-per-round, e quel rumore extra nel pool diluisce un ranking che a
+    # livello per-cluster è in realtà ben calibrato. Fix: ogni non-member ha
+    # comunque un site_id reale proprio (proviene da una site FL prima dello
+    # split, non "non è di nessun sito") — usiamo la stessa risoluzione
+    # _SITE_ID_TO_NAME di group_indices_by_site() per restringere anche i
+    # non-member al proprio cluster di origine, esattamente come i member.
+    # Guard applicato SOLO quando cluster_membership è reale (3+ siti reali/
+    # sweep IDS n=5) — quando è None (fallback storico a 4 fette fittizie,
+    # usato dai test con dati sintetici senza site_id reale), holdout_sessions
+    # non è mai stato partizionato in quelle 4 fette fittizie: risolvere
+    # site_id qui darebbe "unknown" per ogni non-member, mai uguale a una delle
+    # 4 fette fittizie lato client → guard sempre vero → round_nonmember_scores
+    # vuoto per ogni round → stesso genere di regressione silenziosa che questo
+    # fix vuole eliminare, ma sui test invece che sui dati reali. Dict vuoto in
+    # quel caso preserva esattamente il comportamento pre-fix (nessuna restrizione
+    # sui non-member), identico a prima per tutta la suite di test esistente.
+    _holdout_sample_to_cluster: dict[int, str] = {
+        id(s): _SITE_ID_TO_NAME.get(s.get("site_id", ""), s.get("site_id", "") or "unknown")
+        for s in holdout_sessions
+    } if cluster_membership is not None else {}
+
     # Balanced eval pool: subsample members to match hold-out size
     _pool_rng      = random.Random(seed + 31415)
     _n_bal         = min(len(train_sessions), len(holdout_sessions))
@@ -1692,6 +1727,18 @@ def run_lira(
                     _member_cluster = _sample_to_cluster.get(id(sample))
                     _client_cluster = getattr(update, "cluster_id", None)
                     if _member_cluster is not None and _member_cluster != _client_cluster:
+                        continue
+                else:
+                    # Fix 2026-08-11: guard simmetrico — vedi commento su
+                    # _holdout_sample_to_cluster sopra. Senza questo, ogni
+                    # non-member entra nel pool fino a una volta per cluster
+                    # (3x), mescolando client con scale di loss potenzialmente
+                    # diverse — inerte sotto clipping per-client, ma diluisce
+                    # l'AUC pooled sotto --no-dp dove non c'è alcun vincolo di
+                    # norma a mantenere le scale dei client comparabili.
+                    _nonmember_cluster = _holdout_sample_to_cluster.get(id(sample))
+                    _client_cluster = getattr(update, "cluster_id", None)
+                    if _nonmember_cluster is not None and _nonmember_cluster != _client_cluster:
                         continue
 
                 # Split shadow losses: IN = shadows (di QUESTO cluster, QUESTO round)
