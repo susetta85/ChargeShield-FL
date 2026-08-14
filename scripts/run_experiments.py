@@ -1653,8 +1653,28 @@ def run_lira(
             mse_matrix = shadow_mse_matrix_per_cluster.get(cid, [])
             pooled_out: list[float] = []
             for j in range(n_eval):
-                is_mem    = j < len(members_bal)
-                train_idx = _train_idx.get(id(eval_samples[j])) if is_mem else None
+                is_mem = j < len(members_bal)
+                _sample = eval_samples[j]
+                # Fix 2026-08-12: il fix 2026-08-11 (guard cross-cluster
+                # simmetrico) era applicato solo nel loop di scoring per-sample
+                # (righe ~1731-1742), non qui — questo pool "floor" continuava a
+                # mescolare member/non-member di QUALSIASI sito nella statistica
+                # OUT di OGNI cluster, reintroducendo un livello più in profondità
+                # la stessa contaminazione cross-cluster che il fix precedente
+                # doveva eliminare (un member/non-member fuori sito valutato
+                # contro shadow di un cluster che non ha mai visto quel tipo di
+                # dato dà una loss innaturalmente alta, gonfiando σ_out_fb in modo
+                # diverso per cluster in base a quanta contaminazione riceve —
+                # inerte sotto clipping, che allinea le scale tra client, ma reale
+                # sotto --no-dp). Stesso guard usato sotto, con la stessa mappa
+                # _sample_to_cluster/_holdout_sample_to_cluster.
+                _home_cluster = (
+                    _sample_to_cluster.get(id(_sample)) if is_mem
+                    else _holdout_sample_to_cluster.get(id(_sample))
+                )
+                if _home_cluster is not None and _home_cluster != cid:
+                    continue
+                train_idx = _train_idx.get(id(_sample)) if is_mem else None
                 for si, in_set in enumerate(in_sets):
                     if si >= len(mse_matrix):
                         continue
