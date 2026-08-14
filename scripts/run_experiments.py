@@ -1121,6 +1121,7 @@ def run_lira(
     no_dp: bool = False,
     dp_mode: str = "dp-fedavg",
     cluster_membership: dict[str, list[int]] | None = None,
+    composed_output: dict[str, Any] | None = None,
 ) -> dict[int, dict[str, Any]]:
     """
     LiRA — Likelihood Ratio Attack, server-side, on each client's per-round update
@@ -1398,6 +1399,21 @@ def run_lira(
     # Index j < len(members_bal) → member; j >= len(members_bal) → non-member.
     eval_samples = members_bal + nonmembers_bal
     n_eval       = len(eval_samples)
+
+    # Accumulatore opzionale per l'attacco "composto" multi-round (2026-08-12,
+    # vedi ComposedLiRAAttack in src/plugins/attacks/lira.py): somma il
+    # log-likelihood-ratio dello STESSO campione su tutti i round invece di
+    # mediare 10 AUC-ROC indipendenti — combinazione Neyman-Pearson ottima per
+    # evidenza indipendente ripetuta, pensata per sfruttare il vero budget ε
+    # COMPOSTO (vedi "epsilon_cumulative_naive" in config) invece del singolo
+    # ε per round che ogni round-AUC indipendente vede. Piggyback sulla STESSA
+    # retraining degli shadow già fatta da questa funzione, per non raddoppiare
+    # il costo computazionale con una funzione separata. Attivo SOLO se il
+    # chiamante passa composed_output (non None) — default None, quindi zero
+    # impatto sul comportamento/output esistente per ogni chiamante attuale.
+    _cumulative_scores: dict[int, float] = {}
+    _sample_is_member:  dict[int, bool]  = {id(s): True for s in members_bal}
+    _sample_is_member.update({id(s): False for s in nonmembers_bal})
 
     # Map each eval member to its index in train_sessions (for IN/OUT tracking).
     # Members were sampled from train_sessions without copying → id() is valid.
@@ -1826,6 +1842,10 @@ def run_lira(
                 else:
                     round_nonmember_scores.append(lira_score)
 
+                if composed_output is not None:
+                    _sid = id(sample)
+                    _cumulative_scores[_sid] = _cumulative_scores.get(_sid, 0.0) + lira_score
+
         if not round_member_scores or not round_nonmember_scores:
             logger.warning(
                 f"LiRA round {round_num}: score pool vuoto "
@@ -1854,6 +1874,34 @@ def run_lira(
             "lira_score_gap":             round(score_gap, 6),
             "n_shadow":                   n_shadow,
         }
+
+    if composed_output is not None:
+        if _cumulative_scores:
+            _labels = [1 if _sample_is_member[_sid] else 0 for _sid in _cumulative_scores]
+            _scores = list(_cumulative_scores.values())
+            try:
+                _composed_auc = roc_auc_score(_labels, _scores)
+            except ValueError:
+                _composed_auc = 0.5
+            _member_vals    = [s for _sid, s in _cumulative_scores.items() if _sample_is_member[_sid]]
+            _nonmember_vals = [s for _sid, s in _cumulative_scores.items() if not _sample_is_member[_sid]]
+            composed_output["composed_lira_auc_roc"] = round(float(_composed_auc), 6)
+            composed_output["composed_lira_score_gap"] = round(
+                float(np.mean(_member_vals) - np.mean(_nonmember_vals))
+                if _member_vals and _nonmember_vals else 0.0,
+                6,
+            )
+            composed_output["n_samples_scored"]   = len(_cumulative_scores)
+            composed_output["n_rounds_aggregated"] = len(lira_results)
+            logger.info(
+                f"LiRA composto (multi-round, evidenza sommata su "
+                f"{len(lira_results)} round) — AUC-ROC: {_composed_auc:.4f} "
+                f"(gap={composed_output['composed_lira_score_gap']:.6f}, "
+                f"n_samples={len(_cumulative_scores)})"
+            )
+        else:
+            composed_output["composed_lira_auc_roc"] = None
+            logger.warning("LiRA composto: nessuno score accumulato — pool vuoto")
 
     return lira_results
 
