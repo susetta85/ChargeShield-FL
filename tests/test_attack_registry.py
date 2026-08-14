@@ -84,18 +84,34 @@ class TestAttackRegistry:
     def test_run_method_signature_accepts_common_contract_and_kwargs(self):
         """Verifica che ogni classe registrata accetti la firma comune
         (cfg, train_sessions, holdout_sessions, fl_results, **kwargs) senza
-        sollevare TypeError PRIMA di arrivare all'import lazy di
-        run_experiments (che qui fallirebbe per mancanza di torch — atteso,
-        non è quello che questo test verifica)."""
+        sollevare TypeError in fase di binding degli argomenti.
+
+        FIX 2026-08-12 (trovato eseguendo per la prima volta la suite intera
+        su una macchina CON torch installato, non solo in questo sandbox):
+        la versione precedente invocava davvero instance.run(...) e si
+        aspettava un ModuleNotFoundError("torch") dall'import lazy dentro
+        run_fedmia()/run_lira() — assunzione valida SOLO in un ambiente senza
+        torch (questo sandbox). Su una macchina con torch installato (l'uso
+        normale/reale del progetto) l'import lazy riesce, l'esecuzione
+        prosegue nel corpo della funzione e fallisce invece con un
+        KeyError('ml') dovuto al cfg={} volutamente vuoto passato dal test —
+        un errore vero ma NON quello che questo test intende verificare (la
+        sola forma della firma, non il comportamento a runtime). Fix: usare
+        inspect.signature(...).bind() per validare che gli argomenti si
+        leghino correttamente ai parametri SENZA eseguire il corpo di run()
+        — corretto e stabile indipendentemente dalla presenza di torch,
+        sandbox o macchina reale che sia.
+        """
+        import inspect
+
         for attack_name in ("yeom", "shadow", "lira"):
             instance = ATTACK_REGISTRY[attack_name]()
-            with pytest.raises(ModuleNotFoundError, match="torch"):
-                # Torch non installato in questo sandbox: l'import lazy dentro
-                # run() fallisce qui, MA solo dopo aver superato il binding
-                # degli argomenti — se la firma fosse sbagliata otterremmo
-                # TypeError prima, non ModuleNotFoundError.
-                instance.run(
-                    cfg={}, train_sessions=[], holdout_sessions=[], fl_results={},
-                    n_shadow=8, shadow_epochs_cap=None, no_dp=False,
-                    dp_mode="dp-fedavg", cluster_membership=None,
-                )
+            sig = inspect.signature(instance.run)
+            # Solleva TypeError se la firma non accetta questi argomenti
+            # (posizionali/keyword richiesti dal contratto comune, più
+            # eventuali kwargs extra che devono finire in **kwargs).
+            sig.bind(
+                cfg={}, train_sessions=[], holdout_sessions=[], fl_results={},
+                n_shadow=8, shadow_epochs_cap=None, no_dp=False,
+                dp_mode="dp-fedavg", cluster_membership=None,
+            )
