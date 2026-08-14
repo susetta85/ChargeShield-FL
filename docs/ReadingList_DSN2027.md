@@ -28,17 +28,24 @@ Read (or re-read) these in full regardless of paper deadline pressure — they a
 background reading, they are the specification our code follows. Getting a detail wrong here
 would be citing our own method incorrectly.
 
-- [ ] **Carlini, Chien, Nasr, Song, Terzis, Tramèr (2022)** — "Membership Inference Attacks From
+- [x] **Carlini, Chien, Nasr, Song, Terzis, Tramèr (2022)** — "Membership Inference Attacks From
   First Principles," IEEE S&P 2022. [arXiv:2112.03570](https://arxiv.org/abs/2112.03570) —
-  **LiRA**, the project's primary attack (★). Confirm our per-round warm-started shadow retraining
-  and likelihood-ratio scoring match the paper's actual construction, not just its name — this is
-  the single most citation-sensitive paper in the bibliography since it's implemented, not just
-  cited. `[abstract-confirmed 2026-08-07]` Real paper, correctly attributed (Carlini/Chien/Nasr/
-  Song/Terzis/Tramèr, submitted 2021-12-07, v2 2022-04-12, cs.CR). Abstract confirms the core
-  framing this project relies on: LiRA is explicitly a *likelihood-ratio* attack designed to be
-  evaluated at low false-positive rates rather than average-case accuracy — still need the actual
-  methodology section (shadow-model training procedure, per-example variance estimation) to confirm
-  our per-round warm-start variant is a faithful adaptation, not just a same-named attack.
+  **LiRA**, the project's primary attack (★). `[full-text read 2026-08-14, through start of §V
+  Attack Evaluation]` Three real, citation-critical findings, none previously documented:
+  (1) **The paper itself explicitly argues plain AUC-ROC is an inadequate MIA metric** and argues
+  for reporting TPR at low FPR instead — ChargeShield-FL's entire methodology (every result
+  discussed all project long) reports `mean_lira_auc_roc` and bootstrap CIs on it, never TPR@low-FPR.
+  This is a real methodological gap between what we cite and what we report, not just a nuance —
+  needs either a TPR@low-FPR companion metric added before submission, or an explicit, honest
+  paragraph in Limitations acknowledging the deviation. (2) The paper's actual Algorithm 1 trains
+  shadow models **independently on random dataset subsets**, with no warm-starting from a live
+  target's own trajectory across rounds — confirms our "per-round warm-started shadow retraining"
+  is a substantial, undisclosed-as-such adaptation to the original construction. (3) LiRA as
+  described is built for **classification confidence scores** (logit-transformed to approximate
+  normality) on image/text tasks (CIFAR-10/100, ImageNet, WikiText-103) — not for **unsupervised
+  autoencoder reconstruction-MSE**, which is what ChargeShield-FL scores instead. Both (2) and (3)
+  are defensible, honest adaptations to a tabular/autoencoder setting, but the paper needs to say so
+  explicitly rather than imply a direct port of Carlini et al.'s construction.
 - [ ] **Shokri, Stronati, Song, Shmatikov (2017)** — "Membership Inference Attacks Against Machine
   Learning Models," IEEE S&P 2017. [arXiv:1610.05820](https://arxiv.org/abs/1610.05820) — origin
   of MIA as a field; needed for the related-work opening paragraph and to correctly position Yeom
@@ -47,18 +54,22 @@ would be citing our own method incorrectly.
   Abstract confirms the "shadow model" idea originates here (train an attack model to recognize
   differences in target-model behavior on member vs. non-member inputs) — the direct ancestor of
   this project's own Shadow attack, not just of LiRA.
-- [ ] **McMahan, Ramage, Talwar, Zhang (2018)** — "Learning Differentially Private Recurrent
-  Language Models," ICLR 2018. [arXiv:1710.06963](https://arxiv.org/abs/1710.06963) — this is the
-  literal mechanism our `dp-fedavg` mode implements (per-client clip+noise before aggregation).
-  Must be cited as the source of that specific DP placement, not a generic "DP-SGD" citation.
-  `[abstract-confirmed 2026-08-07]` Real paper (McMahan/Ramage/Talwar/Zhang, ICLR 2018, arXiv
-  submitted 2017-10-18, camera-ready v3 2018-02-24). Abstract confirms it adds *user-level* DP to
-  Federated Averaging itself — matches this project's per-client (not per-example) clip+noise
-  placement. **Important nuance to resolve on full read**: after the 2026-08-06 finding that
-  `dp-fedavg`≡`local` numerically in this project's simulation, worth checking whether McMahan et
-  al.'s own protocol assumes the *server* or the *user's device* executes the per-user clip+noise
-  step — that would tell us which of our two mode names this paper is actually the correct citation
-  for.
+- [x] **McMahan, Ramage, Talwar, Zhang (2018)** — "Learning Differentially Private Recurrent
+  Language Models," ICLR 2018. [arXiv:1710.06963](https://arxiv.org/abs/1710.06963).
+  `[full-text read 2026-08-14]` **Resolves the open nuance from 2026-08-07 — and the answer changes
+  which mode this paper actually cites.** Algorithm 1 is unambiguous: `UserUpdateFedAvg` (executed
+  by "user k", i.e. client-side) computes `θ ← θ0 + ClipFn(θ − θ0)` and returns the already-clipped
+  update `∆k` — clipping is per-client, client-side. The Gaussian noise `N(0, Iσ²)`, however, is
+  added exactly **once**, server-side, to the aggregated `∆t+1` after averaging all sampled clients'
+  clipped updates in that round — NOT per-client before aggregation. That is: **client clips, server
+  aggregates-then-noises-once** — which is precisely ChargeShield-FL's `central` mode (client clips
+  only, one aggregate noise post-FedAvg), not what the project currently names `dp-fedavg` (which
+  noises per-client before aggregation, and was shown 2026-08-06 to be numerically identical to
+  `local` for exactly that reason). **Action needed before submission**: this citation should attach
+  to the `central` mode, not `dp-fedavg` — the paper as currently drafted would misattribute McMahan
+  et al.'s mechanism to the wrong one of our three DP placements. `dp-fedavg`/`local` (per-client
+  noise before aggregation) need either a different primary citation or an explicit note that they
+  are a stricter, non-standard variant not literally described in McMahan et al. 2018.
 - [ ] **Zhu, Liu, Han (2019)** — "Deep Leakage from Gradients," NeurIPS 2019.
   [arXiv:1906.08935](https://arxiv.org/pdf/1906.08935) — foundational Gradient Inversion attack
   (DLG). Read before Task #64 starts: our autoencoder's 6-feature tabular gradients are a very
