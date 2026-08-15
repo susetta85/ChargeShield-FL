@@ -1244,32 +1244,45 @@ def run_lira(
         the config itself recommends 16-32 for "paper quality" — increasing
         n_shadow would also reduce reliance on this floor.
 
-    Diagnostica — possibile recidiva del collasso di σ sotto --no-dp
-    (2026-08-15, indagine richiesta esplicitamente dall'utente):
-        nodp-sweep3 (post fix 2026-08-11/12, tutte le contaminazioni
-        cross-cluster note già corrette) mostra un pattern nuovo: member e
-        non-member score NON si separano mai — si muovono INSIEME, quasi
-        identici, con un salto enorme round1→round2 (da ~+3 a ~-6.5) poi un
-        decadimento graduale verso 0 nei round successivi. Molto diverso
-        dalla separazione piccola ma STABILE osservata sotto central DP
-        (~+0.2/-0.4, costante su tutti i 10 round). Ipotesi di lavoro,
-        variante del meccanismo già diagnosticato in 2026-07-21e sopra: senza
-        clipping (SOLO no-DP ne è privo — anche central clippa via
-        clip_only()), il modello converge a una loss assoluta molto più
-        bassa (fl.mean_loss≈0.0012 osservato al round 1 di nodp-sweep3, un
-        ordine di grandezza sotto le modalità con DP) — a questa scala anche
-        il floor μ×0.05 si restringe insieme al segnale reale, lasciando
-        essenzialmente solo il floor fisso 1e-4 a contenere σ, che a sua
-        volta puo' amplificare a dismisura via /σ² anche una differenza
-        minima tra target_loss e μ — per ENTRAMBI i gruppi simmetricamente,
-        producendo instabilità che NON è segnale di membership vero. NON
-        ancora confermata: servono i campi `lira_debug_*` (aggiunti in questa
-        stessa data, puramente additivi, vedi dove sono popolati più sotto
-        nel corpo della funzione) da un test breve (pochi round, un seed)
-        per decidere se questa ipotesi è corretta o se il modello
-        genuinamente non memorizza abbastanza per LiRA sotto no-DP (in tal
-        caso il risultato è reale, non un bug — vedi il commento sui campi
-        `lira_debug_*` per il test decisivo).
+    Fix — asimmetria strutturale IN/OUT σ floor sotto --no-dp (2026-08-15,
+    CONFERMATA con test diretto, non più solo ipotesi):
+        nodp-sweep3 (post fix 2026-08-11/12) mostrava member e non-member
+        score muoversi INSIEME invece di separarsi (salto round1→round2 da
+        ~+3 a ~-6.5, poi decadimento verso 0). Test di conferma (2026-08-15,
+        sweep breve --no-dp, 3 round, seed 42, experiments/_diag_nodp_sigma):
+        `lira_debug_raw_loss_gap` è risultato PICCOLO ma COERENTE IN SEGNO
+        su tutti e 3 i round (-0.00029, -0.00037, -0.00038 — member sempre
+        con loss più bassa, la direzione corretta per vera memorizzazione)
+        — quindi NON uno Scenario B genuino (il modello non memorizza
+        affatto). Il problema è invece che `lira_debug_sigma_out_mean`
+        (~0.016-0.018) è risultato sistematicamente ~30× più grande di
+        `lira_debug_sigma_in_mean` (~0.0005-0.0011), con
+        `lira_debug_sigma_out_floor_hit_rate`≈0.993-0.998 (quasi sempre il
+        fallback pooled vince) contro `lira_debug_sigma_in_floor_hit_rate`
+        ≈0.49-0.50. Causa: `global_in_stats_per_cluster` pooling SOLO le
+        coppie (membro, shadow che l'ha visto) — una popolazione ristretta e
+        omogenea — mentre `global_out_stats_per_cluster` pooling OGNI
+        non-membro (sempre OUT per costruzione, per tutti gli shadow) — una
+        popolazione molto più ampia e variabile tra sessioni diverse. Non un
+        collasso del floor assoluto 1e-4 (che infatti non è mai il termine
+        dominante osservato) — un disallineamento strutturale tra due
+        popolazioni pooled di scala diversa. Conseguenza: log_p_in (diviso
+        per un σ minuscolo) domina il punteggio ed è instabile, mascherando
+        il segnale vero ma piccolo. Confermato anche da
+        `lira_debug_raw_mse_auc_roc` (AUC calcolata direttamente sulla MSE
+        grezza, bypassando la normalizzazione log-ratio) nello stesso test.
+        Fix implementato: `_cluster_sigma_symmetric_floor` (il maggiore tra
+        `_cluster_sigma_in_fb` e `_cluster_sigma_out_fb`, vedi dove è
+        calcolato e applicato più sotto nel corpo della funzione) — floor
+        CONDIVISO applicato simmetricamente a σ_in e σ_out. Non tocca
+        μ_in/μ_out (il segnale discriminativo, invariato) e non cambia il
+        lato che aveva già il floor più alto (resta esattamente come prima);
+        alza solo il lato strutturalmente più piccolo. ATTENZIONE: si applica
+        a OGNI esperimento LiRA, non solo al no-DP — invalida i numeri di
+        central-sweep/dp-sweep/local-sweep raccolti finora (decisione
+        esplicita dell'utente, 2026-08-15). Vedi Task #1 (già in sospeso):
+        l'intera campagna sperimentale va ripetuta con questo fix applicato,
+        non solo con i due fix di pooling cross-cluster di agosto.
 
     Why this differs from run_fedmia / run_fedmia_shadow:
         Both previous attacks use the GLOBAL aggregated model, which is itself a
@@ -1804,6 +1817,36 @@ def run_lira(
             _cluster_mu_out_fb, _cluster_sigma_out_fb = global_out_stats_per_cluster.get(
                 _client_cluster_id, (0.05, 0.01)
             )
+            # Fix 2026-08-15 — floor simmetrico adattivo (indagine anomalia
+            # no-DP, confermata da test diretto lo stesso giorno: vedi
+            # lira_debug_* nel docstring di run_lira, sezione "Diagnostica").
+            # _cluster_sigma_in_fb e _cluster_sigma_out_fb sono costruiti da
+            # popolazioni STRUTTURALMENTE diverse: quello IN pooling solo le
+            # coppie (campione membro, shadow che l'ha visto) — un sottoinsieme
+            # più ristretto e omogeneo — quello OUT pooling OGNI non-membro
+            # (che per costruzione è sempre OUT per tutti gli shadow) più i
+            # membri sul loro lato OUT — una popolazione molto più ampia e
+            # variabile tra sessioni diverse. Il test diagnostico 2026-08-15
+            # (sweep breve --no-dp, 3 round, seed 42) ha misurato σ_out_fb
+            # sistematicamente ~30× più grande di σ_in — non un collasso del
+            # floor assoluto (1e-4), ma un disallineamento strutturale tra le
+            # due popolazioni pooled. Conseguenza: log_p_in (diviso per un σ
+            # minuscolo) domina il punteggio finale ed è instabile — piccole
+            # fluttuazioni di target_loss producono oscillazioni enormi da un
+            # round all'altro (osservato: gap da +3 a -6.5), mascherando il
+            # segnale vero ma piccolo (raw_loss_gap, confermato coerente in
+            # segno per tutti e 3 i round del test). Fix: un floor CONDIVISO,
+            # il maggiore tra i due fallback esistenti, applicato SIMMETRICAMENTE
+            # a σ_in e σ_out — non tocca μ_in/μ_out (il segnale discriminativo
+            # vero, invariato) e non tocca il lato che ha già il floor più alto
+            # (rimane esattamente come prima); alza solo il lato strutturalmente
+            # più piccolo, impedendo che UN SOLO lato domini il rapporto /σ².
+            # ATTENZIONE: questo fix si applica a OGNI esperimento LiRA, non
+            # solo al no-DP — invalida i numeri di central-sweep/dp-sweep/
+            # local-sweep raccolti finora (decisione esplicita dell'utente,
+            # 2026-08-15, dopo aver visto la conferma diagnostica). Vedi
+            # Task #1 (già in sospeso) — l'intera campagna va ripetuta.
+            _cluster_sigma_symmetric_floor = max(_cluster_sigma_in_fb, _cluster_sigma_out_fb)
             if not _cluster_shadow_mse:
                 logger.warning(
                     f"LiRA round {round_num} {_client_cluster_id}: nessun ensemble shadow "
@@ -1877,6 +1920,7 @@ def run_lira(
                     float(np.std(out_losses)),
                     max(μ_out * 0.05, 1e-4),
                     _cluster_sigma_out_fb,
+                    _cluster_sigma_symmetric_floor,  # fix 2026-08-15 — vedi commento sopra
                 )
                 # DIAGNOSTICA 2026-08-15 (vedi commento su _diag_* sopra):
                 # σ_out effettivo (post-floor) + se il floor (non lo std
@@ -1898,6 +1942,7 @@ def run_lira(
                         float(np.std(in_losses)),
                         max(μ_in * 0.05, 1e-4),
                         _cluster_sigma_in_fb,
+                        _cluster_sigma_symmetric_floor,  # fix 2026-08-15 — vedi commento sopra
                     )
                     # DIAGNOSTICA 2026-08-15 — vedi commento su σ_out sopra,
                     # stesso ragionamento. Il ramo else (fallback cluster,
@@ -1909,7 +1954,11 @@ def run_lira(
                         _diag_sigma_in_floor_hits += 1
                 else:
                     μ_in = _cluster_mu_in_fb
-                    σ_in = _cluster_sigma_in_fb
+                    # fix 2026-08-15: anche il fallback diretto deve rispettare
+                    # il floor simmetrico, altrimenti un client con troppo
+                    # pochi in_losses (<2) tornerebbe silenziosamente al vecchio
+                    # comportamento asimmetrico.
+                    σ_in = max(_cluster_sigma_in_fb, _cluster_sigma_symmetric_floor)
                 _diag_sigma_in_values.append(σ_in)
 
                 # Gaussian log-likelihood ratio (Carlini 2022, Eq. 2):
@@ -1986,6 +2035,28 @@ def run_lira(
             _diag_fields["lira_debug_raw_loss_gap"] = round(
                 float(np.mean(_diag_raw_loss_members) - np.mean(_diag_raw_loss_nonmembers)), 8
             )
+            # Test mirato di conferma (2026-08-15, richiesto esplicitamente
+            # dall'utente prima di implementare il fix del floor simmetrico
+            # sopra): AUC calcolata DIRETTAMENTE sulla MSE grezza (target_loss),
+            # bypassando interamente la normalizzazione log-likelihood-ratio
+            # (μ_in/μ_out/σ_in/σ_out) — usa solo il segnale già confermato in
+            # lira_debug_raw_loss_gap. Punteggio = -target_loss (loss più bassa
+            # → più probabile membro → punteggio più alto, convenzione
+            # roc_auc_score). Se questo recupera un AUC>0.5 stabile mentre
+            # lira_auc_roc (sopra, via log-ratio) resta vicino a 0.5/instabile,
+            # conferma che il segnale esiste ma la normalizzazione lo
+            # distrugge — esattamente l'ipotesi diagnosticata. Puramente
+            # informativo: NON sostituisce lira_auc_roc come metrica
+            # ufficiale, serve solo a confermare/smentire prima di fidarsi
+            # del fix del floor simmetrico applicato sopra.
+            try:
+                _raw_labels = [1] * len(_diag_raw_loss_members) + [0] * len(_diag_raw_loss_nonmembers)
+                _raw_scores = [-x for x in _diag_raw_loss_members] + [-x for x in _diag_raw_loss_nonmembers]
+                _diag_fields["lira_debug_raw_mse_auc_roc"] = round(
+                    float(roc_auc_score(_raw_labels, _raw_scores)), 6
+                )
+            except ValueError:
+                _diag_fields["lira_debug_raw_mse_auc_roc"] = None
         if _diag_sigma_in_values:
             _diag_fields["lira_debug_sigma_in_mean"] = round(float(np.mean(_diag_sigma_in_values)), 8)
             _diag_fields["lira_debug_sigma_in_floor_hit_rate"] = round(
@@ -2003,6 +2074,7 @@ def run_lira(
             logger.info(
                 f"Round {round_num} — LiRA diagnostica: "
                 f"raw_loss_gap={_diag_fields.get('lira_debug_raw_loss_gap', 'N/A')} "
+                f"raw_mse_auc={_diag_fields.get('lira_debug_raw_mse_auc_roc', 'N/A')} "
                 f"σ_in_mean={_diag_fields.get('lira_debug_sigma_in_mean', 'N/A')} "
                 f"(floor_hit={_diag_fields.get('lira_debug_sigma_in_floor_hit_rate', 'N/A')}) "
                 f"σ_out_mean={_diag_fields.get('lira_debug_sigma_out_mean', 'N/A')} "
