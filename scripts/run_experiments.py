@@ -1244,6 +1244,33 @@ def run_lira(
         the config itself recommends 16-32 for "paper quality" — increasing
         n_shadow would also reduce reliance on this floor.
 
+    Diagnostica — possibile recidiva del collasso di σ sotto --no-dp
+    (2026-08-15, indagine richiesta esplicitamente dall'utente):
+        nodp-sweep3 (post fix 2026-08-11/12, tutte le contaminazioni
+        cross-cluster note già corrette) mostra un pattern nuovo: member e
+        non-member score NON si separano mai — si muovono INSIEME, quasi
+        identici, con un salto enorme round1→round2 (da ~+3 a ~-6.5) poi un
+        decadimento graduale verso 0 nei round successivi. Molto diverso
+        dalla separazione piccola ma STABILE osservata sotto central DP
+        (~+0.2/-0.4, costante su tutti i 10 round). Ipotesi di lavoro,
+        variante del meccanismo già diagnosticato in 2026-07-21e sopra: senza
+        clipping (SOLO no-DP ne è privo — anche central clippa via
+        clip_only()), il modello converge a una loss assoluta molto più
+        bassa (fl.mean_loss≈0.0012 osservato al round 1 di nodp-sweep3, un
+        ordine di grandezza sotto le modalità con DP) — a questa scala anche
+        il floor μ×0.05 si restringe insieme al segnale reale, lasciando
+        essenzialmente solo il floor fisso 1e-4 a contenere σ, che a sua
+        volta puo' amplificare a dismisura via /σ² anche una differenza
+        minima tra target_loss e μ — per ENTRAMBI i gruppi simmetricamente,
+        producendo instabilità che NON è segnale di membership vero. NON
+        ancora confermata: servono i campi `lira_debug_*` (aggiunti in questa
+        stessa data, puramente additivi, vedi dove sono popolati più sotto
+        nel corpo della funzione) da un test breve (pochi round, un seed)
+        per decidere se questa ipotesi è corretta o se il modello
+        genuinamente non memorizza abbastanza per LiRA sotto no-DP (in tal
+        caso il risultato è reale, non un bug — vedi il commento sui campi
+        `lira_debug_*` per il test decisivo).
+
     Why this differs from run_fedmia / run_fedmia_shadow:
         Both previous attacks use the GLOBAL aggregated model, which is itself a
         cross-cluster blend — so a cross-cluster, one-shot shadow ensemble is the
@@ -1715,6 +1742,41 @@ def run_lira(
         round_member_scores:    list[float] = []
         round_nonmember_scores: list[float] = []
 
+        # DIAGNOSTICA 2026-08-15 (indagine anomalia no-DP AUC≈0.5, vedi
+        # docs/ReadingList_DSN2027.md e README Sprint-log 2026-08-15):
+        # nodp-sweep3 mostra un pattern sospetto — member e non-member NON si
+        # separano mai, si muovono INSIEME (quasi identici) con un salto enorme
+        # round1→round2 (da ~+3 a ~-6.5) poi un decadimento graduale verso 0 nei
+        # round successivi — molto diverso dalla separazione stabile e piccola
+        # osservata sotto central DP (~+0.2/-0.4, costante per tutti i round).
+        # Ipotesi di lavoro: senza clipping (SOLO no-DP ne è privo — anche
+        # central clippa via clip_only()), il modello converge a una loss molto
+        # più bassa (fl.mean_loss≈0.0012 osservato al round 1 di nodp-sweep3,
+        # un ordine di grandezza sotto le modalità con DP) — questo può far
+        # collassare σ_in/σ_out sul floor minimo (1e-4 o μ×0.05), e con un σ
+        # minuscolo anche una differenza minima tra target_loss e μ viene
+        # amplificata a dismisura da /σ² (righe ~1838-1839 sotto), producendo
+        # punteggi enormi e instabili PER ENTRAMBI i gruppi simmetricamente —
+        # rumore di stima amplificato meccanicamente, non segnale di membership
+        # vero. Queste 4 liste catturano i dati grezzi necessari per confermare
+        # o smentire l'ipotesi SENZA dover strumentare di nuovo dopo un altro
+        # sweep completo di ore: raw_loss_members/nonmembers (il segnale vero,
+        # a monte di qualunque normalizzazione — se qui c'è già separazione
+        # pulita ma il punteggio finale no, conferma l'amplificazione da σ; se
+        # anche qui sono indistinguibili, il modello davvero non memorizza
+        # abbastanza per LiRA — Scenario B genuino, non un artefatto) e
+        # sigma_in_values/sigma_out_values (il σ EFFETTIVAMENTE usato — se
+        # sistematicamente vicino al floor 1e-4 sotto no-DP e molto più alto
+        # sotto central/dp-fedavg, conferma il floor collapse). Puramente
+        # additivo — non altera lo scoring esistente, solo raccoglie dati in
+        # parallelo per la diagnosi.
+        _diag_raw_loss_members:    list[float] = []
+        _diag_raw_loss_nonmembers: list[float] = []
+        _diag_sigma_in_values:     list[float] = []
+        _diag_sigma_out_values:    list[float] = []
+        _diag_sigma_in_floor_hits  = 0  # conta quante volte il floor (non lo std grezzo) ha vinto il max()
+        _diag_sigma_out_floor_hits = 0
+
         for update in client_updates:
             if update is None or not update.weights:
                 continue
@@ -1816,6 +1878,14 @@ def run_lira(
                     max(μ_out * 0.05, 1e-4),
                     _cluster_sigma_out_fb,
                 )
+                # DIAGNOSTICA 2026-08-15 (vedi commento su _diag_* sopra):
+                # σ_out effettivo (post-floor) + se il floor (non lo std
+                # grezzo cross-shadow) ha vinto il max() — un floor-hit-rate
+                # sistematicamente più alto sotto no-DP confermerebbe il
+                # floor collapse ipotizzato.
+                _diag_sigma_out_values.append(σ_out)
+                if σ_out > float(np.std(out_losses)):
+                    _diag_sigma_out_floor_hits += 1
 
                 # Use per-sample IN distribution if available; fall back to this
                 # client's cluster-specific global IN stats (not a cross-cluster global).
@@ -1829,9 +1899,18 @@ def run_lira(
                         max(μ_in * 0.05, 1e-4),
                         _cluster_sigma_in_fb,
                     )
+                    # DIAGNOSTICA 2026-08-15 — vedi commento su σ_out sopra,
+                    # stesso ragionamento. Il ramo else (fallback cluster,
+                    # riga sotto) non ha uno std grezzo da confrontare (usa
+                    # direttamente _cluster_sigma_in_fb) — floor-hit non
+                    # applicabile in quel caso, ma σ_in viene comunque
+                    # registrato in _diag_sigma_in_values in entrambi i rami.
+                    if σ_in > float(np.std(in_losses)):
+                        _diag_sigma_in_floor_hits += 1
                 else:
                     μ_in = _cluster_mu_in_fb
                     σ_in = _cluster_sigma_in_fb
+                _diag_sigma_in_values.append(σ_in)
 
                 # Gaussian log-likelihood ratio (Carlini 2022, Eq. 2):
                 # score > 0 → loss matches IN distribution → member
@@ -1846,8 +1925,16 @@ def run_lira(
 
                 if is_member:
                     round_member_scores.append(lira_score)
+                    # DIAGNOSTICA 2026-08-15: target_loss GREZZO, a monte di
+                    # qualunque normalizzazione μ/σ — il test più diretto per
+                    # distinguere "il modello davvero non memorizza" (anche
+                    # qui indistinguibile) da "il punteggio finale è un
+                    # artefatto di amplificazione /σ²" (qui separato, ma il
+                    # log-ratio no).
+                    _diag_raw_loss_members.append(target_loss)
                 else:
                     round_nonmember_scores.append(lira_score)
+                    _diag_raw_loss_nonmembers.append(target_loss)
 
                 if composed_output is not None:
                     _sid = id(sample)
@@ -1874,12 +1961,61 @@ def run_lira(
             f"(gap={score_gap:.6f}, n_shadow={n_shadow})"
         )
 
+        # DIAGNOSTICA 2026-08-15 — vedi commento all'inizializzazione dei
+        # _diag_* sopra (indagine anomalia no-DP AUC≈0.5, richiesta esplicita
+        # dell'utente 2026-08-15 dopo aver visto member/non-member muoversi
+        # insieme invece di separarsi in nodp-sweep3). Campi puramente
+        # additivi, salvati SOLO se raccolti almeno un valore questo round —
+        # non alterano né invalidano nessun campo pre-esistente. Il test
+        # decisivo è "lira_debug_raw_loss_gap": se è chiaramente separato
+        # (≠0, segno coerente round dopo round) MA lira_score_gap oscilla
+        # vicino a 0 con segno instabile, il colpevole è l'amplificazione
+        # /σ² con σ vicino al floor (guardare lira_debug_sigma_*_floor_hit_rate
+        # in quel caso — atteso vicino a 1.0 se l'ipotesi è corretta). Se
+        # invece anche lira_debug_raw_loss_gap è ≈0 e instabile, il modello
+        # genuinamente non memorizza abbastanza per LiRA sotto no-DP — non
+        # un bug, un risultato reale (Scenario B).
+        _diag_fields: dict[str, Any] = {}
+        if _diag_raw_loss_members and _diag_raw_loss_nonmembers:
+            _diag_fields["lira_debug_raw_loss_member_mean"] = round(
+                float(np.mean(_diag_raw_loss_members)), 8
+            )
+            _diag_fields["lira_debug_raw_loss_nonmember_mean"] = round(
+                float(np.mean(_diag_raw_loss_nonmembers)), 8
+            )
+            _diag_fields["lira_debug_raw_loss_gap"] = round(
+                float(np.mean(_diag_raw_loss_members) - np.mean(_diag_raw_loss_nonmembers)), 8
+            )
+        if _diag_sigma_in_values:
+            _diag_fields["lira_debug_sigma_in_mean"] = round(float(np.mean(_diag_sigma_in_values)), 8)
+            _diag_fields["lira_debug_sigma_in_floor_hit_rate"] = round(
+                _diag_sigma_in_floor_hits / len(_diag_sigma_in_values), 4
+            )
+        if _diag_sigma_out_values:
+            _diag_fields["lira_debug_sigma_out_mean"] = round(float(np.mean(_diag_sigma_out_values)), 8)
+            _diag_fields["lira_debug_sigma_out_floor_hit_rate"] = round(
+                _diag_sigma_out_floor_hits / len(_diag_sigma_out_values), 4
+            )
+        if _diag_fields:
+            # Log a INFO (non DEBUG) cosi' e' visibile subito con un
+            # `tail -f` durante un test breve, senza dover aspettare la fine
+            # dell'esperimento e aprire il JSON.
+            logger.info(
+                f"Round {round_num} — LiRA diagnostica: "
+                f"raw_loss_gap={_diag_fields.get('lira_debug_raw_loss_gap', 'N/A')} "
+                f"σ_in_mean={_diag_fields.get('lira_debug_sigma_in_mean', 'N/A')} "
+                f"(floor_hit={_diag_fields.get('lira_debug_sigma_in_floor_hit_rate', 'N/A')}) "
+                f"σ_out_mean={_diag_fields.get('lira_debug_sigma_out_mean', 'N/A')} "
+                f"(floor_hit={_diag_fields.get('lira_debug_sigma_out_floor_hit_rate', 'N/A')})"
+            )
+
         lira_results[round_num] = {
             "lira_auc_roc":               round(auc, 6),
             "lira_member_score_mean":     round(float(np.mean(round_member_scores)),    6),
             "lira_non_member_score_mean": round(float(np.mean(round_nonmember_scores)), 6),
             "lira_score_gap":             round(score_gap, 6),
             "n_shadow":                   n_shadow,
+            **_diag_fields,
         }
 
     if composed_output is not None:
