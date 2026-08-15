@@ -33,9 +33,12 @@ controparte server-side di "dp-fedavg"/"central"):
       inviare — il server non deve MAI vedere il valore pulito, nemmeno
       transitoriamente (vero local DP).
     - dp_mode="dp-fedavg" (default): il client invia l'update RAW, non
-      privatizzato — architetturalmente, in dp-fedavg [McMahan et al. 2017]
-      è il SERVER (semi-trusted) a clippare+rumorizzare ogni update non
-      appena arriva, PRIMA di aggregarlo — vedi ChargeShieldAggregator.accept().
+      privatizzato — architetturalmente è il SERVER (semi-trusted) a
+      clippare+rumorizzare ogni update non appena arriva, PRIMA di aggregarlo
+      — vedi ChargeShieldAggregator.accept(). Questo placement (rumore
+      per-client prima dell'aggregazione) è una variante più restrittiva e
+      non-standard, non descritta letteralmente nell'Algoritmo 1 di McMahan
+      et al. 2018 (quel paper corrisponde invece al mode "central").
       Questa è una distinzione che nella simulazione single-process
       (scripts/run_experiments.py) è invisibile (client e server sono la
       stessa chiamata Python), ma che nel deploy NVFLARE reale diventa
@@ -612,8 +615,10 @@ class ChargeShieldExecutor(Executor):
         # DP client-side (fase 3, 2026-07-22) — vedi docstring del modulo.
         # dp_mode="dp-fedavg": nessuna operazione qui, il client invia l'update
         # raw — è il server (ChargeShieldAggregator.accept()) a clippare e
-        # rumorizzare, mirroring l'architettura dp-fedavg originale (McMahan
-        # et al. 2017: server semi-trusted riceve il raw update per client).
+        # rumorizzare — placement per-client non-standard, non descritto
+        # letteralmente nell'Algoritmo 1 di McMahan et al. 2018 (quel paper
+        # corrisponde invece al mode "central": clip lato client + un solo
+        # rumore lato server sull'aggregato).
         if self._dp_mode in ("central", "local"):
             if self._gm is None:
                 from ml.gradient_manager import GradientManager

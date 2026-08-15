@@ -361,15 +361,22 @@ def run_fl_rounds(
                  docs/CaseStudies.md §2.4.3 per la tassonomia completa):
                    "dp-fedavg" (default, comportamento storico) — il server
                      riceve l'update raw di ogni client e lo clippa+rumorizza
-                     PRIMA di aggregarlo (McMahan et al. 2017). Il server/IDS
-                     vede transitoriamente l'update raw (usato oggi da run_ids()).
-                   "central" — ogni client CLIPPA il proprio update (bound la
-                     sensitività) ma NON lo rumorizza; il server (trusted)
-                     aggrega gli update puliti-ma-clippati con FedAvg, poi
-                     aggiunge UN SOLO rumore Gaussiano all'aggregato (scalato
-                     1/n_participants). I singoli update non sono mai rumorizzati:
-                     un attacco sul singolo update (LiRA) non dovrebbe mostrare
-                     alcuna soppressione — è il risultato atteso, non un bug.
+                     PRIMA di aggregarlo. Questo placement (rumore per-client
+                     prima dell'aggregazione) è una variante più restrittiva e
+                     non-standard, non descritta letteralmente nell'Algoritmo 1
+                     di McMahan et al. 2018 — vedi "central" sotto per il mode
+                     a cui quel paper corrisponde davvero. Il server/IDS vede
+                     transitoriamente l'update raw (usato oggi da run_ids()).
+                   "central" [McMahan et al. 2018 — meccanismo esatto del loro
+                     Algoritmo 1 (DP-FedAvg): clip lato client, un solo draw di
+                     rumore lato server sull'aggregato] — ogni client CLIPPA il
+                     proprio update (bound la sensitività) ma NON lo rumorizza;
+                     il server (trusted) aggrega gli update puliti-ma-clippati
+                     con FedAvg, poi aggiunge UN SOLO rumore Gaussiano
+                     all'aggregato (scalato 1/n_participants). I singoli update
+                     non sono mai rumorizzati: un attacco sul singolo update
+                     (LiRA) non dovrebbe mostrare alcuna soppressione — è il
+                     risultato atteso, non un bug.
                    "local" — stesso meccanismo per-client di "dp-fedavg", ma il
                      server/IDS non deve MAI vedere l'update raw, nemmeno
                      transitoriamente: run_ids() userà `updates` (rumorizzati)
@@ -2601,9 +2608,12 @@ def parse_args() -> argparse.Namespace:
             "Placement del meccanismo DP quando --no-dp non è passato "
             "(2026-07-22, vedi docs/CaseStudies.md §2.4.3): "
             "'dp-fedavg' (default, storico) = server clippa+rumorizza ogni "
-            "update PRIMA di aggregare (McMahan 2017), server/IDS vede l'update "
-            "raw transitoriamente. "
-            "'central' = client clippano SENZA rumorizzare, il server aggrega "
+            "update PRIMA di aggregare — placement per-client non-standard, "
+            "NON quello descritto dall'Algoritmo 1 di McMahan 2018; server/IDS "
+            "vede l'update raw transitoriamente. "
+            "'central' [McMahan 2018, Algoritmo 1 (DP-FedAvg): clip lato "
+            "client, un solo draw di rumore lato server sull'aggregato] = "
+            "client clippano SENZA rumorizzare, il server aggrega "
             "pulito e aggiunge UN SOLO rumore all'aggregato — atteso: LiRA sul "
             "singolo update non mostra alcuna soppressione, a nessun ε. "
             "'local' = stesso meccanismo per-client di dp-fedavg, ma server/IDS "

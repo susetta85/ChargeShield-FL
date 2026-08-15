@@ -39,13 +39,18 @@ della DP (vedi chargeshield_executor.py per la parte client-side):
       non applica DP) — aggregate() li usa RAW per l'analisi IDS/Auditor
       (mirroring "il server vede transitoriamente il raw update" di run_ids()),
       poi li clippa+rumorizza UNO PER UNO (GradientManager.privatize()) PRIMA
-      di passarli a FedAvgAggregator. Questa è l'architettura dp-fedavg
-      originale [McMahan et al. 2017]: il server (semi-trusted) fa il lavoro
-      di privatizzazione, non il client.
-    - dp_mode="central": gli update ricevuti sono già clippati (non rumorizzati)
-      dal client — l'IDS li analizza così com'è, FedAvgAggregator li combina,
-      poi aggregate() aggiunge UN SOLO rumore Gaussiano all'aggregato
-      (GradientManager.privatize_aggregate()), mirroring run_fl_rounds().
+      di passarli a FedAvgAggregator. Questo è un placement per-client
+      non-standard: il server (semi-trusted) fa il lavoro di privatizzazione,
+      non il client — non è ciò che descrive letteralmente l'Algoritmo 1 di
+      McMahan et al. 2018 (vedi "central" sotto per il mode a cui quel paper
+      corrisponde davvero).
+    - dp_mode="central" [McMahan et al. 2018 — meccanismo esatto del loro
+      Algoritmo 1 (DP-FedAvg): clip lato client, un solo draw di rumore lato
+      server sull'aggregato]: gli update ricevuti sono già clippati (non
+      rumorizzati) dal client — l'IDS li analizza così com'è, FedAvgAggregator
+      li combina, poi aggregate() aggiunge UN SOLO rumore Gaussiano
+      all'aggregato (GradientManager.privatize_aggregate()), mirroring
+      run_fl_rounds().
     - dp_mode="local": gli update ricevuti sono già clippati E rumorizzati dal
       client — l'aggregatore non fa nulla in più per la DP, ma l'IDS ora
       analizza dati già rumorizzati invece che puliti: stessa degradazione
@@ -550,8 +555,10 @@ class ChargeShieldAggregator(Aggregator):
         # ── DP fase 3: cosa arriva in received_updates dipende da dp_mode ──────
         # - "dp-fedavg": RAW (il client non ha applicato DP) — l'IDS analizza
         #   questi stessi valori raw (mirroring run_ids()), poi li privatizziamo
-        #   UNO PER UNO qui prima di passarli a FedAvg (architettura originale
-        #   McMahan et al. 2017: il server semi-trusted clippa+rumorizza).
+        #   UNO PER UNO qui prima di passarli a FedAvg — placement per-client
+        #   non-standard, non descritto letteralmente nell'Algoritmo 1 di
+        #   McMahan et al. 2018 (quel paper corrisponde invece al mode
+        #   "central", vedi sotto).
         # - "central": già clippati (non rumorizzati) dal client — l'IDS li
         #   analizza così, FedAvg li combina, POI aggiungiamo un solo rumore
         #   all'aggregato (privatize_aggregate(), sotto).
