@@ -1809,8 +1809,24 @@ def run_lira(
         # medi per confermarlo prima di decidere il fix.
         _diag_mu_in_values:  list[float] = []
         _diag_mu_out_values: list[float] = []
+        # DIAGNOSTICA 2026-08-20 (round 3): μ_in<μ_out in aggregato (direzione
+        # CORRETTA, confermato — smentisce l'ipotesi warm-start destabilizzato)
+        # eppure lira_auc_roc resta invertito (~0.32-0.34) — l'algebra sui soli
+        # valori medi aggregati non spiega l'inversione, serve vedere i valori
+        # REALI per singolo campione (t, μ_in, μ_out, score), non solo le medie,
+        # per capire se membri e non-membri vengono penalizzati in modo
+        # strutturalmente diverso (es. μ_in dei non-membri è SEMPRE il
+        # fallback per-cluster costante — mai una stima per-campione — mentre
+        # per i membri μ_in è quasi sempre una stima reale per quel campione
+        # specifico: un'asimmetria strutturale che le medie da sole non
+        # rivelano). Dump limitato ai primi 15 membri + 15 non-membri
+        # incontrati nel PRIMO client processato in questo round (evita di
+        # sommergere il log su 3 client × 10 round).
+        _diag_dump_mem_count    = 0
+        _diag_dump_nonmem_count = 0
+        _DIAG_DUMP_CAP = 15
 
-        for update in client_updates:
+        for _client_idx, update in enumerate(client_updates):
             if update is None or not update.weights:
                 continue
 
@@ -1962,6 +1978,7 @@ def run_lira(
                 # Same σ floor rationale as σ_out above — applied symmetrically so
                 # neither side's variance can be artificially tighter than the other
                 # purely due to small-N (n_shadow≈8) per-sample estimation noise.
+                _mu_in_is_real = len(in_losses) >= 2  # DIAGNOSTICA 2026-08-20, vedi dump sotto
                 if len(in_losses) >= 2:
                     μ_in = float(np.mean(in_losses))
                     σ_in = max(
@@ -1995,6 +2012,34 @@ def run_lira(
                 # score > 0 → loss matches IN distribution → member
                 log_p_in  = (-0.5 * ((target_loss - μ_in)  / σ_in)  ** 2) - np.log(σ_in)
                 log_p_out = (-0.5 * ((target_loss - μ_out) / σ_out) ** 2) - np.log(σ_out)
+                # DIAGNOSTICA 2026-08-20 (round 3, dump per-campione): il
+                # round 2 (aggregate μ_in<μ_out corretto ma AUC ancora
+                # invertito) non si spiega con le sole medie — serve vedere i
+                # valori REALI congiunti (t, μ_in, μ_out, log_p_*, score) per
+                # singolo campione, limitato al primo client processato in
+                # questo round e ai primi 15 membri + 15 non-membri incontrati
+                # (vedi _diag_dump_* inizializzati sopra). is_member non è
+                # ancora definito qui (arriva 3 righe sotto) — lo calcolo
+                # localmente identico a quello che verrà usato.
+                if _client_idx == 0:
+                    _dump_is_member = (j < len(members_bal))
+                    _dump_this = (
+                        (_dump_is_member and _diag_dump_mem_count < _DIAG_DUMP_CAP) or
+                        (not _dump_is_member and _diag_dump_nonmem_count < _DIAG_DUMP_CAP)
+                    )
+                    if _dump_this:
+                        if _dump_is_member:
+                            _diag_dump_mem_count += 1
+                        else:
+                            _diag_dump_nonmem_count += 1
+                        logger.info(
+                            f"[DUMP r{round_num}] is_member={_dump_is_member} "
+                            f"t={target_loss:.6f} mu_in={μ_in:.6f}"
+                            f"({'reale' if _mu_in_is_real else 'FALLBACK'}) "
+                            f"mu_out={μ_out:.6f} sigma_in={σ_in:.6f} sigma_out={σ_out:.6f} "
+                            f"log_p_in={log_p_in:.4f} log_p_out={log_p_out:.4f} "
+                            f"score={log_p_in - log_p_out:.4f}"
+                        )
                 # Clip to ±20: log-LR beyond this range has no practical discriminative
                 # value and only amplifies numerical instabilities in edge cases.
                 lira_score = float(np.clip(log_p_in - log_p_out, -20.0, 20.0))
