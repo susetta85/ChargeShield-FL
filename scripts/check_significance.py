@@ -16,11 +16,16 @@ import sys
 random.seed(0)  # riproducibilita' del bootstrap stesso (non del training)
 
 GROUPS = {
+    # Aggiornato 2026-08-20 dopo il fix del floor sigma simmetrico
+    # (2026-08-15, commit 2ed4e57) — tutte le cartelle qui sotto sono la
+    # ri-esecuzione POST-fix (Task #1); i vecchi dp-sweep2/3 pre-fix sono
+    # stati rinominati/archiviati in experiments/_archive_20260815_pre_sigma_fix/
+    # e NON vanno più referenziati qui.
+    "nodp-sweep1 (no-DP baseline)": "experiments/nodp-sweep1/experiment_*.json",
+    "dp-sweep1 (dp-fedavg, eps=1.0)": "experiments/dp-sweep1/experiment_*.json",
+    "dp-sweep2 (dp-fedavg, eps=0.1)": "experiments/dp-sweep2/experiment_*.json",
     "central-sweep1 (central, eps=1.0)": "experiments/central-sweep1/experiment_*.json",
-    "central-sweep2 (central, eps=0.1, IN CORSO)": "experiments/central-sweep2/experiment_*.json",
-    "dp-sweep2 (dp-fedavg, eps=1.0)": "experiments/dp-sweep2/experiment_*.json",
-    "dp-sweep3 (dp-fedavg, eps=0.1)": "experiments/dp-sweep3/experiment_*.json",
-    "dp-sweep-eps0.5 (dp-fedavg, eps=0.5)": "experiments/dp-sweep-eps0.5/experiment_*.json",
+    "central-sweep2 (central, eps=0.1)": "experiments/central-sweep2/experiment_*.json",
     "local-sweep1 (local, eps=1.0)": "experiments/local-sweep1/experiment_*.json",
     "local-sweep2 (local, eps=0.1)": "experiments/local-sweep2/experiment_*.json",
 }
