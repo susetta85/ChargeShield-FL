@@ -45,7 +45,17 @@ would be citing our own method incorrectly.
   normality) on image/text tasks (CIFAR-10/100, ImageNet, WikiText-103) — not for **unsupervised
   autoencoder reconstruction-MSE**, which is what ChargeShield-FL scores instead. Both (2) and (3)
   are defensible, honest adaptations to a tabular/autoencoder setting, but the paper needs to say so
-  explicitly rather than imply a direct port of Carlini et al.'s construction.
+  explicitly rather than imply a direct port of Carlini et al.'s construction. **Update
+  (2026-08-20), a fourth deviation found while debugging, not from a re-read:** LiRA's
+  likelihood-ratio construction assumes `target_loss` is well-approximated by a Gaussian under both
+  the IN- and OUT-shadow distributions; real per-sample debugging (see README Sprint 10aa) found
+  sessions whose `target_loss` sits up to ~20σ from *both* fitted means simultaneously, a regime the
+  Gaussian assumption simply doesn't cover — neither shadow ensemble is informative about that point,
+  and forcing a score anyway makes the sign an artefact of which of two near-identical means happens
+  to be marginally closer to the outlier. ChargeShield-FL now excludes such samples from scoring
+  (`_UNCALIBRATED_Z_THRESHOLD = 8.0`) rather than assigning them an arbitrary-sign score — a
+  disclosable methodological choice, not implied by Carlini et al.'s original construction, and worth
+  one sentence in the paper's methodology/limitations section alongside (2) and (3) above.
 - [ ] **Shokri, Stronati, Song, Shmatikov (2017)** — "Membership Inference Attacks Against Machine
   Learning Models," IEEE S&P 2017. [arXiv:1610.05820](https://arxiv.org/abs/1610.05820) — origin
   of MIA as a field; needed for the related-work opening paragraph and to correctly position Yeom
