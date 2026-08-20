@@ -1284,6 +1284,47 @@ def run_lira(
         l'intera campagna sperimentale va ripetuta con questo fix applicato,
         non solo con i due fix di pooling cross-cluster di agosto.
 
+    Fix — campioni "non calibrabili" esclusi dal punteggio (2026-08-20,
+    stesso giorno, terzo round di questa indagine):
+        Dopo il fix del floor simmetrico sopra, la campagna completa (5 seed
+        × 7 config, 2026-08-16/20) ha mostrato nodp-sweep1 stabilmente e
+        SIGNIFICATIVAMENTE sotto 0.5 (CI bootstrap [0.3675, 0.3742]) mentre
+        `lira_debug_raw_mse_auc_roc` restava ~0.50 in ogni round/seed —
+        un'inversione forte e riproducibile, non spiegabile dal solo
+        controllo aggregato di `lira_debug_mu_in_minus_out` (che infatti
+        risultava CORRETTAMENTE negativo, μ_in<μ_out, smentendo l'ipotesi
+        iniziale di "warm-start destabilizzato"). Un dump per-campione
+        (t, μ_in, μ_out, σ_in, σ_out, log_p_in, log_p_out, score — vedi dove
+        è loggato più sotto nel corpo della funzione) ha rivelato la causa
+        reale: alcune sessioni hanno target_loss REALE fino a ~20 deviazioni
+        standard lontano da ENTRAMBE μ_in e μ_out (es. t=0.0279 contro
+        μ_in=0.0007, μ_out=0.0009, σ=0.0013) — né l'ensemble shadow IN né
+        quello OUT spiegano minimamente quell'osservazione. In questo regime
+        il segno di log_p_in−log_p_out è deciso da quale delle due medie
+        minuscole è per puro caso una frazione più vicina a un valore
+        comunque enorme e lontanissimo da entrambe — rumore geometrico col
+        segno arbitrario, non segnale di membership. Bastano 2-3 di questi
+        outlier su 15 campioni per trascinare la media del round di diversi
+        punti interi, dominando l'intero aggregato. Il fenomeno è specifico
+        al regime di loss bassissima e σ molto stretto raggiunto solo da
+        no-DP (sotto DP attivo, rumore/clipping tengono tutto su una scala
+        comparabile — questi casi sono rari o assenti), esattamente come i
+        due fix precedenti di questa stessa indagine (floor simmetrico
+        2026-08-15, pooling cross-cluster 2026-08-11/12).
+        Fix: se un campione è oltre `_UNCALIBRATED_Z_THRESHOLD`=8 deviazioni
+        standard da ENTRAMBE le distribuzioni (min dei due |z-score| > 8), il
+        modello gaussiano di LiRA non ha alcuna informazione calibrata su di
+        esso — viene escluso dal punteggio (skip, non forzato con un segno
+        arbitrario), invece di essere incluso e contaminare l'aggregato. Il
+        tasso di esclusione è salvato in `lira_debug_uncalibrated_skip_rate`/
+        `_skipped_n` per trasparenza — se risultasse alto (>20-30%) andrebbe
+        rivisto n_shadow o la costruzione di μ/σ, non solo accettato. Non
+        tocca il calcolo di μ_in/μ_out/σ_in/σ_out per i campioni NON esclusi
+        — solo filtra quali campioni entrano nel pool finale.
+        ATTENZIONE: come i due fix precedenti, questo si applica a OGNI
+        esperimento LiRA, non solo al no-DP — invalida ANCHE i numeri della
+        campagna 2026-08-16/20 (già post floor-fix). Vedi Task #1.
+
     Why this differs from run_fedmia / run_fedmia_shadow:
         Both previous attacks use the GLOBAL aggregated model, which is itself a
         cross-cluster blend — so a cross-cluster, one-shot shadow ensemble is the
@@ -1826,6 +1867,33 @@ def run_lira(
         _diag_dump_nonmem_count = 0
         _DIAG_DUMP_CAP = 15
 
+        # Fix 2026-08-20 — campioni "non calibrabili" esclusi dal punteggio.
+        # Il dump per-campione (2026-08-20, sopra) ha mostrato la causa reale
+        # dell'inversione no-DP: alcune sessioni hanno target_loss REALE fino
+        # a ~20 deviazioni standard (σ_in/σ_out, ormai correttamente
+        # simmetrici dal fix del 2026-08-15) lontano da ENTRAMBE μ_in e μ_out
+        # — cioè né gli shadow "IN" né quelli "OUT" spiegano minimamente
+        # quella osservazione. In questo regime il segno di log_p_in-log_p_out
+        # è deciso da quale delle due medie minuscole è per puro caso una
+        # frazione più vicina a un valore comunque enorme e lontanissimo da
+        # entrambe — rumore geometrico col segno arbitrario, non segnale di
+        # membership. Sotto DP attivo σ è molto più grande (rumore/clipping
+        # tengono tutto su una scala comparabile), quindi questi casi sono
+        # rari o assenti — il problema è specifico al regime di loss
+        # bassissima raggiunto solo da no-DP, esattamente come i due fix
+        # precedenti di questa stessa indagine (floor 2026-08-15, pooling
+        # 2026-08-11/12). Soglia: se il campione è oltre 8σ da ENTRAMBE le
+        # distribuzioni (min dei due z-score assoluti > 8), il modello
+        # gaussiano di LiRA non ha alcuna informazione calibrata su di esso —
+        # va escluso, non forzato con un segno arbitrario. 8σ è scelta per
+        # separare nettamente gli outlier osservati (~20σ) dai campioni
+        # tipici (~0-3σ), lasciando un margine ampio. Contatore diagnostico
+        # per trasparenza — se una frazione grande venisse esclusa, andrebbe
+        # rivisto n_shadow o la costruzione stessa di μ/σ, non solo la soglia.
+        _UNCALIBRATED_Z_THRESHOLD = 8.0
+        _diag_uncalibrated_skipped = 0
+        _diag_scored_total = 0
+
         for _client_idx, update in enumerate(client_updates):
             if update is None or not update.weights:
                 continue
@@ -2008,6 +2076,21 @@ def run_lira(
                     σ_in = max(_cluster_sigma_in_fb, _cluster_sigma_symmetric_floor)
                 _diag_sigma_in_values.append(σ_in)
 
+                # Fix 2026-08-20 — vedi commento esteso all'inizializzazione
+                # di _UNCALIBRATED_Z_THRESHOLD sopra. Se target_loss è oltre
+                # 8σ da ENTRAMBE le distribuzioni, né l'ensemble IN né quello
+                # OUT spiegano l'osservazione — il campione va escluso, non
+                # forzato con un segno arbitrario (guarda l'algebra: quando
+                # |t-μ_in| e |t-μ_out| sono entrambi enormi rispetto a σ, il
+                # segno di log_p_in-log_p_out dipende da quale dei due è per
+                # puro caso marginalmente più vicino, non da un vero segnale).
+                _diag_scored_total += 1
+                _z_in  = abs(target_loss - μ_in)  / σ_in  if σ_in  > 0 else 0.0
+                _z_out = abs(target_loss - μ_out) / σ_out if σ_out > 0 else 0.0
+                if min(_z_in, _z_out) > _UNCALIBRATED_Z_THRESHOLD:
+                    _diag_uncalibrated_skipped += 1
+                    continue
+
                 # Gaussian log-likelihood ratio (Carlini 2022, Eq. 2):
                 # score > 0 → loss matches IN distribution → member
                 log_p_in  = (-0.5 * ((target_loss - μ_in)  / σ_in)  ** 2) - np.log(σ_in)
@@ -2154,6 +2237,16 @@ def run_lira(
             _diag_fields["lira_debug_mu_in_minus_out"] = round(
                 float(np.mean(_diag_mu_in_values) - np.mean(_diag_mu_out_values)), 8
             )
+        # Fix 2026-08-20 — tasso di esclusione per "non calibrabilità" (vedi
+        # _UNCALIBRATED_Z_THRESHOLD sopra). Trasparenza: se questo tasso
+        # fosse alto (es. >20-30%), andrebbe rivisto n_shadow o σ, non solo
+        # accettato — qui salvato sempre (non solo se _diag_fields è già
+        # popolato) perché è parte integrante del fix, non solo diagnostica.
+        if _diag_scored_total > 0:
+            _diag_fields["lira_debug_uncalibrated_skip_rate"] = round(
+                _diag_uncalibrated_skipped / _diag_scored_total, 4
+            )
+            _diag_fields["lira_debug_uncalibrated_skipped_n"] = _diag_uncalibrated_skipped
         if _diag_fields:
             # Log a INFO (non DEBUG) cosi' e' visibile subito con un
             # `tail -f` durante un test breve, senza dover aspettare la fine
@@ -2166,7 +2259,8 @@ def run_lira(
                 f"σ_in_mean={_diag_fields.get('lira_debug_sigma_in_mean', 'N/A')} "
                 f"(floor_hit={_diag_fields.get('lira_debug_sigma_in_floor_hit_rate', 'N/A')}) "
                 f"σ_out_mean={_diag_fields.get('lira_debug_sigma_out_mean', 'N/A')} "
-                f"(floor_hit={_diag_fields.get('lira_debug_sigma_out_floor_hit_rate', 'N/A')})"
+                f"(floor_hit={_diag_fields.get('lira_debug_sigma_out_floor_hit_rate', 'N/A')}) "
+                f"uncalibrated_skip_rate={_diag_fields.get('lira_debug_uncalibrated_skip_rate', 'N/A')}"
             )
 
         lira_results[round_num] = {
