@@ -1789,6 +1789,26 @@ def run_lira(
         _diag_sigma_out_values:    list[float] = []
         _diag_sigma_in_floor_hits  = 0  # conta quante volte il floor (non lo std grezzo) ha vinto il max()
         _diag_sigma_out_floor_hits = 0
+        # DIAGNOSTICA 2026-08-20 (round 2 dell'indagine no-DP): dopo il fix
+        # del floor simmetrico, la campagna completa (5 seed × 7 config) mostra
+        # nodp-sweep1 stabilmente E SIGNIFICATIVAMENTE sotto 0.5 (CI bootstrap
+        # [0.3675, 0.3742], non un caso di rumore) mentre lira_debug_raw_mse_auc_roc
+        # resta ~0.50 in ogni round/seed controllato — il segnale è nullo a
+        # livello grezzo ma l'inversione nel punteggio finale è forte e
+        # riproducibile. Ipotesi: μ_in (calibrazione "IN" dagli shadow) risulta
+        # sistematicamente MAGGIORE di μ_out (non minore, come l'intuizione
+        # LiRA richiederebbe) — possibile artefatto del warm-start: uno shadow
+        # "IN" continua per altre shadow_epochs (50) epoche NON vincolate
+        # (nessun clipping/rumore sotto no-DP) un modello già ben convergente,
+        # e può destabilizzarsi/overfittare in modo rumoroso proprio sui punti
+        # che ha visto, mentre uno shadow "OUT" generalizza normalmente su
+        # dati molto simili (stesso cluster, sessioni correlate). Se μ_in>μ_out
+        # è reale, la formula del rapporto di verosimiglianza (invariata,
+        # matematicamente corretta per μ_in<μ_out) si inverte di segno.
+        # Questi due accumulatori (puramente additivi) isolano μ_in/μ_out
+        # medi per confermarlo prima di decidere il fix.
+        _diag_mu_in_values:  list[float] = []
+        _diag_mu_out_values: list[float] = []
 
         for update in client_updates:
             if update is None or not update.weights:
@@ -1930,6 +1950,12 @@ def run_lira(
                 _diag_sigma_out_values.append(σ_out)
                 if σ_out > float(np.std(out_losses)):
                     _diag_sigma_out_floor_hits += 1
+                # DIAGNOSTICA 2026-08-20: μ_out per QUESTO campione (che sia
+                # membro o non-membro) — confrontato sotto con μ_in SOLO per i
+                # membri con calibrazione IN reale (non il fallback), per
+                # testare l'ipotesi μ_in>μ_out (vedi commento sopra).
+                if is_member:
+                    _diag_mu_out_values.append(μ_out)
 
                 # Use per-sample IN distribution if available; fall back to this
                 # client's cluster-specific global IN stats (not a cross-cluster global).
@@ -1952,6 +1978,10 @@ def run_lira(
                     # registrato in _diag_sigma_in_values in entrambi i rami.
                     if σ_in > float(np.std(in_losses)):
                         _diag_sigma_in_floor_hits += 1
+                    # DIAGNOSTICA 2026-08-20: solo qui μ_in è una stima REALE
+                    # per QUESTO campione (non il fallback _cluster_mu_in_fb) —
+                    # confronto diretto e onesto con μ_out dello stesso campione.
+                    _diag_mu_in_values.append(μ_in)
                 else:
                     μ_in = _cluster_mu_in_fb
                     # fix 2026-08-15: anche il fallback diretto deve rispettare
@@ -2067,6 +2097,18 @@ def run_lira(
             _diag_fields["lira_debug_sigma_out_floor_hit_rate"] = round(
                 _diag_sigma_out_floor_hits / len(_diag_sigma_out_values), 4
             )
+        # DIAGNOSTICA 2026-08-20 — test decisivo per l'ipotesi "μ_in>μ_out
+        # invertito" (vedi commento all'inizializzazione dei _diag_mu_*
+        # sopra). Solo membri con calibrazione IN reale (non fallback) in
+        # entrambe le liste, stesso identico insieme di campioni per μ_in e
+        # μ_out (vedi dove sono popolati: entrambi dentro `if len(in_losses)
+        # >= 2` / subito prima, stesso `is_member` branch) — confronto lecito.
+        if _diag_mu_in_values and _diag_mu_out_values:
+            _diag_fields["lira_debug_mu_in_mean"] = round(float(np.mean(_diag_mu_in_values)), 8)
+            _diag_fields["lira_debug_mu_out_mean"] = round(float(np.mean(_diag_mu_out_values)), 8)
+            _diag_fields["lira_debug_mu_in_minus_out"] = round(
+                float(np.mean(_diag_mu_in_values) - np.mean(_diag_mu_out_values)), 8
+            )
         if _diag_fields:
             # Log a INFO (non DEBUG) cosi' e' visibile subito con un
             # `tail -f` durante un test breve, senza dover aspettare la fine
@@ -2075,6 +2117,7 @@ def run_lira(
                 f"Round {round_num} — LiRA diagnostica: "
                 f"raw_loss_gap={_diag_fields.get('lira_debug_raw_loss_gap', 'N/A')} "
                 f"raw_mse_auc={_diag_fields.get('lira_debug_raw_mse_auc_roc', 'N/A')} "
+                f"mu_in-mu_out={_diag_fields.get('lira_debug_mu_in_minus_out', 'N/A')} "
                 f"σ_in_mean={_diag_fields.get('lira_debug_sigma_in_mean', 'N/A')} "
                 f"(floor_hit={_diag_fields.get('lira_debug_sigma_in_floor_hit_rate', 'N/A')}) "
                 f"σ_out_mean={_diag_fields.get('lira_debug_sigma_out_mean', 'N/A')} "
