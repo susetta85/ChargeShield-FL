@@ -1325,6 +1325,46 @@ def run_lira(
         esperimento LiRA, non solo al no-DP — invalida ANCHE i numeri della
         campagna 2026-08-16/20 (già post floor-fix). Vedi Task #1.
 
+    Fix — ancoraggio di μ_in dei non-membri al proprio μ_out (2026-08-21,
+    stesso giorno del fix precedente, quarto round di questa indagine):
+        Con l'esclusione outlier sopra applicata, `_verify_outlier_fix`
+        (3 round, seed 42) ha mostrato lira_auc_roc ancora invertito
+        (~0.32-0.44) con tasso di esclusione solo del 2.37% — l'ipotesi degli
+        outlier a ~20σ era vera ma NON la causa dominante dell'inversione,
+        solo un contributo minore. Ri-analizzando lo stesso dump per-campione
+        (`_diag_persample`) con questo in mente è emersa la causa reale:
+        per costruzione, un non-membro NON ha mai una vera calibrazione IN
+        (nessuno shadow retraining lo tratta mai come incluso), quindi il
+        codice ricorre al ramo `else` sotto — μ_in diventava la costante
+        ASSOLUTA `_cluster_mu_in_fb` (pooled su tutto il cluster/round),
+        mentre μ_out restava sempre una stima PER CAMPIONE, sensibile alla
+        difficoltà di ricostruzione di quella specifica sessione. Le sessioni
+        "facili" (μ_out piccolo, la maggioranza) risultavano quindi più vicine
+        alla costante _cluster_mu_in_fb (relativamente più grande, essendo un
+        pooled) che al proprio μ_out — cioè log_p_in > log_p_out per un
+        artefatto di scala, non per vera membership. Il dump del 2026-08-20
+        confermava infatti che la maggioranza dei non-membri con t basso
+        (sessioni "facili") aveva score positivo (falso "sembra membro"),
+        esattamente il pattern previsto da questa asimmetria costante-vs-
+        per-campione.
+        Fix: nel ramo `else` (nessuna calibrazione IN reale disponibile),
+        μ_in non è più la costante grezza `_cluster_mu_in_fb`, ma viene
+        ancorata al μ_out di QUESTO campione specifico, spostato del gap
+        TIPICO osservato tra IN e OUT nei membri reali dello stesso
+        cluster/round: `μ_in = μ_out + (_cluster_mu_in_fb - _cluster_mu_out_fb)`.
+        Così un non-membro "facile" ottiene una stima simulata di μ_in
+        coerente con la propria scala di difficoltà (non un valore assoluto
+        scollegato), pur mantenendo il vantaggio IN tipico osservato
+        empiricamente nel cluster/round. Non tocca il ramo `if` (calibrazione
+        IN reale, len(in_losses)>=2), né σ_in/σ_out, né l'esclusione outlier
+        del fix precedente — modifica solo la stima puntuale di μ_in quando
+        non c'è alternativa migliore.
+        ATTENZIONE: come i tre fix precedenti, questo si applica a OGNI
+        esperimento LiRA — invalida ANCHE i numeri della campagna
+        2026-08-16/20 raccolti dopo il fix dell'esclusione outlier. Vedi
+        Task #1: la campagna va ripetuta di nuovo, per la terza volta questa
+        settimana, ora con tutti e quattro i fix applicati insieme.
+
     Why this differs from run_fedmia / run_fedmia_shadow:
         Both previous attacks use the GLOBAL aggregated model, which is itself a
         cross-cluster blend — so a cross-cluster, one-shot shadow ensemble is the
@@ -2068,7 +2108,38 @@ def run_lira(
                     # confronto diretto e onesto con μ_out dello stesso campione.
                     _diag_mu_in_values.append(μ_in)
                 else:
-                    μ_in = _cluster_mu_in_fb
+                    # Fix 2026-08-21 — quarto/quinto round di questa stessa
+                    # indagine (l'esclusione outlier dell'8σ, 2026-08-20, ha
+                    # tolto solo il 2.37% dei campioni e NON ha risolto
+                    # l'inversione: lira_auc_roc restava a 0.32-0.44 col
+                    # warning ANOMALY del pipeline). Il dump per-campione ha
+                    # mostrato la causa dominante: per i non-membri (che non
+                    # hanno MAI una calibrazione IN reale, per definizione —
+                    # nessuno shadow addestra mai su dati hold-out) μ_in era
+                    # la costante ASSOLUTA _cluster_mu_in_fb, mentre μ_out era
+                    # sempre una stima PER CAMPIONE — un confronto non
+                    # simmetrico rispetto alla difficoltà di ricostruzione
+                    # specifica di quella sessione (alcune sessioni sono
+                    # intrinsecamente più difficili di altre; μ_out lo
+                    # rifletteva correttamente per-campione, la costante no).
+                    # Risultato osservato: sessioni "facili" (μ_out piccolo)
+                    # finivano sistematicamente più vicine alla costante
+                    # (relativamente più alta) che al proprio μ_out — punteggio
+                    # positivo, "sembra un membro", per un artefatto di scala,
+                    # non per vera membership (quasi tutti i non-membri nel
+                    # dump del 2026-08-20 mostravano score positivo).
+                    # Fix: ancora μ_in al μ_out DI QUESTO campione specifico
+                    # (che riflette la sua vera difficoltà), spostato del gap
+                    # TIPICO osservato tra IN e OUT nei membri reali di questo
+                    # cluster/round (_cluster_mu_in_fb - _cluster_mu_out_fb,
+                    # entrambi già pooled — normalmente negativo: IN più
+                    # basso di OUT, la direzione della vera memorizzazione).
+                    # Così un non-membro "facile" ottiene un μ_in stimato
+                    # coerentemente basso (vicino al proprio μ_out, meno il
+                    # tipico vantaggio IN), non un valore assoluto scollegato
+                    # dalla propria scala. Se questo campione HA una
+                    # calibrazione IN reale (ramo sopra) non viene toccato.
+                    μ_in = μ_out + (_cluster_mu_in_fb - _cluster_mu_out_fb)
                     # fix 2026-08-15: anche il fallback diretto deve rispettare
                     # il floor simmetrico, altrimenti un client con troppo
                     # pochi in_losses (<2) tornerebbe silenziosamente al vecchio
