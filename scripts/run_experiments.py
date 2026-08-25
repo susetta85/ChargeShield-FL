@@ -1365,6 +1365,89 @@ def run_lira(
         Task #1: la campagna va ripetuta di nuovo, per la terza volta questa
         settimana, ora con tutti e quattro i fix applicati insieme.
 
+    Fix strutturale — universo shadow simmetrico membri+non-membri
+    (2026-08-21, stesso giorno, quinto/sesto round di questa indagine — il
+    più profondo di tutti):
+        Il test di verifica del fix precedente (`_verify_mu_anchor`, no-DP,
+        3 round, seed 42) ha mostrato lira_auc_roc passare da 0.32-0.44
+        (invertito) a 0.72-0.82 — molto più alto di raw_mse_auc/Yeom (~0.50).
+        Ipotesi: l'ancoraggio crea un'asimmetria strutturale opposta a quella
+        appena corretta. Test decisivo, `lira_debug_matched_formula_auc`
+        (diagnostica puramente additiva, vedi sua inizializzazione più
+        sotto): per ogni membro con calibrazione IN reale, calcola ANCHE lo
+        score che avrebbe ricevuto forzato nella stessa formula fallback dei
+        non-membri — se l'AUC risultante (stessa formula su entrambi i lati)
+        collassa verso 0.5, l'AUC alto visto sopra è un artefatto di formule
+        diverse, non segnale reale. Risultato (`_diag_matched_formula`,
+        no-DP, 3 round, seed 42): matched_formula_auc = 0.494, 0.485, 0.486
+        — collassa esattamente a 0.5, confermando l'artefatto.
+        Più grave: lo stesso test ripetuto su `--dp-mode central --epsilon
+        1.0` (`_diag_matched_formula_central`, 3 round, seed 42) — la
+        configurazione "flagship" del paper (McMahan-style noising non
+        sopprime il leakage, storicamente AUC 0.65-0.88 su 5 seed, CI
+        bootstrap che escludeva 0.5) — ha mostrato matched_formula_auc
+        ANCH'ESSO vicino a 0.5 in ogni round (0.506, 0.498, 0.500), e persino
+        lira_auc_roc COMPOSTO (la metrica multi-round statisticamente
+        corretta, non la semplice media per-round) è sceso a 0.5022 —
+        sostanzialmente al caso, classificato "Privacy risk: LOW" dal
+        pipeline stesso. Conclusione: il claim centrale del paper (leakage
+        sotto Central DP) era, almeno in parte sostanziale, lo stesso
+        artefatto — non specifico al no-DP, non risolto dai tre fix
+        precedenti, perché la sua causa non è nella formula del punteggio ma
+        nel POOL da cui gli shadow campionano.
+        Causa reale (verificata leggendo il codice, non solo ipotizzata):
+        `cluster_idx_pools` (Step 1) e quindi il pool da cui ogni shadow
+        campiona il proprio subset IN (Step 2, prima del fix) conteneva SOLO
+        indici in `train_sessions` — gli `holdout_sessions` (i veri
+        non-membri) non potevano MAI comparire nel subset IN di nessuno
+        shadow, in nessun round, per costruzione architetturale. Un
+        non-membro non può quindi MAI avere una calibrazione IN reale — non
+        per una formula sbagliata (i tre fix precedenti hanno tutti provato,
+        con successo parziale, ad approssimare meglio quella calibrazione
+        mancante), ma perché il pool stesso esclude strutturalmente l'intera
+        popolazione dei non-membri. Qualunque approssimazione di μ_in per un
+        non-membro resta quindi sistematicamente diversa dalla calibrazione
+        REALE usata per i membri (che invece, per costruzione, finiscono IN
+        per circa metà degli shadow e OUT per l'altra metà) — e quella
+        differenza sistematica, non la vera memorizzazione del modello,
+        gonfiava l'AUC.
+        Fix: il pool da cui ogni shadow campiona il proprio subset IN è ora
+        `cluster_shadow_universe[cid]` — l'unione di `cluster_members[cid]`
+        (membri, dati FL reali) e `cluster_holdout[cid]` (non-membri,
+        sessioni mai viste dal training FL) dello stesso cluster — con
+        assegnazione IN/OUT casuale per ogni shadow, indipendente dalla VERA
+        membership rispetto al modello target. È esattamente il disegno
+        originale di LiRA (Carlini et al. 2022, si veda anche la nota su
+        questa stessa deviazione metodologica in
+        docs/ReadingList_DSN2027.md): gli shadow si addestrano su split
+        casuali di un pool più ampio del training set del modello attaccato,
+        non sul solo insieme di training di quel modello — sia membri sia
+        non-membri del target possono quindi finire IN per alcuni shadow e
+        OUT per altri, ottenendo ENTRAMBI una calibrazione bidirezionale
+        reale. I fix precedenti (floor simmetrico 2026-08-15, esclusione
+        outlier 2026-08-20, ancoraggio μ_in 2026-08-21) NON sono stati
+        rimossi — restano corretti e necessari per i casi (ora rari per
+        ENTRAMBE le classi, non più sistematici per una sola) in cui un
+        campione ha comunque troppo poche osservazioni IN reali.
+        Dettaglio implementativo: `shadow_in_idx_sets_per_cluster[cid]` ora
+        contiene insiemi di id() Python delle sessioni campionate (non più
+        posizioni numeriche in `train_sessions`) — il controllo di
+        appartenenza (`id(sample) in in_set`) è quindi identico per membri e
+        non-membri in ogni punto del codice che lo usa (Step 2, i due pool
+        globali di fallback, il loop di scoring per-campione), eliminando
+        l'asimmetria alla radice invece di continuare ad approssimarla.
+        Attivo solo quando `cluster_membership` è reale — quando è None
+        (path storico per i test con dati sintetici) `cluster_holdout`
+        resta vuoto per costruzione, l'universo collassa al solo pool
+        membri, preservando ESATTAMENTE il comportamento pre-fix per quel
+        path (verificato: tutti gli 83 test non-torch passano invariati).
+        ATTENZIONE — la più seria di tutta questa catena: invalida OGNI
+        numero LiRA mai raccolto in questo progetto, incluso il claim
+        flagship "Central DP non sopprime il leakage" (central-sweep1/2,
+        AUC storico 0.65-0.88). Task #1 va ripetuto da zero con questo fix;
+        la tesi centrale del paper va rivalutata sui numeri reali che ne
+        usciranno, non assunta.
+
     Why this differs from run_fedmia / run_fedmia_shadow:
         Both previous attacks use the GLOBAL aggregated model, which is itself a
         cross-cluster blend — so a cross-cluster, one-shot shadow ensemble is the
@@ -1512,6 +1595,28 @@ def run_lira(
         for s in holdout_sessions
     } if cluster_membership is not None else {}
 
+    # Fix strutturale 2026-08-21 (quinto/sesto round di questa stessa indagine
+    # — il più profondo dei fix di questa catena, vedi docstring "Fix —
+    # universo shadow simmetrico" più sotto per l'analisi completa). I
+    # non-membri qui sotto vengono raggruppati per cluster ESATTAMENTE come i
+    # membri sopra (`cluster_members`), per costruire più sotto un pool
+    # UNICO membri+non-membri da cui ogni shadow campiona il proprio subset
+    # IN — invece del solo pool membri usato finora, che rendeva impossibile
+    # per un non-membro avere MAI una calibrazione IN reale, qualunque
+    # formula di fallback si usasse per approssimarla. Attivo solo quando
+    # cluster_membership è reale — stessa condizione di _holdout_sample_to_cluster
+    # sopra, per lo stesso motivo (senza site_id reale, "unknown" per ogni
+    # non-member non permetterebbe un raggruppamento per cluster sensato).
+    cluster_holdout: dict[str, list[dict[str, Any]]] = {cid: [] for cid in _CLUSTER_IDS}
+    if cluster_membership is not None:
+        for s in holdout_sessions:
+            _hc = _holdout_sample_to_cluster.get(id(s))
+            if _hc in cluster_holdout:
+                cluster_holdout[_hc].append(s)
+            # non-member il cui site_id non risolve a nessuno dei cluster noti
+            # (dato reale ma sito non mappato in _SITE_ID_TO_NAME) — esclusa
+            # dall'universo shadow per quel cluster, non forzata altrove.
+
     # Balanced eval pool: subsample members to match hold-out size
     _pool_rng      = random.Random(seed + 31415)
     _n_bal         = min(len(train_sessions), len(holdout_sessions))
@@ -1543,9 +1648,14 @@ def run_lira(
     _sample_is_member:  dict[int, bool]  = {id(s): True for s in members_bal}
     _sample_is_member.update({id(s): False for s in nonmembers_bal})
 
-    # Map each eval member to its index in train_sessions (for IN/OUT tracking).
-    # Members were sampled from train_sessions without copying → id() is valid.
-    _train_idx: dict[int, int] = {id(s): i for i, s in enumerate(train_sessions)}
+    # Fix strutturale 2026-08-21: la vecchia mappa `_train_idx` (id(sample) →
+    # posizione in train_sessions) è stata rimossa — serviva solo a
+    # verificare `train_idx in in_set` quando `in_set` conteneva posizioni
+    # numeriche nel SOLO pool membri. Ora `in_set` contiene id() Python di
+    # sessioni campionate dall'universo shadow COMBINATO (membri+non-membri,
+    # vedi Step 2 sotto) — il controllo di appartenenza IN/OUT si fa
+    # direttamente con `id(sample) in in_set`, uniforme per entrambe le
+    # classi, senza bisogno di questa mappa intermedia.
 
     def _build_tensor(sess_list: list[dict]) -> torch.Tensor | None:
         rows = []
@@ -1579,28 +1689,65 @@ def run_lira(
     # riaddestrati ogni round (Step 3), non il subset di campioni.
     # Offset grande e primo per cluster, per garantire seed distinti tra cluster senza
     # usare hash(str) (non deterministico tra processi Python — PYTHONHASHSEED random).
+    #
+    # Fix strutturale 2026-08-21 — "universo shadow simmetrico" (il fix più
+    # profondo di questa indagine, vedi analisi completa nel docstring più
+    # sotto). PRIMA di questo fix, `cluster_idx_pool` (e quindi il pool da
+    # cui ogni shadow campiona il proprio subset IN) conteneva SOLO indici in
+    # `train_sessions` — gli `holdout_sessions` (i veri non-membri) non
+    # potevano MAI comparire nel subset IN di nessuno shadow, in nessun
+    # round. Conseguenza: un non-membro non poteva MAI avere una
+    # calibrazione IN reale — non per una formula sbagliata, ma perché il
+    # POOL da cui gli shadow attingono escludeva strutturalmente l'intera
+    # popolazione dei non-membri. Qualunque approssimazione di μ_in per un
+    # non-membro (costante 2026-08-15..08-20, poi ancorata al proprio μ_out
+    # 2026-08-21) restava quindi sistematicamente diversa dalla calibrazione
+    # REALE usata per i membri — un'asimmetria di formula tra le due classi
+    # che il test `lira_debug_matched_formula_auc` (stesso giorno) ha
+    # confermato essere la causa dominante dell'AUC gonfiato (0.72-0.82 no-DP,
+    # fino a 0.66 anche sotto Central DP ε=1.0 — contro ~0.50 di
+    # raw_mse_auc/Yeom in ENTRAMBI i casi).
+    # Fix: il pool da cui ogni shadow campiona il proprio subset IN è ora
+    # `cluster_shadow_universe[cid]` — l'UNIONE di membri (`cluster_members`,
+    # dati FL reali) e non-membri (`cluster_holdout`, sessioni mai viste dal
+    # training FL) dello stesso cluster — con assegnazione IN/OUT casuale,
+    # indipendente dalla VERA membership rispetto al modello target. Questo è
+    # esattamente il disegno originale di LiRA (Carlini et al. 2022): gli
+    # shadow vengono addestrati su split casuali di un pool più ampio, non
+    # sul solo insieme di training del modello attaccato — sia membri sia
+    # non-membri del target possono quindi finire IN per alcuni shadow e OUT
+    # per altri, ottenendo entrambi una calibrazione bidirezionale reale.
+    # `in_indices`/`in_set` ora contiene id() Python delle sessioni
+    # campionate (non più posizioni numeriche in train_sessions) — il
+    # controllo di appartenenza più sotto (`id(sample) in in_set`) è quindi
+    # identico per membri e non-membri, eliminando l'asimmetria alla radice.
+    # Attivo solo quando cluster_membership è reale — quando è None (path
+    # storico per i test con dati sintetici, `cluster_holdout` resta vuoto
+    # per costruzione, vedi sopra) l'universo collassa al solo pool membri,
+    # preservando ESATTAMENTE il comportamento pre-fix per quel path e quindi
+    # la suite di 83 test non-torch.
     _CLUSTER_SEED_OFFSET = 104729
     shadow_in_idx_sets_per_cluster: dict[str, list[set[int]]] = {}
     shadow_tensors_per_cluster: dict[str, list[torch.Tensor | None]] = {}
 
     for cluster_idx, cid in enumerate(_CLUSTER_IDS):
-        cluster_idx_pool = cluster_idx_pools[cid]
+        cluster_shadow_universe = cluster_members[cid] + cluster_holdout.get(cid, [])
         cluster_in_idx_sets: list[set[int]] = []
         cluster_tensors: list[torch.Tensor | None] = []
 
         for shadow_idx in range(n_shadow):
             _s = seed + cluster_idx * _CLUSTER_SEED_OFFSET + shadow_idx * 31337
             shadow_rng = random.Random(_s)
-            n_in       = max(batch_size + 1, len(cluster_idx_pool) // 2)
-            n_in       = min(n_in, len(cluster_idx_pool))
-            in_indices = set(shadow_rng.sample(cluster_idx_pool, n_in))
-            cluster_in_idx_sets.append(in_indices)
+            n_in       = max(batch_size + 1, len(cluster_shadow_universe) // 2)
+            n_in       = min(n_in, len(cluster_shadow_universe))
+            in_sessions_sampled = shadow_rng.sample(cluster_shadow_universe, n_in)
+            in_ids = set(id(s) for s in in_sessions_sampled)
+            cluster_in_idx_sets.append(in_ids)
 
-            in_sessions   = [train_sessions[i] for i in sorted(in_indices)]
-            shadow_tensor = _build_tensor(in_sessions)
+            shadow_tensor = _build_tensor(in_sessions_sampled)
             if shadow_tensor is None or len(shadow_tensor) < batch_size:
                 logger.warning(
-                    f"LiRA[{cid}] shadow {shadow_idx}: {len(in_sessions)} sessioni < "
+                    f"LiRA[{cid}] shadow {shadow_idx}: {len(in_sessions_sampled)} sessioni < "
                     f"batch_size={batch_size} — shadow skippato in ogni round"
                 )
             cluster_tensors.append(shadow_tensor)
@@ -1745,20 +1892,28 @@ def run_lira(
             f"dp_su_shadow={'no (--no-dp)' if no_dp else f'sì (dp_mode={dp_mode})'})"
         )
 
-        # Per-cluster, per-round global IN distribution — fallback per i non-membri
-        # (mai IN in nessuno shadow). Ricalcolata ogni round perché gli shadow
+        # Per-cluster, per-round global IN distribution — fallback per i rari
+        # campioni (di ENTRAMBE le classi, dal fix strutturale 2026-08-21
+        # sopra — non più "sempre i non-membri") con troppo poche
+        # osservazioni IN reali. Ricalcolata ogni round perché gli shadow
         # sono stati appena riaddestrati.
+        # Fix strutturale 2026-08-21: prima pooling solo su `members_bal`
+        # (range(len(members_bal))) con lookup in `_train_idx` — un
+        # non-membro non poteva mai contribuire qui, per lo stesso motivo
+        # strutturale spiegato sopra. Ora itera su TUTTI gli eval_samples e
+        # usa id(sample) in in_set direttamente (in_set contiene id() Python
+        # dall'universo shadow combinato) — un non-membro che uno shadow ha
+        # per caso campionato come IN contribuisce al pool esattamente come
+        # un membro nella stessa situazione.
         global_in_stats_per_cluster: dict[str, tuple[float, float]] = {}
         for cid in _CLUSTER_IDS:
             in_sets    = shadow_in_idx_sets_per_cluster[cid]
             mse_matrix = shadow_mse_matrix_per_cluster.get(cid, [])
             pooled: list[float] = []
-            for j in range(len(members_bal)):
-                train_idx = _train_idx.get(id(eval_samples[j]))
-                if train_idx is None:
-                    continue
+            for j in range(n_eval):
+                _sid = id(eval_samples[j])
                 for si, in_set in enumerate(in_sets):
-                    if train_idx in in_set and si < len(mse_matrix):
+                    if _sid in in_set and si < len(mse_matrix):
                         mse = mse_matrix[si][j]
                         if mse is not None:
                             pooled.append(mse)
@@ -1818,14 +1973,24 @@ def run_lira(
                 )
                 if _home_cluster is not None and _home_cluster != cid:
                     continue
-                train_idx = _train_idx.get(id(_sample)) if is_mem else None
+                # Fix strutturale 2026-08-21: prima questo controllo era
+                # ristretto ai membri (`is_mem and train_idx...`) — un
+                # non-membro non poteva mai risultare "IN" per definizione
+                # del vecchio pool (solo train_sessions), quindi ogni sua
+                # osservazione finiva sempre in pooled_out, corretto per
+                # costruzione ma per il motivo sbagliato. Ora, con l'universo
+                # shadow combinato, un non-membro PUÒ essere IN per alcuni
+                # shadow — va escluso da pooled_out esattamente come un
+                # membro nella stessa situazione, stesso controllo id()-based
+                # per entrambe le classi.
+                _sid = id(_sample)
                 for si, in_set in enumerate(in_sets):
                     if si >= len(mse_matrix):
                         continue
                     mse = mse_matrix[si][j]
                     if mse is None:
                         continue
-                    if is_mem and train_idx is not None and train_idx in in_set:
+                    if _sid in in_set:
                         continue  # this (shadow, sample) pair is an IN observation, skip
                     pooled_out.append(mse)
 
@@ -2027,8 +2192,11 @@ def run_lira(
                 except (KeyError, TypeError, ValueError):
                     continue
 
-                is_member       = (j < len(members_bal))
-                sample_train_idx = _train_idx.get(id(sample)) if is_member else None
+                is_member = (j < len(members_bal))
+                # Fix strutturale 2026-08-21: `_train_idx`/`sample_train_idx`
+                # rimossi — vedi commento alla loro rimozione sopra. Il
+                # controllo IN/OUT più sotto usa direttamente id(sample) in
+                # in_set, valido per entrambe le classi.
 
                 # Cross-cluster guard: only evaluate a member against its home cluster's client.
                 # A highway sample vs an urban client always gives high target_loss (never seen)
@@ -2054,6 +2222,16 @@ def run_lira(
 
                 # Split shadow losses: IN = shadows (di QUESTO cluster, QUESTO round)
                 # che hanno visto il campione; OUT = resto.
+                # Fix strutturale 2026-08-21: prima `is_member and ... in
+                # in_set` — un non-membro finiva SEMPRE in out_losses, mai in
+                # in_losses, per costruzione del vecchio pool (solo membri).
+                # Ora `in_set` contiene id() Python campionati dall'universo
+                # shadow COMBINATO (membri+non-membri, Step 2 sopra) — il
+                # controllo `id(sample) in in_set` è identico per entrambe le
+                # classi: un non-membro campionato come IN da uno shadow
+                # finisce correttamente in in_losses, esattamente come un
+                # membro nella stessa situazione.
+                _sample_id = id(sample)
                 in_losses:  list[float] = []
                 out_losses: list[float] = []
                 for si, in_set in enumerate(_cluster_shadow_in_sets):
@@ -2062,10 +2240,10 @@ def run_lira(
                     mse = _cluster_shadow_mse[si][j]
                     if mse is None:
                         continue
-                    if is_member and sample_train_idx is not None and sample_train_idx in in_set:
+                    if _sample_id in in_set:
                         in_losses.append(mse)
                     else:
-                        out_losses.append(mse)  # non-members always go here
+                        out_losses.append(mse)
 
                 if len(out_losses) < 2:
                     continue  # insufficient calibration data
