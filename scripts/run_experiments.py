@@ -1907,6 +1907,25 @@ def run_lira(
         _diag_dump_nonmem_count = 0
         _DIAG_DUMP_CAP = 15
 
+        # DIAGNOSTICA 2026-08-21 (test mirato, vedi commento esteso al punto
+        # in cui viene popolata più sotto): dopo il fix dell'ancoraggio μ_in
+        # (2026-08-21), lira_auc_roc è passato da 0.32-0.44 (invertito) a
+        # 0.72-0.82 — MOLTO più alto di raw_mse_auc/Yeom (~0.50, nessun
+        # segnale a livello grezzo). Ipotesi da verificare: l'ancoraggio crea
+        # un'asimmetria strutturale opposta a quella appena corretta — i
+        # non-membri finiscono SEMPRE nel ramo fallback (per costruzione),
+        # i membri finiscono quasi sempre nel ramo con calibrazione reale;
+        # se le due formule hanno un comportamento sistematicamente diverso
+        # anche in ASSENZA di vera memorizzazione, l'AUC alto sarebbe un
+        # artefatto del ramo usato, non segnale reale. Test: per ogni membro
+        # con calibrazione reale (len(in_losses)>=2), calcolo ANCHE lo score
+        # "controfattuale" che avrebbe ricevuto se fosse stato forzato nel
+        # ramo fallback (stessa formula usata per i non-membri) — puramente
+        # per logging, non tocca lo score reale usato nel pool. Se questi
+        # controfattuali sono sistematicamente negativi quanto i punteggi
+        # reali dei non-membri, conferma l'artefatto di formula.
+        _diag_counterfactual_member_scores: list[float] = []
+
         # Fix 2026-08-20 — campioni "non calibrabili" esclusi dal punteggio.
         # Il dump per-campione (2026-08-20, sopra) ha mostrato la causa reale
         # dell'inversione no-DP: alcune sessioni hanno target_loss REALE fino
@@ -2107,6 +2126,26 @@ def run_lira(
                     # per QUESTO campione (non il fallback _cluster_mu_in_fb) —
                     # confronto diretto e onesto con μ_out dello stesso campione.
                     _diag_mu_in_values.append(μ_in)
+                    # DIAGNOSTICA 2026-08-21 (test mirato, vedi inizializzazione
+                    # di _diag_counterfactual_member_scores sopra): SOLO per
+                    # logging, calcolo lo score che questo membro avrebbe
+                    # ricevuto se — invece della sua calibrazione IN reale —
+                    # fosse stato forzato nella stessa formula di ancoraggio
+                    # usata per i non-membri (μ_out + gap tipico). Non
+                    # modifica μ_in/σ_in/log_p_* reali usati sotto per il
+                    # punteggio effettivo del pool.
+                    if is_member:
+                        _cf_mu_in = μ_out + (_cluster_mu_in_fb - _cluster_mu_out_fb)
+                        _cf_sigma_in = max(_cluster_sigma_in_fb, _cluster_sigma_symmetric_floor)
+                        _cf_log_p_in = (
+                            -0.5 * ((target_loss - _cf_mu_in) / _cf_sigma_in) ** 2
+                        ) - np.log(_cf_sigma_in)
+                        _cf_log_p_out = (
+                            -0.5 * ((target_loss - μ_out) / σ_out) ** 2
+                        ) - np.log(σ_out)
+                        _diag_counterfactual_member_scores.append(
+                            float(np.clip(_cf_log_p_in - _cf_log_p_out, -20.0, 20.0))
+                        )
                 else:
                     # Fix 2026-08-21 — quarto/quinto round di questa stessa
                     # indagine (l'esclusione outlier dell'8σ, 2026-08-20, ha
@@ -2318,6 +2357,36 @@ def run_lira(
                 _diag_uncalibrated_skipped / _diag_scored_total, 4
             )
             _diag_fields["lira_debug_uncalibrated_skipped_n"] = _diag_uncalibrated_skipped
+        # DIAGNOSTICA 2026-08-21 (test mirato, vedi inizializzazione di
+        # _diag_counterfactual_member_scores sopra): il fix dell'ancoraggio
+        # μ_in ha portato lira_auc_roc da 0.32-0.44 (invertito) a 0.72-0.82,
+        # molto sopra raw_mse_auc/Yeom (~0.50) — sospetto che l'AUC alto sia
+        # un artefatto del fatto che i non-membri usano SEMPRE la formula
+        # fallback mentre i membri usano quasi sempre quella con calibrazione
+        # reale. Test decisivo: `lira_debug_matched_formula_auc` confronta i
+        # membri FORZATI nella stessa formula fallback dei non-membri contro
+        # i non-membri reali (anch'essi fallback) — stessa formula da
+        # entrambi i lati. Se questo AUC resta vicino a 0.5, l'AUC alto visto
+        # sopra è un artefatto di formule diverse (mismatch), NON segnale
+        # reale. Se resta alto anche qui, il segnale è genuino (sopravvive
+        # anche a formula identica), e l'anomalia rispetto a raw_mse_auc
+        # andrebbe spiegata diversamente (LiRA più sensibile del solo
+        # threshold sulla loss, come atteso da Carlini et al. 2022).
+        if _diag_counterfactual_member_scores and round_nonmember_scores:
+            _diag_fields["lira_debug_counterfactual_member_mean"] = round(
+                float(np.mean(_diag_counterfactual_member_scores)), 6
+            )
+            _diag_fields["lira_debug_real_nonmember_mean"] = round(
+                float(np.mean(round_nonmember_scores)), 6
+            )
+            try:
+                _mf_labels = [1] * len(_diag_counterfactual_member_scores) + [0] * len(round_nonmember_scores)
+                _mf_scores = list(_diag_counterfactual_member_scores) + list(round_nonmember_scores)
+                _diag_fields["lira_debug_matched_formula_auc"] = round(
+                    float(roc_auc_score(_mf_labels, _mf_scores)), 6
+                )
+            except ValueError:
+                _diag_fields["lira_debug_matched_formula_auc"] = None
         if _diag_fields:
             # Log a INFO (non DEBUG) cosi' e' visibile subito con un
             # `tail -f` durante un test breve, senza dover aspettare la fine
@@ -2331,7 +2400,10 @@ def run_lira(
                 f"(floor_hit={_diag_fields.get('lira_debug_sigma_in_floor_hit_rate', 'N/A')}) "
                 f"σ_out_mean={_diag_fields.get('lira_debug_sigma_out_mean', 'N/A')} "
                 f"(floor_hit={_diag_fields.get('lira_debug_sigma_out_floor_hit_rate', 'N/A')}) "
-                f"uncalibrated_skip_rate={_diag_fields.get('lira_debug_uncalibrated_skip_rate', 'N/A')}"
+                f"uncalibrated_skip_rate={_diag_fields.get('lira_debug_uncalibrated_skip_rate', 'N/A')} "
+                f"matched_formula_auc={_diag_fields.get('lira_debug_matched_formula_auc', 'N/A')} "
+                f"(cf_member_mean={_diag_fields.get('lira_debug_counterfactual_member_mean', 'N/A')} "
+                f"real_nonmember_mean={_diag_fields.get('lira_debug_real_nonmember_mean', 'N/A')})"
             )
 
         lira_results[round_num] = {
