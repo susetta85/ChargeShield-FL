@@ -68,9 +68,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ── Python dependencies ───────────────────────────────────────────────────────
 # nvflare: FL framework + mTLS + provisioning
 # torch:   Autoencoder training (CPU-only per compatibilità OrbStack)
-# Installa torch da indice PyTorch CPU
+# Installa torch da indice PyTorch CPU.
+# FIX 2026-09-09 (primo build reale su VM Debian/aarch64 via OrbStack,
+# trovato dall'utente): `--index-url` (invece di `--extra-index-url`)
+# costringe pip a risolvere OGNI dipendenza — non solo torch — SOLO su
+# download.pytorch.org/whl/cpu, incluse le dipendenze transitive pure-Python
+# di torch (typing-extensions, jinja2, sympy, networkx, fsspec, filelock).
+# Quell'indice non le ha tutte come wheel prebuilt per questa piattaforma;
+# pip ripiega su un sdist (typing_extensions-4.16.0.tar.gz) che richiede il
+# build-backend `flit_core<4,>=3.11` — assente anch'esso su quell'indice,
+# quindi il build falliva con "No matching distribution found for flit_core"
+# prima ancora di arrivare a installare torch stesso. `--extra-index-url`
+# risolve lo stesso identico problema mantenendo PyPI come fallback per tutto
+# il resto: pip usa l'indice PyTorch solo per i pacchetti che lì trova
+# davvero (torch), il resto arriva normalmente da PyPI.
 RUN pip install --no-cache-dir \
-    torch==2.3.1 --index-url https://download.pytorch.org/whl/cpu
+    torch==2.3.1 --extra-index-url https://download.pytorch.org/whl/cpu
 
 # Installa le restanti dipendenze da PyPI
 RUN pip install --no-cache-dir \
