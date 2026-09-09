@@ -14,9 +14,9 @@ dalla revisione esterna del 2026-08-27, e cosa è opzionale/stretch entro la dea
 | 3 | Fix `check_significance.py` (mapping cartella→epsilon) | ✅ fatto (2026-08-27) | Must | Sì (era silenziosamente rotto) |
 | 4 | Metrica TPR@low-FPR | ✅ **completato 2026-08-28** — si applica solo ai run futuri | **Should** | Fortemente consigliato |
 | 5 | Test di significatività Wilcoxon | ✅ **completato 2026-08-28** — trovato e corretto anche un bug reale di conflazione dati in `check_significance.py` | Should | No, ma richiesto dal revisore |
-| 6 | Replica su secondo dataset EV (ChargePlace Scotland) | ⚪ non iniziato — priorità rivista 2026-08-27 | Da decidere | Vedi nota sotto |
+| 6 | Replica su secondo dataset EV (ChargePlace Scotland) | 🟡 **adapter completato e testato 2026-09-09** (task #37, `src/adapters/chargeplace_scotland_adapter.py`, 30 test) — wiring in `run_experiments.py` + primo run ancora da fare, vedi nota sotto | Da decidere | Vedi nota sotto |
 | 7 | Sweep IDS/Byzantine n=5 (task #50) | ⚪ mai eseguito | Nice-to-have | No |
-| 8 | Seconda run del deployment reale ContainerLab | ⚪ non pianificato | Nice-to-have | No |
+| 8 | Seconda run del deployment reale ContainerLab | 🟡 **Step A (re-verifica singola con codice aggiornato) completata 2026-09-09** — 10/10 round FedAvg completati puliti, 3 client (caltech/jpl/office1), nessun errore. Conferma ML Plane fase 7+8 / fix sensibilità DP / rename ByzantineDetector sul deployment reale, non solo simulatore. La "seconda run" statistica multi-seed (task #76) resta da fare | Nice-to-have | No |
 | 9 | Confronto con gradient clipping adattivo (vs soglia fissa attuale) | ⚪ non iniziato, nuovo 2026-08-27 | Da decidere | No, ma richiesto da una revisione esterna |
 | 10 | Modernizzazione completa di `docs/ThreatModel.md` (conteggi/cluster/versioni obsoleti in tutto il documento) | ⚪ non iniziato, trovato 2026-08-27 | Da decidere | No — ma contiene una vera contraddizione già corretta (vedi nota) |
 | 11 | Controllo centralizzato-vs-federato (capacità vs FL-regolarizzatore, task #40) | ✅ **run a budget pieno completato 2026-09-01** — centralized_control_auc_roc=0.5003 vs LiRA composto 0.5030 vs Yeom 0.4981, stessa banda 0.48-0.54. Vedi README Sprint 10zz+6, `docs/DSN2027_Positioning.md` punto 11. ⚠ **Il numero di smoke test precedente (0.496674, 20 epoche) è SUPERSEDED — non citare, usare solo il run a 500 epoche.** ⚠ Singolo seed — serve trattamento multi-seed (task #43) prima di essere citabile nel paper. | Should | Consigliato, rafforza la sezione validazione |
@@ -606,11 +606,31 @@ fix, "no-DP baseline" torna correttamente a n=5.
 
 ### 6. Replica su secondo dataset EV (ChargePlace Scotland)
 
-Task #89 (README, note 2026-08-07): dataset già scaricato (`datasets/alt/chargeplace_scotland/`,
-~3.9M sessioni), mai integrato. Rafforzerebbe il claim da "nessun leakage rilevabile su ACN-Data"
-a "...replicato su un secondo dataset EV indipendentemente raccolto" — ma richiede un nuovo
-adapter, non è un semplice re-run. Non bloccante: il claim su un solo dataset resta pubblicabile,
-solo più stretto nello scope dichiarato.
+Task #89 (README, note 2026-08-07): dataset già scaricato (`datasets/alt/chargeplace_scotland/`).
+**Aggiornamento 2026-09-09 (task #37): l'adapter è stato scritto e testato**
+(`src/adapters/chargeplace_scotland_adapter.py`, `tests/test_chargeplace_scotland_adapter.py`,
+30 test, tutti passanti). Conteggio reale verificato leggendo tutti e 18 i file mensili:
+**3.120.526 sessioni totali** (NON ~3.9M come scritto qui finora — numero corretto). Decisioni di
+design prese scrivendo l'adapter:
+- site_id = local_authority (32 council area scozzesi, da `CPID_and_local_authority.xlsx`) —
+  equivalente concettuale del siteID di ACN-Data (Caltech/JPL/Office1), ma con granularità molto
+  più fine. Copertura del join verificata: 99.93%.
+- user_id sempre `None` — ChargePlace Scotland non traccia l'utente, solo il CPID. **Limite da
+  dichiarare esplicitamente se questo dataset verrà usato**: lo split entity-aware (task #27/#38)
+  non è replicabile su questo dataset a livello utente.
+- Bug reale trovato e corretto scrivendo i test (non dalla sola lettura del codice): le sessioni
+  con durata >= 24h arrivano da Excel come stringa `"N day(s), H:MM:SS"` invece che
+  `datetime.time` — un parsing ingenuo (`str.split(":")`) falliva su 993/162896 sessioni di un
+  singolo file (quasi l'1%, non un caso limite). Non è un troncamento modulo-24h come temuto
+  inizialmente: risolto con `pandas.Timedelta`, che interpreta nativamente entrambi i formati.
+  Verificato: zero perdita di dati oltre alle 7 sessioni per file con Duration realmente mancante
+  (NaN).
+
+Rafforzerebbe il claim da "nessun leakage rilevabile su ACN-Data" a "...replicato su un secondo
+dataset EV indipendentemente raccolto". **Non ancora fatto**: wiring dell'adapter in
+`scripts/run_experiments.py` (serve decidere quali/quante council area usare come client FL) e un
+primo run reale di training+MIA su questi dati. Non bloccante: il claim su un solo dataset resta
+pubblicabile, solo più stretto nello scope dichiarato.
 
 ### 7. Sweep IDS/Byzantine n=5 (task #50)
 
