@@ -28,4 +28,15 @@ class ShadowAttack(BaseAttack):
     ) -> dict[int, dict[str, Any]]:
         from run_experiments import run_fedmia_shadow  # noqa: PLC0415 (lazy, vedi yeom.py)
 
-        return run_fedmia_shadow(cfg, train_sessions, holdout_sessions, fl_results)
+        # Sprint 10zz+29 (2026-09-03, task #54) — vedi yeom.py per la
+        # motivazione, stesso pattern qui per Shadow.
+        _roc_dir = kwargs.get("roc_curve_dump_dir")
+        _roc_path = None
+        if _roc_dir is not None:
+            import os  # noqa: PLC0415 (lazy, coerente col resto del modulo)
+            _roc_path = os.path.join(_roc_dir, "roc_curves_shadow.json")
+
+        return run_fedmia_shadow(
+            cfg, train_sessions, holdout_sessions, fl_results,
+            roc_curve_dump_path=_roc_path,
+        )

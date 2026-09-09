@@ -16,7 +16,7 @@
    - 2.3 [TestGradientAnalyzer (8 tests)](#23-testgradientanalyzer-8-tests)
    - 2.4 [TestKrumDetector (6 tests)](#24-testkrumdetector-6-tests)
    - 2.5 [TestFedMIA (7 tests)](#25-testfedmia-7-tests)
-   - 2.6 [TestChargingIDS (11 tests)](#26-testchargingids-11-tests)
+   - 2.6 [TestByzantineDetector (11 tests)](#26-testchargingids-11-tests)
 3. [Sprint 5 Test Suite — 25 Tests](#3-sprint-5-test-suite--25-tests)
    - 3.1 [TestAutoencoderTrainer (12 tests)](#31-testautoencodertrainer-12-tests)
    - 3.2 [TestGradientManager (7 tests)](#32-testgradientmanager-7-tests)
@@ -40,13 +40,35 @@
 
 ChargeShield-FL adopts a sprint-aligned, unit-first testing strategy grounded in the principle that scientific reproducibility is a first-class software requirement. Because the framework is intended to support peer-reviewed claims at DSN 2027, every algorithmic component must be independently verifiable by an external reviewer who obtains the repository and executes the test suite without additional configuration. This document describes the testing architecture, provides a complete catalogue of all test cases across Sprint 4 and Sprint 5, documents known API fixes applied between sprints, and outlines the integration test work still required before submission.
 
+> **Correction notice (2026-09-04, found during a documentation audit, task #69).** The table below
+> (6 files, 140 tests, Sprint 4/5-only) is stale and does not reflect the current suite. As of
+> today, `tests/` has **21 files, 186 collectible tests** in this sandbox (3 additional files —
+> `test_run_experiments_integration.py`, `test_sprint4.py`, `test_sprint5.py` — require torch and
+> aren't collectible here, but exist and run on the user's real machine). Crucially, **LiRA — the
+> project's primary attack — has no dedicated file in the table below at all**, despite being the
+> subject of most of the project's later test additions (`test_sablayrolles_score.py`,
+> `test_lira_log_score.py`, `test_mia_advantage.py`, `test_mia_confusion.py`,
+> `test_canary_group_sampling.py`, `test_gaussian_fit.py`, `test_check_significance.py`,
+> `test_composed_tpr_prefix.py`, `test_attack_registry.py`, `test_fedmia_gradient_pairing.py`,
+> `test_worst_case_vulnerability.py`, `test_plot_roc_log_scale.py`,
+> `test_generate_excel_report_history.py`, `test_generate_excel_report_dp_mode.py`, and the two
+> Excel-report tests). Real per-file counts as of 2026-09-04 (`pytest --collect-only`):
+> `test_fedmia_gradient_pairing.py` 30, `test_privacy_auditor.py` 23, `test_acn_dataset.py` 16,
+> `test_flare_connector.py` 15, `test_core_interfaces.py` 14, `test_plot_roc_log_scale.py` 12,
+> `test_check_significance.py` 12, `test_gaussian_fit.py` 10, `test_worst_case_vulnerability.py` 8,
+> `test_attack_registry.py` 8, `test_sablayrolles_score.py` 7, `test_lira_log_score.py` 6,
+> `test_mia_confusion.py` 5, `test_mia_advantage.py` 5, `test_canary_group_sampling.py` 5,
+> `test_generate_excel_report_history.py` 4, `test_generate_excel_report_dp_mode.py` 3,
+> `test_composed_tpr_prefix.py` 3, plus the 3 torch-dependent files not counted above. Not yet
+> rewritten below — treat this note as authoritative over the table/§8 heading until it is.
+
 ### 1.2 Sprint-Aligned Unit Test Structure
 
 Each sprint introduces or stabilises a cohesive layer of the system and is accompanied by a dedicated test module:
 
 | Sprint | Test file | Tests | Primary concerns |
 |--------|-----------|-------|-----------------|
-| 4 | `tests/test_sprint4.py` | 52 | Autoencoder model, anomaly detection algorithms (CUSUM, Krum, Cosine), FedMIA attack engine, ChargingIDS orchestrator |
+| 4 | `tests/test_sprint4.py` | 52 | Autoencoder model, anomaly detection algorithms (CUSUM, Krum, Cosine), FedMIA attack engine, ByzantineDetector orchestrator |
 | 5 | `tests/test_sprint5.py` | 25 | NVFLARE-integrated trainer, differential privacy gradient manager, FedAvg aggregator |
 | 5/6 | `tests/test_acn_dataset.py` | (see §4) | ACNDataset load, parse, enrich, non-IID split |
 | 5/6 | `tests/test_core_interfaces.py` | (see §4) | Core abstract interfaces and data contracts |
@@ -70,7 +92,7 @@ The following concerns are explicitly deferred to the integration test strategy 
 
 - **Real NVFLARE orchestration.** Tests that involve `AutoencoderTrainer` and `FedAvgAggregator` mock the NVFLARE `FLContext` and `Shareable` objects. A full multi-process NVFLARE federation — with the server, multiple clients, and the communication layer — is not instantiated in any unit test. Such a test would require a live NVFLARE 2.7.2 deployment, which cannot be guaranteed in a CI environment.
 
-- **Real Containerlab network emulation.** The IDS components (`ChargingIDS`, `CUSUMDetector`, `KrumDetector`) are tested against synthetic gradient and metric streams. The actual deployment scenario — where each EV charging station runs as a Containerlab node and gradients traverse emulated network links with configurable latency and packet loss — is not exercised. Containerlab topology tests require root privileges and dedicated hardware.
+- **Real Containerlab network emulation.** The IDS components (`ByzantineDetector`, `CUSUMDetector`, `KrumDetector`) are tested against synthetic gradient and metric streams. The actual deployment scenario — where each EV charging station runs as a Containerlab node and gradients traverse emulated network links with configurable latency and packet loss — is not exercised. Containerlab topology tests require root privileges and dedicated hardware.
 
 - **End-to-end AUC-ROC measurement.** The `FedMIA` unit tests verify that the attack pipeline produces output of the correct type and that membership scores lie in [0, 1]. They do not verify that the AUC-ROC exceeds any threshold under any particular privacy budget, because that claim depends on the trained federation's generalisation gap and must be evaluated in a full experimental sweep.
 
@@ -84,7 +106,7 @@ The following concerns are explicitly deferred to the integration test strategy 
 
 **File:** `tests/test_sprint4.py`
 
-Sprint 4 implements and validates the core machine learning and anomaly detection components in isolation from the federated learning infrastructure. The autoencoder is the anomaly detection backbone; CUSUM, Krum, and cosine similarity are the intrusion detection algorithms; FedMIA is the threat model; and ChargingIDS is the orchestrator that integrates all of the above.
+Sprint 4 implements and validates the core machine learning and anomaly detection components in isolation from the federated learning infrastructure. The autoencoder is the anomaly detection backbone; CUSUM, Krum, and cosine similarity are the intrusion detection algorithms; FedMIA is the threat model; and ByzantineDetector is the orchestrator that integrates all of the above.
 
 ### 2.1 TestAutoencoder (11 tests)
 
@@ -125,7 +147,7 @@ Sprint 4 implements and validates the core machine learning and anomaly detectio
 | 4 | `test_no_alarm_stable_signal` | `CUSUMDetector.update` | Feeds a zero-mean Gaussian signal (with a fixed seed) over many steps and asserts that no alarm is raised, confirming that the threshold h is set high enough to avoid false positives on stationary noise. |
 | 5 | `test_independent_nodes` | `CUSUMDetector.update` (multi-node) | Configures the detector to monitor two nodes, injects drift only into one, and asserts that only the drifting node raises an alarm while the stable node does not, confirming that per-node statistics are maintained independently. |
 | 6 | `test_reset_clears_state` | `CUSUMDetector.reset` | Accumulates drift sufficient to trigger an alarm, calls `reset`, then resumes feeding stable data, and asserts that no alarm is raised after the reset and that internal statistics S+ and S- are zeroed. |
-| 7 | `test_get_cusum_values` | `CUSUMDetector.get_cusum_values` | After feeding several data points, calls `get_cusum_values` and asserts that the return value is a dictionary mapping node identifiers to pairs (S+, S-) of non-negative floats, confirming the introspection API used by `ChargingIDS` to include CUSUM state in round analysis reports. |
+| 7 | `test_get_cusum_values` | `CUSUMDetector.get_cusum_values` | After feeding several data points, calls `get_cusum_values` and asserts that the return value is a dictionary mapping node identifiers to pairs (S+, S-) of non-negative floats, confirming the introspection API used by `ByzantineDetector` to include CUSUM state in round analysis reports. |
 
 ### 2.3 TestGradientAnalyzer (8 tests)
 
@@ -140,7 +162,7 @@ Sprint 4 implements and validates the core machine learning and anomaly detectio
 | 5 | `test_cosine_similarity_orthogonal` | `GradientAnalyzer.cosine_similarity` | Passes two orthogonal gradient vectors (dot product = 0) and asserts that the cosine similarity equals 0.0 (within floating-point tolerance). |
 | 6 | `test_cosine_similarity_opposite` | `GradientAnalyzer.cosine_similarity` | Passes two anti-parallel gradient vectors (one is the negation of the other) and asserts that the cosine similarity equals -1.0 (within floating-point tolerance), confirming the full [-1, 1] range is handled correctly. |
 | 7 | `test_cluster_cosine_analysis_returns_all_nodes` | `GradientAnalyzer.cluster_cosine_analysis` | Provides gradient updates for N nodes and asserts that the returned dictionary contains an entry for each node identifier, ensuring that no node is silently dropped from the analysis. |
-| 8 | `test_poisoned_node_lower_similarity` | `GradientAnalyzer.cluster_cosine_analysis` | Constructs a scenario in which one node's gradients are deliberately inverted (sign-flip poisoning) while all other nodes share a common direction. Asserts that the poisoned node's cosine similarity score is lower than that of all honest nodes, validating the detection signal used by `ChargingIDS`. |
+| 8 | `test_poisoned_node_lower_similarity` | `GradientAnalyzer.cluster_cosine_analysis` | Constructs a scenario in which one node's gradients are deliberately inverted (sign-flip poisoning) while all other nodes share a common direction. Asserts that the poisoned node's cosine similarity score is lower than that of all honest nodes, validating the detection signal used by `ByzantineDetector`. |
 
 ### 2.4 TestKrumDetector (6 tests)
 
@@ -169,24 +191,24 @@ Sprint 4 implements and validates the core machine learning and anomaly detectio
 | 6 | `test_run_cluster_attack_all_nodes_covered` | `FedMIA.run_cluster_attack` | Asserts that the list returned by `run_cluster_attack` contains an entry for every node identifier provided, ensuring that no node is omitted from the cluster-level analysis. |
 | 7 | `test_cluster_result_has_deviation_metadata` | `FedMIA.run_cluster_attack` -> per-cluster result | Asserts that each entry in the cluster attack result exposes a `deviation` field (a float quantifying how much the node's local model diverges from the global model in terms of membership leakage), which is used to rank nodes by privacy risk in the paper's experimental evaluation. |
 
-### 2.6 TestChargingIDS (11 tests)
+### 2.6 TestByzantineDetector (11 tests)
 
-**Module under test:** `ChargingIDS` is the top-level intrusion detection orchestrator. It receives per-round federated learning reports (containing gradient norms, privacy budget consumption, and per-node update statistics), dispatches to the underlying detectors (CUSUM, Krum, cosine similarity), maintains a running risk score with exponential decay, and accumulates an alert history.
+**Module under test:** `ByzantineDetector` is the top-level intrusion detection orchestrator. It receives per-round federated learning reports (containing gradient norms, privacy budget consumption, and per-node update statistics), dispatches to the underlying detectors (CUSUM, Krum, cosine similarity), maintains a running risk score with exponential decay, and accumulates an alert history.
 
 | # | Test name | Method tested | Description |
 |---|-----------|--------------|-------------|
-| 1 | `test_analyze_no_alert_normal_report` | `ChargingIDS.analyze` | Feeds a synthetic report that is entirely within normal operating ranges (gradient norms below explosion threshold, budget not exhausted, no CUSUM drift) and asserts that no alert is generated. |
-| 2 | `test_analyze_gradient_explosion_generates_alert` | `ChargingIDS.analyze` | Feeds a report in which one node's gradient L2 norm exceeds the configured explosion threshold and asserts that an alert of type `GRADIENT_EXPLOSION` is generated, with the offending node identified in the alert metadata. |
-| 3 | `test_analyze_budget_exhausted_generates_alert` | `ChargingIDS.analyze` | Feeds a report indicating that the differential privacy budget (epsilon consumed / epsilon total) has reached 1.0 and asserts that a `BUDGET_EXHAUSTED` alert is generated, prompting the operator to cease training for the current epoch. |
-| 4 | `test_analyze_cusum_detects_drift` | `ChargingIDS.analyze` (CUSUM integration) | Simulates a sequence of reports in which gradient norms for one node drift upward monotonically. Asserts that after sufficient rounds the `ChargingIDS` emits a `CUSUM_DRIFT` alert, confirming that the CUSUM sub-detector's output is forwarded correctly. |
-| 5 | `test_analyze_round_returns_round_analysis` | `ChargingIDS.analyze_round` | Calls `analyze_round` with a synthetic round descriptor and asserts that the return value is a `RoundAnalysis` object (or equivalent named structure) containing at minimum the round index, a list of alerts, and the current risk score. |
-| 6 | `test_analyze_round_detects_byzantine` | `ChargingIDS.analyze_round` | Provides a round descriptor in which one node's gradients are geometrically isolated (high Krum score, low cosine similarity). Asserts that the `RoundAnalysis` object flags that node as a potential Byzantine participant. |
-| 7 | `test_analyze_round_has_krum_scores` | `ChargingIDS.analyze_round` | Asserts that the `RoundAnalysis` object includes a `krum_scores` field containing a score for every node in the round, confirming that Krum scores are always computed and surfaced regardless of whether any Byzantine detection threshold is exceeded. |
-| 8 | `test_analyze_round_has_cosine_scores` | `ChargingIDS.analyze_round` | Asserts that the `RoundAnalysis` object includes a `cosine_scores` field containing a cosine similarity value for every node in the round, confirming that gradient alignment analysis is always performed and reported. |
-| 9 | `test_risk_score_increases_with_anomalies` | `ChargingIDS` risk score tracking | Calls `analyze` (or `analyze_round`) with a sequence of anomalous reports and asserts that the risk score is strictly higher after each anomalous report than before it, confirming that the accumulation logic is monotone under sustained attack conditions. |
-| 10 | `test_risk_score_decays_without_anomalies` | `ChargingIDS` risk score tracking | After accumulating a non-zero risk score, calls `analyze` with a sequence of clean reports and asserts that the risk score decays toward zero, confirming exponential decay behaviour in the absence of anomalies. |
-| 11 | `test_reset_clears_all_state` | `ChargingIDS.reset` | Accumulates alerts and a non-zero risk score, calls `reset`, and asserts that the risk score is zero, the alert history is empty, and all sub-detector states (CUSUM, Krum) have been reset, confirming that the IDS can be cleanly restarted between experimental runs. |
-| 12 | `test_alert_history_accumulates` | `ChargingIDS.alert_history` | Calls `analyze` three times, each time injecting a different type of anomaly, and asserts that `alert_history` contains three entries in chronological order, one per analysis call, confirming that alerts are appended and not overwritten. |
+| 1 | `test_analyze_no_alert_normal_report` | `ByzantineDetector.analyze` | Feeds a synthetic report that is entirely within normal operating ranges (gradient norms below explosion threshold, budget not exhausted, no CUSUM drift) and asserts that no alert is generated. |
+| 2 | `test_analyze_gradient_explosion_generates_alert` | `ByzantineDetector.analyze` | Feeds a report in which one node's gradient L2 norm exceeds the configured explosion threshold and asserts that an alert of type `GRADIENT_EXPLOSION` is generated, with the offending node identified in the alert metadata. |
+| 3 | `test_analyze_budget_exhausted_generates_alert` | `ByzantineDetector.analyze` | Feeds a report indicating that the differential privacy budget (epsilon consumed / epsilon total) has reached 1.0 and asserts that a `BUDGET_EXHAUSTED` alert is generated, prompting the operator to cease training for the current epoch. |
+| 4 | `test_analyze_cusum_detects_drift` | `ByzantineDetector.analyze` (CUSUM integration) | Simulates a sequence of reports in which gradient norms for one node drift upward monotonically. Asserts that after sufficient rounds the `ByzantineDetector` emits a `CUSUM_DRIFT` alert, confirming that the CUSUM sub-detector's output is forwarded correctly. |
+| 5 | `test_analyze_round_returns_round_analysis` | `ByzantineDetector.analyze_round` | Calls `analyze_round` with a synthetic round descriptor and asserts that the return value is a `RoundAnalysis` object (or equivalent named structure) containing at minimum the round index, a list of alerts, and the current risk score. |
+| 6 | `test_analyze_round_detects_byzantine` | `ByzantineDetector.analyze_round` | Provides a round descriptor in which one node's gradients are geometrically isolated (high Krum score, low cosine similarity). Asserts that the `RoundAnalysis` object flags that node as a potential Byzantine participant. |
+| 7 | `test_analyze_round_has_krum_scores` | `ByzantineDetector.analyze_round` | Asserts that the `RoundAnalysis` object includes a `krum_scores` field containing a score for every node in the round, confirming that Krum scores are always computed and surfaced regardless of whether any Byzantine detection threshold is exceeded. |
+| 8 | `test_analyze_round_has_cosine_scores` | `ByzantineDetector.analyze_round` | Asserts that the `RoundAnalysis` object includes a `cosine_scores` field containing a cosine similarity value for every node in the round, confirming that gradient alignment analysis is always performed and reported. |
+| 9 | `test_risk_score_increases_with_anomalies` | `ByzantineDetector` risk score tracking | Calls `analyze` (or `analyze_round`) with a sequence of anomalous reports and asserts that the risk score is strictly higher after each anomalous report than before it, confirming that the accumulation logic is monotone under sustained attack conditions. |
+| 10 | `test_risk_score_decays_without_anomalies` | `ByzantineDetector` risk score tracking | After accumulating a non-zero risk score, calls `analyze` with a sequence of clean reports and asserts that the risk score decays toward zero, confirming exponential decay behaviour in the absence of anomalies. |
+| 11 | `test_reset_clears_all_state` | `ByzantineDetector.reset` | Accumulates alerts and a non-zero risk score, calls `reset`, and asserts that the risk score is zero, the alert history is empty, and all sub-detector states (CUSUM, Krum) have been reset, confirming that the IDS can be cleanly restarted between experimental runs. |
+| 12 | `test_alert_history_accumulates` | `ByzantineDetector.alert_history` | Calls `analyze` three times, each time injecting a different type of anomaly, and asserts that `alert_history` contains three entries in chronological order, one per analysis call, confirming that alerts are appended and not overwritten. |
 
 ---
 
@@ -410,6 +432,18 @@ The unit test suite described in Sections 2 and 3 provides confidence in the cor
 
 **Acceptance criterion for paper.** The AUC-ROC of FedMIA without differential privacy must exceed 0.7 (demonstrating a meaningful privacy threat), and the AUC-ROC with epsilon = 1.0 must be statistically indistinguishable from 0.5 (demonstrating that DP mitigates the threat). Statistical significance will be assessed with the DeLong test [DeLong et al. 1988].
 
+> **Correction notice (2026-09-04, task #69).** This §7.1–7.2 plan was written early in the project
+> and never executed as described: `FedMIA` (`src/plugins/attacks/fedmia.py`) was superseded by
+> LiRA/Yeom/Shadow/Sablayrolles as the project's real attack suite, and `scripts/run_mia_sweep.py`
+> was never built — the real campaign instead uses `scripts/run_experiments.py` +
+> `scripts/run_multiseed_consolidation.sh` (see `docs/TestRoadmap_DSN2027.md`). The acceptance
+> criterion above ("AUC-ROC without DP must exceed 0.7") is the OPPOSITE of what was actually found:
+> **no configuration, DP or no-DP, shows AUC significantly above 0.5** (Wilcoxon-confirmed,
+> `docs/MetricsReference_DSN2027.md` §8). This section is kept for historical record of the
+> project's original hypothesis, not as a current plan or acceptance bar — do not cite these
+> numbers. `src/plugins/attacks/fedmia_gradient.py` (a distinct, later, opt-in post-hoc attack) is
+> separately documented as unvalidated in `docs/TestRoadmap_DSN2027.md` item #12.
+
 ### 7.3 Full Experimental Sweep
 
 **What is needed.** The paper's experimental evaluation requires sweeping over:
@@ -428,7 +462,7 @@ Each configuration is repeated with 5 different random seeds for variance estima
 
 ### 7.4 IDS Performance Under Real Containerlab Topology
 
-**What is needed.** The `ChargingIDS` unit tests use synthetic gradient streams. An integration test must verify that the IDS correctly identifies Byzantine nodes in a live Containerlab emulation where:
+**What is needed.** The `ByzantineDetector` unit tests use synthetic gradient streams. An integration test must verify that the IDS correctly identifies Byzantine nodes in a live Containerlab emulation where:
 
 - N = 5 EV charging stations are emulated as Containerlab nodes.
 - One node is configured to execute a sign-flip poisoning attack starting at round 10.
@@ -446,7 +480,7 @@ Each configuration is repeated with 5 different random seeds for variance estima
 
 `scripts/run_experiments.py` was explicitly excluded from unit-level coverage (§6.3: "`scripts/` — experiment runner scripts; not part of the library") because it orchestrates real `AutoencoderTrainer` + `GradientManager` + `FedAvgAggregator` objects end-to-end rather than exercising a single class in isolation — the concern Section 7 calls "system-level properties." This left the four functions that constitute the actual experimental pipeline — `run_fl_rounds`, `run_fedmia`, `run_lira`, `run_ids` — with no automated coverage at all, unit or integration, despite being the functions that produce every number in the paper.
 
-This test file closes that gap with a small-scale but REAL execution of the pipeline (synthetic sessions, `fl_rounds=3`, `epochs=2`, `n_shadow=2` — no mocking of `AutoencoderTrainer`/`GradientManager`/`FedAvgAggregator`/`ChargingIDS`/`PrivacyAuditor`), which is a partial, automatable fulfilment of the acceptance criteria sketched in §7.1/§7.2 without requiring a live NVFLARE federation or Containerlab topology (both still out of scope — see §7).
+This test file closes that gap with a small-scale but REAL execution of the pipeline (synthetic sessions, `fl_rounds=3`, `epochs=2`, `n_shadow=2` — no mocking of `AutoencoderTrainer`/`GradientManager`/`FedAvgAggregator`/`ByzantineDetector`/`PrivacyAuditor`), which is a partial, automatable fulfilment of the acceptance criteria sketched in §7.1/§7.2 without requiring a live NVFLARE federation or Containerlab topology (both still out of scope — see §7).
 
 | # | Test name | Function tested | Description |
 |---|-----------|-----------------|-------------|

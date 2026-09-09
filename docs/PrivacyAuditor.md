@@ -8,26 +8,40 @@
 
 ---
 
+> **Correction notice (2026-09-04, found during a documentation audit, task #69).** §9.4 and
+> §11.5–11.6 below describe a rising epsilon-vs-AUC curve and cite a "0.7 significance threshold"
+> as the paper's central empirical finding. This is **superseded**. Under the corrected,
+> independently re-verified LiRA/Yeom/Shadow/Sablayrolles implementation (README Sprint 10dd
+> onward, 2026-08-26+), the actual, current result is a **flat** AUC-ROC ~0.4992–0.5018 across
+> every tested DP configuration, including no-DP — no detectable epsilon-vs-leakage relationship,
+> Wilcoxon-confirmed p>0.05 for all 8 configuration groups (`docs/MetricsReference_DSN2027.md` §8,
+> `README.md` Sprint 10zz+39/+42). The Privacy Auditor's design and architecture described in this
+> document are unaffected by this correction — it is the specific §9.4/§11.5–11.6 empirical
+> numbers/curve that are stale and should not be cited in the paper. Not yet propagated through the
+> rest of this document's prose — see `README.md`/`docs/DSN2027_Positioning.md` for current facts.
+
 ## Implementation Status: PrivacyAuditor.audit() Is Now Actively Called
 
-**As of the current codebase, `PrivacyAuditor.audit()` is actively called in `scripts/run_experiments.py::run_ids()` for every node at every FL round.** In earlier versions, `run_ids()` constructed `AuditReport` objects manually (with `threats_detected=[]`) and `audit()` was dead code. This is no longer the case.
+**As of the current codebase, `PrivacyAuditor.audit()` is actively called for every node at every FL round, both in simulation (`scripts/run_experiments.py::run_ids()`) and in the real NVFLARE deployment (`nvflare/.../chargeshield_aggregator.py`).** In earlier versions, `run_ids()` constructed `AuditReport` objects manually (with `threats_detected=[]`) and `audit()` was dead code. This is no longer the case.
 
-The call site in `run_ids()`:
-1. A `PrivacyAuditor` instance is created before the FL round loop: `auditor = PrivacyAuditor(config_path=..., epsilon=cfg["experiment"]["epsilon"])`. The `epsilon` parameter overrides the value in `auditor.yaml`, ensuring the auditor uses the same DP budget as the experiment (critical during parameter sweeps where epsilon varies per run).
-2. For each `GradientUpdate` received, the gradient tensors are converted to a `dict[str, Any]` with keys `layer_0`, `layer_1`, ... and values `list[float]` (via `w.flatten().tolist()` for each weight tensor `w`).
-3. `auditor.audit(node_id, round_id, model_update)` is called with this dictionary as the `model_update` argument.
+**Update (2026-08-31, Fase 8) — activation mechanism changed from imperative call to ML Plane subscription.** Until this fix, `PrivacyAuditor` did not implement `MLPlaneListener`: `run_ids()`/`_run_ids_analysis()` computed the peer-relative delta by hand and called `auditor.audit(model_update=...)` directly — the auditor consumed data collected by the ML Plane but was never itself a genuine subscriber to it, a gap identified by external review and confirmed by reading the code, not assumed. This has been closed with `PrivacyAuditorSubscriber` (`src/auditor/privacy_auditor_subscriber.py`, a separate module from `privacy_auditor.py` for import-dependency reasons — see its module docstring): it implements `MLPlaneListener.on_ml_event()`, reacts specifically to the `"aggregation"` event (the ML Plane's "round complete" signal), and at that point reads the round's updates from the same `FLArtifactCollector` instance already collecting raw/privatized artifacts — never a second, independently-buffered source of truth. It then applies the *exact same* peer-relative normalization formula (median → `max_grad_norm`, Sprint 9 fix) that `run_ids()`/`_run_ids_analysis()` always used — same inputs, same outputs, no published number changes. What changed is only the trigger mechanism: `auditor.audit()` is now invoked as a reaction to a ML Plane event, not from an imperative loop external to it. In the real NVFLARE `ChargeShieldAggregator`, this subscription is genuinely live during training; in the simulation's `run_ids()` (which remains, by design, a post-hoc pass over a saved `fl_results` dict — the same design choice already made for `run_lira()`), the saved artifacts are "replayed" through a fresh `MLPlane`/`FLArtifactCollector` so the auditor reacts through the identical event-driven code path rather than a parallel one.
 
-The `audit()` method signature accepts `model_update: dict[str, Any]` — not a flat `np.ndarray` as in older stub code. The layer-keyed dictionary format matches the structure of NVFLARE weight diffs where each key identifies a model layer.
+The call site (updated to reflect the subscriber, mechanics otherwise unchanged):
+1. A `PrivacyAuditor` instance is created before/around the FL round loop: `auditor = PrivacyAuditor(config_path=..., epsilon=cfg["experiment"]["epsilon"])`. The `epsilon` parameter overrides the value in `auditor.yaml`, ensuring the auditor uses the same DP budget as the experiment (critical during parameter sweeps where epsilon varies per run).
+2. A `PrivacyAuditorSubscriber` wraps this `auditor` instance and a `FLArtifactCollector`, and is subscribed to the same `MLPlane` hub used to collect FL artifacts.
+3. For each round, once the `"aggregation"` event fires, the subscriber converts the round's `GradientUpdate` weights into a `dict[str, Any]` with keys `layer_0`, `layer_1`, ... and calls `auditor.audit(node_id, round_id, model_update)` for every client — same dictionary shape as before, same layer-keyed format matching NVFLARE weight diffs.
+
+The `audit()` method signature itself is unchanged: `model_update: dict[str, Any]`, not a flat `np.ndarray`.
 
 ---
 
 ## Abstract
 
-This document provides a complete technical and scientific specification of the `PrivacyAuditor` component within the ChargeShield-FL framework. The `PrivacyAuditor` is the primary **observation instrument** of the framework: it intercepts individual gradient updates from Federated Learning (FL) participants prior to server-side aggregation, computes a suite of privacy leakage proxies — including gradient sensitivity, per-round differential privacy (DP) epsilon estimates, and cumulative privacy budget consumption — and emits structured `AuditReport` objects consumed by downstream modules including the `FedMIA` attack evaluator and the `ChargingIDS` anomaly detection system.
+This document provides a complete technical and scientific specification of the `PrivacyAuditor` component within the ChargeShield-FL framework. The `PrivacyAuditor` is the primary **observation instrument** of the framework: it intercepts individual gradient updates from Federated Learning (FL) participants prior to server-side aggregation, computes a suite of privacy leakage proxies — including gradient sensitivity, per-round differential privacy (DP) epsilon estimates, and cumulative privacy budget consumption — and emits structured `AuditReport` objects consumed by downstream modules including the `FedMIA` attack evaluator and the `ByzantineDetector` anomaly detection system.
 
 A critical design principle governs this component: the `PrivacyAuditor` is a **measurement instrument, not a defense mechanism**. Its role is to make the empirical evaluation of Membership Inference Attacks (MIA) against federated EV charging models scientifically rigorous and reproducible. Without the auditor, MIA evaluation is epistemically blind — the attack surface is unquantified, per-node heterogeneity is unobservable, and temporal dynamics of privacy budget consumption cannot be correlated with attack success. The auditor closes this gap by providing a principled, instrumentalized observation layer that is conceptually analogous to a voltmeter in an electrical circuit: it measures without (ideally) disturbing the system under study.
 
-The document covers: (1) the scientific motivation and position of the auditor in the FL pipeline; (2) gradient sensitivity as a memorization proxy with formal grounding in DP theory; (3) epsilon estimation methodology and its limitations; (4) the `AuditReport` dataclass specification; (5) pattern detection logic; (6) integration with `FedMIA` and `ChargingIDS`; (7) paper-level evaluation metrics; (8) full YAML configuration; and (9) complete Python API with integration examples.
+The document covers: (1) the scientific motivation and position of the auditor in the FL pipeline; (2) gradient sensitivity as a memorization proxy with formal grounding in DP theory; (3) epsilon estimation methodology and its limitations; (4) the `AuditReport` dataclass specification; (5) pattern detection logic; (6) integration with `FedMIA` and `ByzantineDetector`; (7) paper-level evaluation metrics; (8) full YAML configuration; and (9) complete Python API with integration examples.
 
 ---
 
@@ -37,7 +51,7 @@ The document covers: (1) the scientific motivation and position of the auditor i
 
 In experimental science, the quality of an empirical claim is bounded by the quality of the measurement instrument used to gather evidence. A thermometer does not heat the room it measures; an oscilloscope does not generate the signal it observes. This principle — instrument neutrality — is as relevant to empirical security research as it is to physics.
 
-The `PrivacyAuditor` is designed along this philosophy. ChargeShield-FL is a research framework whose primary scientific contribution is to demonstrate, empirically and rigorously, that Membership Inference Attacks are feasible against federated learning models trained on Electric Vehicle (EV) charging data, and that the degree of attack success is meaningfully correlated with the differential privacy budget consumed during training. This contribution requires three capabilities: (a) the ability to execute a well-specified MIA (provided by `FedMIA`); (b) an anomaly detection baseline for comparison (provided by `ChargingIDS`); and (c) a principled observation layer that quantifies, per node and per round, the extent of privacy exposure — provided by `PrivacyAuditor`.
+The `PrivacyAuditor` is designed along this philosophy. ChargeShield-FL is a research framework whose primary scientific contribution is to demonstrate, empirically and rigorously, that Membership Inference Attacks are feasible against federated learning models trained on Electric Vehicle (EV) charging data, and that the degree of attack success is meaningfully correlated with the differential privacy budget consumed during training. This contribution requires three capabilities: (a) the ability to execute a well-specified MIA (provided by `FedMIA`); (b) an anomaly detection baseline for comparison (provided by `ByzantineDetector`); and (c) a principled observation layer that quantifies, per node and per round, the extent of privacy exposure — provided by `PrivacyAuditor`.
 
 Without (c), claims about MIA feasibility would be unsupported by rigorous intermediate measurements. The paper would assert that MIA succeeds on the aggregated model, but would have no mechanism to explain *why* certain nodes are more vulnerable, *when* during training vulnerability peaks, or *how* differential privacy noise mitigates the attack. The `PrivacyAuditor` transforms the framework from a black-box attack demonstration into a white-box measurement study.
 
@@ -45,7 +59,7 @@ Without (c), claims about MIA feasibility would be unsupported by rigorous inter
 
 A persistent conceptual confusion in the FL privacy literature conflates privacy auditing with privacy protection. This confusion is harmful because it leads to flawed experimental design: systems that are simultaneously measurement instruments and defenses create feedback loops that contaminate the empirical results they purport to generate.
 
-The `PrivacyAuditor` makes no attempt to improve the privacy of the FL system under study. It does not clip gradients, inject noise, suppress updates, or modify the aggregation algorithm. It observes, computes, and reports. The downstream `ChargingIDS` component may use the auditor's output to take protective actions (e.g., excluding a node whose budget is exhausted), but this is a separate architectural concern. The auditor and the IDS are connected by a data flow, not by a design identity.
+The `PrivacyAuditor` makes no attempt to improve the privacy of the FL system under study. It does not clip gradients, inject noise, suppress updates, or modify the aggregation algorithm. It observes, computes, and reports. The downstream `ByzantineDetector` component may use the auditor's output to take protective actions (e.g., excluding a node whose budget is exhausted), but this is a separate architectural concern. The auditor and the IDS are connected by a data flow, not by a design identity.
 
 This separation has a methodological justification: if the auditor were also a defense, its activation would change the system state it is meant to measure, introducing observer effects that compromise reproducibility and confound the MIA evaluation. The clean architectural boundary — auditor measures, IDS responds — ensures that audit measurements reflect the true state of the system under the attacker model.
 
@@ -139,7 +153,7 @@ Local Trainer (FL Client)
         |             threats_detected, metadata)
         +----------------------------------+
         v                                  v
-[FedMIA: Shadow Model + Autoencoder]   [ChargingIDS: CUSUM + Krum]
+[FedMIA: Shadow Model + Autoencoder]   [ByzantineDetector: CUSUM + Krum]
         |                                  |
         | AUC-ROC per node/round           | ALLOW / MONITOR / THROTTLE / EXCLUDE
         v                                  v
@@ -274,7 +288,7 @@ The semantics of the privacy score are deliberately intuitive:
 
 ### 5.2 Rationale for Inversion
 
-The privacy score inverts the cumulative epsilon ratio. This inversion is motivated by the intended semantics for downstream consumers: both `FedMIA` and `ChargingIDS` benefit from a high-means-safe convention. A high privacy score signals low MIA risk; a low privacy score signals high MIA risk. This convention is consistent with security dashboards and alert systems where high scores are favorable, and decreasing scores trigger graduated responses.
+The privacy score inverts the cumulative epsilon ratio. This inversion is motivated by the intended semantics for downstream consumers: both `FedMIA` and `ByzantineDetector` benefit from a high-means-safe convention. A high privacy score signals low MIA risk; a low privacy score signals high MIA risk. This convention is consistent with security dashboards and alert systems where high scores are favorable, and decreasing scores trigger graduated responses.
 
 Without inversion, the raw epsilon ratio would be a **risk score** (high = more risk). While either convention is valid, the inversion reduces the cognitive burden on downstream component implementers and on human analysts interpreting experimental results.
 
@@ -290,13 +304,13 @@ Each node $i$ maintains an **independent epsilon accumulator** $\hat{\epsilon}_{
 
 The privacy score trajectory is **monotonically non-increasing**: $\text{ps}_{i}^{(t+1)} \leq \text{ps}_{i}^{(t)}$ for all $i, t$. This follows directly from the non-negativity of per-round epsilon estimates ($\hat{\epsilon}_{i,t} \geq 0$) and the monotonicity of the cumulative sum. A node's privacy score can only decrease (or stay constant if its gradient update has negligibly small norm, which would be flagged by the `FEDMIA_SUSPICIOUS_LOW_SENSITIVITY` pattern).
 
-This monotonicity property makes the privacy score time series amenable to CUSUM-based anomaly detection in `ChargingIDS`: the IDS monitors for rates of decrease that significantly exceed the expected per-round consumption rate, flagging nodes that are consuming budget at an anomalous rate.
+This monotonicity property makes the privacy score time series amenable to CUSUM-based anomaly detection in `ByzantineDetector`: the IDS monitors for rates of decrease that significantly exceed the expected per-round consumption rate, flagging nodes that are consuming budget at an anomalous rate.
 
-### 5.5 Use in FedMIA and ChargingIDS
+### 5.5 Use in FedMIA and ByzantineDetector
 
 In `FedMIA`, the privacy score serves as an **input feature** to the shadow model classifier. Specifically, the feature vector for each gradient observation includes `privacy_score`, `gradient_norm`, and `sensitivity` from the `AuditReport.metadata` dictionary. The intuition is that the privacy score encodes information about the cumulative DP protection applied to the gradient — a low privacy score (high epsilon consumption) implies that later-round gradients are relatively unprotected, making them more amenable to membership inference.
 
-In `ChargingIDS`, the privacy score time series $\{\text{ps}_{i}^{(t)}\}$ is processed by a CUSUM control chart that detects statistically significant deviations from the expected consumption rate. The IDS uses the `threats_detected` list from the `AuditReport` as categorical flags that trigger graduated response actions (MONITOR, THROTTLE, EXCLUDE).
+In `ByzantineDetector`, the privacy score time series $\{\text{ps}_{i}^{(t)}\}$ is processed by a CUSUM control chart that detects statistically significant deviations from the expected consumption rate. The IDS uses the `threats_detected` list from the `AuditReport` as categorical flags that trigger graduated response actions (MONITOR, THROTTLE, EXCLUDE).
 
 ---
 
@@ -326,7 +340,7 @@ class AuditReport:
 
     This is the primary output artifact of the PrivacyAuditor. It encapsulates
     all privacy leakage proxy measurements computed from a single gradient update,
-    and is consumed by FedMIA (for MIA feature extraction) and ChargingIDS
+    and is consumed by FedMIA (for MIA feature extraction) and ByzantineDetector
     (for anomaly detection and response decisions).
 
     Fields
@@ -648,11 +662,11 @@ The `PrivacyAuditor` provides the x-axis values for this curve. `FedMIA` provide
 
 ---
 
-## 10. Relationship with ChargingIDS
+## 10. Relationship with ByzantineDetector
 
 ### 10.1 PA to IDS Data Flow
 
-The `PrivacyAuditor` produces `AuditReport` objects; the `ChargingIDS` consumes them via its `analyze()` method. The data flow is unidirectional: the auditor does not receive feedback from the IDS, and the IDS does not modify the audit computation. This one-way dependency is intentional.
+The `PrivacyAuditor` produces `AuditReport` objects; the `ByzantineDetector` consumes them via its `analyze()` method. The data flow is unidirectional: the auditor does not receive feedback from the IDS, and the IDS does not modify the audit computation. This one-way dependency is intentional.
 
 ```python
 # Simplified integration in ChargeShieldAggregator
@@ -672,11 +686,11 @@ ids_action: IDSAction = charging_ids.analyze(report)
 aggregated_gradient = fedavg_aggregate(all_client_gradients)
 ```
 
-The `IDSAction` returned by `ChargingIDS.analyze()` is one of `{ALLOW, MONITOR, THROTTLE, EXCLUDE}`, with increasing severity. This action governs whether the node's gradient is included in aggregation (ALLOW or MONITOR), down-weighted (THROTTLE), or excluded (EXCLUDE).
+The `IDSAction` returned by `ByzantineDetector.analyze()` is one of `{ALLOW, MONITOR, THROTTLE, EXCLUDE}`, with increasing severity. This action governs whether the node's gradient is included in aggregation (ALLOW or MONITOR), down-weighted (THROTTLE), or excluded (EXCLUDE).
 
 ### 10.2 Separation of Detection from Response
 
-The architectural separation between `PrivacyAuditor` (detection) and `ChargingIDS` (response) embodies the **single responsibility principle**: each component has one well-defined function, and changes to one do not require changes to the other.
+The architectural separation between `PrivacyAuditor` (detection) and `ByzantineDetector` (response) embodies the **single responsibility principle**: each component has one well-defined function, and changes to one do not require changes to the other.
 
 This separation has concrete benefits in the research context:
 
@@ -686,13 +700,13 @@ This separation has concrete benefits in the research context:
 
 ### 10.3 IDS State and Audit Statelessness
 
-A key asymmetry between the two components: the `ChargingIDS` is **stateful** — it maintains per-node risk score histories, CUSUM control chart states, and action histories across rounds. The `PrivacyAuditor` is **partially stateful** — it maintains per-node epsilon accumulators (necessary for cumulative budget accounting) but is otherwise stateless per-audit-invocation.
+A key asymmetry between the two components: the `ByzantineDetector` is **stateful** — it maintains per-node risk score histories, CUSUM control chart states, and action histories across rounds. The `PrivacyAuditor` is **partially stateful** — it maintains per-node epsilon accumulators (necessary for cumulative budget accounting) but is otherwise stateless per-audit-invocation.
 
 The auditor's per-node state (epsilon accumulator) is the minimum state required to produce budget-relative privacy scores. It is explicitly exposed via the `get_epsilon_history()` and `get_privacy_score_history()` methods (Section 13), and can be reset via `reset()` — enabling clean-slate evaluation for ablation studies or when a node re-enters training after exclusion.
 
 ### 10.4 IDS Privacy Signal Sources
 
-The `ChargingIDS` uses three signal sources from the `PrivacyAuditor`:
+The `ByzantineDetector` uses three signal sources from the `PrivacyAuditor`:
 
 1. **`privacy_score` time series:** Processed by CUSUM to detect anomalous budget consumption rates.
 2. **`metadata["gradient_norm"]`:** Used alongside gradient geometry metrics (cosine similarity, Krum distance) to detect behavioral anomalies.
@@ -764,7 +778,7 @@ The `PrivacyAuditor` generates data that supports six paper-level evaluation met
 
 **Paper contribution:** Empirically validates the paper's second claim: that behavioral IDS is insufficient for MIA detection. Establishes the need for the `PrivacyAuditor` as an independent observation layer.
 
-**Data source:** `AuditReport.threats_detected` and `ChargingIDS` action logs, cross-referenced with `FedMIA` AUC-ROC results.
+**Data source:** `AuditReport.threats_detected` and `ByzantineDetector` action logs, cross-referenced with `FedMIA` AUC-ROC results.
 
 ### 11.7 Collective Contribution
 
@@ -894,7 +908,7 @@ class PrivacyAuditor:
     Intercepts gradient updates from FL clients PRE-aggregation, computes
     privacy leakage proxies (gradient sensitivity, per-round epsilon estimate,
     cumulative privacy budget consumption), detects threat patterns, and
-    emits AuditReport objects consumed by FedMIA and ChargingIDS.
+    emits AuditReport objects consumed by FedMIA and ByzantineDetector.
 
     The PrivacyAuditor is NOT a defense mechanism. It does not modify gradient
     updates. It observes, computes, and reports.
@@ -1328,7 +1342,7 @@ from nvflare.app_common.aggregators.intime_accumulate_weighted_aggregator import
 )
 
 from chargeshield.privacy_auditor import PrivacyAuditor
-from chargeshield.charging_ids import ChargingIDS
+from chargeshield.charging_ids import ByzantineDetector
 
 
 class ChargeShieldAggregator(InTimeAccumulateWeightedAggregator):
@@ -1339,7 +1353,7 @@ class ChargeShieldAggregator(InTimeAccumulateWeightedAggregator):
     This aggregator extends InTimeAccumulateWeightedAggregator and overrides
     accept() to intercept each client contribution before accumulation. The
     PrivacyAuditor is invoked per client; the resulting AuditReport is passed
-    to ChargingIDS for action determination. Excluded nodes are not forwarded
+    to ByzantineDetector for action determination. Excluded nodes are not forwarded
     to the parent aggregator.
 
     NVFLARE server configuration (config_fed_server.json):
@@ -1361,7 +1375,7 @@ class ChargeShieldAggregator(InTimeAccumulateWeightedAggregator):
     ) -> None:
         super().__init__(**kwargs)
         self._auditor = PrivacyAuditor(config_path=auditor_config_path)  # epsilon set per-experiment via run_ids()
-        self._ids = ChargingIDS(config_path=ids_config_path)
+        self._ids = ByzantineDetector(config_path=ids_config_path)
         self._baseline_norms: dict = {}
 
     def accept(

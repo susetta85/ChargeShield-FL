@@ -15,13 +15,64 @@
 > earlier draft of this document may still imply in places — see README's
 > "Sprint 10b" entry.
 
+> **Addendum (2026-08-28) — infrastructure and attack-interface correction, found
+> while preparing the DSN 2027 paper draft, not covered by the notice above.**
+> (1) **Topology.** This document describes the ML Plane crossing OCPP 1.6/2.0.1/
+> MQTT v5 protocol boundaries at Purdue levels L0-L3. That protocol layer was
+> never built as a live emulation — the real, deployed Containerlab/NVFLARE
+> topology (`containerlab/topology.clab.yml`) is **5 plain nodes** (`server`,
+> `caltech`, `jpl`, `office1`, `fl-admin`), with no OCPP/MQTT endpoint per node.
+> The ML Plane's own design (event-driven, `emit_event()`/`subscribe()`) is
+> unaffected by this — it is domain-agnostic by construction and does not
+> actually depend on an OT protocol layer existing underneath it — but the
+> OCPP/MQTT crossing-points described in the diagrams below are illustrative of
+> a possible future deployment, not of the infrastructure that produced any
+> experimental result in this project. Do not describe the OCPP/MQTT layer as
+> current in the paper.
+> (2) **FedMIA.** References below to "FedMIA" as a live consumer of the ML
+> Plane's events refer to `src/plugins/attacks/fedmia.py`, which is not part of
+> the current attack interface (`ATTACK_REGISTRY` = Yeom/Shadow/LiRA only) and is
+> never instantiated in the real experiment pipeline (`ByzantineDetector(...)` in
+> `scripts/run_experiments.py` never passes `fedmia=`). The ML Plane's actual
+> consumers in every reported result are the Privacy Auditor and the
+> Yeom/Shadow/LiRA attacks via `run_experiments.py`, not the FedMIA plugin.
+
+> **Addendum (2026-08-31, Fase 7+8) — the ML Plane is now genuinely wired in
+> both the simulation and the real NVFLARE deployment; Privacy Auditor is now
+> a genuine subscriber, not an imperative caller.** Two gaps identified by
+> external review and confirmed by reading the code (not assumed) are now
+> closed: (a) **NVFLARE wiring** — until 2026-08-31, `chargeshield_aggregator.py`
+> (the real NVFLARE server-side Aggregator) did not import or instantiate
+> `MLPlane`/`FLArtifactCollector` at all; `accept()`/`aggregate()` built their
+> results from local Python variables, exactly the "dead" pattern already
+> fixed in the simulation on 2026-07-22 but never carried over to the NVFLARE
+> path. This is fixed: the same `MLPlane`/`FLArtifactCollector` classes are now
+> instantiated and wired there too, with `accept()` — the exact point where the
+> QRS 2026 paper places the Privacy Auditor ("client updates... temporarily
+> available in server memory before the execution of FedAvg") — emitting the
+> `gradient_upload` event directly. One deliberate, documented asymmetry:
+> under `dp_mode="local"`, this event is tagged `purdue_level=2` (privatized),
+> not `1` (raw), because nothing rawer than the already-clipped-and-noised
+> client submission ever exists server-side in that mode — structurally more
+> faithful to the "server never sees raw under local DP" threat model than the
+> simulation itself, where `train_local()` always emits a raw event even under
+> local DP and only a later export step hides it. (b) **Privacy Auditor as
+> subscriber** — `PrivacyAuditor` did not implement `MLPlaneListener`; both
+> `run_ids()` and `_run_ids_analysis()` computed peer-relative deltas by hand
+> and called `auditor.audit()` imperatively. A new `PrivacyAuditorSubscriber`
+> (`src/auditor/privacy_auditor_subscriber.py`) makes the Auditor react to the
+> `"aggregation"` event instead — see `docs/PrivacyAuditor.md` for the full
+> design. Neither change alters any already-published number: same formulas,
+> same inputs: only the activation mechanism changed, from imperative calls to
+> genuine ML Plane subscription.
+
 ---
 
 ## Abstract
 
 Federated Learning (FL) deployed in operational technology (OT) environments such as electric vehicle (EV) charging infrastructure introduces a category of network traffic — gradient uploads and aggregation signals — that is architecturally invisible to existing OT security frameworks. The Purdue Model, IEC 62443, and ISA-99, which govern the communication architecture of industrial control systems, define well-structured hierarchical communication planes for field bus, supervisory, and enterprise traffic. None of these standards provide a principled abstraction for machine learning gradient traffic, which crosses Purdue levels L0 through L3 in a manner that is structurally distinct from, yet entangled with, standard SCADA and charging protocol traffic (OCPP 1.6, OCPP 2.0.1, MQTT v5).
 
-This document introduces and formally describes the **ML Plane**: a transversal logical observation layer that intercepts, annotates, and routes ML-specific events across all Purdue levels without modifying the underlying FL training or aggregation logic. The ML Plane is not a new Purdue level; it is an observation plane analogous to a monitoring plane in software-defined networking, enabling both attack components (FedMIA) and defense components (ChargingIDS) to operate on FL gradient traffic that would otherwise appear as generic encrypted data indistinguishable from standard operational traffic.
+This document introduces and formally describes the **ML Plane**: a transversal logical observation layer that intercepts, annotates, and routes ML-specific events across all Purdue levels without modifying the underlying FL training or aggregation logic. The ML Plane is not a new Purdue level; it is an observation plane analogous to a monitoring plane in software-defined networking, enabling both attack components (FedMIA) and defense components (ByzantineDetector) to operate on FL gradient traffic that would otherwise appear as generic encrypted data indistinguishable from standard operational traffic.
 
 The ML Plane is implemented via the Observer pattern: an `MLPlaneListener` interface, an `emit_event()` dispatch method, and a `subscribe()` registration mechanism. This design ensures that adding a new attack, defense, or auditing component requires no modification to core training or aggregation code — a strict satisfaction of the Open/Closed Principle. The ML Plane is the primary architectural contribution of ChargeShield-FL and the foundational abstraction enabling rigorous, reproducible evaluation of Membership Inference Attacks (MIA) against FL in EV charging deployments.
 
@@ -71,7 +122,7 @@ Membership Inference Attack literature (Shokri et al., 2017; Nasr et al., 2019) 
 
 ### 1.4 The Fundamental Motivation
 
-The ML Plane is motivated by a single observation: **making FL gradient traffic an explicitly observable, semantically annotated stream is a prerequisite for any meaningful security evaluation — whether offensive (MIA) or defensive (IDS) — in an OT-deployed FL system.** Without this abstraction, both attackers and defenders are operating blind on encrypted network payloads; neither FedMIA nor ChargingIDS can function correctly. The ML Plane resolves the Purdue Model Gap by providing exactly this observability layer, implemented in a way that is zero-cost to normal FL operation and zero-modification to existing training and aggregation code.
+The ML Plane is motivated by a single observation: **making FL gradient traffic an explicitly observable, semantically annotated stream is a prerequisite for any meaningful security evaluation — whether offensive (MIA) or defensive (IDS) — in an OT-deployed FL system.** Without this abstraction, both attackers and defenders are operating blind on encrypted network payloads; neither FedMIA nor ByzantineDetector can function correctly. The ML Plane resolves the Purdue Model Gap by providing exactly this observability layer, implemented in a way that is zero-cost to normal FL operation and zero-modification to existing training and aggregation code.
 
 ---
 
@@ -96,7 +147,7 @@ The ML Plane intercepts FL traffic at two canonical event points:
 
 2. **`aggregation_complete` events:** Emitted by `FedAvgAggregator` after computing the global model update from all received client gradients. The event payload includes the aggregated gradient tensor, the set of participating clients, and the aggregation algorithm identifier (FedAvg or FedProx).
 
-By subscribing to these two event types, any component registered with the ML Plane receives a complete, semantically annotated view of every FL round: who submitted gradients, whether DP was applied, what the aggregator produced. This is the information substrate required for both FedMIA (which uses gradient submissions as membership signals) and ChargingIDS (which applies Krum and cosine similarity to the gradient space).
+By subscribing to these two event types, any component registered with the ML Plane receives a complete, semantically annotated view of every FL round: who submitted gradients, whether DP was applied, what the aggregator produced. This is the information substrate required for both FedMIA (which uses gradient submissions as membership signals) and ByzantineDetector (which applies Krum and cosine similarity to the gradient space).
 
 ### 2.3 The ML Plane Crossing the Purdue Hierarchy
 
@@ -112,7 +163,7 @@ graph TB
     subgraph L3 ["L3 — Operations / Aggregator"]
         AGG["FedAvgAggregator\n(FedAvg / FedProx)"]
         FEDMIA["FedMIA\n(Shadow Model Attack)"]
-        CHIDS["ChargingIDS\n(Krum + Cosine)"]
+        CHIDS["ByzantineDetector\n(Krum + Cosine)"]
         AUDITOR["PrivacyAuditor"]
     end
 
@@ -171,7 +222,7 @@ graph TB
 
 ### 2.4 The Visibility Argument
 
-The key architectural claim of the ML Plane is that **visibility must be made explicit**. In the absence of the ML Plane, FedMIA would need to either (a) tap the encrypted mTLS/WireGuard channel — which is operationally unrealistic and would require breaking the transport security — or (b) be embedded directly in the aggregator code — which conflates the attack logic with the system under test, violating experimental isolation. Similarly, ChargingIDS would need to be hard-coded into the aggregator, making it impossible to evaluate IDS-absent baseline scenarios without code modification.
+The key architectural claim of the ML Plane is that **visibility must be made explicit**. In the absence of the ML Plane, FedMIA would need to either (a) tap the encrypted mTLS/WireGuard channel — which is operationally unrealistic and would require breaking the transport security — or (b) be embedded directly in the aggregator code — which conflates the attack logic with the system under test, violating experimental isolation. Similarly, ByzantineDetector would need to be hard-coded into the aggregator, making it impossible to evaluate IDS-absent baseline scenarios without code modification.
 
 The ML Plane resolves both problems: it provides a clean architectural interface through which any observer can access gradient data without modifying the core FL system, and through which experimental configurations (FedMIA enabled/disabled, IDS enabled/disabled, DP enabled/disabled) can be controlled purely through subscription management.
 
@@ -183,7 +234,7 @@ The ML Plane resolves both problems: it provides a clean architectural interface
 
 The ML Plane is implemented using the **Observer (Event Listener) pattern** as described in the Gang of Four design pattern taxonomy. The choice of Observer over alternatives is deliberate and motivated by the research testbed context:
 
-- **Direct coupling (alternative 1):** If `FedAvgAggregator` directly called `FedMIA.on_gradient_received()` and `ChargingIDS.on_gradient_received()`, adding a new observer would require modifying `FedAvgAggregator`. This violates the Open/Closed Principle and makes the system under test aware of the evaluating components — a fundamental experimental integrity violation.
+- **Direct coupling (alternative 1):** If `FedAvgAggregator` directly called `FedMIA.on_gradient_received()` and `ByzantineDetector.on_gradient_received()`, adding a new observer would require modifying `FedAvgAggregator`. This violates the Open/Closed Principle and makes the system under test aware of the evaluating components — a fundamental experimental integrity violation.
 
 - **Message queue (Kafka, Redis Pub/Sub) (alternative 2):** A message broker would provide publish-subscribe semantics with persistence and scalability. However, introducing Kafka or Redis as a dependency in a containerized research testbed adds operational complexity (broker deployment, topic management, consumer group configuration, serialization schemas) that provides no research benefit. The ML Plane operates synchronously within a single experimental run; persistence and distributed fan-out are not required. A message queue would also introduce non-deterministic timing behavior that would complicate reproducibility analysis.
 
@@ -235,7 +286,7 @@ classDiagram
 
     %% Note: the class diagram above accurately reflects src/plugins/attacks/fedmia.py (unchanged).
 
-    class ChargingIDS {
+    class ByzantineDetector {
         +krum_threshold: float
         +cosine_threshold: float
         +cusum_state: dict
@@ -267,7 +318,7 @@ classDiagram
     }
 
     MLPlaneListener <|.. FedMIA : implements
-    MLPlaneListener <|.. ChargingIDS : implements
+    MLPlaneListener <|.. ByzantineDetector : implements
     MLPlaneListener <|.. PrivacyAuditor : implements
 
     MLPlane "1" o-- "0..*" MLPlaneListener : maintains
@@ -278,7 +329,7 @@ classDiagram
     FedAvgAggregator ..> MLPlane : emit_event()
 ```
 
-**FedMIA plugin vs. experiment evaluator distinction.** The class diagram above accurately describes `src/plugins/attacks/fedmia.py` — the FedMIA plugin used by ChargingIDS for per-node IDS scoring via the ML Plane event system. This plugin is **unchanged**. There is a separate, architecturally distinct FedMIA evaluator in `scripts/run_experiments.py::run_fedmia()` that is used to measure per-round AUC-ROC in the experimental case studies. The evaluator does **not** use a shadow model and does not subscribe to ML Plane events. Instead, it runs post-round: after FedAvg aggregation completes, it reads `global_weights` from the `AggregatedUpdate`, loads them into an Autoencoder instance, and computes `score = -MSE` for each evaluation sample. AUC-ROC is computed via `sklearn.metrics.roc_auc_score` for each FL round (Yeom et al. 2018). The per-round results are stored in the experiment JSON as `per_round[round]["auc_roc"]`, with summary statistics `mean_auc_roc`, `max_auc_roc`, and `min_auc_roc`.
+**FedMIA plugin vs. experiment evaluator distinction.** The class diagram above accurately describes `src/plugins/attacks/fedmia.py` — the FedMIA plugin used by ByzantineDetector for per-node IDS scoring via the ML Plane event system. This plugin is **unchanged**. There is a separate, architecturally distinct FedMIA evaluator in `scripts/run_experiments.py::run_fedmia()` that is used to measure per-round AUC-ROC in the experimental case studies. The evaluator does **not** use a shadow model and does not subscribe to ML Plane events. Instead, it runs post-round: after FedAvg aggregation completes, it reads `global_weights` from the `AggregatedUpdate`, loads them into an Autoencoder instance, and computes `score = -MSE` for each evaluation sample. AUC-ROC is computed via `sklearn.metrics.roc_auc_score` for each FL round (Yeom et al. 2018). The per-round results are stored in the experiment JSON as `per_round[round]["auc_roc"]`, with summary statistics `mean_auc_roc`, `max_auc_roc`, and `min_auc_roc`.
 
 ### 3.3 The `emit_event()` Method
 
@@ -290,11 +341,11 @@ Callers of `emit_event()`:
 
 ### 3.4 The `subscribe()` Method
 
-`subscribe(listener: MLPlaneListener)` appends a listener to the internal registry. In ChargeShield-FL, subscriptions are established at experiment initialization time and held for the duration of the FL run. The subscription state is part of the experimental configuration: enabling FedMIA corresponds to subscribing a `FedMIA` instance; enabling ChargingIDS corresponds to subscribing a `ChargingIDS` instance. This means that toggling attack/defense components requires only configuration changes, not code modification — a critical property for reproducible experimental design.
+`subscribe(listener: MLPlaneListener)` appends a listener to the internal registry. In ChargeShield-FL, subscriptions are established at experiment initialization time and held for the duration of the FL run. The subscription state is part of the experimental configuration: enabling FedMIA corresponds to subscribing a `FedMIA` instance; enabling ByzantineDetector corresponds to subscribing a `ByzantineDetector` instance. This means that toggling attack/defense components requires only configuration changes, not code modification — a critical property for reproducible experimental design.
 
 ### 3.5 Architectural Significance of the Decoupling
 
-The Observer pattern's most important property in ChargeShield-FL is that it cleanly separates the **system under test** (the FL training and aggregation logic) from the **experimental instruments** (FedMIA, ChargingIDS, PrivacyAuditor). This separation is the difference between a research evaluation framework and a modified FL implementation. Without it, results would be confounded by the question of whether the FL system behaves differently in the presence of an attack or defense component.
+The Observer pattern's most important property in ChargeShield-FL is that it cleanly separates the **system under test** (the FL training and aggregation logic) from the **experimental instruments** (FedMIA, ByzantineDetector, PrivacyAuditor). This separation is the difference between a research evaluation framework and a modified FL implementation. Without it, results would be confounded by the question of whether the FL system behaves differently in the presence of an attack or defense component.
 
 ---
 
@@ -320,7 +371,10 @@ The Observer pattern's most important property in ChargeShield-FL is that it cle
 
 **Purdue Level:** L2-L3. Training runs at L2 (FL client on cluster edge controller). The trained model parameters are aggregated at L3 (FL aggregator) and distributed back to L2 clients.
 
-**Architecture:** The autoencoder follows a 6→16→8→4→8→16→6 topology:
+**Architecture:** The autoencoder follows a 6→16→8→4→8→16→6 topology by default (`hidden_dims`/
+`latent_dim` are configurable via `cfg["ml"]` since task #12, 2026-08-27 — see
+`_autoencoder_arch_kwargs()` in `scripts/run_experiments.py` — used by the calibration/escalation
+sweeps, not by the published campaign, which uses this default throughout):
 - **Encoder:** Input layer (6 features) → Dense(16, ReLU) → Dense(8, ReLU) → Dense(4, ReLU) [bottleneck]
 - **Decoder:** Dense(8, ReLU) → Dense(16, ReLU) → Output layer (6 features, linear activation)
 
@@ -517,14 +571,14 @@ The following representative YAML block illustrates the configuration schema for
 
 ```yaml
 # ChargeShield-FL ML Plane Configuration
-# Scenario: CS2 — FedAvg + DP enabled + FedMIA + ChargingIDS active
+# Scenario: CS2 — FedAvg + DP enabled + FedMIA + ByzantineDetector active
 
 ml_plane:
   # Observer subscriptions: list of components to register as MLPlaneListeners
   # Toggling attack/defense components requires only modifying this list
   subscribers:
     - fedmia          # FedMIA membership inference attack
-    - charging_ids    # ChargingIDS intrusion detection
+    - charging_ids    # ByzantineDetector intrusion detection
     - privacy_auditor # DP compliance auditor
 
 federated_learning:
@@ -636,7 +690,7 @@ sequenceDiagram
     participant AET as AutoencoderTrainer (L2)
     participant FCA as FedAvgAggregator (L3)
     participant FMI as FedMIA (Subscriber)
-    participant CID as ChargingIDS (Subscriber)
+    participant CID as ByzantineDetector (Subscriber)
     participant PAD as PrivacyAuditor (Subscriber)
 
     Note over FLS,PAD: FL Round t begins
@@ -707,9 +761,9 @@ sequenceDiagram
 
 **Annotations on the sequence:**
 
-The `GradientUploadEvent` emission from `GradientManager` to the ML Plane occurs **before** the gradient is transmitted to the aggregator. This ordering is architecturally critical: it ensures that `ChargingIDS` can inspect the gradient and potentially flag it as anomalous before aggregation occurs. In a production system, an anomaly flag from `ChargingIDS` could be used to exclude a gradient submission from aggregation; in ChargeShield-FL as a research framework, the flag is recorded for post-hoc analysis without modifying the aggregation outcome.
+The `GradientUploadEvent` emission from `GradientManager` to the ML Plane occurs **before** the gradient is transmitted to the aggregator. This ordering is architecturally critical: it ensures that `ByzantineDetector` can inspect the gradient and potentially flag it as anomalous before aggregation occurs. In a production system, an anomaly flag from `ByzantineDetector` could be used to exclude a gradient submission from aggregation; in ChargeShield-FL as a research framework, the flag is recorded for post-hoc analysis without modifying the aggregation outcome.
 
-The `dp_applied=True` flag is visible to all three subscribers simultaneously. `PrivacyAuditor` uses it for compliance verification; `FedMIA` uses it as a conditioning variable for stratified AUC-ROC analysis; `ChargingIDS` uses it to adjust its anomaly detection thresholds (DP noise changes the expected gradient norm distribution, which must be accounted for in Krum and cosine similarity computations to avoid false positive anomaly flags on legitimately DP-noised gradients).
+The `dp_applied=True` flag is visible to all three subscribers simultaneously. `PrivacyAuditor` uses it for compliance verification; `FedMIA` uses it as a conditioning variable for stratified AUC-ROC analysis; `ByzantineDetector` uses it to adjust its anomaly detection thresholds (DP noise changes the expected gradient norm distribution, which must be accounted for in Krum and cosine similarity computations to avoid false positive anomaly flags on legitimately DP-noised gradients).
 
 The `AggregationCompleteEvent` emission occurs at L3, after all clients have submitted. Within the ML Plane event system, FedMIA (plugin) uses this event to update its shadow model — a key step in the attack loop, since the shadow model is trained to mimic the FL global model's evolution and thereby calibrate the membership inference threshold across FL rounds.
 
@@ -717,7 +771,7 @@ The `AggregationCompleteEvent` emission occurs at L3, after all clients have sub
 - **FedMIA plugin (`fedmia.py`):** Subscribes to this event via the ML Plane observer interface. On receipt, the plugin calls `update_shadow_model(event.global_gradient)` to refine its shadow model in sync with each FL round.
 - **Experiment evaluator (`run_experiments.py::run_fedmia()`):** Does **not** use the ML Plane event system. Instead, it directly reads `global_weights` from the `AggregatedUpdate` object after FedAvg completes, bypassing the event bus. This path is for per-round AUC-ROC measurement (Yeom et al. 2018), not for IDS per-node scoring.
 
-**Note on the sequence diagram above.** The sequence diagram illustrates the event-based architecture used by the FedMIA plugin and ChargingIDS for per-node IDS evaluation. In the experiment pipeline, `run_experiments.py::run_fedmia()` performs FedMIA evaluation post-round by reading `global_weights` from the `AggregatedUpdate` after FedAvg — not through the event system shown here. The event-based architecture is the IDS path; the direct `global_weights` read is the experiment evaluator path.
+**Note on the sequence diagram above.** The sequence diagram illustrates the event-based architecture used by the FedMIA plugin and ByzantineDetector for per-node IDS evaluation. In the experiment pipeline, `run_experiments.py::run_fedmia()` performs FedMIA evaluation post-round by reading `global_weights` from the `AggregatedUpdate` after FedAvg — not through the event system shown here. The event-based architecture is the IDS path; the direct `global_weights` read is the experiment evaluator path.
 
 ---
 

@@ -53,6 +53,14 @@ class LiRAAttack(BaseAttack):
     ) -> dict[int, dict[str, Any]]:
         from run_experiments import run_lira  # noqa: PLC0415 (lazy, vedi yeom.py)
 
+        # Sprint 10zz+29 (2026-09-03, task #54) — vedi yeom.py per la
+        # motivazione, stesso pattern qui per LiRA.
+        _roc_dir = kwargs.get("roc_curve_dump_dir")
+        _roc_path = None
+        if _roc_dir is not None:
+            import os  # noqa: PLC0415 (lazy, coerente col resto del modulo)
+            _roc_path = os.path.join(_roc_dir, "roc_curves_lira.json")
+
         _composed: dict[str, Any] = {}
         results = run_lira(
             cfg, train_sessions, holdout_sessions, fl_results,
@@ -62,6 +70,12 @@ class LiRAAttack(BaseAttack):
             dp_mode=kwargs.get("dp_mode", "dp-fedavg"),
             cluster_membership=kwargs.get("cluster_membership"),
             composed_output=_composed,
+            per_sample_dump_path=kwargs.get("per_sample_dump_path"),
+            roc_curve_dump_path=_roc_path,
+            # Sprint 10zz+32 (2026-09-03, task #57) — stesso meccanismo di
+            # per_sample_dump_path: valore diretto da kwargs (nessuna
+            # directory da comporre, un solo file).
+            raw_loss_dump_path=kwargs.get("raw_loss_dump_path"),
         )
         if results and _composed:
             _final_round = max(results.keys())

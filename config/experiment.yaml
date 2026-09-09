@@ -113,7 +113,7 @@ lira:
 # f=1 nodo Byzantine solo con n≥2f+3=5 nodi, e i soli 3 siti reali non
 # bastano (nessun 4°/5° sito reale esiste in ACN-Data). Con enabled=true,
 # FedMIA/Shadow/LiRA vengono SALTATI DEL TUTTO (non solo "da non fidarsi") —
-# questo run serve SOLO a validare Krum/ChargingIDS, non produce numeri di
+# questo run serve SOLO a validare Krum/ByzantineDetector, non produce numeri di
 # privacy validi per il paper. Per gli esperimenti di privacy, lasciare
 # enabled=false: SOLO i 3 client reali vengono usati, sia per il training
 # FL sia per FedMIA/Shadow/LiRA.

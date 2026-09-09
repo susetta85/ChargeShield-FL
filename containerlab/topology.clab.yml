@@ -10,7 +10,7 @@
 #      vecchia topologia bindava ancora percorsi workspace highway/urban/ecc.
 #      che nvflare provision non genera più da tempo.
 #   2. L'architettura REALE (verificata leggendo chargeshield_aggregator.py e
-#      config_fed_server.json) non ha PrivacyAuditor/ChargingIDS come servizi
+#      config_fed_server.json) non ha PrivacyAuditor/ByzantineDetector come servizi
 #      di rete separati con propria porta: girano DENTRO al processo server
 #      NVFLARE, incapsulati in ChargeShieldAggregator (components[] in
 #      config_fed_server.json). I container "auditor"/"ids"/"mqtt-broker" e i
@@ -20,7 +20,7 @@
 #
 # Questa versione riflette SOLO quello che il codice fa davvero oggi:
 # server NVFLARE (esegue ChargeShieldAggregator = FedAvg + PrivacyAuditor +
-# ChargingIDS, tutto server-side) + 3 client reali (ChargeShieldExecutor,
+# ByzantineDetector, tutto server-side) + 3 client reali (ChargeShieldExecutor,
 # uno per sito) + console admin.
 #
 # NON ANCORA VERIFICATO END-TO-END — nessun ambiente Docker/Containerlab è
@@ -84,7 +84,7 @@ topology:
 
     # ─── NVFLARE Server ───────────────────────────────────────────────
     # Esegue ChargeShieldAggregator: FedAvg (src/ml/fedavg_aggregator.py) +
-    # PrivacyAuditor (src/auditor/) + ChargingIDS (src/ids/) — tutto
+    # PrivacyAuditor (src/auditor/) + ByzantineDetector (src/ids/) — tutto
     # server-side, nessun servizio di rete separato per questi due ultimi.
     server:
       cpu: 2.0

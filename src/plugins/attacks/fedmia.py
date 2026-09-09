@@ -1,5 +1,32 @@
 # src/plugins/attacks/fedmia.py
 """
+╔══════════════════════════════════════════════════════════════════════════╗
+║ NON ATTIVO — verificato nel codice, non solo dichiarato (Sprint 10ss,    ║
+║ 2026-08-28; ribadito Fase 8, 2026-08-31).                                ║
+║                                                                            ║
+║ Questa classe NON è in ATTACK_REGISTRY (src/plugins/attacks/__init__.py  ║
+║ — registra solo Yeom/Shadow/LiRA) e ByzantineDetector(...) in                  ║
+║ scripts/run_experiments.py non passa mai fedmia= all'istanziazione       ║
+║ realmente usata per produrre ogni risultato pubblicato. Non è mai        ║
+║ eseguita da nessun esperimento di questo progetto — né la campagna       ║
+║ 5-seed×8-config, né alcuna calibrazione. NON citare come attacco attivo  ║
+║ nel paper — vedi README Sprint 10ss e docs/DSN2027_Positioning.md per    ║
+║ il dettaglio dell'audit. Conservata come implementazione storica di      ║
+║ riferimento (Sprint 4), non rimossa senza conferma esplicita.            ║
+║                                                                            ║
+║ Aggiornamento Sprint 10zz (2026-09-01): questa classe (autoencoder +     ║
+║ calibrazione) è ora anche usata da run_fedmia_gradient()                 ║
+║ (scripts/run_experiments.py) tramite i nuovi metodi                      ║
+║ calibrate_from_vectors()/reconstruction_error() sotto — un attacco       ║
+║ DIVERSO (granularità round+cluster, calibrato su vettori di peso REALI   ║
+║ degli shadow di LiRA, non sul rumore gaussiano di                        ║
+║ _calibrate_reference_errors()). Anche QUELLO resta opt-in                ║
+║ (--include-fedmia-gradient, non in ATTACK_REGISTRY) e NON validato con   ║
+║ un run reale — vedi il docstring di run_fedmia_gradient() per i limiti   ║
+║ dichiarati. Il giudizio sopra su QUESTA classe/interfaccia originale     ║
+║ (per-nodo, mai wired, non citare) resta invariato.                       ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
 FedMIA — Federated Membership Inference Attack
 ===============================================
 Implementa l'attacco di Membership Inference Attack (MIA)
@@ -21,7 +48,7 @@ Come funziona:
 Relazione con PrivacyAuditor:
 - PrivacyAuditor intercetta i gradienti e misura il rischio
 - FedMIA esegue l'attacco completo sui gradienti intercettati
-- L'output (MIAResult) viene passato a ChargingIDS per la difesa
+- L'output (MIAResult) viene passato a ByzantineDetector per la difesa
 
 Riferimenti:
 - Shokri et al., "Membership Inference Attacks Against ML Models",
@@ -208,6 +235,92 @@ class FedMIA:
 
         self._reference_errors["member"] = member_errors
         self._reference_errors["non_member"] = non_member_errors
+
+    def calibrate_from_vectors(
+        self,
+        member_vectors: list[list[float]],
+        non_member_vectors: list[list[float]],
+        epochs: int = 10,
+        learning_rate: float = 0.01,
+    ) -> None:
+        """
+        Calibrazione alternativa (Sprint 10zz, 2026-09-01), additiva —
+        train_shadow_model()/_calibrate_reference_errors() sopra restano
+        invariati, per non toccare comportamento già esistente.
+
+        Motivo: _calibrate_reference_errors() addestra lo shadow su feature di
+        SESSIONE EV (dim=6, stessa distribuzione del modello target) e simula i
+        non-membri aggiungendo rumore gaussiano — corretto quando il "gradiente"
+        passato a compute_membership_score() è in realtà una feature di
+        sessione. Per un vero attacco a livello di GRADIENTE/PESO (uso previsto
+        dal nome della classe, mai completato — vedi banner in cima al file),
+        member_vectors/non_member_vectors sono invece VETTORI DI PESO REALI
+        (flatten completo, nessun troncamento — vedi
+        run_experiments.py::run_fedmia_gradient(), che li ottiene dagli shadow
+        già addestrati e validati da run_lira(), non simulati con rumore).
+
+        input_dim dell'istanza deve combaciare con len(member_vectors[0]) —
+        il chiamante è responsabile di costruire FedMIA(input_dim=...) con la
+        lunghezza corretta del vettore di peso appiattito (nessun
+        padding/troncamento silenzioso qui, a differenza di _prepare_tensor()
+        che invece tronca/pad — qui i vettori arrivano già alla lunghezza
+        giusta per costruzione).
+        """
+        # Fix (review indipendente, 2026-09-01, PRIMA di qualunque esecuzione
+        # reale): con batch_size=1 (caso comune quando member_vectors ha
+        # lunghezza 1 — es. n_shadow piccolo in run_fedmia_gradient()),
+        # nn.BatchNorm1d dentro Encoder/Decoder (core/autoencoder.py) solleva
+        # "Expected more than 1 value per channel when training" — un crash,
+        # non un semplice segnale debole. Guardia esplicita con messaggio
+        # chiaro invece di lasciar propagare l'errore torch criptico.
+        if len(member_vectors) < 2:
+            raise ValueError(
+                f"calibrate_from_vectors: servono almeno 2 member_vectors per "
+                f"il training del BatchNorm1d dell'autoencoder (ricevuti "
+                f"{len(member_vectors)}) — il chiamante deve garantirlo prima "
+                f"di invocare questo metodo."
+            )
+
+        member_tensor = torch.tensor(member_vectors, dtype=torch.float32).to(self._device)
+        loader = torch.utils.data.DataLoader(
+            torch.utils.data.TensorDataset(member_tensor),
+            batch_size=min(8, len(member_vectors)),
+            shuffle=True,
+        )
+        self._shadow_model.fit(loader, epochs=epochs, learning_rate=learning_rate)
+        self._shadow_trained = True
+
+        self._shadow_model.eval()
+        with torch.no_grad():
+            member_recon = self._shadow_model(member_tensor)
+            member_errors = torch.mean((member_recon - member_tensor) ** 2, dim=1).tolist()
+
+            non_member_errors: list[float] = []
+            if non_member_vectors:
+                nm_tensor = torch.tensor(non_member_vectors, dtype=torch.float32).to(self._device)
+                nm_recon = self._shadow_model(nm_tensor)
+                non_member_errors = torch.mean((nm_recon - nm_tensor) ** 2, dim=1).tolist()
+
+        self._reference_errors["member"] = member_errors
+        self._reference_errors["non_member"] = non_member_errors
+
+    def reconstruction_error(self, vector: list[float]) -> float:
+        """
+        MSE di ricostruzione grezzo (non normalizzato 0-1) per un vettore già
+        della lunghezza corretta (self._input_dim) — nessun padding/troncamento
+        implicito, a differenza di _prepare_tensor(). Aggiunto (Sprint 10zz,
+        2026-09-01) per run_fedmia_gradient(), che ha bisogno dell'errore
+        grezzo per calcolare un AUC-ROC (invariante a trasformazioni monotone,
+        non serve il punteggio normalizzato) senza accedere ad attributi
+        privati della classe da fuori.
+        """
+        if not self._shadow_trained:
+            raise RuntimeError("Shadow model non addestrato.")
+        self._shadow_model.eval()
+        with torch.no_grad():
+            tensor = torch.tensor([vector], dtype=torch.float32).to(self._device)
+            reconstruction = self._shadow_model(tensor)
+            return float(torch.mean((reconstruction - tensor) ** 2).item())
 
     def compute_membership_score(
         self,

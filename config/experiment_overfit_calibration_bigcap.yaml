@@ -1,0 +1,74 @@
+# ChargeShield-FL — Calibration config, ESCALATION capacità modello (2026-08-28)
+#
+# SCOPO: Fase A del sanity-check positivo (docs/TestRoadmap_DSN2027.md #2) ha
+# variato SOLO le epoche locali (50/150/300/500/1000, vedi
+# config/experiment_overfit_calibration.yaml) su office1/no-DP, e il LiRA
+# composto e' rimasto piatto (~0.48-0.52) anche a 1000 epoche — nessun segnale
+# di overfitting rilevabile. Per la logica dell'escalation gia' decisa
+# (vedi README Sprint 10jj), il prossimo passo NON e' piu' epoche (gia'
+# testato fino al valore massimo pianificato), ma capacita' del modello:
+# questo file testa se un autoencoder piu' capiente riesce a memorizzare
+# office1 (~1341 sessioni) abbastanza da produrre un LiRA AUC > 0.60
+# rilevabile, tenendo tutto il resto fisso rispetto al run epochs=1000 gia'
+# osservato (stesso sito, stesso no-DP, stesse 3 round, stesso n_shadow=8).
+#
+# DIFFERENZE rispetto a experiment_overfit_calibration.yaml:
+#   - ml.hidden_dims: [32, 16] (era implicitamente [16, 8], l'architettura
+#     storica a 570 parametri — vedi src/core/autoencoder.py). Il decoder
+#     usa automaticamente l'ordine speculare (16, 32).
+#   - ml.latent_dim: 8 (era 4) — spazio latente piu' ampio, coerente con
+#     l'aumento degli hidden layer.
+#   - ml.epochs: 1000 di default (il valore piu' alto gia' testato in Fase A,
+#     per isolare la variabile "capacita'" senza confondere con "epoche" —
+#     override comunque possibile da CLI con --epochs se serve un'altra
+#     escalation su epoche*capacita').
+#
+# IMPORTANTE (provenance): hidden_dims/latent_dim vengono salvati nel JSON di
+# output (summary["config"]) esattamente come epochs — vedi fix Sprint 10jj
+# in scripts/run_experiments.py save_results(). I risultati di questo file
+# sono quindi distinguibili da quelli della calibrazione epochs-only anche
+# solo leggendo il JSON, senza doversi fidare del nome del file di config.
+#
+# QUESTO FILE NON E' IL RUN UFFICIALE PER IL PAPER: e' solo la seconda fase
+# della calibrazione. Se questo file mostra overfitting rilevabile (AUC>0.60),
+# il passo successivo e' decidere se aumentare la capacita' anche nel run
+# "ufficiale" a 3 siti/10 round (config/experiment.yaml) o se lasciare
+# l'architettura storica e documentare la capacita' aumentata come un
+# controllo di validita' separato, non come il modello effettivamente
+# valutato nel paper — decisione esplicita da prendere con l'utente quando
+# arriva il risultato, non da questo file.
+
+experiment:
+  name: chargeshield_overfit_calibration_bigcap
+  fl_rounds: 3
+  seed: 42
+  epsilon: 1.0
+  delta: 1.0e-5
+  max_grad_norm: 1.0
+
+sites:
+  office1:
+    - datasets/acn/office1/acndata_sessions_2019.json
+    - datasets/acn/office1/acndata_sessions_2020.json
+    - datasets/acn/office1/acndata_sessions_2021.json
+
+ml:
+  input_dim: 6
+  lr: 0.001
+  epochs: 1000   # override da CLI con --epochs per un'ulteriore escalation combinata
+  batch_size: 32
+  proximal_mu: 0.01
+  hidden_dims: [32, 16]   # architettura piu' capiente — decoder speculare (16, 32) automatico
+  latent_dim: 8
+
+output:
+  experiments_dir: experiments
+
+lira:
+  n_shadow: 8   # coerente con la Fase A (velocita'); alzare a 16 per il run "ufficiale"
+
+byzantine_attack:
+  enabled: false
+  attack_type: gradient_scaling
+  byzantine_node: synthetic_1
+  scale_factor: 10

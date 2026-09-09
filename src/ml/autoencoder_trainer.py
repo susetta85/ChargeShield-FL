@@ -80,7 +80,27 @@ class AutoencoderTrainer(AbstractMLModel):
         # Seed per DataLoader shuffle deterministico (riproducibilità DSN 2027)
         self._seed: int = config.get("seed", 42)
 
-        self.model     = Autoencoder(input_dim=input_dim)
+        # feature_names: escalation di entropia feature opzionale (Sprint 10kk,
+        # 2026-08-28 — vedi docs/TestRoadmap_DSN2027.md #2, passo 2), usata solo
+        # dagli esperimenti di calibrazione LiRA che la impostano esplicitamente
+        # in YAML. Default None → CONTINUOUS_FEATURES di classe (le 6 feature
+        # storiche), invariato per ogni config esistente. Sovrascrive l'attributo
+        # SOLO su questa istanza (shadowing), non la classe — _sessions_to_tensor()
+        # legge già self.CONTINUOUS_FEATURES, quindi nessun'altra modifica serve.
+        feature_names = config.get("feature_names")
+        if feature_names is not None:
+            self.CONTINUOUS_FEATURES = list(feature_names)
+
+        # hidden_dims/latent_dim: escalation di capacità opzionale (Sprint 10jj,
+        # 2026-08-28), usata solo dagli esperimenti di calibrazione LiRA che la
+        # impostano esplicitamente in YAML. Default None/4 → architettura
+        # storica invariata (16, 8)/4, identica per tutti i run esistenti.
+        hidden_dims = config.get("hidden_dims")
+        latent_dim  = config.get("latent_dim", 4)
+        if hidden_dims is not None:
+            hidden_dims = tuple(hidden_dims)
+
+        self.model     = Autoencoder(input_dim=input_dim, latent_dim=latent_dim, hidden_dims=hidden_dims)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
         self.criterion = torch.nn.MSELoss()
 
@@ -93,6 +113,8 @@ class AutoencoderTrainer(AbstractMLModel):
         logger.info(
             f"AutoencoderTrainer [{node_id}] — device={self.device}, "
             f"input_dim={input_dim}, lr={lr}, epochs={epochs}, "
+            f"hidden_dims={hidden_dims or '(16, 8) [default]'}, latent_dim={latent_dim}, "
+            f"feature_names={feature_names or '6 storiche [default]'}, "
             f"proximal_mu={self.proximal_mu} "
             f"({'FedProx' if self.proximal_mu > 0 else 'FedAvg'})"
         )

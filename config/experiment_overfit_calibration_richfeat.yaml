@@ -1,0 +1,79 @@
+# ChargeShield-FL — Calibration config, ESCALATION entropia feature (2026-08-28)
+#
+# SCOPO: Fase A (epoche, config/experiment_overfit_calibration.yaml) e Fase A2
+# (capacità modello, config/experiment_overfit_calibration_bigcap.yaml) hanno
+# entrambe dato LiRA composto ~0.48-0.53, nessun overfitting rilevabile, anche
+# a 1000 epoche e ~3.3x la capacità storica (Sprint 10jj). Passo 2 del percorso
+# di escalation (docs/TestRoadmap_DSN2027.md #2): le 6 feature storiche sono
+# aggregati a bassa entropia per sessione (kWh totali, potenza media, ecc.) —
+# potrebbero non contenere abbastanza informazione identificativa da
+# memorizzare, indipendentemente da capacità/epoche. Questo file isola quella
+# variabile: stesso setup di Fase A/A2 (office1, no-DP, 3 round, epochs=1000),
+# capacità TORNATA alla storica (16, 8)/4 — non combinata con Fase A2 — per
+# testare l'entropia delle feature da sola, non insieme alla capacità.
+#
+# COSA CAMBIA: aggiunta UNA feature in più, start_time_epoch (timestamp Unix
+# in secondi dell'inizio sessione, aggiunto in enrich_sessions() —
+# scripts/run_experiments.py, Sprint 10kk). È una feature reale (non un hash o
+# un ID iniettato ad hoc): la risoluzione al secondo la rende quasi univoca
+# per sessione su ~1300+ sessioni/sito, quindi dà al modello qualcosa di
+# genuinamente memorizzabile se ne ha la capacità. input_dim passa a 7 di
+# conseguenza — deve restare sincronizzato con la lunghezza di
+# ml.feature_names, altrimenti il training fallisce con uno shape mismatch
+# esplicito (non un errore silenzioso).
+#
+# IMPORTANTE (provenance): feature_names viene salvato nel JSON di output
+# (summary["config"]) esattamente come epochs/hidden_dims — vedi Sprint 10kk
+# in scripts/run_experiments.py save_results().
+#
+# QUESTO FILE NON E' IL RUN UFFICIALE PER IL PAPER: se mostra overfitting
+# rilevabile (AUC>0.60), la feature start_time_epoch NON deve essere aggiunta
+# al run "ufficiale" (config/experiment.yaml) solo per far salire l'AUC — è
+# un controllo diagnostico sull'harness, non una feature che il paper propone
+# di usare in produzione (aggiungerla lì cambierebbe cosa il modello osserva
+# regolarmente, non solo se il sanity-check funziona). Se anche questo file
+# resta a ~0.50, si torna dall'utente per decidere se il null è ormai
+# sufficientemente robusto (3 assi di escalation indipendenti: epoche,
+# capacità, entropia feature) per essere accettato come conclusione, invece
+# di continuare a cercare un positive-control.
+
+experiment:
+  name: chargeshield_overfit_calibration_richfeat
+  fl_rounds: 3
+  seed: 42
+  epsilon: 1.0
+  delta: 1.0e-5
+  max_grad_norm: 1.0
+
+sites:
+  office1:
+    - datasets/acn/office1/acndata_sessions_2019.json
+    - datasets/acn/office1/acndata_sessions_2020.json
+    - datasets/acn/office1/acndata_sessions_2021.json
+
+ml:
+  input_dim: 7   # 6 storiche + start_time_epoch — deve combaciare con len(feature_names)
+  lr: 0.001
+  epochs: 1000   # stesso valore già testato in Fase A/A2, per isolare la variabile feature
+  batch_size: 32
+  proximal_mu: 0.01
+  feature_names:
+    - total_energy_kwh
+    - max_power_kw
+    - kwh_requested
+    - minutes_available
+    - hour_of_day
+    - duration_hours
+    - start_time_epoch   # NUOVA — quasi univoca per sessione, vedi nota sopra
+
+output:
+  experiments_dir: experiments
+
+lira:
+  n_shadow: 8   # coerente con Fase A/A2 (velocità); alzare a 16 per il run "ufficiale"
+
+byzantine_attack:
+  enabled: false
+  attack_type: gradient_scaling
+  byzantine_node: synthetic_1
+  scale_factor: 10

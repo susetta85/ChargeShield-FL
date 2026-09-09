@@ -14,6 +14,33 @@
 > document's prose — see `README.md`/`docs/DSN2027_Positioning.md` for current
 > facts.
 
+> **Addendum (2026-08-28) — infrastructure and attack-interface correction, found
+> while preparing the DSN 2027 paper draft, not covered by the notice above.**
+> (1) **Topology.** This document's system model (§ "System Model", the
+> highway/urban/residential/corporate cluster table, "OCPP 1.6/2.0.1 and MQTT v5
+> signaling layers") describes a 12-node/4-cluster protocol-level emulation that
+> was never built as a live system. The real, deployed, end-to-end-tested
+> Containerlab/NVFLARE topology (`containerlab/topology.clab.yml`) is **5 plain
+> nodes** — `server`, `caltech`, `jpl`, `office1`, `fl-admin` — with no simulated
+> OCPP/MQTT endpoint per node. Do not describe the OCPP/MQTT/12-node system model
+> as the current infrastructure in the paper's threat model or system model
+> sections; it remains a possible future extension only.
+> (2) **FedMIA.** Section 6 ("FedMIA Attack Description") and the ByzantineDetector
+> integration described in § "ByzantineDetector" / § 7.4 both describe
+> `src/plugins/attacks/fedmia.py` as an active per-node MIA signal. It is not:
+> `src/plugins/attacks/__init__.py::ATTACK_REGISTRY` registers only Yeom, Shadow,
+> and LiRA, and `ByzantineDetector(...)` in `scripts/run_experiments.py` — the call
+> site that produces every reported result — never passes `fedmia=`, so this
+> signal defaults to disabled (`fedmia: FedMIA | None = None`). The attack
+> actually evaluated for membership inference in every reported result is the
+> Yeom → Shadow → LiRA hierarchy (LiRA primary, `src/plugins/attacks/lira.py`),
+> run via `run_experiments.py::run_fedmia()`/`run_fedmia_shadow()`/`run_lira()` —
+> note that `run_fedmia()` is a historical function name for the Yeom-style
+> loss-based evaluator and does **not** call into the `fedmia.py` plugin class;
+> the naming collision between the two is a known source of confusion in this
+> codebase, not evidence that the plugin is active. Do not cite `fedmia.py` as an
+> active module in the paper.
+
 ---
 
 ## Abstract
@@ -76,9 +103,9 @@ The ChargeShield-FL system comprises the following logical participants, each wi
 
 **PrivacyAuditor.** A monitoring component co-located with the aggregator. It intercepts gradient updates post-decryption (the aggregator must decrypt to aggregate; PrivacyAuditor observes at this point), computes L2 norms, estimates epsilon consumed per round using the Gaussian mechanism formula, and issues AuditReport objects to the IDS.
 
-**ChargingIDS.** The Intrusion Detection System, co-located with the aggregator. Applies CUSUM drift detection, Krum Byzantine fault detection, cosine similarity alignment analysis, and FedMIA membership inference scoring to incoming gradient updates. Returns a per-node action (PASS / ALERT / THROTTLE) based on the composite score.
+**ByzantineDetector.** The Intrusion Detection System, co-located with the aggregator. Applies CUSUM drift detection, Krum Byzantine fault detection, cosine similarity alignment analysis, and FedMIA membership inference scoring to incoming gradient updates. Returns a per-node action (PASS / ALERT / THROTTLE) based on the composite score.
 
-**FedMIA.** The shadow-model MIA attacker module. Trained offline on the public ACN-Data JPL split, calibrated against reference reconstruction errors, and applied at each round to score incoming gradient updates for membership. FedMIA is simultaneously the **subject of study** (the attack being evaluated) and a **component of ChargingIDS** (providing membership scores as one signal among several).
+**FedMIA.** The shadow-model MIA attacker module. Trained offline on the public ACN-Data JPL split, calibrated against reference reconstruction errors, and applied at each round to score incoming gradient updates for membership. FedMIA is simultaneously the **subject of study** (the attack being evaluated) and a **component of ByzantineDetector** (providing membership scores as one signal among several).
 
 **MLPlaneListener (observer pattern).** A transversal logical layer that crosses the Purdue Model from Level 0 to Level 3. The ML Plane is not a network protocol: it is an observer-pattern interface that decouples telemetry producers (EVSE, CSC, Edge Controller) from telemetry consumers (FL client trainer, IDS, PrivacyAuditor). Any component implementing `MLPlaneListener` receives ML-relevant events without coupling to the specific transport (OCPP, MQTT, or direct function call).
 
@@ -155,7 +182,7 @@ graph TD
     subgraph "Purdue L4 — Cloud Aggregator"
         SRV[NVFLARE 2.7.2 Server\nFedAvg / FedProx aggregation]
         PA[PrivacyAuditor\nL2 norm + ε estimation\nAuditReport]
-        IDS[ChargingIDS\nCUSUM + Krum + CosSim\nAction: PASS/ALERT/THROTTLE]
+        IDS[ByzantineDetector\nCUSUM + Krum + CosSim\nAction: PASS/ALERT/THROTTLE]
         MIA[FedMIA\nShadow model\nReconstruction error → AUC-ROC]
         SHADOW[Shadow Autoencoder\nTrained on public ACN-Data\nReference error calibration]
     end
@@ -196,6 +223,7 @@ We define four attacker scenarios, ordered by increasing severity and decreasing
 | S2 | Malicious FL client | Crafts gradients, performs model poisoning | Future work (Sprint 7+) |
 | S3 | Compromised network gateway | Intercepts NVFLARE traffic before mTLS termination | Out of scope |
 | S4 | External passive eavesdropper | Observes WireGuard/mTLS encrypted traffic | Out of scope (defeated by transport controls) |
+| S5 | Adaptive / custom-tailored attacker (S5a: bespoke attack; S5b: Auditor-evasion) | Knows this deployment's specifics (architecture, DP placement, Auditor's existence) and adapts | Discussion only (added 2026-08-27) — not implemented |
 
 The formalization below follows the structure of Nasr et al. [2019] for FL-specific privacy analysis.
 
@@ -221,7 +249,30 @@ The attacker possesses the following capabilities, all verified against the actu
 
 **C5 — Aggregator-class compute resources.** The attacker's infrastructure (the aggregator server) is assumed to have server-class CPU resources (Intel Xeon or AMD EPYC class), sufficient RAM for shadow model training on 13,073 sessions (well within 16 GB), and no GPU requirement (the Autoencoder is small enough for CPU inference).
 
-**C6 — Post-DP gradient access only.** Critically, the attacker sees gradient updates **after** the GradientManager has applied L2 clipping and Gaussian noise. The DP mechanism is applied at the client, before transmission; the aggregator never observes the raw (pre-noise) gradients. This is the adversarially weakest position for MIA — the DP noise degrades the membership signal — and therefore represents a realistic lower bound on MIA effectiveness.
+**C6 — Post-DP gradient access, WITH a documented transient pre-noise exposure window under
+`dp-fedavg` mode.** **Corrected 2026-08-27 — this capability was stated incorrectly below since
+2026-06-26.** Whether the attacker sees noised or raw updates depends on the DP placement
+(`docs/CaseStudies.md` §2.4.3), and this is not a minor detail: it is exactly the distinction
+LiRA (the project's primary attack, §6) is built around. Under **`local` DP**, the original claim
+holds: the client noises its own update before transmission, and the aggregator never observes
+the raw value, not even transiently. Under **`central` DP**, the per-client contribution the
+aggregator receives is clipped but genuinely never noised at all — only the single post-aggregation
+sum is noised — so the aggregator's per-client view is raw by design, not just transiently. Under
+**`dp-fedavg`** (this project's default, and the mode LiRA's own docstring explicitly documents
+attacking): the server-side code handles each client's **raw, pre-noise** update for a real
+processing window before `GradientManager.privatize()` is applied — confirmed in
+`docs/CaseStudies.md` §2.4.3 ("in un sistema reale, il server/IDS vede gli update raw dai client
+PRIMA che il rumore DP venga applicato") and is the reason the 2026-07-21c LiRA fix had to
+explicitly target `raw_updates`, not the post-noise `updates` field. The original text below
+("the aggregator never observes the raw (pre-noise) gradients... represents a realistic lower
+bound on MIA effectiveness") was therefore an inaccurate universal claim; it is correct only for
+`local` mode. Kept below, struck through, for historical accuracy rather than silently rewritten.
+
+~~The attacker sees gradient updates after the GradientManager has applied L2 clipping and
+Gaussian noise. The DP mechanism is applied at the client, before transmission; the aggregator
+never observes the raw (pre-noise) gradients. This is the adversarially weakest position for MIA —
+the DP noise degrades the membership signal — and therefore represents a realistic lower bound on
+MIA effectiveness.~~
 
 #### 3.2.3 Attacker Limitations
 
@@ -229,7 +280,10 @@ The attacker **cannot** perform the following:
 
 **L1 — Cannot access raw training data.** The private dataset at each cluster edge controller never leaves the device. The NVFLARE protocol transmits only model weight deltas, not data records.
 
-**L2 — Cannot observe pre-noise gradients.** GradientManager applies clipping and noise locally before any network transmission. The aggregator observes only the DP-protected output.
+**L2 — Cannot observe pre-noise gradients, `local` DP mode only.** **Corrected 2026-08-27, see C6
+above**: this holds for `local` DP, where `GradientManager` clip+noise happens client-side before
+transmission. It does **not** hold for `dp-fedavg` (documented transient raw-update exposure) or
+`central` DP (raw-but-clipped per-client contribution, by design — only the aggregate is noised).
 
 **L3 — Cannot modify the global aggregated model in a targeted way.** Any modification to the aggregation output would constitute Scenario 2 (malicious aggregator), which is a distinct and out-of-scope threat.
 
@@ -287,6 +341,84 @@ The correct mental model for the full defense stack is therefore:
 | mTLS with client certs | Man-in-the-middle, impersonation | Aggregator-level inspection |
 | Differential Privacy | Honest-but-curious aggregator MIA | Utility degradation at low ε |
 | Secure aggregation (not implemented) | Honest-but-curious aggregator (full) | Communication overhead, complexity |
+
+### 3.6 Scenario 5 — Adaptive / Custom-Tailored Attacker (Added 2026-08-27, Discussion Only — Not Implemented)
+
+Raised by external review: all attacks evaluated in this project (Yeom, Shadow, LiRA) are
+literature-standard, off-the-shelf attacks, run as-is against this system. A stronger threat model
+— standard practice to at least discuss in security venues — considers an attacker who knows the
+specifics of *this* deployment (model architecture, DP placement, the fact that the ML Plane and
+Privacy Auditor exist) and adapts accordingly. Two distinct adaptive attackers are worth
+separating, since they target different things:
+
+**S5a — An attacker who crafts a bespoke attack for this exact setup, rather than using
+Yeom/Shadow/LiRA off-the-shelf.** This is the more important variant given the current null
+result (README Sprint 10dd): "Yeom/Shadow/LiRA detect no above-chance membership signal" rules
+out those three specific attacks, not membership leakage in general. An attacker with full
+knowledge of this autoencoder's architecture, the FedProx proximal term, the exact DP mechanism in
+use, and the ACN-Data feature distribution could in principle design a custom scoring function
+exploiting structure the three general-purpose benchmark attacks do not specifically target — for
+instance, a custom loss statistic sensitive to this autoencoder's specific bottleneck dimension
+(4), or one that exploits FedProx's proximal regularization term directly rather than treating the
+model as a black box the way Yeom/Shadow/LiRA do. **Not implemented or evaluated here** — flagged
+as a limitation of the null result's scope, not closed. The honest claim the paper should make is
+"no leakage detected by three standard, strong, literature-representative attacks," not "no
+leakage exists."
+
+**S5b — An attacker who tries to evade the Privacy Auditor's risk scoring while still
+exfiltrating information.** This variant only matters to the extent the Privacy Auditor's output
+drives some downstream action (a human operator's trust decision, an automated policy tightening
+DP noise when risk is flagged, etc.) — **today it does not**: `PrivacyAuditor`/PES_v1 are
+observability/audit tools (§ MLPlane architecture, `docs/PrivacyExposureScore_v1.md`), not active
+blocking defenses. Nothing currently stops a round from completing or a client from participating
+based on a high Auditor score. "Evading the Auditor" therefore has no operational consequence in
+the system as built today — worth stating explicitly rather than leaving implicit, since it
+directly bounds how seriously S5b needs to be taken *now* vs. if/when the Auditor's output starts
+gating real decisions (a natural direction for future work, at which point S5b becomes a live
+threat rather than a hypothetical one).
+
+**S5b, corrected (2026-08-27): this is not a Scenario 1 question at all — it belongs to Scenario 2,
+and the two security domains must stay formally separate.** A proposed paper framing argued that
+CUSUM/Krum/Cosine/`GRADIENT_EXPLOSION` would catch an attacker manipulating gradients to evade the
+Auditor. A first correction (same day) proposed an "active attacker" middle ground; on further
+scrutiny (user-caught) that still doesn't hold, for a sharper reason than detector scope: **in
+Scenario 1 (§3.2), the attacker is the server and the clients are honest by definition** — a client
+"manipulating its gradient to evade the Auditor" is not a passive honest-but-curious scenario at
+all, it is **Scenario 2 (malicious FL client, §3.3 — already explicitly out of scope, "Future work,
+Sprint 7+")**. There is no in-between: within the only scenario this paper's results are about,
+no one ever deviates from protocol, so there is nothing for CUSUM/Krum/Cosine to catch, and the
+question does not arise. Bringing in an "active"/deviating attacker to rescue the argument
+silently imports Scenario 2 into a discussion that is supposed to be about Scenario 1.
+
+**Correct framing — two formally separate, orthogonal security domains, neither substituting for
+the other:**
+
+- **Integrity (`ByzantineDetector`: Krum, Cosine Distance, `GRADIENT_EXPLOSION`).** Client-side threat
+  (Scenario 2, malicious/Byzantine client). Intercepts poisoned or backdoored updates *before*
+  aggregation, to protect global-model convergence. These modules act **only** on the scale and
+  direction of client updates and provide **no privacy guarantee whatsoever** against an
+  honest-but-curious server (Scenario 1) — an honest client's update is never flagged, regardless
+  of how much membership signal it happens to carry, because these detectors do not look at
+  content in that sense.
+- **Privacy (`PrivacyAuditor` + the Yeom/Shadow/LiRA case-study attacks).** Server-side /
+  passive-observer threat (Scenario 1). Defense against MIA leakage is delegated **exclusively** to
+  Differential Privacy (clipping + Gaussian noise) — the only mechanism in this architecture that
+  reduces signal-to-noise ratio at the micro-value level without relying on any assumption about
+  update scale or direction being anomalous. `PrivacyAuditor`/PES_v1 *measure* this risk; they do
+  not *mitigate* it — mitigation is DP's job alone.
+
+State this explicitly in the paper as a "dual-defense architecture" with formally independent
+domains, not as one system where IDS incidentally helps with privacy. This also resolves S5a/S5b
+more cleanly than the "active attacker" framing did: neither Scenario 1's Auditor nor `ByzantineDetector`
+claims to defend against a hypothetical bespoke MIA attack (S5a) or Auditor-evasion (S5b, which is
+really a Scenario-2-flavored question) — both remain explicitly out of scope, and no existing
+module should be cited as a mitigation for either.
+
+**Relationship to the current empirical finding.** Neither S5a nor S5b is evaluated in this
+project as of 2026-08-27. Both are stated here as explicit, named limitations — the kind of
+disclosure a DSN reviewer is more likely to read as intellectual honesty than as a gap, provided
+the paper does not imply the null result (Sprint 10dd) has been checked against adaptive attacks
+when it has not.
 
 ---
 
@@ -360,19 +492,19 @@ The shadow model approach [Shokri et al. 2017] operationalizes this by training 
 
 **Note: Two distinct FedMIA approaches in the codebase.** There are two architecturally separate MIA implementations in ChargeShield-FL, both grounded in reconstruction error but operating differently:
 
-1. **Plugin shadow model (`src/plugins/attacks/fedmia.py`):** Used by ChargingIDS for per-node IDS evaluation. Trains a dedicated shadow Autoencoder on D_pub (the mechanism described in Sections 6.3–6.4 below). This plugin is **unchanged** and is the subject of the IDS baseline evaluation.
+1. **Plugin shadow model (`src/plugins/attacks/fedmia.py`):** Used by ByzantineDetector for per-node IDS evaluation. Trains a dedicated shadow Autoencoder on D_pub (the mechanism described in Sections 6.3–6.4 below). This plugin is **unchanged** and is the subject of the IDS baseline evaluation.
 
 2. **Experiment evaluator (`scripts/run_experiments.py::run_fedmia()`):** A separate loss-based MIA evaluator used to measure per-round AUC-ROC for the experimental case studies. Following Yeom et al. [2018], this evaluator loads the global model weights (`global_weights`) from each completed FL round directly into an Autoencoder, uses that global model to compute reconstruction errors, and scores samples as `score = -MSE`. AUC-ROC is then computed via `sklearn.metrics.roc_auc_score` for each round. This evaluator does **not** use a shadow model and does not intercept per-node gradients — it reads `global_weights` from the `AggregatedUpdate` produced by FedAvg after each round.
 
 ### 6.3 Attack Algorithm
 
-The FedMIA plugin attack (`fedmia.py`, used by ChargingIDS for per-node IDS scoring) proceeds in five phases. The experiment evaluator (`run_experiments.py::run_fedmia()`) uses a simpler loss-based approach grounded in Yeom et al. [2018]: since overfitting causes training members to have lower loss than non-members, the global model's MSE directly serves as the membership score without a shadow model (score = -MSE, AUC-ROC per round via sklearn).
+The FedMIA plugin attack (`fedmia.py`, used by ByzantineDetector for per-node IDS scoring) proceeds in five phases. The experiment evaluator (`run_experiments.py::run_fedmia()`) uses a simpler loss-based approach grounded in Yeom et al. [2018]: since overfitting causes training members to have lower loss than non-members, the global model's MSE directly serves as the membership score without a shadow model (score = -MSE, AUC-ROC per round via sklearn).
 
 The FedMIA plugin attack proceeds in five phases:
 
 **Phase 1: Shadow Model Training — FedMIA Plugin Only (`fedmia.py`)**
 
-*This phase applies only to the FedMIA plugin used by ChargingIDS for per-node IDS scoring. The experiment evaluator (`run_experiments.py::run_fedmia()`) does not have a shadow model training phase — it uses the FL global model directly.*
+*This phase applies only to the FedMIA plugin used by ByzantineDetector for per-node IDS scoring. The experiment evaluator (`run_experiments.py::run_fedmia()`) does not have a shadow model training phase — it uses the FL global model directly.*
 
 ```
 INPUT:  D_pub (public ACN-Data, N=13,073 sessions), shadow_epochs=10
@@ -484,7 +616,7 @@ sequenceDiagram
     participant C as FL Client<br/>(cluster edge controller)
     participant GM as GradientManager<br/>(client-side DP)
     participant AGG as NVFLARE Aggregator
-    participant IDS as ChargingIDS
+    participant IDS as ByzantineDetector
 
     Note over ATK,SHADOW: OFFLINE PHASE (before FL rounds begin)
     ATK->>PUB: Download ACN-Data JPL (public)
@@ -526,13 +658,13 @@ The MIA evaluation follows the standard protocol established by Carlini et al. [
 | 0.66–0.80 | Significant advantage; DP insufficient at this ε |
 | 0.81–1.00 | Near-perfect inference; DP not effective |
 
-The preliminary result in ChargeShield-FL at ε = 1.0, δ = 1×10^−5, 100 rounds is AUC-ROC = 0.5172, placing the system in the "marginal advantage" category — consistent with DP being largely effective at ε = 1.0 for this architecture and dataset.
+**Updated 2026-08-26 — the 0.5172/100-round figure below is stale and should not be cited.** That number predates the project's real experimental campaign entirely (no real run ever actually used 100 rounds — see `README.md`'s `experiment.fl_rounds` config note — and it predates every LiRA fix documented in `README.md` Sprint 10x–10cc). The current, corrected, multi-source-verified result (10 rounds, the project's real protocol, README Sprint 10dd) is: no-DP AUC-ROC 0.5018, Central DP ε=1.0 AUC-ROC 0.5016, and the real Containerlab/NVFLARE deployment (dp-fedavg ε=1.0) AUC-ROC 0.4992 — all landing in the "MIA completely defeated" row of the table above, not "marginal advantage," and critically, landing there **even without DP**, which the original preliminary number never tested. **Update (2026-09-04):** the 5-seed × 8-config bootstrap campaign (README task #1) referenced above has since completed and been Wilcoxon-confirmed — no configuration group (any DP mode/ε, or no-DP) shows AUC significantly different from 0.5 (`docs/MetricsReference_DSN2027.md` §8, `README.md` Sprint 10zz+39/+42). What remains running is a relaunch of that same campaign with a fuller metric set (task #52), not the original statistical confirmation itself.
 
 ---
 
 ## 7. Baseline Defenses
 
-The following detection mechanisms are implemented in ChargingIDS as **experimental baselines** — they characterize the detection surface alongside the DP countermeasure, but they are not the scientific contribution of ChargeShield-FL. Their inclusion serves two purposes: (a) they provide a richer picture of the defense landscape, enabling the paper to situate DP relative to other approaches; (b) they detect Byzantine faults that are distinct from MIA privacy leakage, providing defense-in-depth.
+The following detection mechanisms are implemented in ByzantineDetector as **experimental baselines** — they characterize the detection surface alongside the DP countermeasure, but they are not the scientific contribution of ChargeShield-FL. Their inclusion serves two purposes: (a) they provide a richer picture of the defense landscape, enabling the paper to situate DP relative to other approaches; (b) they detect Byzantine faults that are distinct from MIA privacy leakage, providing defense-in-depth.
 
 ### 7.1 CUSUM — Cumulative Sum Statistical Drift Detection
 
@@ -579,9 +711,9 @@ Alert threshold: CosSim(i) < 0.3. Interpretation: CosSim = 1.0 implies identical
 
 **Limitations against MIA.** Cosine similarity measures direction, not information content. A curious aggregator performing MIA produces no gradient outputs (it only receives them). This detector is relevant only against adversarial clients, not adversarial aggregators.
 
-### 7.4 FedMIA Integration in ChargingIDS
+### 7.4 FedMIA Integration in ByzantineDetector
 
-FedMIA is integrated into ChargingIDS as a fourth signal. When membership scores are computed (Section 6.3, Phase 4), the IDS assigns a THROTTLE action to nodes with `membership_score > 0.5` and `confidence > 0.7`. The THROTTLE action does not exclude the node from aggregation; it flags its updates for closer audit in subsequent rounds. This reflects the asymmetry between Byzantine fault detection (where exclusion is appropriate) and privacy leakage detection (where throttling and auditing are more appropriate, as the node may be an innocent victim of the aggregator's inference).
+FedMIA is integrated into ByzantineDetector as a fourth signal. When membership scores are computed (Section 6.3, Phase 4), the IDS assigns a THROTTLE action to nodes with `membership_score > 0.5` and `confidence > 0.7`. The THROTTLE action does not exclude the node from aggregation; it flags its updates for closer audit in subsequent rounds. This reflects the asymmetry between Byzantine fault detection (where exclusion is appropriate) and privacy leakage detection (where throttling and auditing are more appropriate, as the node may be an innocent victim of the aggregator's inference).
 
 ---
 
@@ -723,7 +855,7 @@ The following threat categories are explicitly excluded from the ChargeShield-FL
 | Gradient inversion attacks at large batch sizes | Gradient inversion (Zhu et al. 2019) requires very small batches; ChargeShield-FL uses batch sizes of 32+, making inversion computationally infeasible. | Not planned |
 | External passive eavesdropper | Defeated by WireGuard + mTLS (Section 5). No additional ML-layer defense required. | N/A |
 | Compromised network gateway (Scenario 3) | Network-layer attack, not ML-layer. Infrastructure hardening is the appropriate defense. | N/A |
-| Byzantine FL clients performing model poisoning | Partially addressed by ChargingIDS Krum/CosSim as baselines. Full Byzantine robustness under DP is a separate research problem [Fang et al. 2020]. | Sprint 7+ |
+| Byzantine FL clients performing model poisoning | Partially addressed by ByzantineDetector Krum/CosSim as baselines. Full Byzantine robustness under DP is a separate research problem [Fang et al. 2020]. | Sprint 7+ |
 | Inference attacks by curious FL clients (client-to-client, Scenario 2 client-side) | Weaker information (global model only). Planned with ElaadNL dataset for geographic diversity. | Sprint 7+ |
 | OCPP/MQTT protocol payload reconstruction | Protocol-level attack; OCPP 2.0.1 TLS and MQTT v5 authentication provide transport security. | N/A |
 | Long-term compositional privacy degradation (> 100 rounds) | Current evaluation is limited to 100 rounds. Rényi DP accounting [Mironov 2017] over many rounds is planned for the full paper. | Full paper |

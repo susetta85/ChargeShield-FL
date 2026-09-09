@@ -1,0 +1,67 @@
+# ChargeShield-FL — Calibration config per il sanity-check positivo (2026-08-27)
+#
+# SCOPO: trovare EMPIRICAMENTE quante epoche locali bastano per far
+# overfittare l'autoencoder (570 parametri), invece di indovinare un valore
+# fisso (il precedente config/experiment_overfit_control.yaml usava 500
+# senza nessuna giustificazione empirica). Usato SOLO per la fase di
+# calibrazione a basso costo — vedi docs/TestRoadmap_DSN2027.md #2.
+#
+# DIFFERENZE rispetto a config/experiment.yaml (deliberate, per rendere la
+# calibrazione economica, non per cambiare cosa viene misurato):
+#   - UN SOLO sito (office1, ~1341 sessioni — il piu' piccolo dei 3, quindi
+#     il piu' facile da overfittare con poche epoche: meno campioni da
+#     memorizzare a parita' di capacita' del modello). Riduce l'FL a un
+#     caso degenere a 1 client (equivalente a training centralizzato) --
+#     nessuna parte del codice assume >=2 client per il training stesso
+#     (i vincoli n>=2f+3 di Krum riguardano solo l'IDS Byzantine, non
+#     rilevante qui).
+#   - fl_rounds ridotto a 3 (override anche da CLI con --rounds): la
+#     domanda e' "l'autoencoder puo' overfittare con abbastanza epoche",
+#     non "cosa succede in 10 round" -- 3 round bastano per il segnale
+#     direzionale della calibrazione.
+#   - n_shadow lasciato a 16 nel file ma pensato per essere abbassato da CLI
+#     (--n-shadow 8) durante la calibrazione per velocita'; usare 16
+#     (default) solo per il run finale "ufficiale" una volta trovato il
+#     valore di epochs giusto.
+#
+# USO PREVISTO (vedi docs/TestRoadmap_DSN2027.md #2 per il comando completo):
+# lanciare piu' run variando SOLO --epochs (50, 150, 300, 500, 1000, ...),
+# osservare a quale valore lira_auc_roc si stacca chiaramente da ~0.50.
+# Una volta trovato quel valore, il run "ufficiale" che verra' citato nel
+# paper si fa sulla config STANDARD a 3 siti / 10 round
+# (config/experiment.yaml + --epochs <valore calibrato>), non su questo
+# file -- questo file serve solo a trovare il numero, non a produrre il
+# risultato finale.
+
+experiment:
+  name: chargeshield_overfit_calibration
+  fl_rounds: 3
+  seed: 42
+  epsilon: 1.0
+  delta: 1.0e-5
+  max_grad_norm: 1.0
+
+sites:
+  office1:
+    - datasets/acn/office1/acndata_sessions_2019.json
+    - datasets/acn/office1/acndata_sessions_2020.json
+    - datasets/acn/office1/acndata_sessions_2021.json
+
+ml:
+  input_dim: 6
+  lr: 0.001
+  epochs: 50   # override da CLI con --epochs durante la calibrazione
+  batch_size: 32
+  proximal_mu: 0.01
+
+output:
+  experiments_dir: experiments
+
+lira:
+  n_shadow: 16   # override da CLI con --n-shadow 8 durante la calibrazione, per velocita'
+
+byzantine_attack:
+  enabled: false
+  attack_type: gradient_scaling
+  byzantine_node: synthetic_1
+  scale_factor: 10

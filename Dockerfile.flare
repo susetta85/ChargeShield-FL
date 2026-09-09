@@ -4,7 +4,7 @@
 #
 # CORREZIONE 2026-07-31: questo file diceva "server, client, auditor, IDS"
 # come se fossero 4 ruoli/servizi distinti — non lo sono. PrivacyAuditor
-# (src/auditor/) e ChargingIDS (src/ids/) girano DENTRO al processo server
+# (src/auditor/) e ByzantineDetector (src/ids/) girano DENTRO al processo server
 # NVFLARE (incapsulati in ChargeShieldAggregator, vedi
 # nvflare/jobs/chargeshield_poc/app/custom/chargeshield_aggregator.py e
 # config_fed_server.json), non come container/servizi di rete separati.

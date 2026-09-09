@@ -12,6 +12,23 @@
 > ≈1,680). See `README.md`/`docs/DSN2027_Positioning.md` for current architecture
 > and paper framing. Not yet propagated through this document's prose.
 
+> **Addendum (2026-09-04, found during a documentation audit, task #69/#71) — this document is
+> superseded more broadly than the notice above covers, and should not be used to plan work.** This
+> file predates almost everything the project actually did: RQ1/§1.1/§1.4/§2 still frame FedMIA
+> (`src/plugins/attacks/fedmia.py`) as the primary/only attack — the real primary attack is LiRA,
+> with Yeom/Shadow/Sablayrolles alongside it (`ATTACK_REGISTRY`), and FedMIA is confirmed inactive.
+> The 12-node/4-cluster/OCPP/MQTT topology described throughout is the same superseded design
+> already corrected in `docs/ThreatModel.md`/`docs/CaseStudies.md` — the real, deployed topology is
+> 5 plain nodes. AUC≈0.5172 is cited here as a current/settled number; it is a pre-fix reading (see
+> `docs/ThreatModel.md` §6.5) — the corrected, Wilcoxon-confirmed result is AUC~0.4992–0.5018,
+> no detectable leakage at any tested configuration. The §13 checklist marks the statistical
+> significance campaign as "Not Started" — it is in fact complete and confirmed
+> (`docs/MetricsReference_DSN2027.md` §8). `docs/Research_Roadmap.md` has a more complete addendum
+> (2026-08-28) covering some of this same drift, itself also not fully propagated through that
+> document's body — see the addendum there, plus `README.md` and `docs/DSN2027_Positioning.md`, for
+> the actual current state of the project. Treat this entire file as historical/superseded, not as
+> an active plan.
+
 ---
 
 ## Table of Contents
@@ -86,7 +103,7 @@ Sprint 3 was the most architecturally broad of the completed sprints, delivering
 
 ### Sprint 4: FedMIA Attack Implementation and Detection Modules
 
-Sprint 4 delivered the attack module that is ChargeShield-FL's central experimental instrument: FedMIA, the federated membership inference attack. The attack follows the shadow model methodology of Shokri et al. [2017] adapted to the federated setting as formalised by Nasr et al. [2019]. A shadow FL system is trained on a disjoint public split of ACN-Data; the shadow model's reconstruction error (computed by the autoencoder trained in the same sprint) serves as the membership score — the intuition being that a record used in training produces lower reconstruction error than an unseen record, because the model has overfit to its features. AUC-ROC (area under the receiver operating characteristic curve) was selected as the primary evaluation metric because it is threshold-agnostic and directly measures the attack's discriminative power across the full score range, making results comparable across experimental conditions with different base rates. The autoencoder architecture — a symmetric encoder-decoder with layers 6->16->8->4->8->16->6, trained with MSE loss in PyTorch — was designed to be expressive enough to capture the non-linear feature interactions in charging session data while remaining compact enough to train to convergence within 100 FL rounds on the available data volume. The ChargingIDS class unified the three baseline detectors from Sprint 3 under a common evaluation harness, enabling side-by-side comparison of detection rates. Sprint 4 also expanded the test suite to 52 tests, covering the attack pipeline end-to-end with mocked FL state, ensuring that AUC-ROC computation, score normalisation, and threshold sweeping behave correctly under edge cases (empty member sets, perfect separation, random baseline). The completion of Sprint 4 marked the point at which ChargeShield-FL first had all the components necessary for a meaningful experiment; Sprint 5 was required to wire them together under a production-grade FL orchestrator.
+Sprint 4 delivered the attack module that is ChargeShield-FL's central experimental instrument: FedMIA, the federated membership inference attack. The attack follows the shadow model methodology of Shokri et al. [2017] adapted to the federated setting as formalised by Nasr et al. [2019]. A shadow FL system is trained on a disjoint public split of ACN-Data; the shadow model's reconstruction error (computed by the autoencoder trained in the same sprint) serves as the membership score — the intuition being that a record used in training produces lower reconstruction error than an unseen record, because the model has overfit to its features. AUC-ROC (area under the receiver operating characteristic curve) was selected as the primary evaluation metric because it is threshold-agnostic and directly measures the attack's discriminative power across the full score range, making results comparable across experimental conditions with different base rates. The autoencoder architecture — a symmetric encoder-decoder with layers 6->16->8->4->8->16->6, trained with MSE loss in PyTorch — was designed to be expressive enough to capture the non-linear feature interactions in charging session data while remaining compact enough to train to convergence within 100 FL rounds on the available data volume. The ByzantineDetector class unified the three baseline detectors from Sprint 3 under a common evaluation harness, enabling side-by-side comparison of detection rates. Sprint 4 also expanded the test suite to 52 tests, covering the attack pipeline end-to-end with mocked FL state, ensuring that AUC-ROC computation, score normalisation, and threshold sweeping behave correctly under edge cases (empty member sets, perfect separation, random baseline). The completion of Sprint 4 marked the point at which ChargeShield-FL first had all the components necessary for a meaningful experiment; Sprint 5 was required to wire them together under a production-grade FL orchestrator.
 
 ### Sprint 5: Federated Learning Plane, NVFLARE Integration, and First Experiment
 

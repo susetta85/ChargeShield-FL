@@ -1,0 +1,62 @@
+# ChargeShield-FL — Canary positive control, replica cross-site: JPL (2026-08-31)
+#
+# SCOPO: seconda replica cross-site del positive control ottenuto su office1
+# (Sprint 10vv-10yy, canary_raw_mse_auc_roc = 0.70/0.90/0.85, README) — vedi
+# experiment_canary_positive_control_caltech.yaml per il ragionamento
+# completo (stesso identico, solo il sito cambia). JPL è ~20x più grande di
+# office1 (33629 sessioni prima dello split), quindi anche qui i 150 record
+# duplicati pesano solo ~0.4% del training set — test severo, non
+# ricalibrato per essere "facile quanto office1".
+#
+# METODO: identico agli altri due config canary (Carlini 2019, Jagielski et
+# al. 2020) — 5 sessioni reali di jpl duplicate 30 volte ciascuna nel
+# training set di jpl; 20 sessioni "gemelle" mai in training restano
+# nell'holdout per canary_auc_roc / canary_raw_mse_auc_roc.
+#
+# ATTENZIONE TEMPI: stesso avvertimento del config caltech — epochs=1000 su
+# ~27000 sessioni di training è sostanzialmente più lento del run office1
+# equivalente.
+#
+# Stessa struttura di experiment_canary_positive_control.yaml — solo il sito
+# (dataset + canary.site) cambia.
+
+experiment:
+  name: chargeshield_canary_positive_control_jpl
+  fl_rounds: 3
+  seed: 42
+  epsilon: 1.0
+  delta: 1.0e-5
+  max_grad_norm: 1.0
+
+sites:
+  jpl:
+    - datasets/acn/jpl/acndata_sessions_2018.json
+    - datasets/acn/jpl/acndata_sessions_2019.json
+    - datasets/acn/jpl/acndata_sessions_2020.json
+    - datasets/acn/jpl/acndata_sessions_2021.json
+
+ml:
+  input_dim: 6
+  lr: 0.001
+  epochs: 1000   # stesso valore di office1 (Fase A/canary), per isolare la variabile sito
+  batch_size: 32
+  proximal_mu: 0.01
+
+canary:
+  enabled: true
+  site: jpl
+  n_templates: 5             # invariato rispetto a office1 — stessa aggressività di manipolazione
+  n_duplicates: 30
+  n_nonmember_templates: 20  # invariato — vedi fix 2026-08-31 nel config office1 (outlier su n=5)
+
+output:
+  experiments_dir: experiments
+
+lira:
+  n_shadow: 8   # ridotto per velocità, come per office1
+
+byzantine_attack:
+  enabled: false
+  attack_type: gradient_scaling
+  byzantine_node: synthetic_1
+  scale_factor: 10

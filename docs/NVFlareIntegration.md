@@ -149,10 +149,10 @@ nvflare/jobs/chargeshield_poc/
   app/config/config_fed_server.json   — ScatterAndGather workflow + ChargeShieldAggregator (fase 2)
   app/config/config_fed_client.json   — points at the custom Executor below
   app/custom/chargeshield_executor.py — wraps AutoencoderTrainer.train_local()
-  app/custom/chargeshield_aggregator.py — wraps FedAvgAggregator + PrivacyAuditor + ChargingIDS (fase 2, 2026-07-22)
+  app/custom/chargeshield_aggregator.py — wraps FedAvgAggregator + PrivacyAuditor + ByzantineDetector (fase 2, 2026-07-22)
 ```
 
-**Server side** (`config_fed_server.json`) still uses NVFLARE's `ScatterAndGather` workflow (round orchestration: broadcast → wait for clients → aggregate → persist), ma da oggi (fase 2) l'aggregatore built-in `InTimeAccumulateWeightedAggregator` è stato sostituito da `ChargeShieldAggregator` — un `Aggregator` NVFLARE custom che al suo interno chiama le classi **vere e già testate** della simulazione: `FedAvgAggregator` (src/ml/fedavg_aggregator.py) per la media pesata, e `PrivacyAuditor`+`ChargingIDS` (src/auditor, src/ids) per l'analisi privacy/IDS per-round, con la stessa logica di normalizzazione peer-relative (mediana) di `scripts/run_experiments.py::run_ids()`. `PTFileModelPersistor`/`FullModelShareableGenerator` restano built-in (nessun motivo per sostituirli). Da oggi pomeriggio (fase 3) anche `GradientManager`/DP è collegato — vedi sezione dedicata sotto.
+**Server side** (`config_fed_server.json`) still uses NVFLARE's `ScatterAndGather` workflow (round orchestration: broadcast → wait for clients → aggregate → persist), ma da oggi (fase 2) l'aggregatore built-in `InTimeAccumulateWeightedAggregator` è stato sostituito da `ChargeShieldAggregator` — un `Aggregator` NVFLARE custom che al suo interno chiama le classi **vere e già testate** della simulazione: `FedAvgAggregator` (src/ml/fedavg_aggregator.py) per la media pesata, e `PrivacyAuditor`+`ByzantineDetector` (src/auditor, src/ids) per l'analisi privacy/IDS per-round, con la stessa logica di normalizzazione peer-relative (mediana) di `scripts/run_experiments.py::run_ids()`. `PTFileModelPersistor`/`FullModelShareableGenerator` restano built-in (nessun motivo per sostituirli). Da oggi pomeriggio (fase 3) anche `GradientManager`/DP è collegato — vedi sezione dedicata sotto.
 
 Fase 1 (2026-07-22, mattina) era transport-only con l'aggregatore built-in. Fase 2 (stesso giorno, dopo) ha introdotto `ChargeShieldAggregator`. Fase 3 (stesso giorno, pomeriggio) ha aggiunto la DP client-side (Executor) e server-side (Aggregator). Questo documento è stato aggiornato ad ogni passaggio.
 
@@ -199,7 +199,11 @@ Verificato realmente in questo sandbox (senza torch, quindi solo la parte non to
 
 The first draft of `meta.json`/`config_fed_client.json` deployed a single shared `app/` to `"@ALL"` sites with `cluster_id` hardcoded to `"highway"`. Since `nvflare/project.yml` names the 4 client sites exactly `highway`/`urban`/`residential`/`corporate`, this meant **every** client would have instantiated `cluster_id="highway"` and trained on the identical 25% data slice — the opposite of the per-cluster heterogeneity the whole simulation (and this integration) is built around. Caught by an independent review pass, not by the original author — a good example of why a fresh second read matters even on unexecuted code.
 
-Fixed in `chargeshield_executor.py::_setup()`: `cluster_id` is now derived from `fl_ctx.get_identity_name()` (the NVFLARE site name) when it matches one of the 4 known clusters, falling back to the config value with an explicit warning only if the site name isn't recognized. `config_fed_client.json`'s `"cluster_id": "highway"` remains as the fallback default, not the active path, once `nvflare provision` assigns each site its real name. **Still unverified**: whether `fl_ctx.get_identity_name()` returns the site name in exactly this form at `START_RUN` time — a 4th `VERIFY:`-class assumption, on top of the original 3 below, to check first when this actually runs.
+Fixed in `chargeshield_executor.py::_setup()`: `cluster_id` is now derived from `fl_ctx.get_identity_name()` (the NVFLARE site name) when it matches one of the 4 known clusters, falling back to the config value with an explicit warning only if the site name isn't recognized. `config_fed_client.json`'s `"cluster_id": "highway"` (now `"caltech"` — the 3 real sites superseded the original 4 synthetic ones, see below) remains as the fallback default, not the active path, once `nvflare provision` assigns each site its real name.
+
+**Verified 2026-08-31, twice — first indirectly (2026-08-04 job, below), then directly (2026-08-31 job, `make nvflare-sim` with Fase 7+8 ML Plane wiring active).** In the 2026-08-31 run's raw log, the fallback-mismatch warning fires exactly as designed, live, for the two clients whose real identity differs from the config default: `"cluster_id da config (caltech) diverso dal nome del sito NVFLARE (jpl) — uso il nome del sito"` and the same for `office1` — direct proof `get_identity_name()` returned `"jpl"`/`"office1"` correctly (not `None`, not `"caltech"`), each triggering the explicit divergence-from-config warning rather than the not-recognized fallback. This supersedes the indirect argument below as the primary evidence.
+
+**Verified 2026-08-31 (indirectly, via a real 3-site job, not a unit test).** `experiments/nvflare_ids_audit_results_20260804_133100_58d089.json` — the real 3-client NVFLARE run (`make nvflare-sim`, `caltech`/`jpl`/`office1`) — has `per_client_audit` keyed by all **three distinct** site names in every round. This is decisive because all three clients share the *same* `config_fed_client.json`, whose fallback default is a single hardcoded value (`"caltech"`). If `get_identity_name()` had failed or returned something unrecognized on the `jpl`/`office1` clients, both would have silently fallen back to `cluster_id="caltech"` (with a logged warning) — producing at most 2 distinct keys, not 3, and colliding two sites' data under one label. Seeing 3 genuinely distinct keys is only possible if `get_identity_name()` correctly returned `"jpl"` and `"office1"` for those clients (`"caltech"` alone is ambiguous with the fallback, but is corroborated by the other two). **VERIFY point #4 is resolved** — not by unit test, but by the strongest evidence available short of one (a real run whose fallback path is distinguishable from its success path by construction). The single-client smoke test (`make nvflare-sim-smoke`, `-c caltech`) run on 2026-08-31 does *not* by itself confirm this, since its one client's config default and real identity coincide — that ambiguity is what this earlier 3-site job resolves.
 
 ## Points marked `VERIFY:` in the code — check these first
 
@@ -297,11 +301,11 @@ exactly the kind that need a real `nvflare simulator` run to resolve, not more r
    pass are both about the local round-number counters (points 3/6 above) — expect the first crash
    or silent-wrong-result to involve those, or something in the numpy/tensor conversion at the
    `execute()`/`accept()` boundary that no amount of reading could rule out in advance.
-3. ~~Write a custom server-side Controller/Aggregator...~~ **Done 2026-07-22** — `ChargeShieldAggregator` (`app/custom/chargeshield_aggregator.py`) wraps `FedAvgAggregator` for the averaging and `PrivacyAuditor`/`ChargingIDS` for per-round analysis, mirroring `run_ids()`. Not yet done: exporting IDS/Auditor results anywhere structured (currently log-only — see "What is explicitly NOT done yet").
+3. ~~Write a custom server-side Controller/Aggregator...~~ **Done 2026-07-22** — `ChargeShieldAggregator` (`app/custom/chargeshield_aggregator.py`) wraps `FedAvgAggregator` for the averaging and `PrivacyAuditor`/`ByzantineDetector` for per-round analysis, mirroring `run_ids()`. Not yet done: exporting IDS/Auditor results anywhere structured (currently log-only — see "What is explicitly NOT done yet").
 4. ~~Add DP: call `GradientManager.privatize()`/`clip_only()` inside the Executor's `execute()`...~~ **Done 2026-07-22 (fase 3)** — see the "DP wiring" section above for the full client/server split. Both files still only `py_compile`-checked, not executed.
 5. ~~Export IDS/Auditor results somewhere structured...~~ **Done 2026-07-22 (fase 4)** — `ChargeShieldAggregator._export_results()` writes the full per-round history to `experiments/nvflare_ids_audit_results_<timestamp>.json` (overwritten only within a single run, across rounds — **not** across different runs, since 2026-07-24, see below). See "What is explicitly NOT done yet" above for the one open verification point (working-directory/deployment assumption).
 6. ~~Solve raw-update extraction for LiRA/Shadow...~~ **Done 2026-07-22 (fase 5)**, scoped as an offline step by design — `ChargeShieldAggregator._export_fl_results()` dumps the exact `run_fl_rounds()`-shaped data per round, and `scripts/run_nvflare_mia.py` runs the existing, already-validated `run_lira()`/`run_ids()`/`run_fedmia()` against it unchanged. See the dedicated section above for why this wasn't ported to run live inside `aggregate()`.
-7. **Rewritten 2026-07-31 (user-requested: a real multi-container deployment is needed, not just the simulator)** — `containerlab/topology.clab.yml` (moved from the repo root, where it lived misplaced relative to its own header comment and every doc reference to it) rewritten from scratch for the actual 3-real-site architecture instead of the Sprint-5 vintage 4-fictional-cluster + 12-OT-node + separate-auditor/ids/mqtt-broker-container design, which never matched the code that was actually built (PrivacyAuditor/ChargingIDS run server-side inside `ChargeShieldAggregator`, not as separate network services — confirmed by reading `config_fed_server.json`'s `components[]`). The new topology has exactly 5 nodes matching `nvflare/project.yml`'s real participants: `server`, `caltech`, `jpl`, `office1`, `fl-admin`, star-topology links to `server`, no OT/OCPP/MQTT layer. `Dockerfile.flare` fixed to set `CHARGESHIELD_PROJECT_ROOT=/app` (missing entirely before — without it, `_find_project_root()` fails or silently loads 0 sessions inside a container, the same bug class already found and fixed for `nvflare simulator` on 2026-07-24) and its header comment corrected to stop describing "auditor"/"IDS" as separate container roles.
+7. **Rewritten 2026-07-31 (user-requested: a real multi-container deployment is needed, not just the simulator)** — `containerlab/topology.clab.yml` (moved from the repo root, where it lived misplaced relative to its own header comment and every doc reference to it) rewritten from scratch for the actual 3-real-site architecture instead of the Sprint-5 vintage 4-fictional-cluster + 12-OT-node + separate-auditor/ids/mqtt-broker-container design, which never matched the code that was actually built (PrivacyAuditor/ByzantineDetector run server-side inside `ChargeShieldAggregator`, not as separate network services — confirmed by reading `config_fed_server.json`'s `components[]`). The new topology has exactly 5 nodes matching `nvflare/project.yml`'s real participants: `server`, `caltech`, `jpl`, `office1`, `fl-admin`, star-topology links to `server`, no OT/OCPP/MQTT layer. `Dockerfile.flare` fixed to set `CHARGESHIELD_PROJECT_ROOT=/app` (missing entirely before — without it, `_find_project_root()` fails or silently loads 0 sessions inside a container, the same bug class already found and fixed for `nvflare simulator` on 2026-07-24) and its header comment corrected to stop describing "auditor"/"IDS" as separate container roles.
 
    **Update 2026-08-02 — job submission attempted, second real bug found and fixed:** with the
    path-resolution fix above applied, all 5 containers deployed and came up `running`
@@ -438,5 +442,40 @@ exactly the kind that need a real `nvflare simulator` run to resolve, not more r
    extra config; (d) file permission mismatches between the containers' user and the bind-mounted
    host directories. None of these were fixable by more reading — they need a real first run,
    exactly like the 3 real bugs the simulator work found on its first execution (Sprint 10f).
+
+## ML Plane reale + Privacy Auditor subscriber (fase 7+8, 2026-08-31)
+
+Due gap identificati da una review esterna e confermati leggendo il codice (non assunti):
+
+1. **ML Plane mai wired qui (fase 7).** Fino a oggi, `chargeshield_aggregator.py` non importava né
+   istanziava `MLPlane`/`FLArtifactCollector` — `accept()`/`aggregate()` costruivano
+   `_fl_results_history` da variabili Python locali, lo stesso pattern "morto" già corretto nella
+   simulazione il 2026-07-22 (vedi README "Relation to Prior Work") ma mai riportato qui. Fix:
+   stesse classi (`src/ml/ml_plane.py`) ora istanziate in `_ensure_components()` e wired a
+   `GradientManager`/`FedAvgAggregator`; `accept()` — il punto esatto in cui il paper QRS 2026
+   colloca il Privacy Auditor — emette l'evento `gradient_upload` direttamente lì, con un livello
+   Purdue che dipende da `dp_mode` (1=raw per `dp-fedavg`/`central`, 2=privatizzato per `local`, dato
+   che sotto local DP il server non vede mai nulla di meno rumoroso). `aggregate()` ora legge
+   `updates_for_fedavg`/`raw_updates`/`raw_global_weights` dal collector invece che da liste locali.
+2. **Privacy Auditor invocato imperativamente, non come subscriber (fase 8).** `_run_ids_analysis()`
+   calcolava le delta peer-relative a mano e chiamava `auditor.audit()` direttamente. Fix: nuova
+   `PrivacyAuditorSubscriber` (`src/auditor/privacy_auditor_subscriber.py`, vedi
+   `docs/PrivacyAuditor.md` per il design completo) sottoscritta allo stesso `MLPlane`, reagisce
+   all'evento `"aggregation"` invece di essere chiamata da un loop esterno — stessa formula, stessi
+   numeri, solo il meccanismo di attivazione cambia.
+3. **Fix collegato: sensibilità DP pesata.** `GradientManager.privatize_aggregate()` (chiamato qui
+   per `dp_mode="central"`) ora accetta `participant_n_samples` — `FedAvgAggregator.aggregate()`
+   popola `AggregatedUpdate.metadata["participant_n_samples"]` e l'Aggregator lo passa a valle. Vedi
+   il commento in `gradient_manager.py::privatize_aggregate()` per il perché (limite Office1: FedAvg
+   pesa per n_samples, non uniformemente).
+
+**Verificato**: `python3 -m py_compile` su tutti i file toccati (`chargeshield_aggregator.py`,
+`privacy_auditor.py`, `privacy_auditor_subscriber.py`, `gradient_manager.py`,
+`fedavg_aggregator.py`) + tutti gli 83 test non-torch passano — stesso limite ambientale di sempre
+(niente torch/nvflare in questo sandbox): **non ancora eseguito con un run NVFLARE reale**. I due
+job reali completati il 2026-08-04 (citati sopra in questo documento) sono stati prodotti PRIMA di
+questo fix — un nuovo run è necessario per confermare il wiring a runtime, ma i valori numerici
+attesi non cambiano (stessa formula, ora genuinamente sourced dal ML Plane invece che da variabili
+locali).
 
 Steps 1-2 are a few hours of real debugging once someone has `nvflare` installed. Steps 4-6 are the "multi-week" part of the original estimate — this document doesn't shrink that estimate, it just gives it a concrete starting point. Step 7 (this pass) only prepared the configuration correctly on paper; it has not yet been executed once, so treat every claim in it as "should work by design," not "verified."

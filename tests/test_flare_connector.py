@@ -17,7 +17,7 @@ Cosa testiamo:
 Cosa NON testiamo qui:
 - NVIDIA FLARE reale (Sprint 4)
 - Autoencoder (Sprint 4)
-- ChargingIDS (Sprint 4)
+- ByzantineDetector (Sprint 4)
 """
 
 import pytest

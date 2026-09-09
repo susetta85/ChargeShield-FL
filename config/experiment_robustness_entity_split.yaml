@@ -1,0 +1,85 @@
+# ChargeShield-FL — Robustness check: split entity-aware (Fase 8, 2026-08-31)
+#
+# SCOPO: verificare che il risultato principale (nessun leakage rilevabile,
+# campagna 5-seed×8-config, Sprint 10tt, split random) regga anche con uno
+# split train/holdout che garantisce l'indipendenza dei non-membri per
+# costruzione — vedi entity_aware_split() in scripts/run_experiments.py.
+#
+# PERCHÉ SERVE: lo split di default (random.shuffle su sessioni individuali,
+# poi 80/20) può assegnare due sessioni della STESSA stazione EVSE
+# rispettivamente a train e holdout. Un revisore MIA potrebbe obiettare che i
+# "non-membri" non sono davvero indipendenti dai membri se condividono la
+# stazione (comportamento di ricarica correlato). Questo config raggruppa lo
+# split per node_id (stazione EVSE) — nessuna stazione compare sia in train
+# che in holdout.
+#
+# NON sostituisce la campagna principale: è un robustness experiment
+# aggiuntivo. Se AUC resta ≈0.5 anche qui, rafforza la conclusione principale
+# (nessun leakage naturale rilevabile con LiRA, indipendentemente da come i
+# non-membri sono scelti). Se invece emerge un AUC significativamente diverso
+# da 0.5, è un risultato importante da riportare esplicitamente, non da
+# scartare.
+#
+# Stessa struttura di config/experiment.yaml (3 siti reali, no-DP baseline —
+# lanciare con --no-dp come la campagna principale), unica differenza:
+# blocco "split" in fondo.
+#
+# Comando di lancio (sulla macchina dell'utente, richiede torch):
+#   python3 scripts/run_experiments.py \
+#     --config config/experiment_robustness_entity_split.yaml \
+#     --no-dp --rounds 10 --seed 42 \
+#     --sweep-dir experiments/_robustness_entity_split
+
+experiment:
+  name: chargeshield_robustness_entity_split
+  fl_rounds: 10
+  seed: 42
+  epsilon: 1.0
+  delta: 1.0e-5
+  max_grad_norm: 1.0
+
+sites:
+  caltech:
+    - datasets/acn/caltech/acndata_sessions_2018.json
+    - datasets/acn/caltech/acndata_sessions_2019.json
+    - datasets/acn/caltech/acndata_sessions_2020.json
+    - datasets/acn/caltech/acndata_sessions_2021.json
+  jpl:
+    - datasets/acn/jpl/acndata_sessions_2018.json
+    - datasets/acn/jpl/acndata_sessions_2019.json
+    - datasets/acn/jpl/acndata_sessions_2020.json
+    - datasets/acn/jpl/acndata_sessions_2021.json
+  office1:
+    - datasets/acn/office1/acndata_sessions_2019.json
+    - datasets/acn/office1/acndata_sessions_2020.json
+    - datasets/acn/office1/acndata_sessions_2021.json
+
+ml:
+  input_dim: 6
+  lr: 0.001
+  epochs: 50
+  batch_size: 32
+  proximal_mu: 0.01
+
+output:
+  experiments_dir: experiments
+
+lira:
+  n_shadow: 16
+
+byzantine_attack:
+  enabled: false
+  attack_type: gradient_scaling
+  byzantine_node: synthetic_1
+  scale_factor: 10
+
+# ── Split entity-aware (Fase 8, 2026-08-31) — l'unica differenza rispetto a
+# config/experiment.yaml. strategy: "entity_aware" attiva entity_aware_split()
+# invece dello shuffle random di default; entity_key: "node_id" raggruppa per
+# stazione EVSE (il campo popolato per ogni sessione ACN-Data, a differenza di
+# "user_id" che è spesso assente nel dataset pubblico — vedi
+# entity_aware_split() per come le sessioni senza entity_key vengono gestite).
+split:
+  strategy: entity_aware
+  entity_key: node_id
+  holdout_fraction: 0.2

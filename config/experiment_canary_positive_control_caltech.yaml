@@ -1,0 +1,69 @@
+# ChargeShield-FL — Canary positive control, replica cross-site: CALTECH (2026-08-31)
+#
+# SCOPO: lo stesso positive control ottenuto su office1 (Sprint 10vv-10yy,
+# canary_raw_mse_auc_roc = 0.70/0.90/0.85, README) va replicato su un sito
+# diverso prima di poter dire che l'harness "rileva leakage indipendentemente
+# dal sito" — office1 è il più piccolo dei 3 (1680 sessioni), quindi anche il
+# più facile in cui indurre memorizzazione con soli 150 record duplicati
+# (+11% del training set). Caltech è ~19x più grande (31404 sessioni prima
+# dello split, vedi entity-aware split 2026-08-31): gli stessi 150 record
+# duplicati pesano qui solo ~0.5% del training set, un test volutamente più
+# severo, non ricalibrato per essere "facile quanto office1" — se l'harness
+# rileva il canary anche qui, è un risultato più forte, non solo replicato.
+#
+# METODO: identico a experiment_canary_positive_control.yaml (Carlini 2019,
+# Jagielski et al. 2020) — 5 sessioni reali di caltech duplicate 30 volte
+# ciascuna nel training set di caltech; 20 sessioni "gemelle" (stessa
+# provenienza, mai in training) restano nell'holdout per canary_auc_roc /
+# canary_raw_mse_auc_roc. n_templates/n_duplicates/n_nonmember_templates
+# NON ricalibrati per sito — la variabile isolata qui è il sito, non
+# l'aggressività della manipolazione (già tarata su office1, Sprint 10ww/10xx).
+#
+# ATTENZIONE TEMPI: epochs=1000 su ~25000 sessioni di training (vs 1344 di
+# office1) è sostanzialmente più lento — aspettati un multiplo consistente
+# del tempo del run office1 equivalente, sia per il training FL sia per i 24
+# shadow model (8/round × 3 round) di LiRA.
+#
+# Stessa struttura di experiment_canary_positive_control.yaml — solo il sito
+# (dataset + canary.site) cambia.
+
+experiment:
+  name: chargeshield_canary_positive_control_caltech
+  fl_rounds: 3
+  seed: 42
+  epsilon: 1.0
+  delta: 1.0e-5
+  max_grad_norm: 1.0
+
+sites:
+  caltech:
+    - datasets/acn/caltech/acndata_sessions_2018.json
+    - datasets/acn/caltech/acndata_sessions_2019.json
+    - datasets/acn/caltech/acndata_sessions_2020.json
+    - datasets/acn/caltech/acndata_sessions_2021.json
+
+ml:
+  input_dim: 6
+  lr: 0.001
+  epochs: 1000   # stesso valore di office1 (Fase A/canary), per isolare la variabile sito
+  batch_size: 32
+  proximal_mu: 0.01
+
+canary:
+  enabled: true
+  site: caltech
+  n_templates: 5             # invariato rispetto a office1 — stessa aggressività di manipolazione
+  n_duplicates: 30
+  n_nonmember_templates: 20  # invariato — vedi fix 2026-08-31 nel config office1 (outlier su n=5)
+
+output:
+  experiments_dir: experiments
+
+lira:
+  n_shadow: 8   # ridotto per velocità, come per office1
+
+byzantine_attack:
+  enabled: false
+  attack_type: gradient_scaling
+  byzantine_node: synthetic_1
+  scale_factor: 10

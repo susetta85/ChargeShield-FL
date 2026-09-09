@@ -1,14 +1,33 @@
-# ChargingIDS: An Intrusion Detection System Baseline for Evaluating the Limits of Behavioral Anomaly Detection Against Membership Inference Attacks in Federated Learning
+# ByzantineDetector: An Intrusion Detection System Baseline for Evaluating the Limits of Behavioral Anomaly Detection Against Membership Inference Attacks in Federated Learning
 
 **ChargeShield-FL Technical Documentation — DSN 2027 Submission Artifact**
+
+> **Correction notice (2026-09-04, found during a documentation audit, task #69).** This document's
+> central empirical claim — "the aggregator achieves statistically significant membership inference
+> (AUC-ROC > 0.7)" (Abstract, §12.1, §12.3, and elsewhere below) — is **superseded and no longer
+> the project's finding**. Under the corrected, independently re-verified LiRA/Yeom/Shadow/
+> Sablayrolles implementation (README Sprint 10dd onward, 2026-08-26+), the actual result is **no
+> LiRA-detectable membership leakage at any tested configuration, DP or no-DP** (composed AUC-ROC
+> ~0.4992–0.5018 throughout, Wilcoxon-confirmed p>0.05 for all 8 configuration groups — see
+> `docs/MetricsReference_DSN2027.md` §8, `README.md` Sprint 10zz+39/+42). AUC-ROC > 0.7 was an
+> early, pre-fix reading (same class of correction already applied throughout `docs/ThreatModel.md`
+> and `README.md`) and should not be cited. **This document's central thesis still holds, just for
+> a different reason**: ByzantineDetector/behavioral monitoring generates zero alerts against an
+> honest-but-curious aggregator not because a *successful* MIA attacker is stealthy, but because
+> *no MIA attacker tested here succeeds at all* on this model/dataset/FL configuration — the
+> "insider threat" analogy and the "DP over behavioral monitoring" conclusion are, if anything,
+> reinforced by the null result, not undermined by it, but §12.1/§12.3's specific numbers need
+> rewriting around the actual finding before citing this document in the paper. Not yet propagated
+> through the rest of this document's prose — see `README.md`/`docs/DSN2027_Positioning.md` for
+> current facts.
 
 ---
 
 ## Abstract
 
-ChargingIDS is a behavioral anomaly detection system developed as a **defense baseline** within the ChargeShield-FL research framework. Its scientific purpose is not to claim that intrusion detection is a sufficient defense against membership inference attacks (MIA) in federated learning (FL); rather, ChargingIDS is included precisely to demonstrate the opposite — that a passive, honest-but-curious aggregator performing MIA is **undetectable** by any behavioral anomaly detection system, because such an attacker is fully protocol-compliant by definition. This is a key **negative result** of the ChargeShield-FL experimental campaign.
+ByzantineDetector is a behavioral anomaly detection system developed as a **defense baseline** within the ChargeShield-FL research framework. Its scientific purpose is not to claim that intrusion detection is a sufficient defense against membership inference attacks (MIA) in federated learning (FL); rather, ByzantineDetector is included precisely to demonstrate the opposite — that a passive, honest-but-curious aggregator performing MIA is **undetectable** by any behavioral anomaly detection system, because such an attacker is fully protocol-compliant by definition. This is a key **negative result** of the ChargeShield-FL experimental campaign.
 
-ChargingIDS implements an ensemble of three behavioral detectors — CUSUM change-point detection, Krum Byzantine fault detection, and cosine similarity gradient analysis — operating over AuditReport objects produced by the Privacy Auditor module. It generates structured IDSAlert objects with graduated severity levels (MONITOR, THROTTLE, EXCLUDE) and maintains comprehensive historical records for post-hoc experimental analysis.
+ByzantineDetector implements an ensemble of three behavioral detectors — CUSUM change-point detection, Krum Byzantine fault detection, and cosine similarity gradient analysis — operating over AuditReport objects produced by the Privacy Auditor module. It generates structured IDSAlert objects with graduated severity levels (MONITOR, THROTTLE, EXCLUDE) and maintains comprehensive historical records for post-hoc experimental analysis.
 
 The central thesis demonstrated by the CS1 experimental scenario is: **behavioral monitoring generates zero alerts against an honest-but-curious aggregator performing MIA, even as that aggregator achieves statistically significant membership inference (AUC-ROC > 0.7)**. This result motivates the necessity of cryptographic privacy guarantees — specifically differential privacy (DP) — rather than behavioral monitoring as the primary defense against inference-based attacks. The analogy to the insider threat problem in information security is direct and intentional: just as a malicious but policy-compliant insider cannot be detected by access-log anomaly detection, a protocol-compliant aggregator cannot be detected by gradient-behavior anomaly detection.
 
@@ -32,24 +51,24 @@ The privacy promise of this architecture is often stated informally as: "raw dat
 
 The critical question for system designers is: **what defenses are available, and which are effective?** ChargeShield-FL is a research framework designed to answer this question rigorously through controlled experimental evaluation. It evaluates two classes of defense:
 
-1. **Behavioral anomaly detection** (ChargingIDS): monitoring gradient submission patterns, detecting deviations from expected behavior, and taking graduated enforcement action.
+1. **Behavioral anomaly detection** (ByzantineDetector): monitoring gradient submission patterns, detecting deviations from expected behavior, and taking graduated enforcement action.
 2. **Cryptographic privacy guarantees** (Differential Privacy with the Gaussian Mechanism): injecting calibrated noise into gradient updates before aggregation, providing a formal privacy bound $(\varepsilon, \delta)$-DP.
 
-ChargingIDS, the subject of this document, implements the first class of defense. Its role in the ChargeShield-FL experimental design is to serve as a **falsifiable baseline**: if ChargingIDS generates alerts against an honest-but-curious aggregator, the experimental design is flawed, because such an attacker produces no behavioral anomaly by construction. The expected — and experimentally confirmed — result is that ChargingIDS generates zero alerts in the MIA scenario, while successfully detecting Byzantine attackers in a contrasting experimental condition.
+ByzantineDetector, the subject of this document, implements the first class of defense. Its role in the ChargeShield-FL experimental design is to serve as a **falsifiable baseline**: if ByzantineDetector generates alerts against an honest-but-curious aggregator, the experimental design is flawed, because such an attacker produces no behavioral anomaly by construction. The expected — and experimentally confirmed — result is that ByzantineDetector generates zero alerts in the MIA scenario, while successfully detecting Byzantine attackers in a contrasting experimental condition.
 
-### 1.2 Scientific Contribution of ChargingIDS
+### 1.2 Scientific Contribution of ByzantineDetector
 
-The inclusion of ChargingIDS as a defense baseline makes three scientific contributions to the ChargeShield-FL evaluation:
+The inclusion of ByzantineDetector as a defense baseline makes three scientific contributions to the ChargeShield-FL evaluation:
 
 **Contribution 1 — Negative result formalization.** By operationalizing behavioral anomaly detection as a rigorous, multi-detector ensemble system and demonstrating its failure against honest-but-curious MIA, we provide a controlled falsification of the implicit assumption in some FL security literature that "detecting anomalous behavior" is a viable defense against inference attacks.
 
-**Contribution 2 — Byzantine-vs-inference attack distinguishability.** By running ChargingIDS against both MIA scenarios (CS1: passive aggregator MIA) and Byzantine poisoning scenarios, we provide empirical evidence for the claim that these two attack classes are fundamentally distinguishable at the detection layer: Byzantine attacks are detectable because they require gradient manipulation; inference attacks are not detectable because they require only observation.
+**Contribution 2 — Byzantine-vs-inference attack distinguishability.** By running ByzantineDetector against both MIA scenarios (CS1: passive aggregator MIA) and Byzantine poisoning scenarios, we provide empirical evidence for the claim that these two attack classes are fundamentally distinguishable at the detection layer: Byzantine attacks are detectable because they require gradient manipulation; inference attacks are not detectable because they require only observation.
 
-**Contribution 3 — Alert infrastructure for federated OT systems.** ChargingIDS provides a production-quality alert pipeline with graduated enforcement actions appropriate for operational technology (OT) environments — where the cost of false positives (charging session interruption, infrastructure exclusion) must be weighed against security response.
+**Contribution 3 — Alert infrastructure for federated OT systems.** ByzantineDetector provides a production-quality alert pipeline with graduated enforcement actions appropriate for operational technology (OT) environments — where the cost of false positives (charging session interruption, infrastructure exclusion) must be weighed against security response.
 
 ### 1.3 Document Structure
 
-This document is organized as follows. Section 2 provides a precise threat model contextualization, distinguishing honest-but-curious from Byzantine attackers and explaining why behavioral IDS is fundamentally insufficient for the former. Section 3 describes the ChargingIDS architecture, including the AbstractIDS interface and component interactions. Sections 4, 5, and 6 provide deep dives into the three detectors: CUSUM, Krum, and Cosine Similarity respectively. Section 7 describes the composite risk scoring and decay model. Section 8 describes the graduated action system. Sections 9 and 10 cover historical data structures and configuration. Section 11 provides a complete Python API with usage examples. Section 12 previews the experimental results. Section 13 lists references.
+This document is organized as follows. Section 2 provides a precise threat model contextualization, distinguishing honest-but-curious from Byzantine attackers and explaining why behavioral IDS is fundamentally insufficient for the former. Section 3 describes the ByzantineDetector architecture, including the AbstractIDS interface and component interactions. Sections 4, 5, and 6 provide deep dives into the three detectors: CUSUM, Krum, and Cosine Similarity respectively. Section 7 describes the composite risk scoring and decay model. Section 8 describes the graduated action system. Sections 9 and 10 cover historical data structures and configuration. Section 11 provides a complete Python API with usage examples. Section 12 previews the experimental results. Section 13 lists references.
 
 ---
 
@@ -93,7 +112,7 @@ The honest-but-curious aggregator explicitly does **not** exhibit the following 
 - **Timing anomalies**: does not introduce unusual latency patterns in the protocol execution.
 - **Gradient magnitude manipulation**: does not scale, clip, or alter received gradients before aggregation.
 
-The absence of these behaviors is precisely why behavioral IDS fails: all detectors in ChargingIDS (CUSUM, Krum, Cosine) operate on the observable gradient stream and protocol behavior. An attacker who does not perturb the gradient stream or deviate from protocol cannot be detected by any system that monitors only these observables.
+The absence of these behaviors is precisely why behavioral IDS fails: all detectors in ByzantineDetector (CUSUM, Krum, Cosine) operate on the observable gradient stream and protocol behavior. An attacker who does not perturb the gradient stream or deviate from protocol cannot be detected by any system that monitors only these observables.
 
 ### 2.5 Contrast with Byzantine Attackers
 
@@ -104,7 +123,7 @@ Byzantine attackers (in the sense of Blanchard et al., 2017) represent a fundame
 - **Scaling attacks**: amplifying gradient magnitude to dominate the aggregation.
 - **Model poisoning via backdoor injection**: embedding trigger-activated behavior in the gradient update.
 
-These attacks necessarily produce observable anomalies: gradients that are directionally inconsistent with the majority (detectable by cosine similarity analysis), or geometrically distant from the cluster centroid (detectable by Krum). ChargingIDS is expected to, and does, generate alerts against Byzantine attackers. This provides the positive control for the experimental design: ChargingIDS works as intended for the threat class it was designed for; it simply cannot work for honest-but-curious MIA because behavioral monitoring is insufficient for that threat class.
+These attacks necessarily produce observable anomalies: gradients that are directionally inconsistent with the majority (detectable by cosine similarity analysis), or geometrically distant from the cluster centroid (detectable by Krum). ByzantineDetector is expected to, and does, generate alerts against Byzantine attackers. This provides the positive control for the experimental design: ByzantineDetector works as intended for the threat class it was designed for; it simply cannot work for honest-but-curious MIA because behavioral monitoring is insufficient for that threat class.
 
 ### 2.6 The Insider Threat Analogy
 
@@ -114,11 +133,11 @@ This analogy motivates the primary conclusion of the ChargeShield-FL experimenta
 
 ---
 
-## 3. ChargingIDS Architecture
+## 3. ByzantineDetector Architecture
 
 ### 3.1 Abstract Interface
 
-ChargingIDS is implemented as a concrete realization of the `AbstractIDS` interface, which defines the contract for all IDS implementations in the ChargeShield-FL framework. The interface is defined as follows:
+ByzantineDetector is implemented as a concrete realization of the `AbstractIDS` interface, which defines the contract for all IDS implementations in the ChargeShield-FL framework. The interface is defined as follows:
 
 ```python
 from abc import ABC, abstractmethod
@@ -182,7 +201,7 @@ The separation of analysis into per-node (`analyze`) and per-round (`analyze_rou
 
 **Per-round (cluster-level) analysis** operates on the cross-sectional distribution of gradient updates across all nodes in a single round. The primary observables at this level are the **geometric relationships** between gradient vectors: their pairwise distances (used by Krum) and pairwise directional similarities (used by cosine similarity analysis). These cross-sectional signals cannot be computed per-node in isolation; they require the full set of node submissions for the round.
 
-This two-level architecture allows ChargingIDS to detect fundamentally different categories of anomaly:
+This two-level architecture allows ByzantineDetector to detect fundamentally different categories of anomaly:
 
 - **Sustained individual drift** (CUSUM, per-node): a single node whose gradient behavior drifts systematically over time.
 - **Byzantine geometric outliers** (Krum, per-round): one or more nodes whose gradient vectors are geometrically inconsistent with the cluster.
@@ -190,7 +209,7 @@ This two-level architecture allows ChargingIDS to detect fundamentally different
 
 ### 3.3 Component Interaction Diagram
 
-The data flow through ChargingIDS is as follows:
+The data flow through ByzantineDetector is as follows:
 
 ```
 FL Round t
@@ -203,7 +222,7 @@ Privacy Auditor
     │  Produces AuditReport(node_id=i, round_id=t, privacy_score=s,
     │                        gradient_norm=||g_i^(t)||, ...)
     ▼
-ChargingIDS.analyze(audit_report)          [per-node]
+ByzantineDetector.analyze(audit_report)          [per-node]
     │
     ├─── CUSUM Detector
     │       Updates EMA baseline mu_i
@@ -219,7 +238,7 @@ ChargingIDS.analyze(audit_report)          [per-node]
              ▼
          alert_history[node_id].append(alert)
 
-ChargingIDS.analyze_round(round_reports)   [per-round]
+ByzantineDetector.analyze_round(round_reports)   [per-round]
     │
     ├─── Krum Detector
     │       Computes pairwise squared distances
@@ -300,7 +319,7 @@ The $\max(0, \cdot)$ operation ensures $S_t$ is non-negative and resets when the
 
 ### 4.3 Warm-Up Period
 
-ChargingIDS configures a warm-up period of 10 rounds before CUSUM detection is active. During this warm-up, AuditReport objects are processed and used to update the EMA baseline $\mu_t$, but no alerts are generated regardless of the CUSUM statistic value.
+ByzantineDetector configures a warm-up period of 10 rounds before CUSUM detection is active. During this warm-up, AuditReport objects are processed and used to update the EMA baseline $\mu_t$, but no alerts are generated regardless of the CUSUM statistic value.
 
 The scientific rationale for the warm-up period is the statistical stabilization of the EMA baseline. In the early rounds of an FL experiment, the model is far from convergence, gradient magnitudes are large and variable, and privacy_scores exhibit high round-to-round variance. Without warm-up, these early high-variance observations would initialize the EMA baseline at an unrepresentative value, causing subsequent rounds (as the gradient distribution stabilizes toward convergence) to appear anomalous by comparison. The 10-round warm-up provides sufficient observations for the EMA (with $\alpha = 0.3$, effective memory $\approx 1/\alpha \approx 3.3$ rounds) to converge to a stable baseline estimate before detection begins.
 
@@ -399,7 +418,7 @@ Krum was introduced by Blanchard et al. (2017) as the first provably Byzantine-t
 
 The geometric insight underlying Krum is that benign gradient updates, while not identical (they arise from different local datasets), tend to cluster in gradient space around the true gradient direction. Byzantine gradients, if they deviate sufficiently to cause model corruption, must lie far from this cluster. Krum identifies the gradient submission whose distance to its nearest $n-f-2$ neighbors is minimized — intuitively, the gradient most "central" to the benign cluster.
 
-In ChargeShield-FL, Krum is repurposed as a **scoring function** rather than an aggregation rule: rather than selecting a single gradient, ChargingIDS computes Krum scores for all nodes and uses the score distribution to identify statistical outliers. Nodes with anomalously high Krum scores (far from the cluster) are flagged as potential Byzantine contributors.
+In ChargeShield-FL, Krum is repurposed as a **scoring function** rather than an aggregation rule: rather than selecting a single gradient, ByzantineDetector computes Krum scores for all nodes and uses the score distribution to identify statistical outliers. Nodes with anomalously high Krum scores (far from the cluster) are flagged as potential Byzantine contributors.
 
 ### 5.2 Theoretical Guarantee
 
@@ -523,7 +542,7 @@ Fung et al. (2020) demonstrated that cosine similarity-based detection (specific
 
 ### 6.2 Algorithm
 
-For a set of gradient vectors $\{g_i\}_{i=1}^{n}$ submitted in a given round, ChargingIDS computes the $n \times n$ pairwise cosine similarity matrix $C$:
+For a set of gradient vectors $\{g_i\}_{i=1}^{n}$ submitted in a given round, ByzantineDetector computes the $n \times n$ pairwise cosine similarity matrix $C$:
 
 $$C_{ij} = \frac{g_i \cdot g_j}{\|g_i\|_2 \cdot \|g_j\|_2}$$
 
@@ -629,11 +648,11 @@ class CosineSimilarityDetector:
 
 ### 6.6 FedMIA Integration Note
 
-The FedMIA module referenced in the ChargingIDS context refers specifically to the **FedMIA plugin (`src/plugins/attacks/fedmia.py`)** — a shadow-model MIA component that subscribes to ML Plane gradient events and produces per-node membership inference scores used as one signal among several in the IDS composite scoring. This plugin is unchanged and is what ChargingIDS integrates with.
+The FedMIA module referenced in the ByzantineDetector context refers specifically to the **FedMIA plugin (`src/plugins/attacks/fedmia.py`)** — a shadow-model MIA component that subscribes to ML Plane gradient events and produces per-node membership inference scores used as one signal among several in the IDS composite scoring. This plugin is unchanged and is what ByzantineDetector integrates with.
 
-There is a separate, architecturally distinct **FedMIA experiment evaluator (`scripts/run_experiments.py::run_fedmia()`)** that is not part of the IDS pipeline. This evaluator measures per-round AUC-ROC for the experimental case studies using a loss-based approach (Yeom et al. 2018) — it reads `global_weights` post-aggregation, computes `-MSE` scores, and calls `sklearn.metrics.roc_auc_score`. It does not subscribe to ML Plane events and does not feed into ChargingIDS decisions.
+There is a separate, architecturally distinct **FedMIA experiment evaluator (`scripts/run_experiments.py::run_fedmia()`)** that is not part of the IDS pipeline. This evaluator measures per-round AUC-ROC for the experimental case studies using a loss-based approach (Yeom et al. 2018) — it reads `global_weights` post-aggregation, computes `-MSE` scores, and calls `sklearn.metrics.roc_auc_score`. It does not subscribe to ML Plane events and does not feed into ByzantineDetector decisions.
 
-The MIA results produced by the FedMIA plugin — specifically the AUC-ROC of the membership inference classifier and the reconstruction error of the autoencoder-based attack — are available as additional signals that can, in principle, be fed into the IDS decision pipeline as metadata fields in `IDSAlert`. However, it is critical to note that these signals **do not trigger behavioral alerts** in the ChargingIDS pipeline for honest-but-curious attackers: they are computed by the attacker (not by the IDS), and the IDS has no visibility into the attacker's inference computation. The FedMIA signals are included in the experimental reporting layer (not in the detection layer) to provide ground truth for the negative result: the IDS generates zero alerts while the attacker achieves significant inference capability.
+The MIA results produced by the FedMIA plugin — specifically the AUC-ROC of the membership inference classifier and the reconstruction error of the autoencoder-based attack — are available as additional signals that can, in principle, be fed into the IDS decision pipeline as metadata fields in `IDSAlert`. However, it is critical to note that these signals **do not trigger behavioral alerts** in the ByzantineDetector pipeline for honest-but-curious attackers: they are computed by the attacker (not by the IDS), and the IDS has no visibility into the attacker's inference computation. The FedMIA signals are included in the experimental reporting layer (not in the detection layer) to provide ground truth for the negative result: the IDS generates zero alerts while the attacker achieves significant inference capability.
 
 This design choice — keeping FedMIA results separate from the IDS detection pipeline — is deliberate and scientifically important. Conflating inference measurement with behavioral detection would obscure the fundamental point: the IDS cannot detect the attack because it has no signal from the attacker's internal inference process.
 
@@ -643,7 +662,7 @@ This design choice — keeping FedMIA results separate from the IDS detection pi
 
 ### 7.1 Design Rationale
 
-ChargingIDS maintains a **composite risk score** $r_i^{(t)}$ for each node $i$ at each round $t$. This score aggregates evidence from all three detectors across time, providing a unified severity metric for alert generation and action level determination.
+ByzantineDetector maintains a **composite risk score** $r_i^{(t)}$ for each node $i$ at each round $t$. This score aggregates evidence from all three detectors across time, providing a unified severity metric for alert generation and action level determination.
 
 The risk score system addresses a fundamental challenge in anomaly detection for operational systems: **distinguishing transient anomalies from sustained attacks**. In OT environments such as EV charging infrastructure, transient anomalies are common and expected: network jitter can cause slightly delayed gradient submissions, momentary data heterogeneity spikes (e.g., an unusual pattern of charging sessions during a local event) can cause brief gradient deviations, and hardware variability can produce temporary norm fluctuations. A hard counter or binary flag would over-react to these transient effects, potentially generating false-positive exclusions that interrupt legitimate charging operations.
 
@@ -686,13 +705,13 @@ The choice of exponential decay (as opposed to, e.g., linear decay or a sliding 
 
 ### 8.1 Design Principle: Graduated Response
 
-ChargingIDS implements three action levels corresponding to ranges of the composite risk score. The graduated response principle — taking the minimum action consistent with the observed risk — is motivated by the asymmetric cost structure of false positives and false negatives in OT environments:
+ByzantineDetector implements three action levels corresponding to ranges of the composite risk score. The graduated response principle — taking the minimum action consistent with the observed risk — is motivated by the asymmetric cost structure of false positives and false negatives in OT environments:
 
 - **False positives** (incorrectly excluding or throttling a legitimate node) have a direct operational cost: in the EV charging context, a node corresponds to a charging station controller. Throttling reduces the node's contribution to the global model, potentially degrading prediction quality for that station. Exclusion removes the station from the current FL round entirely, which in edge cases may interact with charging session management software.
 
 - **False negatives** (failing to flag a malicious node) have a security cost that depends on the attack type: Byzantine attackers degrade model quality for all nodes; MIA attackers compromise privacy of training data.
 
-The graduated response allows ChargingIDS to take proportionate action: responding to early anomaly signals with low-cost monitoring actions before escalating to high-cost exclusion only when sustained evidence justifies it.
+The graduated response allows ByzantineDetector to take proportionate action: responding to early anomaly signals with low-cost monitoring actions before escalating to high-cost exclusion only when sustained evidence justifies it.
 
 ### 8.2 MONITOR (severity < 0.4)
 
@@ -702,7 +721,7 @@ The graduated response allows ChargingIDS to take proportionate action: respondi
 
 **Rationale:** At severity levels below 0.4, the evidence of anomalous behavior is insufficient to justify operational intervention. The node may be experiencing a transient fault (network jitter, data heterogeneity spike) that will self-resolve. The MONITOR action provides visibility without disruption: alert metadata is logged and available for analyst review or automated post-hoc analysis.
 
-**Scientific role in paper:** MONITOR alerts against legitimate nodes in the CS1 scenario would constitute false positives. The expected zero MONITOR alerts in CS1 confirms that ChargingIDS does not conflate MIA with behavioral anomaly.
+**Scientific role in paper:** MONITOR alerts against legitimate nodes in the CS1 scenario would constitute false positives. The expected zero MONITOR alerts in CS1 confirms that ByzantineDetector does not conflate MIA with behavioral anomaly.
 
 ### 8.3 THROTTLE (0.4 <= severity < 0.7)
 
@@ -738,7 +757,7 @@ The graduated response allows ChargingIDS to take proportionate action: respondi
 
 ### 9.1 Alert History
 
-ChargingIDS maintains a per-node **alert history** — an ordered list of all `IDSAlert` objects generated for each node across all rounds of the experiment:
+ByzantineDetector maintains a per-node **alert history** — an ordered list of all `IDSAlert` objects generated for each node across all rounds of the experiment:
 
 ```python
 alert_history: Dict[str, List[IDSAlert]]  # node_id -> list of alerts
@@ -758,7 +777,7 @@ where $N$ is the number of nodes and $T$ is the number of rounds. The expected r
 
 ### 9.2 Round History
 
-ChargingIDS maintains a **round history** — an ordered list of all `RoundAnalysis` objects produced by `analyze_round()` across all rounds:
+ByzantineDetector maintains a **round history** — an ordered list of all `RoundAnalysis` objects produced by `analyze_round()` across all rounds:
 
 ```python
 round_history: List[RoundAnalysis]
@@ -778,9 +797,9 @@ The round history enables the following post-hoc analyses:
 
 ### 10.1 Configuration File: `auditor.yaml`
 
-ChargingIDS is configured via the `auditor.yaml` file, which is the central configuration artifact for the ChargeShield-FL privacy auditing and intrusion detection subsystems. The use of YAML is motivated by its human-readability (facilitating peer review of experimental configurations), native support for comments (enabling inline documentation of parameter choices), version-controllability (YAML diffs are human-readable), and ubiquity in the Python ecosystem (PyYAML, ruamel.yaml).
+ByzantineDetector is configured via the `auditor.yaml` file, which is the central configuration artifact for the ChargeShield-FL privacy auditing and intrusion detection subsystems. The use of YAML is motivated by its human-readability (facilitating peer review of experimental configurations), native support for comments (enabling inline documentation of parameter choices), version-controllability (YAML diffs are human-readable), and ubiquity in the Python ecosystem (PyYAML, ruamel.yaml).
 
-The `ids` section of `auditor.yaml` contains all ChargingIDS configuration parameters:
+The `ids` section of `auditor.yaml` contains all ByzantineDetector configuration parameters:
 
 ```yaml
 # auditor.yaml — ChargeShield-FL Privacy Auditor and IDS Configuration
@@ -852,14 +871,14 @@ The key configuration parameters and their sensitivity are summarized:
 ### 11.1 Instantiation
 
 ```python
-from chargeshield.ids import ChargingIDS
+from chargeshield.ids import ByzantineDetector
 from chargeshield.config import load_config
 
 # Load configuration from auditor.yaml
 config = load_config("config/auditor.yaml")
 
-# Instantiate ChargingIDS with configuration
-ids = ChargingIDS(
+# Instantiate ByzantineDetector with configuration
+ids = ByzantineDetector(
     cusum_threshold=config.ids.cusum.threshold,
     cusum_drift=config.ids.cusum.drift,
     ema_alpha=config.ids.cusum.ema_alpha,
@@ -1064,11 +1083,11 @@ RoundAnalysis(
 
 ### 12.1 CS1 Scenario: Passive MIA by Honest-but-Curious Aggregator
 
-The CS1 experimental scenario is the primary scenario of interest for the ChargingIDS baseline evaluation. It consists of:
+The CS1 experimental scenario is the primary scenario of interest for the ByzantineDetector baseline evaluation. It consists of:
 
 - **FL setup**: 8 federated nodes (EV charging station controllers), 50 training rounds, FedAvg aggregation, Gaussian DP with $\varepsilon = 1.0$, $\delta = 10^{-5}$.
 - **Attacker**: Honest-but-curious aggregator performing membership inference using the FedMIA module (shadow model plus membership inference classifier following Nasr et al., 2019).
-- **IDS**: ChargingIDS with default configuration (`auditor.yaml`).
+- **IDS**: ByzantineDetector with default configuration (`auditor.yaml`).
 
 **Expected IDS results in CS1:**
 
@@ -1093,10 +1112,10 @@ The juxtaposition of these two result sets is the core finding: MIA achieves sta
 
 ### 12.2 Byzantine Poisoning Scenario: Positive Control
 
-To validate that ChargingIDS is not trivially non-functional (a degenerate IDS that never alerts), the experimental campaign includes a Byzantine poisoning scenario:
+To validate that ByzantineDetector is not trivially non-functional (a degenerate IDS that never alerts), the experimental campaign includes a Byzantine poisoning scenario:
 
 - **Attacker**: One Byzantine node (`node_006`) submitting gradient reversal attacks ($g_{\text{attack}} = -g_{\text{true}}$) from round 10 onward.
-- **IDS**: ChargingIDS with default configuration.
+- **IDS**: ByzantineDetector with default configuration.
 
 **Expected IDS results in Byzantine scenario:**
 
@@ -1109,14 +1128,14 @@ To validate that ChargingIDS is not trivially non-functional (a degenerate IDS t
 | EXCLUDE action | Round 14+ | Risk score >= 0.70 |
 | True positive rate | 1.0 | All attack rounds detected |
 
-This positive control confirms that ChargingIDS correctly detects Byzantine gradient manipulation, validating the detection infrastructure and confirming that the zero-alert result in CS1 is a genuine negative finding, not a system misconfiguration.
+This positive control confirms that ByzantineDetector correctly detects Byzantine gradient manipulation, validating the detection infrastructure and confirming that the zero-alert result in CS1 is a genuine negative finding, not a system misconfiguration.
 
 ### 12.3 Implication: Differential Privacy is Necessary
 
 The experimental results jointly demonstrate:
 
-1. ChargingIDS correctly detects Byzantine gradient attacks (positive control).
-2. ChargingIDS generates zero alerts against honest-but-curious MIA (CS1).
+1. ByzantineDetector correctly detects Byzantine gradient attacks (positive control).
+2. ByzantineDetector generates zero alerts against honest-but-curious MIA (CS1).
 3. Honest-but-curious MIA achieves statistically significant inference capability (AUC-ROC > 0.70).
 
 These three findings together establish that **differential privacy — not behavioral monitoring — is the appropriate defense against honest-but-curious MIA in federated learning**. Behavioral monitoring is a necessary component of a defense-in-depth architecture for Byzantine threats, but it is fundamentally insufficient for inference threats. The formal privacy guarantee of $(\varepsilon, \delta)$-DP is the only defense that directly bounds the information leakage exploited by MIA.

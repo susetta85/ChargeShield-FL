@@ -159,6 +159,34 @@ claim before submission.
   itself frames prior work as siloed: FL-broadly, or IDS-without-privacy, or PPFL-without-IDS —
   exactly the three-way combination this project's benchmark covers in one harness).
 
+## Tier 1b — Prior empirical DP-vs-MIA work (added 2026-09-03, scopes "what's our contribution")
+
+Directly answers the reviewer-style question raised in chat 2026-09-03: "hasn't DP's empirical
+effectiveness against MIA already been studied?" It has — these three papers are the evidence —
+so the paper's contribution section must not imply this measurement itself is novel. See
+`docs/LiteratureReview.md` §5 and `docs/DSN2027_Positioning.md` point 3b for where this is already
+written up. Read these before finalizing the Introduction/Related Work contribution claims, not
+urgent for code/experiments.
+
+- [ ] **Jayaraman & Evans (2019)** — "Evaluating Differentially Private Machine Learning in
+  Practice," USENIX Security 2019. [arXiv:1902.08874](https://arxiv.org/abs/1902.08874). Empirically
+  measures MIA/attribute-inference leakage across relaxed DP notions (RDP, zCDP) in **centralized**
+  DP-SGD training. Key finding to cite precisely: relaxed DP definitions that reduce noise for
+  better utility also measurably increase leakage — "no privacy for free." Closest prior work to
+  "does DP empirically stop MIA," but centralized-only, benchmark data.
+- [ ] **Rahman, Rahman, Laganière, Mohammed (2018)** — "Membership Inference Attack against
+  Differentially Private Deep Learning Model," Transactions on Data Privacy, 11(1), pp. 61–79.
+  Same category as above — centralized DP-SGD vs. MIA across a range of ε; found DP resists strong
+  adversaries only at real utility cost, with moderate MIA vulnerability remaining at
+  utility-preserving ε levels.
+- [ ] **Nasr, Shokri, Houmansadr (2019)** — "Comprehensive Privacy Analysis of Deep Learning:
+  Passive and Active White-box Inference Attacks against Centralized and Federated Learning," IEEE
+  S&P 2019. Most directly comparable prior work since it **does cover FL** — but on synthetic
+  client splits (not real organizationally-distinct clients), no production FL framework, no
+  industrial dataset, and a stronger active/gradient-manipulating attacker than this project's
+  honest-but-curious Scenario 1. Also a precedent for a possible active-attacker threat-model
+  extension (already flagged as future work in `docs/ThreatModel.md`).
+
 ## Tier 2 — Closest prior threat-model precedent
 
 - [ ] **"Perfectly Accurate Membership Inference by a Dishonest Central Server in Federated
@@ -215,10 +243,14 @@ term) — not urgent for the v1 paper if it ships before Gradient Inversion is i
   autoencoder is unsupervised. Worth one sentence in related work explaining why label leakage is
   explicitly out of scope, not silently ignored.
 - "Breaking Secure Aggregation: Label Leakage from Aggregated Gradients in Federated Learning" —
-  [arXiv:2406.15731](https://arxiv.org/abs/2406.15731), 2024 — strong rhetorical parallel:
-  "leakage surviving a nominal defense" is the same shape of result as ours, for a different
-  attack/defense pair. Good companion citation when framing the "DP alone is not sufficient"
-  thesis.
+  [arXiv:2406.15731](https://arxiv.org/abs/2406.15731), 2024 — rhetorical parallel: "leakage
+  surviving a nominal defense" is the same *shape* of result this project originally set out to
+  find, for a different attack/defense pair. **Note (2026-08-26):** ChargeShield-FL's own
+  corrected measurement (README Sprint 10dd, after a six-fix LiRA investigation) no longer shows
+  this shape of result — no leakage was detectable at any tested DP configuration. This citation
+  is still a useful companion when framing the "DP alone is not automatically sufficient" question
+  the project investigated, but should not be paired with an "our result confirms this pattern"
+  sentence; ChargeShield-FL's finding on this specific setup is now the opposite.
 
 ---
 
@@ -227,11 +259,13 @@ term) — not urgent for the v1 paper if it ships before Gradient Inversion is i
 1. Tier 0 (5 papers) — non-negotiable, these are what the code implements.
 2. Tier 1's four papers — directly determines whether the "no benchmark exists" claim can be
    stated as confirmed or needs softening in the submission.
-3. Tier 2 (1 paper) — quick, sharpens the contribution-scoping paragraph.
-4. Tier 3 — cite from abstracts/snippets already in `docs/LiteratureReview.md`; only read in full
+3. Tier 1b (3 papers) — determines exactly how to word the "what's novel here" claim so it doesn't
+   overstate against prior empirical DP-vs-MIA work.
+4. Tier 2 (1 paper) — quick, sharpens the contribution-scoping paragraph.
+5. Tier 3 — cite from abstracts/snippets already in `docs/LiteratureReview.md`; only read in full
    if time remains.
-5. Tier 4 — cite as a group, one paragraph, no individual deep reads needed.
-6. Tier 5 — defer until Task #64 (Gradient Inversion / PES v2) actually starts.
+6. Tier 4 — cite as a group, one paragraph, no individual deep reads needed.
+7. Tier 5 — defer until Task #64 (Gradient Inversion / PES v2) actually starts.
 
 ## Still open (tracked under Task #65 in the project's task list)
 

@@ -14,6 +14,21 @@
 > have said about the June 2026 state of the project, not as a description of
 > its current state.
 
+> **Addendum (2026-08-28) — infrastructure and attack-interface correction, found
+> while preparing the DSN 2027 paper draft, not covered by the notice above.**
+> This simulated review also praises the 12-node/4-cluster OCPP/MQTT topology and
+> the FedMIA attack as the project's central mechanism — neither reflects the
+> real system. The real, deployed, end-to-end-tested topology
+> (`containerlab/topology.clab.yml`) is **5 plain nodes** (`server`, `caltech`,
+> `jpl`, `office1`, `fl-admin`), no OCPP/MQTT per node; and
+> `src/plugins/attacks/fedmia.py` is not part of the current attack interface
+> (`ATTACK_REGISTRY` = Yeom/Shadow/LiRA only) and is never instantiated in the
+> real experiment pipeline (`ByzantineDetector(...)` in `scripts/run_experiments.py`
+> never passes `fedmia=`). This section of the simulated review is a further
+> illustration of why it should be read as a point-in-time artifact of the June
+> 2026 state, not as current fact — do not cite the 12-node topology or FedMIA
+> as active in the actual DSN 2027 paper.
+
 ---
 
 ## 1. Executive Summary
@@ -304,7 +319,7 @@ The STRIDE methodology (Shostack, 2014) is the standard threat modeling framewor
 
 **Maturity: Research-Grade.** The FedMIA implementation of the Shokri et al. (2017) shadow model approach is correctly instantiated for the autoencoder setting: shadow models are trained on data samples drawn from the same distribution as the target model's training data, and membership is inferred from the reconstruction error distribution. The AUC-ROC evaluation pipeline produces results consistent with the theoretical expectations from the DP-FL literature. The component is covered by unit tests. Its limitation is that it implements only the black-box, aggregator-side attack scenario; the client-side attacker scenario (Scenario 2) is not yet implemented. The component is mature enough for the CS1 experiments but will need extension before CS2 can be run.
 
-### 8.7 ChargingIDS (CUSUM/Krum/Cosine Similarity)
+### 8.7 ByzantineDetector (CUSUM/Krum/Cosine Similarity)
 
 **Maturity: Research-Grade (as a detection baseline layer).** Each of the three IDS mechanisms is correctly implemented relative to its defining literature: CUSUM implements the standard cumulative sum control chart, Krum implements the Blanchard et al. (2017) aggregation rule, and Cosine Similarity measures the angular deviation between local gradient vectors. The components are covered by unit tests. Their maturity as research-grade baselines is adequate for their role in the framework; they are not intended as production-ready intrusion detection systems. The primary documentation gap—their framing as features rather than baselines—is a documentation concern, not a component maturity concern. The implementations themselves are correct.
 

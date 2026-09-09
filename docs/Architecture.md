@@ -23,6 +23,25 @@
 > prose (topology diagram, cluster descriptions, dataset section) is tracked as an
 > open task and not yet done.
 
+> **Addendum (2026-08-28) — infrastructure and attack-interface correction, found
+> while preparing the DSN 2027 paper draft, not covered by the notice above.**
+> (1) **Topology.** The "twelve heterogeneous charging nodes... OCPP 1.6, OCPP
+> 2.0.1, MQTT v5" design below was never built as a live protocol-level emulation.
+> The real, deployed, end-to-end-tested Containerlab/NVFLARE topology (see
+> `containerlab/topology.clab.yml`) is **5 plain nodes** — `server`, `caltech`,
+> `jpl`, `office1`, `fl-admin` — with no OCPP/MQTT endpoint per node. Read the
+> OCPP/MQTT/12-node design below as a possible future extension (protocol-level
+> realism, see `docs/ProtocolAdapters.md`), not as the infrastructure that produced
+> any experimental result — do not describe it as current in the paper.
+> (2) **FedMIA.** The "FedMIA" attack described below as central to the framework
+> (`src/plugins/attacks/fedmia.py`) is not part of the current pluggable attack
+> interface (`src/plugins/attacks/__init__.py::ATTACK_REGISTRY` = Yeom/Shadow/LiRA
+> only) and is not instantiated in the real experiment pipeline — `ByzantineDetector(...)`
+> in `scripts/run_experiments.py` never passes `fedmia=`, so this signal defaults
+> to disabled. The file exists in the codebase but is inactive in every experiment
+> that produced a reported result — do not cite it as an active module in the
+> paper. The active attack hierarchy is Yeom → Shadow → LiRA (LiRA primary).
+
 ---
 
 ## Abstract
@@ -56,7 +75,7 @@ The framework provides:
 
 - A **faithful OT environment simulation** using Containerlab-provisioned Docker topologies that replicate the network segmentation, latency profiles, and computational constraints of real EVSE deployments.
 - A **complete FL training lifecycle** governed by NVFLARE 2.7.2, supporting FedAvg and FedProx aggregation strategies with swappable configuration.
-- A **privacy evaluation pipeline** that trains an autoencoder on real ACN-Data sessions, applies Gaussian Mechanism DP during gradient aggregation, and subsequently evaluates membership leakage through two complementary mechanisms: (a) the FedMIA shadow-model plugin integrated into ChargingIDS for per-node intrusion detection, and (b) an experiment-level loss-based MIA evaluator (Yeom et al., 2018) in `scripts/run_experiments.py::run_fedmia()` that loads each round's aggregated global weights into the Autoencoder and reports per-round AUC-ROC, enabling analysis of membership leakage dynamics over the course of FL training.
+- A **privacy evaluation pipeline** that trains an autoencoder on real ACN-Data sessions, applies Gaussian Mechanism DP during gradient aggregation, and subsequently evaluates membership leakage through two complementary mechanisms: (a) the FedMIA shadow-model plugin integrated into ByzantineDetector for per-node intrusion detection, and (b) an experiment-level loss-based MIA evaluator (Yeom et al., 2018) in `scripts/run_experiments.py::run_fedmia()` that loads each round's aggregated global weights into the Autoencoder and reports per-round AUC-ROC, enabling analysis of membership leakage dynamics over the course of FL training.
 - A **modular attack surface** via a plugin-based attack directory (`attacks/`) that allows new MIA strategies to be registered without modifying core framework code.
 - An **ML Plane abstraction** — a transversal logical layer that crosses all levels of the Purdue Model, monitored via an observer pattern — enabling collection of FL traffic metrics and model update signals without coupling monitoring logic to training logic.
 
@@ -100,7 +119,7 @@ The FL client tier requires sufficient compute to run local model training on se
 
 **Control Center and Cloud Aggregator**
 
-The FL aggregator runs at the operations level: a server-class machine (or cloud instance) that collects gradient updates from all FL clients, applies the aggregation algorithm (FedAvg or FedProx), and redistributes the updated global model. In ChargeShield-FL, this is the NVFLARE server process, co-located with the ChargingIDS intrusion detection components (CUSUM, Krum, Cosine Similarity) and the FedMIA evaluator.
+The FL aggregator runs at the operations level: a server-class machine (or cloud instance) that collects gradient updates from all FL clients, applies the aggregation algorithm (FedAvg or FedProx), and redistributes the updated global model. In ChargeShield-FL, this is the NVFLARE server process, co-located with the ByzantineDetector intrusion detection components (CUSUM, Krum, Cosine Similarity) and the FedMIA evaluator.
 
 ### 2.3 Computational Feasibility Analysis
 
@@ -123,7 +142,7 @@ The Purdue Enterprise Reference Architecture (PERA), originally published by Wil
 | L0 | Field / Physical Process | EVSE units, energy meters, CCS/CHAdeMO connectors | Untrusted physical; air-gap preferred |
 | L1 | Basic Control | Charging Station Controllers (OCPP gateway, local authorization) | Semi-trusted; vendor firmware |
 | L2 | Supervisory Control | Edge Controllers (FL clients, ACNDataset loader, AutoencoderTrainer, GradientManager) | Trusted; operator-managed Linux |
-| L3 | Operations / Site Business | NVFLARE aggregator, FedMIA evaluator, ChargingIDS, MLPlaneListener | Trusted; operator-controlled |
+| L3 | Operations / Site Business | NVFLARE aggregator, FedMIA evaluator, ByzantineDetector, MLPlaneListener | Trusted; operator-controlled |
 
 The Demilitarized Zone (DMZ) between L3 and external networks (cloud, WAN) is enforced at the infrastructure level by WireGuard tunnels and mTLS mutual authentication (see Section 8).
 
@@ -141,7 +160,7 @@ The security implication is significant. The ML Plane creates a new attack surfa
 graph TB
     subgraph L3["L3 — Operations / Aggregator"]
         AGG[NVFLARE Aggregator<br/>FedAvg / FedProx]
-        IDS[ChargingIDS<br/>CUSUM + Krum + Cosine]
+        IDS[ByzantineDetector<br/>CUSUM + Krum + Cosine]
         MIA[FedMIA Plugin<br/>Shadow Model / IDS per-node]
         MIAX[FedMIA Evaluator<br/>Loss-based per-round<br/>Yeom 2018 / AUC-ROC]
         ML3[MLPlaneListener<br/>Observer]
@@ -239,7 +258,7 @@ Four design patterns address these requirements. Each is motivated below not mer
 
 ### 4.5 Observer Pattern: ML Plane Monitoring Decoupling
 
-**Problem Statement.** The `MLPlaneListener` must observe FL lifecycle events (round start, gradient receipt from each client, aggregation completion, global model distribution) and emit structured events to downstream consumers: ChargingIDS (for Byzantine detection), FedMIA evaluator (for timing-correlated membership score computation), and experiment loggers (for metric collection). These consumers must operate without coupling to the training loop.
+**Problem Statement.** The `MLPlaneListener` must observe FL lifecycle events (round start, gradient receipt from each client, aggregation completion, global model distribution) and emit structured events to downstream consumers: ByzantineDetector (for Byzantine detection), FedMIA evaluator (for timing-correlated membership score computation), and experiment loggers (for metric collection). These consumers must operate without coupling to the training loop.
 
 **Why the Observer Pattern Was Selected.** The Observer pattern defines a `MLPlaneEvent` dataclass and a `MLPlaneListener` interface with `on_event(event: MLPlaneEvent)`. The `FedAvgAggregator` maintains a list of registered listener instances and emits events to all of them at each FL lifecycle point. Consumers register themselves at initialization, before the first FL round begins.
 
@@ -297,7 +316,7 @@ classDiagram
         <<interface>>
         +on_ml_event(event MLPlaneEvent) None
     }
-    class ChargingIDS {
+    class ByzantineDetector {
         +on_ml_event(event MLPlaneEvent) None
         +analyze(report AuditReport) IDSAlert
         +analyze_round(round_id int, reports dict, gradients dict) RoundAnalysis
@@ -357,7 +376,7 @@ classDiagram
 
     FedAvgAggregator --> MLPlaneListener : notifies via subscribe()
 
-    MLPlaneListener <|.. ChargingIDS
+    MLPlaneListener <|.. ByzantineDetector
 
     AutoencoderTrainer --> Autoencoder : trains
     AutoencoderTrainer --> ACNDataset : consumes
@@ -375,7 +394,7 @@ The following table enumerates all primary components in ChargeShield-FL, their 
 |---|---|---|---|
 | `ACNDataset` | Loads raw ACN-Data JSON files; derived features `hour_of_day` and `duration_hours` are computed by `enrich_sessions()` in `run_experiments.py` | L2 | Sprint 1 |
 | `AutoencoderTrainer` | Executes local training epochs on session batches using MSE loss | L2 | Sprint 1 |
-| `Autoencoder` | 6→16→8→4→8→16→6 symmetric encoder-decoder; MSE reconstruction loss | L2 | Sprint 1 |
+| `Autoencoder` | 6→16→8→4→8→16→6 symmetric encoder-decoder (default architecture; `hidden_dims`/`latent_dim` configurable via `cfg["ml"]` since task #12, 2026-08-27 — see `_autoencoder_arch_kwargs()` in `scripts/run_experiments.py`); MSE reconstruction loss | L2 | Sprint 1 |
 | `GradientManager` | Implements Gaussian Mechanism DP: weight-vector L2 norm clipping (weight perturbation) + calibrated noise injection | L2 | Sprint 2 |
 | `OCPP16Adapter` | Protocol adapter for OCPP 1.6 JSON-over-WebSocket (Highway and Urban clusters) | L1/L2 | Sprint 1 |
 | `OCPP201Adapter` | Protocol adapter for OCPP 2.0.1 with mandatory mTLS (Corporate cluster) | L1/L2 | Sprint 3 |
@@ -383,8 +402,8 @@ The following table enumerates all primary components in ChargeShield-FL, their 
 | `FedAvgAggregator` | Weighted-average aggregation (FedAvg); emits ML Plane events; coordinates FL rounds | L3 | Sprint 1 |
 | `AutoencoderTrainer` | FedProx controlled via `proximal_mu` in `train_step()`; no separate Strategy class | L1 | Sprint 1 |
 | `MLPlaneListener` | Observer interface for FL lifecycle events; base for all monitoring components | L2–L3 | Sprint 2 |
-| `ChargingIDS` | IDS baseline: CUSUM anomaly detection, Krum Byzantine resilience, Cosine Similarity gradient drift | L3 | Sprint 3 |
-| `FedMIA` (`src/plugins/attacks/fedmia.py`) | Older shadow-model MIA sketch; **dead code** — does not implement `BaseAttack`, not in `ATTACK_REGISTRY`, not called by `ChargingIDS` or anything else (`ChargingIDS` is always constructed with `fedmia=None`); superseded by the three registered attacks below | L3 | Sprint 3 |
+| `ByzantineDetector` | IDS baseline: CUSUM anomaly detection, Krum Byzantine resilience, Cosine Similarity gradient drift | L3 | Sprint 3 |
+| `FedMIA` (`src/plugins/attacks/fedmia.py`) | Older shadow-model MIA sketch; **dead code** — does not implement `BaseAttack`, not in `ATTACK_REGISTRY`, not called by `ByzantineDetector` or anything else (`ByzantineDetector` is always constructed with `fedmia=None`); superseded by the three registered attacks below | L3 | Sprint 3 |
 | `FedMIA Evaluator` (`scripts/run_experiments.py::run_fedmia()`) | Loss-based per-round MIA evaluator (Yeom et al., 2018); loads global weights into Autoencoder each round; score = −MSE; AUC-ROC via `sklearn`; outputs `per_round[round]["auc_roc"]` and summary `mean_auc_roc`, `max_auc_roc`, `min_auc_roc`; registered as `YeomAttack` in `ATTACK_REGISTRY` | L3 | Sprint 5 |
 | `ATTACK_REGISTRY` (`src/plugins/attacks/__init__.py`) | Explicit name→class registry implementing the plugin pattern (§4.4); maps `"yeom"/"shadow"/"lira"` to `BaseAttack` subclasses | L3 | Sprint 10j (2026-07-24) |
 | `NVFLAREServer` | NVFLARE 2.7.2 server process; provisioning orchestration; round lifecycle management | L3 | Sprint 1 |
@@ -428,7 +447,7 @@ flowchart LR
     G --> H[FedAvgAggregator\nFedAvg weighted average\nFedProx via proximal_mu]
     H --> I[Global Model\nDistribute to all clients]
     H --> J[MLPlaneListener\nObserver events]
-    J --> K[ChargingIDS\nCUSUM plus Krum\nCosine Similarity]
+    J --> K[ByzantineDetector\nCUSUM plus Krum\nCosine Similarity]
     J --> L[FedMIAEvaluator\nShadow model\nReconstruction error\nAUC-ROC]
     L --> M[epsilon vs AUC-ROC\nMeasurement output]
 ```
@@ -488,9 +507,9 @@ Both conditions raise `ValueError` with a descriptive message if violated.
 
 ### 6.5 FedMIA Plugin: Shadow-Model Membership Inference (dead code, not wired in)
 
-> **Status.** `src/plugins/attacks/fedmia.py` is **not used anywhere in the pipeline**: it does not implement `BaseAttack`, is not in `ATTACK_REGISTRY` (§4.4), and `ChargingIDS` — despite the class name below suggesting an IDS integration — is always constructed without the optional `fedmia=` argument (`scripts/run_experiments.py`, `chargeshield_aggregator.py`), so `self._fedmia` is always `None` and this code path never executes. The description below documents the *design*, kept for historical/architectural reference; it is superseded in practice by the three attacks in §6.5.1–ish (Yeom/Shadow/LiRA, all in `ATTACK_REGISTRY`). Removing or reviving this file is tracked as future cleanup, not required for the DSN 2027 submission.
+> **Status.** `src/plugins/attacks/fedmia.py` is **not used anywhere in the pipeline**: it does not implement `BaseAttack`, is not in `ATTACK_REGISTRY` (§4.4), and `ByzantineDetector` — despite the class name below suggesting an IDS integration — is always constructed without the optional `fedmia=` argument (`scripts/run_experiments.py`, `chargeshield_aggregator.py`), so `self._fedmia` is always `None` and this code path never executes. The description below documents the *design*, kept for historical/architectural reference; it is superseded in practice by the three attacks in §6.5.1–ish (Yeom/Shadow/LiRA, all in `ATTACK_REGISTRY`). Removing or reviving this file is tracked as future cleanup, not required for the DSN 2027 submission.
 
-`src/plugins/attacks/fedmia.py` sketches the FedMIA attack [Hu et al., 2022], originally intended as a plugin used by `ChargingIDS` for per-node intrusion detection. It frames membership inference as a binary classification problem: given a data record x and access to the trained global model θ, predict whether x was a member of the FL training set.
+`src/plugins/attacks/fedmia.py` sketches the FedMIA attack [Hu et al., 2022], originally intended as a plugin used by `ByzantineDetector` for per-node intrusion detection. It frames membership inference as a binary classification problem: given a data record x and access to the trained global model θ, predict whether x was a member of the FL training set.
 
 **Shadow Model Training.** A shadow autoencoder, architecturally identical to the target model (6→16→8→4→8→16→6, same MSE loss), is trained on the public ACN-Data split using the same FL procedure (same number of rounds, same aggregation algorithm, same hyperparameters). This produces a shadow model θ_shadow that approximates the target model's membership decision boundary without access to the target training data. The shadow training data is split into shadow-in (records that were used to train θ_shadow) and shadow-out (records excluded from shadow training), providing ground-truth membership labels for calibrating the membership score threshold.
 
@@ -627,7 +646,7 @@ The concrete software realization that makes this more than a conceptual diagram
 
 **Contribution 3: The ε vs. AUC-ROC Measurement Methodology — Demonstrating Channel-Level DP Is Not Computation-Level Privacy.**
 
-The measurement methodology — constructing the ε vs. AUC-ROC curve stratified by cluster type and aggregation algorithm — constitutes a reusable scientific instrument. It operationalizes the privacy-utility trade-off in a form that is directly interpretable (AUC-ROC = 0.5 means full privacy; AUC-ROC = 1.0 means full leakage), protocol-stratified (different clusters have different data distributions and session heterogeneity), and algorithm-stratified (FedAvg vs. FedProx convergence properties affect the gradient structure that MIA exploits). Applied to the three DP placements this project implements, it produces the central empirical finding the ML Plane and Privacy Auditor exist to make measurable: differential privacy applied to the FL *communication channel* (DP-FedAvg noises each client's clipped update before it leaves the client; Central DP noises only the server-side aggregate) does not eliminate the leakage detectable in the raw per-client computation a semi-honest aggregator can observe before that noising happens — the current Central DP result (LiRA AUC 0.743 at ε=1.0, 0.812 at ε=0.1, see `docs/PrivacyExposureScore_v1.md`) is this phenomenon measured, not a LiRA-specific curiosity. ChargeShield-FL makes this methodology available as a reproducible artifact, enabling future work to extend, challenge, or apply it to other FL settings.
+The measurement methodology — constructing the ε vs. AUC-ROC curve stratified by cluster type and aggregation algorithm — constitutes a reusable scientific instrument. It operationalizes the privacy-utility trade-off in a form that is directly interpretable (AUC-ROC = 0.5 means full privacy; AUC-ROC = 1.0 means full leakage), protocol-stratified (different clusters have different data distributions and session heterogeneity), and algorithm-stratified (FedAvg vs. FedProx convergence properties affect the gradient structure that MIA exploits). Applied to the three DP placements this project implements, this methodology is built to make measurable whether differential privacy applied to the FL *communication channel* (DP-FedAvg noises each client's clipped update before it leaves the client; Central DP noises only the server-side aggregate) eliminates the leakage detectable in the raw per-client computation a semi-honest aggregator can observe before that noising happens. **Superseded (2026-08-26):** the Central DP result originally cited here (LiRA AUC 0.743 at ε=1.0, 0.812 at ε=0.1) was later found, after a six-fix LiRA investigation (README Sprint 10x–10dd), to be substantially an artifact of the attack implementation, not a real measurement of this phenomenon. The corrected pipeline, re-verified across a local simulation and a genuine multi-container Containerlab/NVFLARE deployment, finds no LiRA-detectable leakage at any tested DP configuration — see README Sprint 10dd and `docs/DSN2027_Positioning.md` for the corrected finding and its implications for the paper's thesis. The methodology itself (the ε vs. AUC-ROC instrument, stratified by cluster and aggregation algorithm) is unaffected and remains the reusable contribution; ChargeShield-FL makes it available as a reproducible artifact regardless of which way any single measurement lands.
 
 ### 9.2 What Is Infrastructure: Explicit Non-Claims
 

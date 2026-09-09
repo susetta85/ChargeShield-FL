@@ -1,0 +1,95 @@
+# ChargeShield-FL — Calibration config, encoding circolare hour_of_day (Fase 8, 2026-08-31)
+#
+# SCOPO: seconda motivazione per questo file, non solo una — vale la pena
+# leggerle entrambe prima di interpretare il risultato.
+#
+# (1) Feature engineering più corretta, non solo diagnostica. hour_of_day
+# lineare (0-23) tratta 23h e 0h come le più lontane possibili nello spazio
+# delle feature, mentre comportamentalmente sono adiacenti (mezzanotte).
+# enrich_sessions() (scripts/run_experiments.py) calcola ora SEMPRE anche
+# hour_of_day_sin/hour_of_day_cos — questo config le usa al posto della
+# versione lineare. Se il modello si comporta meglio (loss di ricostruzione
+# più bassa a parità di altro) con l'encoding circolare, è un miglioramento
+# legittimo da considerare per la configurazione "ufficiale", non solo per
+# questo file diagnostico — a differenza di start_time_epoch
+# (richfeat.yaml), che è deliberatamente iniettata per stressare l'harness e
+# NON va promossa alla config ufficiale.
+#
+# (2) Nello stesso tempo, è anche un ulteriore asse di escalation per il
+# sanity-check LiRA (docs/TestRoadmap_DSN2027.md #2, Fase A/A2/A3/A4 già
+# concluse a AUC~0.48-0.53, canary positive control ottenuto a livello
+# raw-loss — Sprint 10ee-10yy): una rappresentazione più fedele del
+# comportamento orario potrebbe, in linea di principio, dare al modello
+# qualcosa di più memorizzabile. Se anche qui il composito LiRA resta
+# ~0.50, è un'ulteriore conferma (non la prova primaria, quella resta il
+# canary) che il null non dipende da una feature engineering povera.
+#
+# Stesso setup di Fase A/A2/A3 (office1, no-DP, 3 round, epochs=1000,
+# capacità storica) — UNICA differenza: hour_of_day sostituita da
+# hour_of_day_sin + hour_of_day_cos. input_dim passa a 7 (6 storiche - 1
+# lineare + 2 circolari) — deve restare sincronizzato con la lunghezza di
+# ml.feature_names, altrimenti il training fallisce con uno shape mismatch
+# esplicito (non un errore silenzioso).
+#
+# QUESTO FILE NON E' (ancora) IL RUN UFFICIALE PER IL PAPER: se il composito
+# LiRA resta ~0.50 E la loss di ricostruzione media non peggiora rispetto
+# alla versione lineare, vale la pena promuovere hour_of_day_sin/cos alla
+# config ufficiale (config/experiment.yaml) come miglioramento di feature
+# engineering onesto — deciderlo dopo aver visto i numeri reali, non prima.
+#
+# RISULTATO (2026-08-31, experiment_20260831_161645.json) — NON PROMOSSA.
+# LiRA composito = 0.5000 (round-per-round 0.5232/0.5063/0.4939) — condizione
+# (1) soddisfatta, coerente con la Fase A lineare (0.515527, experiments/
+# _calibration_overfit/experiment_20260827_205024.json, stesso setup:
+# office1, no-DP, 3 round, epochs=1000, seed=42, capacità storica). MA la
+# condizione (2) NON è soddisfatta: la loss di ricostruzione finale con
+# sin/cos è ~0.00131 (round 1-3: 0.002707/0.001315/0.001308) contro ~0.00077
+# della versione lineare (round 1-3: 0.001724/0.000773/0.000771) — quasi il
+# doppio, non "invariata o migliore" come richiesto dal criterio sopra.
+# Decisione: hour_of_day_sin/cos NON promossa a config/experiment.yaml.
+# Resta un file diagnostico. Utile comunque come 4° asse indipendente di
+# escalation per il sanity-check (vedi punto 2 del docstring sopra): anche
+# con una rappresentazione più fedele del comportamento orario, il composito
+# LiRA resta a livello di chance — ulteriore conferma che il null non
+# dipende da una feature engineering povera dell'ora del giorno.
+
+experiment:
+  name: chargeshield_hour_circular_encoding
+  fl_rounds: 3
+  seed: 42
+  epsilon: 1.0
+  delta: 1.0e-5
+  max_grad_norm: 1.0
+
+sites:
+  office1:
+    - datasets/acn/office1/acndata_sessions_2019.json
+    - datasets/acn/office1/acndata_sessions_2020.json
+    - datasets/acn/office1/acndata_sessions_2021.json
+
+ml:
+  input_dim: 7   # 5 storiche invariate + hour_of_day_sin + hour_of_day_cos (hour_of_day lineare rimossa)
+  lr: 0.001
+  epochs: 1000   # stesso valore già testato in Fase A/A2/A3, per isolare la variabile feature
+  batch_size: 32
+  proximal_mu: 0.01
+  feature_names:
+    - total_energy_kwh
+    - max_power_kw
+    - kwh_requested
+    - minutes_available
+    - duration_hours
+    - hour_of_day_sin   # NUOVA — sin(2*pi*hour/24), vedi enrich_sessions()
+    - hour_of_day_cos   # NUOVA — cos(2*pi*hour/24), vedi enrich_sessions()
+
+output:
+  experiments_dir: experiments
+
+lira:
+  n_shadow: 8   # coerente con Fase A/A2/A3 (velocità); alzare a 16 per il run "ufficiale"
+
+byzantine_attack:
+  enabled: false
+  attack_type: gradient_scaling
+  byzantine_node: synthetic_1
+  scale_factor: 10

@@ -46,7 +46,7 @@ controparte server-side di "dp-fedavg"/"central"):
       canale di rete (raw vs. già-privatizzato).
 
 Cosa NON fa ancora (fasi successive, vedi docs/NVFlareIntegration.md):
-    - Non chiama PrivacyAuditor.audit() / non emette dati per ChargingIDS
+    - Non chiama PrivacyAuditor.audit() / non emette dati per ByzantineDetector
       lato client — questa analisi resta server-side in ChargeShieldAggregator,
       mirroring run_ids() (che nella simulazione osserva gli update non
       ancora aggregati, non i singoli client).

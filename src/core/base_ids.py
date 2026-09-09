@@ -18,7 +18,7 @@ Livelli di analisi:
 Relazione con gli altri moduli:
 - PrivacyAuditor → produce AuditReport (input per analyze)
 - FedMIA         → produce MIAResult (input per analyze_round)
-- ChargingIDS    → implementazione concreta (src/ids/charging_ids.py)
+- ByzantineDetector    → implementazione concreta (src/ids/charging_ids.py)
 
 Riferimenti:
 - Blanchard et al., "Machine Learning with Adversaries: Byzantine

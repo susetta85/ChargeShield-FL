@@ -3,6 +3,34 @@
 Status: **draft v1, in use for internal ranking only — not yet peer-reviewed or paper-ready.**
 Owner task: #63 (v1, this document) / #64 (v2/full, blocked on Gradient Inversion).
 
+> **⚠ Superseded (2026-08-26) — the worked-example numbers below are invalidated, the formula is
+> not.** Every LiRA AUC value in this document (0.7430, 0.8118, and the PES_v1 scores 0.243/0.567
+> computed from them) predates a six-fix investigation into the LiRA implementation (README
+> Sprint 10x through 10cc) that found and corrected a chain of real bugs, the last of which was
+> structural (the shadow-model sampling universe could never include non-members, making real
+> IN-calibration for non-members architecturally impossible). With the fix chain applied, a
+> four-way convergent re-verification shows **no LiRA-detectable leakage at any tested ε** (README
+> Sprint 10dd) — the "first nonzero PES_v1" and "most damning PES_v1" readings below were computed
+> from AUC numbers that are now known to be substantially an artifact, not real leakage. **The PES
+> formula itself (`L(AUC)`/`strength(ε)`/`U_cost` below) is unaffected and remains valid** — it is
+> a generic function of whatever AUC/ε pair you feed it. Once the 5-seed × 8-config bootstrap
+> campaign (README task #1) produces corrected numbers, this document's worked examples should be
+> recomputed from those, not from the values below.
+
+> **Addendum (2026-08-31, Fase 8) — the ε fed into `strength(ε)` is a nominal noise-calibration
+> parameter, not a proven formal (ε,δ)-DP guarantee for the training procedure actually used.**
+> Two caveats, detailed in `docs/DSN2027_Positioning.md` limitation #9: (a) `GradientManager`
+> implements weight perturbation (noise on the post-training weight vector once per round), not
+> DP-SGD — the Gaussian mechanism's formal guarantee holds exactly only for `epochs=1`, not the
+> `epochs=50` used in the main campaign; (b) under `dp_mode="central"`, noise calibration used to
+> assume a uniform (unweighted) mean across participants (`σ/n_participants`) — corrected to use the
+> true weighted-mean sensitivity, `max_grad_norm × max_i(n_i/N)`, which is always ≥ the old value
+> given the real sites' uneven sizes (Office 1 ≪ Caltech/JPL). Neither caveat changes the PES_v1
+> *formula* (still a generic function of whatever AUC/ε pair is supplied) nor the paper's central
+> empirical finding (LiRA AUC ≈ 0.5 regardless of DP configuration) — but it does mean the ε value
+> plugged into `strength(ε)` for already-published Central DP configurations should be described in
+> the paper as a nominal calibration target, not an exact, independently-verified formal guarantee.
+
 ## Portability beyond this project (added 2026-07-24)
 
 PES v1's inputs are deliberately generic, not ChargeShield-FL-specific: any attack AUC-ROC
@@ -103,7 +131,7 @@ model may simply be too noisy to memorize anything, which is a Pyrrhic privacy w
 one. This caveat is exactly the kind of thing a single-scalar metric can hide if `U_cost` isn't
 kept visible.
 
-## Central DP, ε=1.0 — the first nonzero PES_v1 (real result, 2026-07-24)
+## Central DP, ε=1.0 — the first nonzero PES_v1 (real result, 2026-07-24) — ⚠ superseded, see banner at top
 
 `experiments/experiment_20260724_111109.json` (`dp_mode=central`, ε=1.0, 10 rounds, seed=42,
 n_shadow=16) is the first completed run of the experiment this document flagged above as "the
@@ -131,7 +159,7 @@ not just a qualitative "expected little/no suppression" prediction. `privacy_ris
 JSON is independently flagged `"HIGH"` by the existing (non-PES) risk heuristic, corroborating
 the PES reading.
 
-## Central DP, ε=0.1 — the most damning PES_v1 to date (real result, 2026-07-24, 14:49)
+## Central DP, ε=0.1 — the most damning PES_v1 to date (real result, 2026-07-24, 14:49) — ⚠ superseded, see banner at top
 
 `experiments/experiment_20260724_144952.json` (`dp_mode=central`, ε=0.1, 10 rounds, seed=42,
 n_shadow=16) completed the same day. Contrary to the naive expectation that a *tighter* nominal
@@ -162,12 +190,143 @@ sufficient evidence against the possibility that this is seed-42-specific varian
 given the round-8 anomaly precedent already found and documented for DP-FedAvg sweeps. Multi-seed
 Central DP repeats are the natural next step before this becomes a paper table.
 
+## PES v1.1 — implementata (task #41, Sprint 10zz+13, 2026-09-02)
+
+La sequenza indicata sopra ("implementare TPR@low-FPR per primo, poi PES v1.1 diventa ben
+definito") è ora soddisfatta — TPR@low-FPR è nel codice dal Sprint 10pp (2026-08-28). Implementata
+in `scripts/compute_pes.py` (nuovo script, retroattivo su qualunque JSON già esistente, riusa
+`discover_groups()` da `check_significance.py`):
+
+```
+L_v1.1   = clip( TPR@FPR=0.01 − 0.01, 0, 1 )            # vantaggio a UNA soglia fissa e bassa,
+                                                          # non mediato su tutte le soglie come L(AUC)
+PES_v1.1 = L_v1.1 / humphries_bound(ε, δ)               # frazione del vantaggio massimo
+                                                          # formalmente permesso da (ε,δ)-DP
+humphries_bound(ε, δ) = (e^ε − 1 + 2δ) / (e^ε + 1)      # Humphries et al. 2020
+```
+
+**Scelta metodologica dichiarata**: `L_v1.1` usa la soglia FISSA `FPR=0.01` (coerente con l'operating
+point "headline" già citato nei Sprint-log per TPR@low-FPR), non la soglia ottimale
+`max(TPR-FPR)` (Youden J — implementata separatamente come `_mia_advantage()` in
+`scripts/run_experiments.py`, task #41). Non ancora nella letteratura come "la" definizione di
+PES v1.1 — una proposta nuova di questo progetto, da dichiarare come tale nel paper. Per no-DP,
+`PES_v1.1 = None` (non 0): non esiste un soffitto ε contro cui normalizzare, diverso da
+`strength(ε)=0` di v1, che è invece un valore definito ("nessuna promessa di privacy da violare").
+
+**Risultato reale (2026-09-02), calcolato retroattivamente su TUTTA la campagna già completata**
+(`python3 scripts/compute_pes.py`, nessun nuovo run necessario — richiede solo
+`mean_lira_auc_roc`/`config.epsilon`/`config.delta`, sempre salvati, più `tpr_at_fpr_0.01`
+dell'ultimo round, disponibile per ogni run eseguito dopo Sprint 10pp 2026-08-28):
+
+| Sweep | ε | n file | PES_v1 (range) | PES_v1.1 (range, dove disponibile) |
+|---|---|---|---|---|
+| dp-sweep1 (dp-fedavg) | 1.0 | 5 | 0.0000–0.0003 | N/A (predata Sprint 10pp) |
+| dp-sweep2 (dp-fedavg) | 0.5 | 5 | 0.0000–0.0012 | N/A per 4/5 (predata Sprint 10pp), 0.0005 per 1 |
+| dp-sweep3 (dp-fedavg) | 0.1 | 5 | 0.0000–0.0024 | 0.0000–0.0009 |
+| central-sweep1 | 1.0 | 5 | 0.0000–0.0013 | 0.0000–0.0043 |
+| central-sweep2 | 0.1 | 5 | 0.0000–0.0029 | 0.0000–0.0234 |
+| local-sweep1 | 1.0 | 5 | 0.0000–0.0003 | 0.0000–0.0053 |
+| local-sweep2 | 0.1 | 5 | 0.0000–0.0024 | 0.0000–0.0009 |
+| nodp-sweep1 / entity-split-sweep1 | — (no-DP) | 10 | 0.0000 (per costruzione) | N/A (nessun ε da normalizzare) |
+
+**Lettura onesta**: sia PES_v1 sia PES_v1.1 restano vicinissimi a zero in OGNI configurazione DP
+già testata (central/dp-fedavg/local, ε∈{1.0,0.5,0.1}) — coerente, con due formulazioni
+indipendenti, con il risultato principale già pubblicato (AUC LiRA composito 0.4995–0.5005
+ovunque, Sprint 10tt). Nessuna configurazione mostra il "PES alto" che il metric fu progettato per
+segnalare (ε nominale piccolo ma leakage reale) — perché, semplicemente, non c'è leakage reale da
+segnalare in questa architettura/dataset, con nessuna delle due normalizzazioni. Questo NON
+invalida il disegno della metrica (progettata correttamente per catturare quel caso, se si fosse
+presentato) — conferma solo, con un secondo strumento più teoricamente fondato (v1.1 normalizza
+contro il bound di Humphries et al. 2020, non contro un peso euristico come v1), la stessa
+conclusione null-leakage già stabilita.
+
+**Nota sui valori PES_v1 diversi da zero (2026-08-28/29/30, es. 0.0029, 0.0024)**: non sono errori
+— corrispondono a run in cui `mean_lira_auc_roc` è marginalmente sopra 0.5 per varianza campionaria
+(es. 0.5016, 0.5013), dando un `L(AUC)` piccolo ma non nullo. Con `strength(ε)` anch'esso piccolo
+(ε=0.1 → strength=0.909, ε=1.0 → strength=0.5), il prodotto resta comunque ≤0.003 in ogni caso —
+un ordine di grandezza sotto qualunque soglia che si potrebbe ragionevolmente chiamare "PES alto"
+(i valori realmente alti già documentati sopra, 0.243/0.567, erano pre-fix LiRA e superati).
+
+**Nota di rigore (2026-09-04, task #66, Sprint 10zz+41) — chiarimento su cosa misurava davvero
+`tpr_at_fpr_0.01` nella tabella sopra**: un audit del codice ha trovato che `run_lira()` scriveva
+il TPR@low-FPR del composto multi-round SENZA prefisso dedicato in `composed_output`, che poi
+sovrascriveva silenziosamente (via merge in `src/plugins/attacks/lira.py`) il `tpr_at_fpr_0.01` del
+SOLO ultimo round — un dato diverso (evidenza cumulativa su tutti i round, non del round isolato).
+Bug live dal Sprint 10pp (2026-08-28), quindi presente in ogni JSON usato per la tabella sopra: la
+tabella ha **sempre** riportato il TPR composto, non quello "dell'ultimo round" come la dicitura
+letterale suggeriva. **I numeri della tabella restano validi e non vanno ricalcolati** — la
+cumulativa multi-round è, se anything, la scelta più sensata per un "exposure score" (l'evidenza
+che un attaccante reale avrebbe a fine training, non solo nell'ultimo round preso isolatamente).
+Fix applicato: `run_lira()` ora scrive `composed_tpr_at_fpr_*` (chiave dedicata, come gli altri
+campi composti), e `scripts/compute_pes.py` legge esplicitamente quella chiave (con fallback al
+valore bare per compatibilità) — stesso identico calcolo di prima, ora esplicito invece che
+accidentale. Vedi `tests/test_composed_tpr_prefix.py` per il test di regressione.
+
 ## Naming
 
 Working name is "Privacy Exposure Score (PES)"; "Operational Leakage Score (OLS)" and "Critical
 Infrastructure Privacy Risk (CIPR)" remain open alternatives — naming has no effect on the
 formula above and can be decided later (e.g. based on which framing the introduction ends up
 using — see `docs/DSN2027_Positioning.md`).
+
+## Theoretical grounding (informal) — added 2026-08-27, in response to external review
+
+A reviewer correctly flagged that PES_v1 is an heuristic combination (`L(AUC) * strength(ε)`)
+with no proof that it approximates an optimal or even well-defined theoretical quantity. This
+section states plainly what IS and is NOT grounded, rather than asserting a derivation that
+doesn't exist.
+
+**What is grounded.** Yeom, Fredrikson, and Jha (2018) — already one of this project's three
+benchmark attacks — formally define membership advantage for a fixed attacker/threshold as
+`Adv = |Pr[attacker says "member" | is member] − Pr[attacker says "member" | is non-member]|`
+and prove that for an ε-differentially-private training mechanism, `Adv ≤ e^ε − 1`. This is the
+standard, widely-cited theoretical link between the DP parameter ε and how well *any* membership
+attacker can possibly do against an ε-DP mechanism — a real ceiling, not a heuristic.
+
+**Tighter bound, more applicable to this project (added 2026-08-27):** Humphries et al. (2020,
+"Differentially Private Learning Does Not Bound Membership Inference") prove a tighter bound that
+accounts for δ, not just ε: `Adv ≤ (e^ε − 1 + 2δ) / (e^ε + 1)`. This is the more appropriate
+citation for ChargeShield-FL specifically, since the Gaussian Mechanism used throughout this
+project gives (ε, δ)-DP, not pure ε-DP (δ = 1e-5 in every experiment, see `config/experiment.yaml`)
+— the Yeom bound above ignores δ entirely, while the Humphries bound is defined for exactly the
+mechanism class this project actually uses. Both bounds should be cited; Humphries et al. is the
+one PES v1.1 (below) should normalize against, not Yeom's.
+
+`L(AUC) = clip(2 * max(0, AUC_LiRA − 0.5), 0, 1)` is designed to play the *same conceptual role*
+as `Adv` above: both are 0 at chance-level attacker performance and increase monotonically as the
+attacker does better than chance, both live on roughly the same [0, 1] scale. **This document does
+not claim `L(AUC)` is mathematically identical to `Adv`** — AUC integrates attacker performance
+over every possible decision threshold, while `Adv` (as Yeom define it) is evaluated at one fixed
+threshold; establishing the precise relationship between the two (they coincide exactly only under
+specific symmetry assumptions on the score distributions) is a real gap, not asserted here as
+closed.
+
+**What is NOT grounded, stated honestly.** `strength(ε) = 1/(1+ε)` is a *designed*, not *derived*,
+weighting — chosen because it is 1 at ε→0 (strongest nominal privacy) and shrinks toward 0 as ε
+grows (weakest nominal privacy, so a large-ε defence "never promised much"), which is the right
+qualitative shape, but it is not derived from the Yeom bound or any other formal DP result. The
+Yeom bound `e^ε − 1` has a different shape entirely (it is a ceiling that grows without bound as
+ε increases, not a weighting factor that decays), so `PES_v1 = L(AUC) * strength(ε)` should not be
+read as "the empirical advantage normalized against its theoretical ceiling" — it isn't that,
+today.
+
+**Concrete refinement this suggests (PES v1.1, not yet implemented):** a more tightly grounded
+successor metric would normalize the *observed* advantage against the *Humphries (ε,δ) ceiling*
+directly — `PES_v1.1 = L(AUC) / ((e^ε − 1 + 2δ) / (e^ε + 1))`, read as "what fraction of the
+maximum advantage this (ε,δ)-DP mechanism formally permits did the attacker actually achieve."
+This is a specific, falsifiable proposal, not a vague "needs more theory" placeholder — but it
+requires `L(AUC)`'s single-threshold behavior to be pinned down first (see "What is NOT grounded"
+above), which is exactly what implementing **TPR@fixed-FPR** (`docs/TestRoadmap_DSN2027.md` #4)
+would give: TPR at a fixed operating point IS a single-threshold quantity with a direct, provable
+correspondence to both bounds above, unlike AUC. Sequencing: implement TPR@low-FPR first, then PES
+v1.1 becomes a well-posed, citable refinement rather than another heuristic guess.
+
+**Rényi DP / tighter composition bounds**: the Yeom bound above is stated for pure ε-DP; this
+project's Gaussian Mechanism composition is more naturally analyzed under Rényi DP (RDP) or
+zero-concentrated DP, which give tighter, ε-and-δ-aware advantage bounds under Gaussian noise
+specifically. Substituting a Gaussian-mechanism-specific bound for the generic Yeom ε-DP bound
+above is a natural next refinement for v1.1 but is not done here — flagged as a specific,
+scoped future-work item (not a vague "more theory needed"), consistent with `docs/ReadingList_DSN2027.md`'s existing citation practice.
 
 ## v2 / full metric — blocked, tracked as Task #64
 

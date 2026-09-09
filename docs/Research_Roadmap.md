@@ -15,6 +15,32 @@
 > not the single-attack framing implied in places below. Not yet propagated
 > through this document's prose.
 
+> **Addendum (2026-08-28) — infrastructure and attack-interface correction, found
+> while preparing the DSN 2027 paper draft, not covered by the notice above.**
+> (1) **Topology.** The "four cluster types operating OCPP 1.6..., OCPP 2.0.1...,
+> and MQTT v5..." design described below was never built as a live protocol-level
+> emulation. The real, deployed, end-to-end-tested Containerlab/NVFLARE topology
+> (`containerlab/topology.clab.yml`) is **5 plain nodes** — `server`, `caltech`,
+> `jpl`, `office1`, `fl-admin` — with no OCPP/MQTT endpoint per node. Do not
+> describe the OCPP/MQTT/4-cluster topology as current infrastructure in the paper.
+> (2) **FedMIA.** References below to "FedMIA" describe
+> `src/plugins/attacks/fedmia.py`, which is not part of the current attack
+> interface (`ATTACK_REGISTRY` = Yeom/Shadow/LiRA only) and is never instantiated
+> in the real experiment pipeline (`ByzantineDetector(...)` in `scripts/run_experiments.py`
+> never passes `fedmia=`). Every reported result uses the Yeom → Shadow → LiRA
+> hierarchy (LiRA primary), not the `fedmia.py` plugin — do not cite it as an
+> active module in the paper.
+
+> **Addendum (2026-09-04, found during a documentation audit, task #69/#71).** The two notices
+> above were never propagated through the rest of this document's prose — RQ1/RQ2, §4.1–4.3, and
+> C3 still describe FedMIA as the attack under test and the 4-cluster/OCPP topology as current, and
+> the §13 checklist still marks the 5-seed × 8-config statistical-significance campaign as "Not
+> Started." That campaign is in fact complete and Wilcoxon-confirmed — no configuration group shows
+> AUC significantly different from 0.5 (`docs/MetricsReference_DSN2027.md` §8,
+> `docs/TestRoadmap_DSN2027.md`). Treat §13 and any AUC/attack/topology claim in the body of this
+> document as superseded by `README.md` and `docs/DSN2027_Positioning.md`, not as a current
+> checklist to plan work from.
+
 ---
 
 ## 1. Research Vision

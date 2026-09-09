@@ -425,7 +425,7 @@ class TestRunLiRA:
                 assert 0.0 <= auc <= 1.0, f"dp_mode={mode}, round {r}: LiRA AUC {auc} fuori [0,1]"
 
 
-# ── run_ids() (ChargingIDS + PrivacyAuditor) ────────────────────────────────────
+# ── run_ids() (ByzantineDetector + PrivacyAuditor) ────────────────────────────────────
 
 class TestRunIDS:
     def test_no_false_positive_without_attack(self, tiny_cfg, train_sessions):

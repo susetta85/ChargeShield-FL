@@ -37,6 +37,18 @@ from typing import Any
 
 from core.base_auditor import AbstractPrivacyAuditor, AuditReport
 
+# NOTA (Fase 8, 2026-08-31): PrivacyAuditorSubscriber (il wiring event-driven
+# al ML Plane) vive in un file SEPARATO, privacy_auditor_subscriber.py, non
+# qui — questo modulo è importato a livello di modulo da test torch-free
+# (tests/test_privacy_auditor.py) e da altri moduli che non richiedono torch;
+# PrivacyAuditorSubscriber invece dipende da torch (per le operazioni sui
+# tensori dei pesi) e da src/ml/*. Un primo tentativo di aggiungerla qui,
+# in questo stesso file, con `import torch` a livello di modulo ha rotto
+# quei test (ModuleNotFoundError: torch non disponibile in quel contesto) —
+# fix: file separato, importato lazy solo da chi ha torch disponibile
+# (scripts/run_experiments.py, che già importa torch incondizionatamente;
+# chargeshield_aggregator.py, dentro _ensure_components()).
+
 
 def _load_auditor_config(config_path: str = "config/auditor.yaml") -> dict:
     """

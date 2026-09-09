@@ -5,6 +5,23 @@
 **Target Venue:** IEEE/IFIP International Conference on Dependable Systems and Networks (DSN 2027)
 **Classification:** Public Research Documentation
 
+> **Correction notice (2026-08-28) — infrastructure correction, found while
+> preparing the DSN 2027 paper draft.** This entire document describes a
+> protocol-adapter architecture (OCPP 1.6, OCPP 2.0.1, MQTT v5) that was never
+> built as a live emulation. The real, deployed, end-to-end-tested
+> Containerlab/NVFLARE topology (`containerlab/topology.clab.yml`) is **5 plain
+> nodes** — `server`, `caltech`, `jpl`, `office1`, `fl-admin` — with no OCPP/MQTT
+> endpoint per node, and no `BaseAdapter`-style protocol adapter is exercised by
+> any experiment that produced a reported result. Read this entire document as a
+> design proposal for a possible future extension (protocol-level realism), not
+> as a description of the framework's current infrastructure — do not describe
+> it as current in the paper. The `FedMIA` attack referenced throughout
+> (`src/plugins/attacks/fedmia.py`) is similarly not part of the current attack
+> interface (`src/plugins/attacks/__init__.py::ATTACK_REGISTRY` = Yeom/Shadow/
+> LiRA only) and is never instantiated in the real experiment pipeline
+> (`ByzantineDetector(...)` in `scripts/run_experiments.py` never passes `fedmia=`) —
+> do not cite it as an active module either.
+
 ---
 
 ## Abstract
@@ -829,7 +846,7 @@ At experiment startup, the relevant observers are instantiated and registered wi
 listener = MLPlaneListener()
 
 privacy_auditor = PrivacyAuditor(attack_strategy=FedMIA(config))
-ids_module = ChargingIDS(anomaly_threshold=0.95)
+ids_module = ByzantineDetector(anomaly_threshold=0.95)
 experiment_logger = ExperimentLogger(output_path="results/")
 
 listener.register_observer(privacy_auditor)

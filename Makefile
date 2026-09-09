@@ -45,6 +45,8 @@ help:
 	@echo "  make experiment-dp          Con DP singolo seed (10 round, ε=EPS)"
 	@echo "  make experiment-nodp-sweep  no-DP multi-seed (SEEDS='42 123 456 789 1234') → mean±std"
 	@echo "  make experiment-dp-sweep    DP multi-seed (ε=EPS, SEEDS) → mean±std vs no-DP"
+	@echo "  make experiment-entity-split-sweep  Entity-aware split multi-seed (robustness, no-DP)"
+	@echo "  make experiment-centralized-control Baseline no-DP + controllo centralizzato (capacità vs FL-regolarizzatore)"
 	@echo "  [Excel 11 sheet: Attack Comparison + per-attacco + Seed Aggregation mean±std]"
 	@echo "  make experiment-sweep      Sweep epsilon 0.1→5.0 (100 round) [legacy]"
 	@echo "  make experiment-full-sweep Sweep rounds×epsilon (100-1000 × 0.1-5.0) — crea experiments/full-sweep{N}/"
@@ -257,6 +259,17 @@ SEED     ?= 42
 # Override: make experiment-nodp-sweep SEEDS="42 123 456"
 SEEDS    ?= 42 123 456 789 1234
 
+# DUMP_EXTRAS (2026-09-03, task #52/#54): se impostato (qualunque valore
+# non vuoto, es. DUMP_EXTRAS=1), i 4 target *-sweep sotto aggiungono
+# --per-sample-dump/--roc-curve-dump-dir per OGNI seed (path unico per
+# seed dentro la sweep-dir, mai sovrascritti tra loro) — dati necessari per
+# il controllo worst-case per-campione (task #50) e il plot ROC log-log
+# (task #54). Default vuoto → nessun impatto, comportamento identico a
+# prima di questo Sprint (i due flag sono opt-in anche lato
+# run_experiments.py, vedi scripts/run_experiments.py). Esempio:
+#   make experiment-dp-sweep EPS=1.0 DUMP_EXTRAS=1
+DUMP_EXTRAS ?=
+
 # Lock anti-concorrenza per gli sweep multi-seed (2026-07-31, trovato un caso reale:
 # due 'make experiment-*-sweep' avviati per errore in parallelo hanno fatto
 # competere due training FL/LiRA per la stessa CPU/RAM sulla stessa macchina —
@@ -324,6 +337,24 @@ experiment-nodp: _check-deps
 		--seed $(SEED) \
 		--n-shadow $(N_SHADOW)
 	@echo "✓ Baseline no-DP completato — controlla Attack Comparison nell'Excel"
+
+# Esperimento di controllo (Sprint 10zz+1, 2026-09-01): stesso baseline no-DP
+# sopra, ma addestra ANCHE un modello centralizzato (stessa architettura,
+# stesso budget totale di epoche, no FedAvg/partizionamento per cluster) sullo
+# stesso train/holdout split — isola l'effetto "FL come regolarizzatore" da
+# "capacità limitata del modello". Vedi docstring di run_centralized_control()
+# in scripts/run_experiments.py per il razionale completo.
+experiment-centralized-control: _check-deps
+	@echo "→ Baseline no-DP + controllo centralizzato (10 round, seed=$(SEED), n_shadow=$(N_SHADOW))..."
+	@mkdir -p $(EXPERIMENTS)
+	$(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
+		--config config/experiment.yaml \
+		--no-dp \
+		--rounds 10 \
+		--seed $(SEED) \
+		--n-shadow $(N_SHADOW) \
+		--centralized-control
+	@echo "✓ Completato — confronta centralized_control_auc_roc con mean_auc_roc (Yeom) nel JSON/Excel"
 
 # Con DP: seed singolo. Usare experiment-dp-sweep per 5 seed (mean±std).
 # Placement DP-FedAvg (default, McMahan 2017) — clip+noise per client prima di FedAvg.
@@ -424,7 +455,9 @@ experiment-nodp-sweep: _check-deps _sweep_lock
 			--rounds 10 \
 			--seed $$seed \
 			--n-shadow $(N_SHADOW) \
-			--sweep-dir "$$SWEEP_DIR" < /dev/null; echo $$? > /tmp/_cs_rc_$$$$; } 2>&1 | tee -a "$$LOG"; \
+			--sweep-dir "$$SWEEP_DIR" \
+			$(if $(DUMP_EXTRAS),--per-sample-dump "$$SWEEP_DIR/per_sample_seed$$seed.json" --roc-curve-dump-dir "$$SWEEP_DIR/roc_curves_seed$$seed",) \
+			< /dev/null; echo $$? > /tmp/_cs_rc_$$$$; } 2>&1 | tee -a "$$LOG"; \
 		RC=$$(cat /tmp/_cs_rc_$$$$ 2>/dev/null || echo 1); rm -f /tmp/_cs_rc_$$$$; \
 		if [ "$$RC" != "0" ]; then \
 			echo "✗ seed=$$seed FALLITO (exit $$RC)" | tee -a "$$LOG"; \
@@ -435,6 +468,48 @@ experiment-nodp-sweep: _check-deps _sweep_lock
 		echo "✓ no-DP sweep #$$SWEEP_NUM completato — controlla Seed Aggregation nell'Excel" | tee -a "$$LOG"; \
 	else \
 		echo "✗ no-DP sweep #$$SWEEP_NUM: $$FAILED/$(words $(SEEDS)) seed falliti — NON e' completo, vedi $$LOG" | tee -a "$$LOG"; \
+		exit 1; \
+	fi
+
+# Entity-aware split, robustness check multi-seed (2026-08-31, Fase 8 — chiude
+# l'obiezione "i tuoi non-membri sono davvero indipendenti?"). Stesso pattern di
+# experiment-nodp-sweep, ma con config/experiment_robustness_entity_split.yaml
+# (3 siti reali, split per stazione EVSE invece che per sessione). Il run a
+# seed=42 singolo (experiments/_robustness_entity_split/, 2026-08-31) resta
+# valido come primo punto dati ma non entra in questo sweep — cartella nuova
+# e autonoma, per non mischiare provenienze diverse nello stesso Seed
+# Aggregation Excel.
+.PHONY: experiment-entity-split-sweep
+experiment-entity-split-sweep: _check-deps _sweep_lock
+	@mkdir -p $(EXPERIMENTS); \
+	echo "$$$$ experiment-entity-split-sweep avviato $$(date '+%Y-%m-%d %H:%M:%S')" > $(SWEEP_LOCK); \
+	trap 'rm -f $(SWEEP_LOCK)' EXIT INT TERM; \
+	SWEEP_NUM=$$(find $(EXPERIMENTS) -maxdepth 1 -type d -name 'entity-split-sweep[0-9]*' 2>/dev/null | wc -l | tr -d ' '); \
+	SWEEP_NUM=$$((SWEEP_NUM + 1)); \
+	SWEEP_DIR=$(EXPERIMENTS)/entity-split-sweep$$SWEEP_NUM; \
+	mkdir -p "$$SWEEP_DIR"; \
+	LOG="$$SWEEP_DIR/sweep_log.txt"; \
+	echo "→ entity-aware split multi-seed sweep #$$SWEEP_NUM — seeds: $(SEEDS)" | tee "$$LOG"; \
+	echo "  no-DP, rounds=10, split entity_aware (node_id), 3 siti reali" | tee -a "$$LOG"; \
+	FAILED=0; \
+	for seed in $(SEEDS); do \
+		echo "=== seed=$$seed ===" | tee -a "$$LOG"; \
+		{ $(PYTHON) $(SCRIPTS_DIR)/run_experiments.py \
+			--config config/experiment_robustness_entity_split.yaml \
+			--no-dp \
+			--rounds 10 \
+			--seed $$seed \
+			--sweep-dir "$$SWEEP_DIR" < /dev/null; echo $$? > /tmp/_cs_rc_$$$$; } 2>&1 | tee -a "$$LOG"; \
+		RC=$$(cat /tmp/_cs_rc_$$$$ 2>/dev/null || echo 1); rm -f /tmp/_cs_rc_$$$$; \
+		if [ "$$RC" != "0" ]; then \
+			echo "✗ seed=$$seed FALLITO (exit $$RC)" | tee -a "$$LOG"; \
+			FAILED=$$((FAILED + 1)); \
+		fi; \
+	done; \
+	if [ $$FAILED -eq 0 ]; then \
+		echo "✓ entity-split sweep #$$SWEEP_NUM completato — controlla Seed Aggregation nell'Excel" | tee -a "$$LOG"; \
+	else \
+		echo "✗ entity-split sweep #$$SWEEP_NUM: $$FAILED/$(words $(SEEDS)) seed falliti — NON e' completo, vedi $$LOG" | tee -a "$$LOG"; \
 		exit 1; \
 	fi
 
@@ -471,7 +546,9 @@ experiment-dp-sweep: _check-deps _sweep_lock
 			--rounds 10 \
 			--seed $$seed \
 			--n-shadow $(N_SHADOW) \
-			--sweep-dir "$$SWEEP_DIR" < /dev/null; echo $$? > /tmp/_cs_rc_$$$$; } 2>&1 | tee -a "$$LOG"; \
+			--sweep-dir "$$SWEEP_DIR" \
+			$(if $(DUMP_EXTRAS),--per-sample-dump "$$SWEEP_DIR/per_sample_seed$$seed.json" --roc-curve-dump-dir "$$SWEEP_DIR/roc_curves_seed$$seed",) \
+			< /dev/null; echo $$? > /tmp/_cs_rc_$$$$; } 2>&1 | tee -a "$$LOG"; \
 		RC=$$(cat /tmp/_cs_rc_$$$$ 2>/dev/null || echo 1); rm -f /tmp/_cs_rc_$$$$; \
 		if [ "$$RC" != "0" ]; then \
 			echo "✗ seed=$$seed FALLITO (exit $$RC)" | tee -a "$$LOG"; \
@@ -520,7 +597,9 @@ experiment-central-dp-sweep: _check-deps _sweep_lock
 			--seed $$seed \
 			--n-shadow $(N_SHADOW) \
 			--dp-mode central \
-			--sweep-dir "$$SWEEP_DIR" < /dev/null; echo $$? > /tmp/_cs_rc_$$$$; } 2>&1 | tee -a "$$LOG"; \
+			--sweep-dir "$$SWEEP_DIR" \
+			$(if $(DUMP_EXTRAS),--per-sample-dump "$$SWEEP_DIR/per_sample_seed$$seed.json" --roc-curve-dump-dir "$$SWEEP_DIR/roc_curves_seed$$seed",) \
+			< /dev/null; echo $$? > /tmp/_cs_rc_$$$$; } 2>&1 | tee -a "$$LOG"; \
 		RC=$$(cat /tmp/_cs_rc_$$$$ 2>/dev/null || echo 1); rm -f /tmp/_cs_rc_$$$$; \
 		if [ "$$RC" != "0" ]; then \
 			echo "✗ seed=$$seed FALLITO (exit $$RC)" | tee -a "$$LOG"; \
@@ -528,7 +607,7 @@ experiment-central-dp-sweep: _check-deps _sweep_lock
 		fi; \
 	done; \
 	if [ $$FAILED -eq 0 ]; then \
-		echo "✓ Central DP sweep #$$SWEEP_NUM completato — atteso: LiRA NON soppressa (vedi CaseStudies.md §2.4.3)" | tee -a "$$LOG"; \
+		echo "✓ Central DP sweep #$$SWEEP_NUM completato — vedi README Sprint 10dd: post-fix, atteso AUC~0.50 (nessun leakage rilevabile), non piu' 'non soppressa'" | tee -a "$$LOG"; \
 	else \
 		echo "✗ Central DP sweep #$$SWEEP_NUM (ε=$(EPS)): $$FAILED/$(words $(SEEDS)) seed falliti — NON e' completo, vedi $$LOG" | tee -a "$$LOG"; \
 		exit 1; \
@@ -569,7 +648,9 @@ experiment-local-dp-sweep: _check-deps _sweep_lock
 			--seed $$seed \
 			--n-shadow $(N_SHADOW) \
 			--dp-mode local \
-			--sweep-dir "$$SWEEP_DIR" < /dev/null; echo $$? > /tmp/_cs_rc_$$$$; } 2>&1 | tee -a "$$LOG"; \
+			--sweep-dir "$$SWEEP_DIR" \
+			$(if $(DUMP_EXTRAS),--per-sample-dump "$$SWEEP_DIR/per_sample_seed$$seed.json" --roc-curve-dump-dir "$$SWEEP_DIR/roc_curves_seed$$seed",) \
+			< /dev/null; echo $$? > /tmp/_cs_rc_$$$$; } 2>&1 | tee -a "$$LOG"; \
 		RC=$$(cat /tmp/_cs_rc_$$$$ 2>/dev/null || echo 1); rm -f /tmp/_cs_rc_$$$$; \
 		if [ "$$RC" != "0" ]; then \
 			echo "✗ seed=$$seed FALLITO (exit $$RC)" | tee -a "$$LOG"; \

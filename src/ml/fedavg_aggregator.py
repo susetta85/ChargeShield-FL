@@ -126,6 +126,13 @@ class FedAvgAggregator(AbstractMLModel):
                 "total_samples": total_samples,
                 "participant_ids": [u.node_id for u in valid],
                 "cluster_ids": list({u.cluster_id for u in valid}),
+                # FASE 8 (2026-08-31) — necessario per calcolare la vera
+                # sensibilità della media PESATA in
+                # GradientManager.privatize_aggregate() (limite Office1: con
+                # siti reali di dimensione molto diversa, max_i(n_i/N) può
+                # essere molto più grande di 1/n_participants — vedi commento
+                # lì). Additivo, nessun campo esistente modificato.
+                "participant_n_samples": {u.node_id: u.n_samples for u in valid},
             },
         )
 

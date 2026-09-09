@@ -1,0 +1,23 @@
+# ChargeShield-FL — QUESTO FILE È SUPERATO (2026-08-27), non usarlo.
+#
+# Creato 2026-08-27 con ml.epochs fisso a 500, scelto senza nessuna base
+# empirica. Sostituito lo stesso giorno da un approccio in due fasi che non
+# richiede indovinare un numero:
+#
+#   1. CALIBRAZIONE (economica): config/experiment_overfit_calibration.yaml
+#      (1 solo sito, office1, 3 round) + il nuovo flag `--epochs` (aggiunto
+#      2026-08-27 a scripts/run_experiments.py) per trovare empiricamente
+#      quante epoche bastano a far staccare lira_auc_roc da ~0.50.
+#
+#   2. RUN UFFICIALE (quella citata nel paper): config/experiment.yaml
+#      (i 3 siti reali, 10 round, il protocollo standard del progetto) +
+#      `--epochs <valore trovato al passo 1>` — NON questo file. Usare la
+#      config standard invece di un file duplicato evita che i due
+#      config divergano nel tempo (stessa preoccupazione gia' sollevata
+#      altrove in questo progetto per la duplicazione di parametri).
+#
+# Vedi docs/TestRoadmap_DSN2027.md #2 per il comando esatto ed entrambe le
+# fasi. Questo file resta nel repository solo come nota storica di cosa NON
+# fare (scegliere un numero di epoche senza calibrazione) — non cancellato,
+# per coerenza con la convenzione del progetto di non eliminare la
+# cronologia (vedi README, note sugli archivi "non cancellati, spostati").

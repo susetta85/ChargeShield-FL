@@ -1,6 +1,6 @@
 # src/ids/charging_ids.py
 """
-ChargingIDS — Real Intrusion Detection System per Reti EV in FL
+ByzantineDetector — Real Intrusion Detection System per Reti EV in FL
 ===============================================================
 Implementazione concreta di AbstractIDS per ambienti reali di
 colonnine di ricarica EV con Federated Learning.
@@ -453,7 +453,7 @@ class KrumDetector:
         # e 0.8 produce falsi positivi sistematici su nodi legittimi — per
         # questo ogni call site reale (run_ids() in scripts/run_experiments.py)
         # passa esplicitamente 3.5. Allineato qui per chi istanzia la classe
-        # con i default (es. l'esempio d'uso nel docstring di ChargingIDS sotto).
+        # con i default (es. l'esempio d'uso nel docstring di ByzantineDetector sotto).
         threshold: float = 3.5,
     ) -> list[str]:
         """
@@ -474,11 +474,22 @@ class KrumDetector:
         ]
 
 
-# ─── ChargingIDS ──────────────────────────────────────────────────────────────
+# ─── ByzantineDetector ──────────────────────────────────────────────────────────────
 
-class ChargingIDS(AbstractIDS):
+class ByzantineDetector(AbstractIDS):
     """
     IDS reale per reti di colonnine EV in ambiente FL.
+
+    NOTA (2026-09-02, segnalato dall'utente in stile revisore, verificato nel
+    codice): il nome della classe è leggermente fuorviante rispetto
+    all'affermazione di "framework generico" — la logica sotto (Krum/CUSUM/
+    cosine-similarity) NON ha alcun percorso di codice specifico per EV
+    (nessun riferimento a session/kwh/EVSE in nessun metodo), è puro
+    gradient-analysis agnostico al dominio; "Charging" è solo nel nome.
+    Pulizia dei nomi a bassa priorità (es. rinominare in `ByzantineDetector`),
+    da fare se/quando questo diventerà un rilascio effettivo di un framework
+    pubblico — NON una lacuna funzionale, non blocca la submission DSN 2027.
+    Vedi README Sprint 10zz+11.
 
     Integra quattro meccanismi di rilevamento:
     1. CUSUM       → deriva statistica nel tempo (singolo nodo)
@@ -493,7 +504,7 @@ class ChargingIDS(AbstractIDS):
     → disponibile in analyze().
 
     Uso tipico nel FLAREConnector:
-        ids = ChargingIDS()
+        ids = ByzantineDetector()
         # Per ogni nodo (analisi singola):
         alert = ids.analyze(audit_report)
         # Per il round completo (analisi cluster):
@@ -513,7 +524,7 @@ class ChargingIDS(AbstractIDS):
         fedmia: FedMIA | None = None,
     ):
         """
-        Inizializza ChargingIDS con tutti i detector.
+        Inizializza ByzantineDetector con tutti i detector.
 
         Args:
             config_path:          percorso config YAML

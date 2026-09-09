@@ -1,0 +1,85 @@
+# ChargeShield-FL — Canary positive control (Sprint 10vv, 2026-08-31)
+#
+# SCOPO: rispondere a una domanda dell'utente rimasta aperta dal sanity-check
+# a 5 assi (Sprint 10ee-10nn, tutti esiti negativi, AUC 0.48-0.54 ovunque):
+# quel sanity-check dimostra solo che la memorizzazione NATURALE è difficile
+# da indurre su questi dati (più epoche, più capacità, feature più
+# informative, sito diverso) — NON dimostra che l'harness LiRA sarebbe in
+# grado di rilevare una violazione di privacy se ci fosse DAVVERO. Senza
+# quella prova, non possiamo escludere che "modello piccolo + feature
+# aggregate + FedAvg" produca un segnale troppo debole per essere misurato
+# con questo strumento, indipendentemente da quanto la memorizzazione sia
+# effettivamente presente.
+#
+# METODO: "canary insertion" (tecnica standard in letteratura DP/MIA — cfr.
+# Carlini "The Secret Sharer" 2019, Jagielski et al. "Auditing Differentially
+# Private Machine Learning" 2020). 5 sessioni reali del client office1 vengono
+# duplicate 30 volte ciascuna nel suo training set (150 record aggiunti,
+# +11% circa) — amplificando il contributo di ognuna al gradiente di un
+# fattore 30, la manipolazione più diretta e aggressiva possibile per indurre
+# memorizzazione, più diretta di ognuno dei 5 assi già testati. 5 sessioni
+# "gemelle" (stessa provenienza, mai inserite in training) restano
+# nell'holdout per un confronto pulito membro-vs-non-membro ristretto ai soli
+# canary — vedi inject_canaries()/canary_auc_roc in scripts/run_experiments.py.
+#
+# FASE 0 (questo config): 1 seed, no-DP, office1 solo, 3 round — verifica se
+# canary_auc_roc si stacca da 0.5. Se sì, l'harness è confermato sensibile e
+# abbiamo un vero positive control. Se anche questo resta a ~0.5, la
+# conclusione cambia radicalmente (limite strutturale dell'harness, non solo
+# assenza di memorizzazione naturale) — da riportare esplicitamente
+# all'utente, non da assumere.
+#
+# FASE 1 (solo se Fase 0 riesce, NON in questo config): stesso setup con
+# dp-fedavg a vari epsilon, per verificare se la DP sopprime il rilevamento
+# dei canary — la dimostrazione "vulnerabilità reale -> la DP la sopprime"
+# che il case study finora non ha potuto fornire (vedi README Sprint 10uu).
+#
+# Stessa struttura di config/experiment_overfit_calibration.yaml (office1
+# solo, 3 round, economico) — DIFFERENZA: nessuna variazione di
+# hidden_dims/latent_dim/feature_names/epochs rispetto allo storico, perché
+# qui la variabile sotto test è la presenza dei canary stessi, isolata da
+# ogni altro asse già esplorato.
+
+experiment:
+  name: chargeshield_canary_positive_control
+  fl_rounds: 3
+  seed: 42
+  epsilon: 1.0
+  delta: 1.0e-5
+  max_grad_norm: 1.0
+
+sites:
+  office1:
+    - datasets/acn/office1/acndata_sessions_2019.json
+    - datasets/acn/office1/acndata_sessions_2020.json
+    - datasets/acn/office1/acndata_sessions_2021.json
+
+ml:
+  input_dim: 6
+  lr: 0.001
+  epochs: 1000   # stesso valore calibrato in Fase A (Sprint 10ee), non riesplorato qui
+  batch_size: 32
+  proximal_mu: 0.01
+
+canary:
+  enabled: true
+  site: office1
+  n_templates: 5           # lato membro: 5 template × n_duplicates copie ciascuno
+  n_duplicates: 30
+  n_nonmember_templates: 20  # lato non-membro: indipendente da n_templates (fix
+                              # 2026-08-31 — con solo 5 gemelli il primo run ha
+                              # mostrato un singolo outlier capace di ribaltare
+                              # canary_auc_roc da solo; 20 sessioni reali distinte,
+                              # nessuna duplicazione necessaria, riducono quel rischio)
+
+output:
+  experiments_dir: experiments
+
+lira:
+  n_shadow: 8   # ridotto per velocità in questa fase diagnostica, come le altre calibrazioni
+
+byzantine_attack:
+  enabled: false
+  attack_type: gradient_scaling
+  byzantine_node: synthetic_1
+  scale_factor: 10

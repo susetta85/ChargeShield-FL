@@ -51,7 +51,7 @@ class AggregatedUpdate:
 class MLPlaneEvent:
     """
     Evento emesso dal ML Plane ogni volta che cattura un'interazione.
-    Consumato da PrivacyAuditor (FedMIA) e ChargingIDS.
+    Consumato da PrivacyAuditor (FedMIA) e ByzantineDetector.
     """
     event_type: str                     # "gradient_upload" | "aggregation" | "weight_download"
     purdue_level: int                   # 0=Field, 1=Control, 2=Supervisory, 3=Operations
@@ -109,7 +109,7 @@ class AbstractMLModel(ABC):
 class MLPlaneListener(ABC):
     """
     Interfaccia per chi vuole osservare il ML Plane.
-    Implementata da PrivacyAuditor e ChargingIDS.
+    Implementata da PrivacyAuditor e ByzantineDetector.
     """
 
     @abstractmethod

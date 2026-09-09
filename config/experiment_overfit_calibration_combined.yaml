@@ -1,0 +1,63 @@
+# ChargeShield-FL — Calibration config, escalation COMBINATA capacità+feature (2026-08-28)
+#
+# SCOPO: Fase A2 (capacità ~3.3x, da sola: LiRA 0.5294) e Fase A3 (entropia
+# feature, da sola: LiRA 0.5352) sono state testate SEPARATAMENTE, per
+# isolare ogni variabile — nessuna delle due, da sola, ha prodotto un
+# positive-control (Sprint 10jj/10kk/10ll). Su decisione esplicita
+# dell'utente, questo file le combina: se nessuna delle due basta da sola ma
+# l'effetto è congiunto (es. il modello ha finalmente capacità sufficiente
+# PER SFRUTTARE l'informazione aggiuntiva di start_time_epoch, cosa che un
+# modello a capacità storica potrebbe non riuscire a fare comunque), questo
+# è il test che lo rivelerebbe.
+#
+# Stesso sito di Fase A/A2/A3 (office1, per comparabilità diretta con
+# entrambi i risultati precedenti — il quarto asse, sito diverso, è testato
+# separatamente in experiment_overfit_calibration_altsite.yaml), stesso
+# no-DP/3 round/epochs=1000/n_shadow=8.
+#
+# DIFFERENZE rispetto a Fase A: hidden_dims/latent_dim come in
+# experiment_overfit_calibration_bigcap.yaml E feature_names/input_dim come
+# in experiment_overfit_calibration_richfeat.yaml, insieme.
+
+experiment:
+  name: chargeshield_overfit_calibration_combined
+  fl_rounds: 3
+  seed: 42
+  epsilon: 1.0
+  delta: 1.0e-5
+  max_grad_norm: 1.0
+
+sites:
+  office1:
+    - datasets/acn/office1/acndata_sessions_2019.json
+    - datasets/acn/office1/acndata_sessions_2020.json
+    - datasets/acn/office1/acndata_sessions_2021.json
+
+ml:
+  input_dim: 7   # 6 storiche + start_time_epoch — deve combaciare con len(feature_names)
+  lr: 0.001
+  epochs: 1000
+  batch_size: 32
+  proximal_mu: 0.01
+  hidden_dims: [32, 16]   # come Fase A2 — decoder speculare (16, 32) automatico
+  latent_dim: 8
+  feature_names:          # come Fase A3
+    - total_energy_kwh
+    - max_power_kw
+    - kwh_requested
+    - minutes_available
+    - hour_of_day
+    - duration_hours
+    - start_time_epoch
+
+output:
+  experiments_dir: experiments
+
+lira:
+  n_shadow: 8
+
+byzantine_attack:
+  enabled: false
+  attack_type: gradient_scaling
+  byzantine_node: synthetic_1
+  scale_factor: 10

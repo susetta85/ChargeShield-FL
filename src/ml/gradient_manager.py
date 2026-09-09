@@ -312,6 +312,7 @@ class GradientManager(AbstractMLModel):
         global_weights: list[Any],
         weight_keys: list[str] | None = None,
         n_participants: int = 1,
+        participant_n_samples: list[int] | None = None,
     ) -> list[torch.Tensor]:
         """
         Aggiunge UN SOLO rumore Gaussiano all'aggregato FedAvg (central DP).
@@ -320,45 +321,70 @@ class GradientManager(AbstractMLModel):
         Recurrent Language Models"]: il server (trusted) riceve gli update
         raw-ma-clippati (vedi `clip_only()`) di tutti i client, calcola la
         media pesata pulita, poi aggiunge UN SOLO draw di rumore Gaussiano
-        all'aggregato — non uno per client. Questo beneficia della riduzione
-        di sensitività 1/n della media: se ogni update è clippato a
-        max_grad_norm, la sensitività della MEDIA di n update è
-        max_grad_norm/n (assumendo pesi ~uniformi tra client).
+        all'aggregato — non uno per client.
 
-        LIMITE NOTO, NON RISOLTO (trovato/confermato 2026-07-24, review
-        indipendente round 4): `n_participants` qui è un conteggio semplice
-        dei client (sempre 3 per l'esperimento reale — vedi
-        `FedAvgAggregator.aggregate()`, che passa `n_participants=len(valid)`,
-        NON pesato per n_samples), mentre `FedAvgAggregator.aggregate()` fa
-        una media VERAMENTE pesata per n_samples (vedi quel metodo). Con i 3
-        siti reali ACN-Data (Caltech/JPL/Office1) le dimensioni NON sono
-        equamente distribuite (Office1 ha un ordine di grandezza in meno di
-        sessioni rispetto a Caltech/JPL — vedi README "Dataset"): la vera
-        sensitività della media pesata è max_grad_norm × max_i(n_i/N_totale),
-        non max_grad_norm/3. Se il client più grande pesa, es., il 50% del
-        totale, la sensitività reale è ~1.5× più alta di quella assunta qui —
-        `sigma_central` sotto-stima quindi il rumore necessario per la
-        garanzia (ε,δ) nominale dichiarata. Questo NON invalida le misure di
-        AUC-ROC (LiRA/Yeom/Shadow misurano leakage empirico, non dipendono da
-        questa formula), ma va dichiarato esplicitamente nel paper come limite
-        della garanzia DP formale sotto Central DP con siti non bilanciati —
-        non corretto qui perché la correzione (sensitività basata sul vero
-        peso massimo per-round, non un conteggio costante) è una decisione
-        metodologica, non un bugfix ovvio, e cambiarla alla cieca
-        invaliderebbe silenziosamente ogni numero PES/ε già pubblicato
-        (docs/PrivacyExposureScore_v1.md) senza poter verificare l'effetto
-        per esecuzione reale in questo sandbox.
+        FIX 2026-08-31 (Fase 8 — chiude il "LIMITE NOTO" segnalato 2026-07-24
+        e mai risolto): la sensitività della media NON è max_grad_norm/n
+        (quello vale solo per una media UNIFORME, pesi 1/n ciascuno).
+        `FedAvgAggregator.aggregate()` fa una media pesata per n_samples
+        (McMahan et al. 2017); con siti reali ACN-Data di dimensione molto
+        diversa (Office1 un ordine di grandezza più piccolo di Caltech/JPL —
+        vedi README "Dataset"), il "replace-one" worst case è il client con
+        il peso maggiore, non 1/n: la vera sensitività è
+        max_grad_norm × max_i(n_i / N_totale), dove n_i è il conteggio
+        campioni del client i nel round e N_totale la somma di tutti.
+        `participant_n_samples` (lista di n_samples per client di QUESTO
+        round — reperibile da `AggregatedUpdate.metadata["participant_n_samples"]`,
+        popolato da `FedAvgAggregator.aggregate()`) rende questo calcolabile
+        realmente, non assunto. Se non fornito (retro-compatibilità con
+        chiamate esistenti/test), ricade sul comportamento storico
+        (sigma_central = sigma/n_participants, corretto SOLO se i client
+        pesano davvero 1/n ciascuno) con un warning esplicito — mai un
+        fallback silenzioso.
+
+        Impatto sui risultati già pubblicati: questo fix cambia la MAGNITUDO
+        del rumore aggiunto sotto `dp_mode="central"` (più rumore quando i
+        pesi sono sbilanciati, mai meno) — non tocca in alcun modo la
+        misurazione di leakage (LiRA/Yeom/Shadow operano sull'AUC empirico,
+        indipendente da questa formula). I risultati Central DP della
+        campagna 5-seed×8-config (Sprint 10tt) sono stati prodotti con la
+        formula PRECEDENTE (sotto-stimava lievemente il rumore necessario per
+        l'ε nominale dichiarato) — l'AUC composito misurato (≈0.5, nessun
+        leakage) non è messo in discussione da questo fix (più rumore avrebbe
+        semmai spinto l'AUC ancora più vicino a 0.5, mai sopra la soglia), ma
+        l'ε formale dichiarato per quei run specifici era leggermente
+        ottimistico rispetto al rumore realmente applicato — da annotare
+        esplicitamente nel paper (vedi README Sprint-log per la data di
+        questo fix) se si vuole citare l'ε nominale come garanzia esatta per
+        quei run storici, oppure rilanciare Central DP con questo fix per
+        numeri pienamente coerenti.
 
         Args:
             global_weights:  pesi aggregati (puliti) da FedAvgAggregator
             weight_keys:     chiavi state_dict, per escludere i buffer BatchNorm
-            n_participants:  numero di client aggregati questo round (per lo
-                             scaling 1/n della sensitività)
+            n_participants:  numero di client aggregati questo round — usato
+                             SOLO come fallback storico se participant_n_samples
+                             non è fornito.
+            participant_n_samples: n_samples di ciascun client partecipante a
+                             QUESTO round — se fornito, la sensitività usa
+                             max_i(n_i/N) invece di 1/n_participants.
 
         Returns:
-            Lista di tensori con rumore Gaussiano σ/n aggiunto (buffer BN esclusi).
+            Lista di tensori con rumore Gaussiano aggiunto (buffer BN esclusi).
         """
-        sigma_central = self.sigma / max(1, n_participants)
+        if participant_n_samples:
+            total = sum(participant_n_samples) or 1
+            max_weight_fraction = max(participant_n_samples) / total
+        else:
+            logger.warning(
+                "privatize_aggregate() chiamato senza participant_n_samples — "
+                "ricado sul fallback storico sigma/n_participants, corretto "
+                "SOLO se i client pesano davvero 1/n_participants ciascuno "
+                "(non il caso dei 3 siti reali ACN-Data, dimensioni sbilanciate)."
+            )
+            max_weight_fraction = 1.0 / max(1, n_participants)
+
+        sigma_central = self.sigma * max_weight_fraction
         tensors = [
             w if isinstance(w, torch.Tensor) else torch.tensor(w)
             for w in global_weights
@@ -366,7 +392,7 @@ class GradientManager(AbstractMLModel):
         noised = self._add_noise(tensors, weight_keys=weight_keys, sigma=sigma_central)
         logger.debug(
             f"Central DP — rumore sull'aggregato: σ_central={sigma_central:.4f} "
-            f"(σ_singolo={self.sigma:.4f} / n_participants={n_participants})"
+            f"(σ_singolo={self.sigma:.4f} × max_weight_fraction={max_weight_fraction:.4f})"
         )
         return noised
 

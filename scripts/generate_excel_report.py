@@ -1157,6 +1157,27 @@ def build_seed_aggregation(ws, records: list[dict]) -> None:
     dp-fedavg/central/local restano gruppi separati — fix 2026-07-22, review
     A2: senza dp_mode nella chiave, seed di modalità DP diverse allo stesso
     ε finirebbero mediati insieme in una sola riga senza alcun avviso).
+
+    Fix (2026-09-09 — stessa classe di bug trovata e corretta in
+    discover_groups() di check_significance.py, Sprint 10zz+46): questa
+    funzione riceve `records` da UNA sola --experiments-dir (nessun pooling
+    cross-cartella, quindi non il bug esatto di check_significance.py), ma
+    prima di questo fix non deduplicava per seed ALL'INTERNO della stessa
+    sweep-dir — se quella cartella contenesse 2+ file per lo stesso seed
+    (retry dopo crash, o un rerun per aggiungere metriche mancanti, come
+    successo davvero per central-sweep1/2 vs 3/4/6/7), venivano mediati
+    insieme come se fossero seed indipendenti, gonfiando "N Seed" e
+    contaminando mean/std con un duplicato o con dati superati. Verificato
+    su experiments/ reale: nessuna sweep-dir della campagna vera (dp-sweep*,
+    central-sweep*, local-sweep*, nodp-sweep*, entity-split-sweep1) ha
+    attualmente duplicati — solo alcune cartelle diagnostiche (prefisso `_`,
+    es. _calibration_overfit) hanno più run con seed=42 ripetuto, per
+    calibrazione manuale, non pensate per il foglio Seed Aggregation. Il
+    bug era comunque latente (nessun controllo lo impediva) — fix
+    conservativo: dedup per (gruppo, seed), tiene il file più recente
+    (stesso criterio di discover_groups: nome file
+    `experiment_YYYYMMDD_HHMMSS.json` ordina cronologicamente in modo
+    lessicografico).
     """
     import statistics
 
@@ -1203,14 +1224,24 @@ def build_seed_aggregation(ws, records: list[dict]) -> None:
     for col_idx, (label, bg) in enumerate(headers, 1):
         _header_cell(ws.cell(3, col_idx), label, bg=bg)
 
-    # ── Raggruppa records ──────────────────────────────────────────────────────
-    groups: dict[tuple, list[dict]] = {}
+    # ── Raggruppa records, deduplicando per seed (vedi fix 2026-09-09 sopra) ────
+    # Per ogni (gruppo, seed), tiene solo il record col nome file più recente —
+    # analogo a discover_groups() in check_significance.py.
+    _latest_by_seed: dict[tuple, dict] = {}
     for rec in records:
         key = (
             rec["rounds"], rec["epsilon"], rec.get("no_dp", False),
             rec.get("dp_mode", "dp-fedavg"),
         )
-        groups.setdefault(key, []).append(rec)
+        seed = rec.get("seed", 42)
+        bucket = _latest_by_seed.setdefault(key, {})
+        prev = bucket.get(seed)
+        if prev is None or rec.get("file", "") > prev.get("file", ""):
+            bucket[seed] = rec
+
+    groups: dict[tuple, list[dict]] = {
+        key: list(bucket.values()) for key, bucket in _latest_by_seed.items()
+    }
 
     # Ordine: no-DP prima, poi DP crescente per ε e per dp_mode; round crescenti per parità
     def _sort_key(k):

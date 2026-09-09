@@ -87,33 +87,56 @@ mkdir -p "$LOG_DIR"
 # ── Step da eseguire, IN QUEST'ORDINE ───────────────────────────────────────
 # Formato: "slug|comando completo"
 #
-# NOTA 2026-07-25: 'make experiment-nodp-sweep' è stato avviato a mano
-# dall'utente PRIMA di questo script (in corso al momento della scrittura:
-# experiments/nodp-sweep1/, round 2/10) — non ripetuto qui per non
-# ricalcolare ore di lavoro già in corso. Gli step sotto coprono il resto
-# del piano di consolidamento concordato (vedi task #78):
-#   1-2. DP-FedAvg ε=1.0 e ε=0.5, 5 seed ciascuno, a n_shadow=16 (i vecchi
-#        dp-sweep1/dp-sweep2 usavano n_shadow=8, instabile — archiviati in
-#        experiments/_archive_invalid_n_shadow8/, non cancellati).
-#   3-5. Completamento di dp-sweep3 (ε=0.1, DP-FedAvg) con i 3 seed mancanti
-#        (42, 789, 1234) — i seed 123/456 sono già presenti e a n_shadow=16
-#        corretto, quindi qui si aggiunge nella STESSA cartella invece di
-#        crearne una nuova (il target Makefile creerebbe sempre una nuova
-#        dp-sweepN, frammentando i 5 seed in due cartelle diverse).
-#   6-7. Central DP ε=1.0 e ε=0.1, 5 seed ciascuno (oggi solo seed=42
-#        esiste, come file sciolto in experiments/) — si ripete anche
-#        seed=42 per avere una sweep-dir singola e coerente con
-#        aggregazione Seed Aggregation N=5 pulita, invece di spostare a
-#        mano il file sciolto (più semplice, meno rischio di errori manuali,
-#        a costo di poche ore di ricomputo per un solo seed).
+# RISCRITTO 2026-08-26 (sostituisce l'elenco precedente, 2026-07-25):
+# quell'elenco copriva un piano di consolidamento parziale, calcolato PRIMA
+# della catena di 6 fix reali a run_lira() trovati e corretti tra il
+# 2026-08-11 e il 2026-08-21 (pooling cross-cluster, floor sigma simmetrico,
+# esclusione outlier >8σ, ancoraggio μ_in, universo shadow simmetrico — vedi
+# README Sprint 10x-10cc). OGNI numero LiRA raccolto prima di questi fix è
+# invalidato, inclusi tutti gli sweep che quell'elenco produceva — per
+# questo experiments/ è stato ripulito (archiviato, non cancellato: vedi
+# experiments/_archive_20260815_pre_sigma_fix/ e
+# experiments/_archive_20260820_pre_outlier_fix/) e la numerazione delle
+# sweep-dir riparte pulita da 1 per ognuna delle 7 configurazioni.
+#
+# Una verifica preliminare a 4 vie (10 round, no-DP + Central DP locale,
+# più il deployment reale ContainerLab/NVFLARE, più due sweep brevi a
+# ε=8/16) ha già confermato la direzione attesa (AUC≈0.50 ovunque, nessun
+# leakage rilevabile — README Sprint 10dd): questa campagna è il passo di
+# rigore statistico (5 seed × bootstrap CI) che porta quel risultato a
+# livello pubblicabile, non una nuova ricerca esplorativa.
+#
+# RISCRITTO 2026-09-03 (Sprint 10zz+30, task #52/#55) — sostituisce l'elenco
+# precedente (2026-08-26). Motivo: (1) la matrice di config del paper aveva
+# due buchi genuini mai eseguiti (Central/Local DP ε=0.5 — vedi
+# docs/TestRoadmap_DSN2027.md, nuova sezione "Prossimi esperimenti"); (2)
+# ogni config va ora ripetuta comunque per le metriche aggiunte in questa
+# sessione (MIA Advantage/Confusion Matrix, task #41/#49; curve ROC complete
+# + dump per-campione worst-case, task #50/#54) — nessuna di queste è
+# retroattiva sui JSON storici, serve un run reale per popolarle. `DUMP_EXTRAS=1`
+# (nuovo, Makefile) aggiunge --per-sample-dump/--roc-curve-dump-dir per ogni
+# seed automaticamente — zero costo aggiuntivo, dati che altrimenti
+# servirebbe un secondo giro di run per raccogliere.
+#
+# ORDINE DI PRIORITÀ (vedi docs/TestRoadmap_DSN2027.md per il ragionamento
+# completo): prima i due buchi genuini della matrice (mai eseguiti finora),
+# poi DP-FedAvg (il meccanismo primario citato nel paper), poi Central/Local
+# DP ε=1.0/0.1 (hanno già dati preliminari, qui solo backfill metriche), poi
+# la baseline no-DP. Local ε=1.0/0.1 restano attesi identici ai
+# corrispondenti DP-FedAvg in questa simulazione single-process (nota
+# 2026-08-06) — inclusi per completezza/coerenza storica, non perché ci si
+# aspetti un numero diverso.
 STEPS=(
-  "dp-sweep-eps1.0|make experiment-dp-sweep EPS=1.0"
-  "dp-sweep-eps0.5|make experiment-dp-sweep EPS=0.5"
-  "dp-sweep3-seed42|python3 scripts/run_experiments.py --config config/experiment.yaml --epsilon 0.1 --rounds 10 --seed 42 --n-shadow 16 --sweep-dir experiments/dp-sweep3"
-  "dp-sweep3-seed789|python3 scripts/run_experiments.py --config config/experiment.yaml --epsilon 0.1 --rounds 10 --seed 789 --n-shadow 16 --sweep-dir experiments/dp-sweep3"
-  "dp-sweep3-seed1234|python3 scripts/run_experiments.py --config config/experiment.yaml --epsilon 0.1 --rounds 10 --seed 1234 --n-shadow 16 --sweep-dir experiments/dp-sweep3"
-  "central-dp-eps1.0|make experiment-central-dp-sweep EPS=1.0"
-  "central-dp-eps0.1|make experiment-central-dp-sweep EPS=0.1"
+  "central-dp-eps0.5|make experiment-central-dp-sweep EPS=0.5 DUMP_EXTRAS=1"
+  "local-dp-eps0.5|make experiment-local-dp-sweep EPS=0.5 DUMP_EXTRAS=1"
+  "dp-sweep-eps1.0|make experiment-dp-sweep EPS=1.0 DUMP_EXTRAS=1"
+  "dp-sweep-eps0.5|make experiment-dp-sweep EPS=0.5 DUMP_EXTRAS=1"
+  "dp-sweep-eps0.1|make experiment-dp-sweep EPS=0.1 DUMP_EXTRAS=1"
+  "central-dp-eps1.0|make experiment-central-dp-sweep EPS=1.0 DUMP_EXTRAS=1"
+  "central-dp-eps0.1|make experiment-central-dp-sweep EPS=0.1 DUMP_EXTRAS=1"
+  "local-dp-eps1.0|make experiment-local-dp-sweep EPS=1.0 DUMP_EXTRAS=1"
+  "local-dp-eps0.1|make experiment-local-dp-sweep EPS=0.1 DUMP_EXTRAS=1"
+  "nodp-sweep|make experiment-nodp-sweep DUMP_EXTRAS=1"
 )
 
 TOTAL=${#STEPS[@]}

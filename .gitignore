@@ -43,6 +43,12 @@ datasets/raw/
 # remain in git history, no further growth going forward).
 datasets/acn/
 
+# ChargePlace Scotland (task #37, ~144MB) — stesso motivo di datasets/acn/ sopra:
+# dataset pubblico scaricabile (Strathclyde PURE portal), non serve gonfiare la
+# repo. Mai tracciato finora (nuovo untracked trovato 2026-09-09), quindi non
+# serve alcun git rm --cached qui, a differenza della nota sopra per datasets/acn/.
+datasets/alt/
+
 # NVFlare
 workspace/
 startup/

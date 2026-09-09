@@ -56,32 +56,49 @@ class Encoder(nn.Module):
     """
     Encoder dell'autoencoder: comprime l'input in uno spazio latente.
 
-    Architettura: 6 → 16 → 8 → 4
+    Architettura di default: 6 → 16 → 8 → 4
     Usa ReLU nei layer intermedi. Il layer finale non ha attivazione:
     ReLU sull'ultimo layer comprime lo spazio latente in [0,+∞),
     dimezzando la capacità espressiva senza benefici architetturali.
     BatchNorm1d stabilizza il training in FL dove i dati locali
     possono avere distribuzioni molto diverse tra i nodi.
+
+    hidden_dims (aggiunto 2026-08-28, Sprint 10jj — escalation calibrazione
+    LiRA positive-control, vedi docs/TestRoadmap_DSN2027.md): permette di
+    aumentare la capacità del modello SOLO per gli esperimenti che lo
+    richiedono esplicitamente via config['ml']['hidden_dims']. Default
+    None → (16, 8), identico byte-per-byte all'architettura storica usata
+    per tutti i risultati pubblicati finora (570 parametri). Nessun run
+    esistente è affetto a meno che non imposti esplicitamente hidden_dims
+    in YAML.
     """
 
-    def __init__(self, input_dim: int = INPUT_DIM, latent_dim: int = 4):
+    def __init__(
+        self,
+        input_dim: int = INPUT_DIM,
+        latent_dim: int = 4,
+        hidden_dims: tuple[int, int] | None = None,
+    ):
         """
         Args:
-            input_dim:  dimensione dell'input (default 6 feature)
-            latent_dim: dimensione dello spazio latente (default 4)
+            input_dim:   dimensione dell'input (default 6 feature)
+            latent_dim:  dimensione dello spazio latente (default 4)
+            hidden_dims: (h1, h2) dimensioni dei due layer nascosti
+                         dell'encoder (default None → (16, 8), storico)
         """
         super().__init__()
+        h1, h2 = hidden_dims if hidden_dims is not None else (16, 8)
         self.network = nn.Sequential(
-            # Layer 1: 6 → 16
-            nn.Linear(input_dim, 16),
-            nn.BatchNorm1d(16),
+            # Layer 1: input_dim → h1
+            nn.Linear(input_dim, h1),
+            nn.BatchNorm1d(h1),
             nn.ReLU(),
-            # Layer 2: 16 → 8
-            nn.Linear(16, 8),
-            nn.BatchNorm1d(8),
+            # Layer 2: h1 → h2
+            nn.Linear(h1, h2),
+            nn.BatchNorm1d(h2),
             nn.ReLU(),
-            # Layer 3: 8 → 4 (spazio latente — no ReLU: preserva segno)
-            nn.Linear(8, latent_dim),
+            # Layer 3: h2 → latent_dim (spazio latente — no ReLU: preserva segno)
+            nn.Linear(h2, latent_dim),
         )
 
     def forward(self, x: Tensor) -> Tensor:
@@ -101,27 +118,39 @@ class Decoder(nn.Module):
     """
     Decoder dell'autoencoder: ricostruisce l'input dallo spazio latente.
 
-    Architettura: 4 → 8 → 16 → 6
+    Architettura di default: 4 → 8 → 16 → 6
     Usa Sigmoid nell'ultimo layer perché le feature sono normalizzate [0,1].
+
+    hidden_dims: mirror simmetrico dell'Encoder — vedi nota lì (Sprint 10jj,
+    2026-08-28). Default None → (8, 16), storico.
     """
 
-    def __init__(self, latent_dim: int = 4, output_dim: int = INPUT_DIM):
+    def __init__(
+        self,
+        latent_dim: int = 4,
+        output_dim: int = INPUT_DIM,
+        hidden_dims: tuple[int, int] | None = None,
+    ):
         """
         Args:
-            latent_dim: dimensione dello spazio latente (default 4)
-            output_dim: dimensione dell'output (deve essere = input_dim)
+            latent_dim:  dimensione dello spazio latente (default 4)
+            output_dim:  dimensione dell'output (deve essere = input_dim)
+            hidden_dims: (h1, h2) dimensioni dei due layer nascosti del
+                         decoder, nell'ordine di attraversamento
+                         latent→output (default None → (8, 16), storico)
         """
         super().__init__()
+        h1, h2 = hidden_dims if hidden_dims is not None else (8, 16)
         self.network = nn.Sequential(
-            # Layer 1: 4 → 8
-            nn.Linear(latent_dim, 8),
+            # Layer 1: latent_dim → h1
+            nn.Linear(latent_dim, h1),
             nn.ReLU(),
-            # Layer 2: 8 → 16
-            nn.Linear(8, 16),
+            # Layer 2: h1 → h2
+            nn.Linear(h1, h2),
             nn.ReLU(),
-            # Layer 3: 16 → 6 (ricostruzione)
+            # Layer 3: h2 → output_dim (ricostruzione)
             # Sigmoid: output in [0,1] — coerente con feature normalizzate
-            nn.Linear(16, output_dim),
+            nn.Linear(h2, output_dim),
             nn.Sigmoid(),
         )
 
@@ -165,16 +194,26 @@ class Autoencoder(nn.Module):
         input_dim: int = INPUT_DIM,
         latent_dim: int = 4,
         threshold: float = 0.1,
+        hidden_dims: tuple[int, int] | None = None,
     ):
         """
         Args:
-            input_dim:  numero di feature in input (default 6)
-            latent_dim: dimensione spazio latente (default 4)
-            threshold:  soglia MSE per anomalia (calibrata con fit())
+            input_dim:   numero di feature in input (default 6)
+            latent_dim:  dimensione spazio latente (default 4)
+            threshold:   soglia MSE per anomalia (calibrata con fit())
+            hidden_dims: (h1, h2) dei due layer nascosti dell'encoder
+                         (default None → (16, 8), architettura storica a
+                         570 parametri usata per tutti i risultati
+                         pubblicati). Il decoder usa lo stesso hidden_dims
+                         in ordine speculare (h2, h1) per simmetria.
+                         Aggiunto Sprint 10jj (2026-08-28) per l'escalation
+                         di capacità del sanity-check LiRA — vedi
+                         docs/TestRoadmap_DSN2027.md.
         """
         super().__init__()
-        self.encoder = Encoder(input_dim, latent_dim)
-        self.decoder = Decoder(latent_dim, input_dim)
+        decoder_hidden_dims = (hidden_dims[1], hidden_dims[0]) if hidden_dims is not None else None
+        self.encoder = Encoder(input_dim, latent_dim, hidden_dims=hidden_dims)
+        self.decoder = Decoder(latent_dim, input_dim, hidden_dims=decoder_hidden_dims)
 
         # Soglia di anomalia: MSE > threshold → anomalia
         # Viene aggiornata durante fit() con il 95° percentile

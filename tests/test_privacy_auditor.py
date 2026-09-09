@@ -15,7 +15,7 @@ Cosa testiamo:
 Cosa NON testiamo qui:
 - FL internals (FLARE)
 - Dataset o protocolli
-- ChargingIDS (test separati in Sprint 4)
+- ByzantineDetector (test separati in Sprint 4)
 """
 
 import pytest

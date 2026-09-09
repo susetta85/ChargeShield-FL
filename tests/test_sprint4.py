@@ -1,6 +1,6 @@
 # tests/test_sprint4.py
 """
-Unit Tests — Sprint 4: Autoencoder, FedMIA, ChargingIDS
+Unit Tests — Sprint 4: Autoencoder, FedMIA, ByzantineDetector
 ========================================================
 Verifica il comportamento reale dei componenti della Sprint 4.
 
@@ -8,7 +8,7 @@ Cosa testiamo:
 - Autoencoder: forward pass, reconstruction error, anomaly detection,
   training, calibrazione soglia
 - FedMIA: membership score, run_attack, run_cluster_attack
-- ChargingIDS: CUSUM, Krum, cosine similarity, analyze, analyze_round
+- ByzantineDetector: CUSUM, Krum, cosine similarity, analyze, analyze_round
 - CUSUMDetector: warm-up, deriva positiva e negativa
 - KrumDetector: scores, Byzantine detection
 - GradientAnalyzer: cosine similarity, cluster analysis
@@ -27,7 +27,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from core.autoencoder import Autoencoder, Encoder, Decoder, INPUT_DIM
 from plugins.attacks.fedmia import FedMIA, MIAResult
 from ids.charging_ids import (
-    ChargingIDS,
+    ByzantineDetector,
     CUSUMDetector,
     GradientAnalyzer,
     KrumDetector,
@@ -150,8 +150,8 @@ def audit_reports():
 
 @pytest.fixture
 def ids():
-    """ChargingIDS resettato prima di ogni test."""
-    detector = ChargingIDS(
+    """ByzantineDetector resettato prima di ogni test."""
+    detector = ByzantineDetector(
         byzantine_tolerance=1,
         cosine_threshold=0.3,
         krum_threshold=3.5,  # 2026-07-24: allineato alla soglia ricalibrata (era 0.8, pre n=5 fix)
@@ -564,9 +564,9 @@ class TestFedMIA:
             assert "cluster_deviation" in result.metadata
 
 
-# ─── Test ChargingIDS ─────────────────────────────────────────────────────────
+# ─── Test ByzantineDetector ─────────────────────────────────────────────────────────
 
-class TestChargingIDS:
+class TestByzantineDetector:
 
     def test_analyze_no_alert_normal_report(self, ids):
         """
@@ -665,7 +665,7 @@ class TestChargingIDS:
         """
         analyze_round() deve identificare il nodo Byzantine con Krum.
         """
-        ids = ChargingIDS(
+        ids = ByzantineDetector(
         byzantine_tolerance=0,
         cosine_threshold=0.3,
         krum_threshold=0.5,

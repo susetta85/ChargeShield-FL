@@ -25,7 +25,7 @@ già testate della simulazione, invece di InTimeAccumulateWeightedAggregator):
           usata da scripts/run_experiments.py::run_fl_rounds() in simulazione,
           non una re-implementazione (src/ml/fedavg_aggregator.py).
        b) esegue l'equivalente di run_ids() — PrivacyAuditor.audit() per ogni
-          client + ChargingIDS.analyze_round() sul round completo — con la
+          client + ByzantineDetector.analyze_round() sul round completo — con la
           STESSA logica di normalizzazione peer-relative (mediana) e lo
           stesso calcolo del delta rispetto al modello del round precedente
           usati in run_experiments.py::run_ids(). Vedi quella funzione per la
@@ -240,11 +240,20 @@ from nvflare.app_common.abstract.aggregator import Aggregator  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
+# FASE 7 (2026-08-31) — ML Plane realmente wired anche nel deployment NVFLARE:
+# import a livello di modulo intenzionale (non lazy come ml.gradient_manager
+# etc. in _ensure_components()) perché MLPlane/FLArtifactCollector/
+# MLPlaneEvent non toccano torch/nvflare all'import — nessun rischio di
+# introspezione prematura da parte di NVFLARE prima di START_RUN (lo stesso
+# motivo per cui gli altri import restano lazy in _ensure_components()).
+from ml.ml_plane import FLArtifactCollector, MLPlane  # noqa: E402
+from ml.base_ml import MLPlaneEvent  # noqa: E402
+
 
 class ChargeShieldAggregator(Aggregator):
     """
     Sostituisce InTimeAccumulateWeightedAggregator con FedAvgAggregator +
-    PrivacyAuditor + ChargingIDS + GradientManager reali (fase 2+3, vedi
+    PrivacyAuditor + ByzantineDetector + GradientManager reali (fase 2+3, vedi
     docstring del modulo).
 
     Args (da config_fed_server.json):
@@ -263,7 +272,7 @@ class ChargeShieldAggregator(Aggregator):
                      (dp-fedavg, central) — deve combaciare con l'epsilon del
                      client in config_fed_client.json.
         byzantine_tolerance / cosine_threshold / krum_threshold: passati a
-                     ChargingIDS — stessi default di run_ids() (0, 0.3, 3.5).
+                     ByzantineDetector — stessi default di run_ids() (0, 0.3, 3.5).
         dp_mode:     "dp-fedavg" (default) | "central" | "local" — deve
                      combaciare con dp_mode nel config del client. Vedi
                      docstring del modulo per cosa cambia server-side in
@@ -377,6 +386,21 @@ class ChargeShieldAggregator(Aggregator):
         self._auditor = None
         self._ids = None
         self._gm = None  # GradientManager (fase 3) — serve per dp_mode="dp-fedavg"/"central"
+        # FASE 7 (2026-08-31, richiesta esplicita dell'autore dopo il feedback
+        # su "il ML Plane non è realmente usato nel deployment NVFLARE" —
+        # confermato leggendo il codice: prima di questa fase, questo file non
+        # importava né istanziava MLPlane/FLArtifactCollector, e accept()/
+        # aggregate() costruivano _fl_results_history direttamente da variabili
+        # Python locali (received_updates, updates_for_fedavg) — esattamente lo
+        # stesso pattern "morto" che src/ml/ml_plane.py aveva già corretto nella
+        # simulazione (scripts/run_experiments.py::run_fl_rounds()) il
+        # 2026-07-22, ma mai riportato qui). Istanziati in _ensure_components(),
+        # stesso principio lazy-import degli altri componenti sotto.
+        self._mlplane: MLPlane | None = None
+        self._collector: FLArtifactCollector | None = None
+        # FASE 8 (2026-08-31) — vedi _ensure_components()/PrivacyAuditorSubscriber
+        # in src/auditor/privacy_auditor.py.
+        self._auditor_subscriber: Any = None
         # BUG REALE trovato al primo run vero (2026-07-24, `make nvflare-sim-smoke`):
         # _ensure_components() usava "if self._fedavg is not None: return" come
         # guardia di "già inizializzato". Al round 0, PrivacyAuditor(...) ha
@@ -411,23 +435,19 @@ class ChargeShieldAggregator(Aggregator):
         # Rinominato da _prev_raw_global (fase 2) perché con la DP cablata
         # (fase 3) non è più necessariamente "raw" per ogni dp_mode.
         self._prev_global_weights: list[Any] | None = None
-        # Fix 2026-07-22 (review indipendente fresh-pass): _prev_global_weights
-        # sopra è il modello POST-DP effettivamente distribuito ai client (corretto
-        # come reference_weights per il clip lato server di dp-fedavg — è "il
-        # modello che il client ha ricevuto"). Ma _run_ids_analysis() lo usava
-        # ANCHE come baseline per il delta peer-relative dell'IDS — sbagliato:
-        # dal round 2 in poi il rumore DP del round precedente si propaga nella
-        # baseline, gonfiando i delta di ogni client e rischiando falsi
-        # GRADIENT_EXPLOSION/Krum che run_ids() nella simulazione evita apposta
-        # tenendo un raw_global_weights separato (media pulita pre-DP, mai
-        # distribuita, usata SOLO come riferimento IDS — vedi run_fl_rounds()
-        # "Calcola raw_global_weights" e run_ids() "IDS usa pesi PRE-DP").
-        # Questo campo replica esattamente quella separazione: aggiornato a
-        # fine di ogni aggregate() con _raw_global_weights_for_export (già
-        # None sotto dp_mode="local", stessa degradazione attesa e documentata
-        # di run_ids() in quel caso), usato da _run_ids_analysis() al posto di
-        # _prev_global_weights.
-        self._prev_raw_global_weights: list[Any] | None = None
+        # NOTA (Fix 2026-07-22, superata dalla FASE 8 del 2026-08-31): questo
+        # progetto teneva qui un secondo campo, _prev_raw_global_weights, come
+        # baseline SEPARATA (pulita, pre-DP) per il delta peer-relative
+        # dell'IDS — necessaria perché _prev_global_weights sopra è POST-DP
+        # dal round 2 in poi, e usarlo come baseline gonfierebbe i delta con
+        # il rumore del round precedente (falsi GRADIENT_EXPLOSION/Krum).
+        # Da quando PrivacyAuditor è un vero subscriber ML Plane
+        # (PrivacyAuditorSubscriber, src/auditor/privacy_auditor.py), questa
+        # stessa baseline è mantenuta INTERNAMENTE al subscriber
+        # (self._auditor_subscriber, popolata SOLO dalla vista raw — mai
+        # dalla privatizzata, stessa semantica di prima) — il campo qui non
+        # serve più ed è stato rimosso per evitare due fonti di verità per
+        # lo stesso concetto.
 
     # ── Lazy init ────────────────────────────────────────────────────────────
 
@@ -444,7 +464,8 @@ class ChargeShieldAggregator(Aggregator):
         from ml.fedavg_aggregator import FedAvgAggregator
         from ml.gradient_manager import GradientManager
         from auditor.privacy_auditor import PrivacyAuditor
-        from ids.charging_ids import ChargingIDS
+        from auditor.privacy_auditor_subscriber import PrivacyAuditorSubscriber
+        from ids.charging_ids import ByzantineDetector
 
         self._fedavg = FedAvgAggregator({"min_participants": self._min_clients})
         self._auditor = PrivacyAuditor(
@@ -452,7 +473,7 @@ class ChargeShieldAggregator(Aggregator):
             epsilon=self._epsilon,
             explosion_threshold=self._explosion_threshold,
         )
-        self._ids = ChargingIDS(
+        self._ids = ByzantineDetector(
             config_path=self._auditor_config_path,
             byzantine_tolerance=self._byzantine_tolerance,
             cosine_threshold=self._cosine_threshold,
@@ -466,10 +487,45 @@ class ChargeShieldAggregator(Aggregator):
             "delta": self._delta,
             "max_grad_norm": self._max_grad_norm,
         })
+
+        # FASE 7 (2026-08-31) — ML Plane reale: stesso hub/collector usati in
+        # run_fl_rounds() (scripts/run_experiments.py), stessa identità di
+        # classi (src/ml/ml_plane.py), non una re-implementazione. wire()
+        # registra il collector come subscriber di GradientManager e
+        # FedAvgAggregator (entrambi già emettono emit_event() reali — vedi
+        # gradient_manager.py/fedavg_aggregator.py); l'Aggregator NVFLARE
+        # stesso NON eredita AbstractMLModel/subscribe(), quindi per il
+        # confine "client update arrivato in accept(), prima di FedAvg" (il
+        # punto esatto in cui il paper QRS 2026 colloca il Privacy Auditor —
+        # vedi docstring di modulo) emette direttamente su self._mlplane
+        # invece di passare per wire() — vedi accept() sotto.
+        self._mlplane = MLPlane()
+        self._collector = FLArtifactCollector()
+        self._mlplane.subscribe(self._collector)
+        self._mlplane.wire(self._gm, self._fedavg)
+
+        # FASE 8 (2026-08-31) — Privacy Auditor come vero subscriber ML Plane
+        # (non più invocato imperativamente da _run_ids_analysis(), vedi
+        # PrivacyAuditorSubscriber in src/auditor/privacy_auditor.py per il
+        # design completo). Sottoscritto allo STESSO self._mlplane di
+        # self._collector — riceve quindi anche gli eventi "gradient_upload"
+        # emessi direttamente da accept() (non via wire(), vedi commento lì),
+        # oltre a quelli di GradientManager/FedAvgAggregator via wire().
+        self._auditor_subscriber = PrivacyAuditorSubscriber(
+            self._auditor, self._collector, self._max_grad_norm,
+        )
+        self._mlplane.subscribe(self._auditor_subscriber)
+        # Nessuna baseline round-0 disponibile nel vero NVFLARE (stesso KNOWN
+        # GAP già documentato sopra per self._prev_global_weights al round 1
+        # — l'Aggregator non vede mai i pesi di init pre-round-1) — resta
+        # None, comportamento invariato rispetto a _run_ids_analysis() prima
+        # di questa fase.
+
         self._components_ready = True  # solo qui, dopo che TUTTO sopra è riuscito
         logger.info(
             f"ChargeShieldAggregator inizializzato — FedAvgAggregator + "
-            f"PrivacyAuditor + ChargingIDS + GradientManager (fase 3, dp_mode={self._dp_mode})"
+            f"PrivacyAuditor + ByzantineDetector + GradientManager + ML Plane "
+            f"(fase 7, dp_mode={self._dp_mode})"
         )
 
     # ── Aggregator API ───────────────────────────────────────────────────────
@@ -531,6 +587,44 @@ class ChargeShieldAggregator(Aggregator):
             metadata={},
         )
         self._round_updates.append(update)
+
+        # FASE 7 (2026-08-31) — ML Plane reale: questo È il punto in cui il
+        # paper QRS 2026 colloca il Privacy Auditor ("client updates are
+        # temporarily available in server memory before the execution of
+        # FedAvg") — il momento in cui l'update di UN client attraversa
+        # davvero il confine verso il server, nel vero deployment NVFLARE
+        # (a differenza della simulazione, dove questo confine è emulato da
+        # train_local() nello stesso processo). Il livello Purdue dipende da
+        # dp_mode, stessa semantica già usata da _raw_updates_for_export più
+        # sotto (mai una re-invenzione):
+        #   - "dp-fedavg": il client NON applica DP — questo è genuinamente
+        #     RAW (purdue_level=1); il server lo privatizza qui in
+        #     aggregate() (gm.privatize(), che emette il purdue_level=2).
+        #   - "central": il client ha già CLIPPATO (non rumorizzato) — trattato
+        #     come "raw" ai fini IDS/export (stessa scelta già presente nel
+        #     codice esistente, vedi commento su _raw_updates_for_export in
+        #     aggregate()), quindi purdue_level=1 anche qui.
+        #   - "local": il client ha già clippato E rumorizzato — il server
+        #     non vede MAI nulla di meno rumoroso di questo. Emettere questo
+        #     come purdue_level=1 ("raw") sarebbe scorretto: non esiste, lato
+        #     server, nulla di più raw. Emesso invece come purdue_level=2
+        #     (privatizzato) — a differenza della simulazione (dove
+        #     train_local() emette SEMPRE purdue_level=1 anche sotto local DP,
+        #     e solo _store_raw lo nasconde a valle, vedi run_fl_rounds()),
+        #     qui il confine è strutturalmente rispettato: il ML Plane del
+        #     server non raccoglie mai un evento "raw" per local DP, non solo
+        #     non lo esporta. Differenza voluta, non un'incoerenza col
+        #     comportamento della simulazione — da documentare esplicitamente
+        #     nel paper come punto di forza del deployment reale.
+        purdue_level = 2 if self._dp_mode == "local" else 1
+        self._mlplane.on_ml_event(MLPlaneEvent(
+            event_type="gradient_upload",
+            purdue_level=purdue_level,
+            payload=update,
+            round_num=self._round_num + 1,
+            metadata={"dp_mode": self._dp_mode, "nvflare_boundary": "accept"},
+        ))
+
         logger.debug(f"ChargeShieldAggregator.accept: raccolto update da [{node_id}]")
         return True
 
@@ -584,14 +678,30 @@ class ChargeShieldAggregator(Aggregator):
         # SOLO il clipping DP-FedAvg del round 1 usa la semantica "assoluta"
         # invece che "delta" — dal round 2 in poi il comportamento è corretto.
         if self._dp_mode == "dp-fedavg":
-            updates_for_fedavg = [
+            for u in received_updates:
                 self._gm.privatize(
                     u, weight_keys=self._weight_keys, reference_weights=self._prev_global_weights,
                 )
-                for u in received_updates
-            ]
-        else:
-            updates_for_fedavg = received_updates
+            # gm.privatize() sopra ha già emesso un evento purdue_level=2 per
+            # ciascun update — non serve più raccogliere il risultato in una
+            # lista locale.
+
+        # FASE 7 (2026-08-31) — ML Plane reale: updates_for_fedavg letto dal
+        # collector, non da una lista costruita a mano — stesso principio di
+        # `_collected_updates = collector.privatized_updates(round_num)` in
+        # run_fl_rounds(). Semantica per dp_mode (invariata rispetto a prima,
+        # ora genuinamente sourced dagli eventi ML Plane):
+        #   - "dp-fedavg": gm.privatize() sopra ha appena emesso purdue_level=2
+        #     per ogni update di questo round — restituiti direttamente.
+        #   - "central": nessun evento purdue_level=2 per questo round (il
+        #     server non ri-privatizza per-client) → privatized_updates()
+        #     ricade su raw_updates() (purdue_level=1, emesso in accept() —
+        #     gli update già clippati dal client), identico a
+        #     `received_updates` di prima.
+        #   - "local": accept() ha già emesso purdue_level=2 direttamente
+        #     (vedi commento lì) → restituiti senza fallback, identico a
+        #     `received_updates` di prima.
+        updates_for_fedavg = self._collector.privatized_updates(self._round_num)
 
         for u in updates_for_fedavg:
             self._fedavg.collect(u)
@@ -604,14 +714,20 @@ class ChargeShieldAggregator(Aggregator):
         self._run_ids_analysis(received_updates)
 
         # ── Fase 5: raw-update extraction per LiRA/Shadow (vedi docstring modulo) ──
-        # raw_updates/raw_global_weights: None sotto "local" (il server non deve
-        # mai vedere nulla di meno rumoroso di quanto il client ha inviato),
-        # altrimenti received_updates così come arrivati in accept() — stessa
-        # semantica di _store_raw in run_fl_rounds().
-        _raw_updates_for_export = received_updates if self._dp_mode != "local" else None
+        # FASE 7 (2026-08-31): letto dal collector (self._collector.raw_updates()),
+        # non da received_updates direttamente — stessa semantica di prima
+        # (None sotto "local": accept() non emette mai purdue_level=1 in quel
+        # dp_mode, quindi raw_updates() restituirebbe [] — normalizzato
+        # esplicitamente a None qui per preservare il contratto esistente di
+        # _fl_results_history["raw_updates"], letto da scripts/run_nvflare_mia.py
+        # e coerente con _store_raw in run_fl_rounds()), ora genuinamente
+        # sourced dagli eventi ML Plane invece che dalla lista locale.
+        _raw_updates_for_export = (
+            self._collector.raw_updates(self._round_num) if self._dp_mode != "local" else None
+        )
         _raw_global_weights_for_export = (
-            self._weighted_average_weights(received_updates)
-            if _raw_updates_for_export is not None else None
+            self._weighted_average_weights(_raw_updates_for_export)
+            if _raw_updates_for_export else None
         )
 
         if aggregated is None or not aggregated.global_weights:
@@ -628,7 +744,27 @@ class ChargeShieldAggregator(Aggregator):
                 aggregated.global_weights,
                 weight_keys=self._weight_keys,
                 n_participants=aggregated.n_participants or self._min_clients,
+                # FASE 8 (2026-08-31, fix sensibilità pesata) — vedi
+                # GradientManager.privatize_aggregate() per il perché.
+                participant_n_samples=list(
+                    aggregated.metadata.get("participant_n_samples", {}).values()
+                ),
             )
+            # FASE 7 (2026-08-31) — ML Plane reale: self._fedavg.aggregate()
+            # sopra ha già emesso un evento "aggregation" con l'aggregato
+            # PULITO (pre-rumore central). privatize_aggregate() modifica
+            # aggregated.global_weights in-place — senza questa ri-emissione,
+            # self._collector.aggregation(round_num) restituirebbe l'aggregato
+            # sbagliato (senza rumore), mentre è quello rumorizzato che viene
+            # davvero distribuito ai client — stessa identica ri-emissione già
+            # presente in run_fl_rounds() (scripts/run_experiments.py) per lo
+            # stesso motivo.
+            self._fedavg.emit_event(MLPlaneEvent(
+                event_type="aggregation",
+                purdue_level=3,
+                payload=aggregated,
+                round_num=self._round_num,
+            ))
 
         # Aggiorna il riferimento per il clip server-side di dp-fedavg al
         # prossimo round — è il modello che verrà distribuito a tutti i client
@@ -636,13 +772,10 @@ class ChargeShieldAggregator(Aggregator):
         # central-DP sopra — corretto qui, perché è esattamente "il modello che
         # il client riceverà").
         self._prev_global_weights = aggregated.global_weights
-        # Fix 2026-07-22: baseline SEPARATA e pulita (pre-DP) per il prossimo
-        # _run_ids_analysis() — NON aggiornata da aggregated.global_weights
-        # (che sopra include il rumore). _raw_global_weights_for_export è già
-        # stato calcolato sopra con la stessa semantica di run_fl_rounds()
-        # (None sotto dp_mode="local", altrimenti media pesata degli update
-        # raw di QUESTO round) — lo riusiamo qui invece di ricalcolarlo.
-        self._prev_raw_global_weights = _raw_global_weights_for_export
+        # NOTA (FASE 8, 2026-08-31): la baseline separata e pulita (pre-DP)
+        # per l'IDS/Auditor non è più mantenuta qui — self._auditor_subscriber
+        # l'ha già aggiornata da sé, reagendo all'evento "aggregation" appena
+        # emesso sopra (vedi PrivacyAuditorSubscriber._handle_round_complete()).
 
         # ── Fase 5 (continua): entry fl_results-compatibile per questo round ──
         # Stesso schema esatto di run_fl_rounds() (vedi docstring modulo) —
@@ -676,59 +809,28 @@ class ChargeShieldAggregator(Aggregator):
 
     def _run_ids_analysis(self, updates: list[Any]) -> None:
         """
-        Stessa logica di run_ids() nella simulazione, ridotta a UN round (qui
-        l'aggregatore vede un round alla volta, non l'intero fl_results):
-        delta rispetto al modello del round precedente, normalizzazione
-        peer-relative (mediana → max_grad_norm), audit per client, Krum sul
-        cluster. Vedi scripts/run_experiments.py::run_ids() per la
-        spiegazione completa dei fix (Sprint 9) replicati qui.
+        FASE 8 (2026-08-31): non calcola più delta/norme/audit a mano — li
+        legge da self._auditor_subscriber (src/auditor/privacy_auditor.py::
+        PrivacyAuditorSubscriber), un vero subscriber ML Plane che ha già
+        reagito all'evento "aggregation" di questo round (emesso da
+        self._fedavg.aggregate(), chiamato PRIMA di questo metodo in
+        aggregate() sopra — dispatch sincrono, quindi i report sono già
+        pronti quando arriviamo qui). Stessa formula esatta di prima (mediana
+        → max_grad_norm, fix Sprint 9 GRADIENT_EXPLOSION) — vedi
+        PrivacyAuditorSubscriber per il dettaglio completo, non duplicato qui.
 
-        Fase 4 (2026-07-22, sera): oltre a loggare, ora costruisce una entry
-        strutturata in self._audit_history[self._round_num] nello stesso
-        formato di ids_results in run_ids() (vedi quella funzione), e la
-        esporta su JSON via _export_results() — vedi docstring del modulo.
+        Il parametro `updates` (ancora passato dal chiamante per compatibilità
+        di firma) non è più usato per il calcolo: il subscriber legge
+        autonomamente da self._collector, che ha la stessa identica vista
+        "raw preferito, privatizzato come fallback" che `updates` rappresentava.
+
+        Fase 4 (2026-07-22, sera): costruisce una entry strutturata in
+        self._audit_history[self._round_num] nello stesso formato di
+        ids_results in run_ids() (vedi quella funzione), e la esporta su
+        JSON via _export_results() — invariato rispetto a prima.
         """
-        import numpy as np
-        import torch
-
-        client_deltas: dict[str, list] = {}
-        client_norms: dict[str, float] = {}
-
-        for u in updates:
-            weights = u.weights or []
-            # Fix 2026-07-22: baseline PRE-DP dedicata (_prev_raw_global_weights),
-            # non _prev_global_weights (che è POST-DP dal round 2 in poi) — vedi
-            # commento su _prev_raw_global_weights nell'__init__ per il perché.
-            if self._prev_raw_global_weights is not None and len(self._prev_raw_global_weights) == len(weights):
-                delta = [
-                    (w.float() if isinstance(w, torch.Tensor) else torch.tensor(float(w)))
-                    - (g.float() if isinstance(g, torch.Tensor) else torch.tensor(float(g)))
-                    for w, g in zip(weights, self._prev_raw_global_weights)
-                ]
-            else:
-                delta = [
-                    w.float() if isinstance(w, torch.Tensor) else torch.tensor(float(w))
-                    for w in weights
-                ]
-            l2_sq = sum(float(dw.norm() ** 2) for dw in delta)
-            client_deltas[u.node_id] = delta
-            client_norms[u.node_id] = float(np.sqrt(max(l2_sq, 1e-12)))
-
-        if client_norms:
-            sorted_norms = sorted(client_norms.values())
-            median_norm = sorted_norms[(len(sorted_norms) - 1) // 2]
-            scale = self._max_grad_norm / median_norm if median_norm >= 1e-4 else 1.0
-        else:
-            scale = 1.0
-
-        reports: dict[str, Any] = {}
-        gradients: dict[str, dict[str, Any]] = {}
-        for node_id, delta in client_deltas.items():
-            model_update = {f"layer_{i}": dw * scale for i, dw in enumerate(delta)}
-            reports[node_id] = self._auditor.audit(
-                node_id=node_id, round_id=self._round_num, model_update=model_update,
-            )
-            gradients[node_id] = {f"layer_{i}": dw for i, dw in enumerate(delta)}
+        reports = self._auditor_subscriber.reports_for_round(self._round_num)
+        gradients = self._auditor_subscriber.gradients_for_round(self._round_num)
 
         if not reports:
             self._audit_history[self._round_num] = {
@@ -741,7 +843,7 @@ class ChargeShieldAggregator(Aggregator):
         analysis = self._ids.analyze_round(self._round_num, reports, gradients)
         if getattr(analysis, "byzantine_nodes", None):
             logger.warning(
-                f"Round {self._round_num}: ChargingIDS ha rilevato nodi Byzantine: "
+                f"Round {self._round_num}: ByzantineDetector ha rilevato nodi Byzantine: "
                 f"{analysis.byzantine_nodes}"
             )
         else:

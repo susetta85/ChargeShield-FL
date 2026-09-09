@@ -32,7 +32,7 @@
 > - §4 describes a 9-step constructor-injection orchestrator (`ConfigLoader`, `DatasetFactory`,
 >   `AdapterFactory`, `AttackFactory`, `FlareConnector`) that does not exist. The real orchestration
 >   is the imperative `scripts/run_experiments.py::main()`, which instantiates `ACNDataset`,
->   `AutoencoderTrainer`, `FedAvgAggregator`, `ChargingIDS`, and `PrivacyAuditor` directly.
+>   `AutoencoderTrainer`, `FedAvgAggregator`, `ByzantineDetector`, and `PrivacyAuditor` directly.
 > - §9/§10 describe four per-role Docker images (`chargeshield/node|server|auditor|ids`) and a
 >   12-node, 4-cluster (`highway`/`urban`/`residential`/`corporate`) Containerlab topology with a
 >   WireGuard overlay and a `scripts/validate_topology.py` pre-flight check. None of this exists.
@@ -51,6 +51,15 @@
 > picture of the whole architecture in the meantime, read `README.md`, `docs/Architecture.md`
 > (which carries its own dated correction notice at the top for the same class of drift), and
 > `docs/NVFlareIntegration.md`.
+>
+> **Added 2026-09-04 (found during a documentation audit, task #69/#71) — §12 was missed by the
+> 2026-08-07 pass above and has the same problem.** §12.3's fixture code imports
+> `from src.core.config import ExperimentConfig, FLConfig, DPConfig, MIAConfig` and calls
+> `ExperimentConfig(...)` — this Pydantic schema doesn't exist, same as §1/§2/§4 above; the real
+> config is the plain-dict `yaml.safe_load()` result from `load_config()`. §12's Sprint table also
+> references `tests/test_sprint6.py`, which doesn't exist in `tests/` (21 real files today, none
+> named that). Treat §12 as unreviewed/aspirational like §1/§2/§4/§9/§10/§11, not as a working
+> example to copy.
 
 ---
 
@@ -175,7 +184,7 @@ chargeshield-fl/
 │   ├── experiment.yaml              # THE config read by scripts/run_experiments.py — FL rounds,
 │   │                                 # DP (epsilon/delta/max_grad_norm), the 3 real ACN-Data
 │   │                                 # sites, ML hyperparameters, LiRA n_shadow, Byzantine sweep
-│   ├── auditor.yaml                 # Read by PrivacyAuditor + ChargingIDS (both simulation and
+│   ├── auditor.yaml                 # Read by PrivacyAuditor + ByzantineDetector (both simulation and
 │   │                                 # ChargeShieldAggregator) — DP mechanism/budget, alert threshold
 │   ├── clusters.yaml, datasets.yaml, framework.yaml,
 │   │   nodes.yaml, protocols.yaml, flare.yaml,
@@ -216,7 +225,7 @@ chargeshield-fl/
 │   │   └── ml_plane.py              # MLPlane + FLArtifactCollector — the real event hub wired
 │   │                                 # into run_fl_rounds() (see §3's note below and Task 3(a)
 │   │                                 # cross-reference in docs/Architecture.md §4.5).
-│   ├── ids/charging_ids.py          # ChargingIDS — Krum + CUSUM + cosine-similarity Byzantine/
+│   ├── ids/charging_ids.py          # ByzantineDetector — Krum + CUSUM + cosine-similarity Byzantine/
 │   │                                 # anomaly detection, called directly (no registry) by
 │   │                                 # run_ids() and by ChargeShieldAggregator._run_ids_analysis().
 │   ├── plugins/attacks/
@@ -226,7 +235,7 @@ chargeshield-fl/
 │   │   │                             # run_fedmia_shadow()/run_lira() (scripts/run_experiments.py)
 │   │   │                             # — see §5.4 for the full contract.
 │   │   └── fedmia.py                # CONFIRMED unused/orphaned — not in ATTACK_REGISTRY, not
-│   │                                 # called by ChargingIDS or anything else live. Do not confuse
+│   │                                 # called by ByzantineDetector or anything else live. Do not confuse
 │   │                                 # with run_fedmia() above (different mechanism, same name).
 │   ├── auditor/privacy_auditor.py   # PrivacyAuditor — DP accounting + threat detection, called
 │   │                                 # imperatively (direct function call, not event subscription)
@@ -255,7 +264,7 @@ chargeshield-fl/
 │   ├── jobs/chargeshield_poc/app/custom/
 │   │   ├── chargeshield_executor.py    # Real NVFLARE client Executor wrapping AutoencoderTrainer.
 │   │   └── chargeshield_aggregator.py  # Real NVFLARE server Aggregator wrapping FedAvgAggregator +
-│   │                                    # PrivacyAuditor + ChargingIDS + GradientManager.
+│   │                                    # PrivacyAuditor + ByzantineDetector + GradientManager.
 │   ├── project.yml                  # NVFLARE provisioning manifest — server + 3 real sites
 │   │                                 # (caltech/jpl/office1) + admin console.
 │   ├── sim_workspace/                # `nvflare simulator` scratch output — gitignored, regenerated
@@ -301,7 +310,7 @@ the confirmed-dead OT-layer code (`src/nodes/`, `src/adapters/ocpp16_adapter.py`
 **`src/core/`** — Abstract base classes and the autoencoder architecture. `base_attack.py`
 (`BaseAttack`) is the one abstract interface with a real, live implementation graph (§5.4); the
 node/adapter/dataset/auditor/IDS base classes exist mainly to support the dead `src/nodes/`/
-`src/adapters/ocpp16_adapter.py`/`src/flare/` scaffolding — the real `ACNDataset`, `ChargingIDS`,
+`src/adapters/ocpp16_adapter.py`/`src/flare/` scaffolding — the real `ACNDataset`, `ByzantineDetector`,
 and `PrivacyAuditor` classes are called directly by `scripts/run_experiments.py`, not through these
 interfaces.
 
@@ -324,7 +333,7 @@ reading `src/ml/ml_plane.py` and `scripts/run_experiments.py::run_fl_rounds()` d
 
 > **`AutoencoderTrainer` DataLoader note.** The `DataLoader` used for local training is constructed with `drop_last=True`, to avoid a batch of size 1 producing zero-variance `BatchNorm1d` activations (NaN) and crashing the forward pass.
 
-**`src/ids/`** — `ChargingIDS` (Krum + CUSUM + cosine-similarity, not LSTM-based) is instantiated
+**`src/ids/`** — `ByzantineDetector` (Krum + CUSUM + cosine-similarity, not LSTM-based) is instantiated
 and called directly by `run_ids()` (simulation) and `ChargeShieldAggregator._run_ids_analysis()`
 (NVFLARE) — no `IDS_REGISTRY` exists; see §5.5.
 
@@ -349,7 +358,7 @@ clarification kept in sync there.
 
 **`tests/`** — pytest suite. `test_sprint4.py`/`test_sprint5.py` mock NVFLARE; `test_run_experiments_integration.py` exercises the real `run_fl_rounds()`/`run_fedmia()`/`run_lira()`/`run_ids()` pipeline end-to-end with reduced parameters (seconds, not minutes). All three require `torch`.
 
-**`nvflare/jobs/chargeshield_poc/app/custom/`** — The real NVFLARE integration: `chargeshield_executor.py` (client Executor) and `chargeshield_aggregator.py` (server Aggregator, replacing NVFLARE's built-in `InTimeAccumulateWeightedAggregator` with `FedAvgAggregator` + `PrivacyAuditor` + `ChargingIDS` + `GradientManager`). See `docs/NVFlareIntegration.md` for the full history, and this file's own module docstrings for the (small, documented) set of remaining open points around round-counting.
+**`nvflare/jobs/chargeshield_poc/app/custom/`** — The real NVFLARE integration: `chargeshield_executor.py` (client Executor) and `chargeshield_aggregator.py` (server Aggregator, replacing NVFLARE's built-in `InTimeAccumulateWeightedAggregator` with `FedAvgAggregator` + `PrivacyAuditor` + `ByzantineDetector` + `GradientManager`). See `docs/NVFlareIntegration.md` for the full history, and this file's own module docstrings for the (small, documented) set of remaining open points around round-counting.
 
 **`docker/`, `Dockerfile.node`** — Orphaned. Five per-role Dockerfiles under `docker/` and a
 top-level `Dockerfile.node` are leftovers from the superseded Sprint 5 per-role container design;
@@ -440,7 +449,7 @@ aggregator = FedAvgAggregator(config.fl, gradient_manager)
 
 # 5. Instantiate IDS (depends on autoencoder architecture from config)
 ids_instances = {
-    node.node_id: ChargingIDS(config, gradient_manager)
+    node.node_id: ByzantineDetector(config, gradient_manager)
     for cluster in config.clusters
     for node in cluster.nodes
 }
@@ -504,7 +513,7 @@ ChargeShield-FL is designed to be extended without modifying existing code. This
 > kept below as illustrative design sketches for extending `src/nodes/`, `src/adapters/
 > ocpp16_adapter.py`, and `src/ids/` — code that is itself confirmed dead/single-implementation
 > (see §3's "Directory Roles"). `ACNDataset` (the one dataset loader actually used) is instantiated
-> directly by `scripts/run_experiments.py`, not looked up through a registry; `ChargingIDS` is the
+> directly by `scripts/run_experiments.py`, not looked up through a registry; `ByzantineDetector` is the
 > only IDS class in the live pipeline, instantiated directly by `run_ids()` /
 > `ChargeShieldAggregator`. Treat 5.1/5.2/5.3/5.5 as "if you were going to build this, here is a
 > reasonable shape" rather than "this mechanism exists today".
@@ -928,7 +937,7 @@ The `compute_advantage()` method is mandatory. Additionally implement `compute_a
 
 ### 5.5 Adding a New IDS Detector
 
-**When to use this extension point.** A new IDS detector is required when the autoencoder-based anomaly detection in `ChargingIDS` is insufficient — for example, a one-class SVM detector, an isolation forest detector, or a sequence-based LSTM detector.
+**When to use this extension point.** A new IDS detector is required when the autoencoder-based anomaly detection in `ByzantineDetector` is insufficient — for example, a one-class SVM detector, an isolation forest detector, or a sequence-based LSTM detector.
 
 **Step 1: Create the IDS class.**
 
@@ -990,7 +999,7 @@ Add to `src/ids/__init__.py`:
 
 ```python
 IDS_REGISTRY: dict[str, type] = {
-    "autoencoder": ChargingIDS,
+    "autoencoder": ByzantineDetector,
     "lstm": LSTMChargeIDS,
 }
 ```
@@ -1022,7 +1031,7 @@ surface as read directly from `scripts/run_experiments.py` and the two YAML file
 mechanism: it opens the file passed via `--config` (every real Makefile target passes
 `config/experiment.yaml`) and calls `yaml.safe_load()` on it — no schema class, no Pydantic
 validation, no `ConfigLoader`. A second file, `config/auditor.yaml`, is loaded separately by
-`PrivacyAuditor`/`ChargingIDS` for DP-budget and alert-threshold parameters. These two files are
+`PrivacyAuditor`/`ByzantineDetector` for DP-budget and alert-threshold parameters. These two files are
 the entire real configuration surface. Every other YAML file under `config/`
 (`clusters.yaml`, `datasets.yaml`, `framework.yaml`, `nodes.yaml`, `protocols.yaml`, `flare.yaml`,
 and everything under `config/nodes/`) is read only by the confirmed-dead OT-layer code
@@ -1096,7 +1105,7 @@ config_fed_{server,client}.json` (see `docs/NVFlareIntegration.md`), and Contain
 ### 6.3 Auditor Configuration (`config/auditor.yaml`)
 
 The second (and last) file actually read by the live pipeline, consumed by `PrivacyAuditor` and
-`ChargingIDS` (both the simulation path via `run_ids()` and the NVFLARE path via
+`ByzantineDetector` (both the simulation path via `run_ids()` and the NVFLARE path via
 `ChargeShieldAggregator`):
 
 ```yaml
@@ -1382,7 +1391,7 @@ this section described a WireGuard-based inter-cluster VPN; that was aspirationa
 
 | Image | Dockerfile | Role |
 |---|---|---|
-| `chargeshield/node` | `infra/docker/Dockerfile.node` | FL client node. Runs the ChargingNode, AutoencoderTrainer, GradientManager, and ChargingIDS. One container per FL participant (12 total). |
+| `chargeshield/node` | `infra/docker/Dockerfile.node` | FL client node. Runs the ChargingNode, AutoencoderTrainer, GradientManager, and ByzantineDetector. One container per FL participant (12 total). |
 | `chargeshield/server` | `infra/docker/Dockerfile.server` | FL aggregation server. Runs the NVFLARE server and FedAvgAggregator. One container per experiment. |
 | `chargeshield/auditor` | `infra/docker/Dockerfile.auditor` | Privacy auditor. Runs the PrivacyAuditor and the configured attack plugin. One container per experiment. Reads the gradient store from a shared Docker volume. |
 | `chargeshield/ids` | `infra/docker/Dockerfile.ids` | Standalone IDS evaluation container. Used for offline IDS performance evaluation; not deployed in federated training runs. |

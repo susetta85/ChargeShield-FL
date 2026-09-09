@@ -32,6 +32,13 @@ flare = [
                        # contro le API/semantiche di 2.7.2 (stessa versione in
                        # Dockerfile.flare) — >=2.4 non lo escludeva ma non lo dichiarava
 ]
+viz = [
+    "matplotlib>=3.7",  # 2026-09-03, task #54 — solo per scripts/plot_roc_log_scale.py
+                        # (plot ROC log-log, richiesto dopo la discussione su Carlini
+                        # et al. 2022). Import lazy nello script stesso: nessun altro
+                        # modulo del progetto dipende da matplotlib, quindi resta un
+                        # extra opzionale invece che una dipendenza core.
+]
 
 
 [build-system]

@@ -35,4 +35,18 @@ class YeomAttack(BaseAttack):
     ) -> dict[int, dict[str, Any]]:
         from run_experiments import run_fedmia  # noqa: PLC0415 (lazy, vedi docstring)
 
-        return run_fedmia(cfg, train_sessions, holdout_sessions, fl_results)
+        # Sprint 10zz+29 (2026-09-03, task #54) — stesso meccanismo di
+        # per_sample_dump_path in lira.py: la directory arriva da kwargs
+        # (passata a TUTTI gli attacchi da main()), qui costruiamo il file
+        # specifico per Yeom dentro quella directory. None se il flag CLI
+        # --roc-curve-dump-dir non è stato passato (default, zero impatto).
+        _roc_dir = kwargs.get("roc_curve_dump_dir")
+        _roc_path = None
+        if _roc_dir is not None:
+            import os  # noqa: PLC0415 (lazy, coerente col resto del modulo)
+            _roc_path = os.path.join(_roc_dir, "roc_curves_yeom.json")
+
+        return run_fedmia(
+            cfg, train_sessions, holdout_sessions, fl_results,
+            roc_curve_dump_path=_roc_path,
+        )
