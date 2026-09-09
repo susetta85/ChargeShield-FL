@@ -36,6 +36,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from adapters.acn_dataset import ACNDataset
+from adapters.chargeplace_scotland_adapter import ChargePlaceScotlandDataset
 from auditor.privacy_auditor import PrivacyAuditor
 from auditor.privacy_auditor_subscriber import PrivacyAuditorSubscriber
 from core.autoencoder import Autoencoder
@@ -133,11 +134,80 @@ _SITE_ID_TO_NAME = {
 }
 
 
+def load_sessions_chargeplace_scotland(cfg: dict) -> list[dict[str, Any]]:
+    """
+    Carica sessioni EV da ChargePlace Scotland (task #37, adapter aggiunto
+    2026-09-09 — vedi src/adapters/chargeplace_scotland_adapter.py).
+
+    A differenza di ACN-Data (un file per sito), ChargePlace Scotland ha un
+    set di file MENSILI condivisi che coprono tutte le 32 council area
+    scozzesi insieme — il raggruppamento per sito (site_id = local_authority)
+    avviene DOPO il caricamento, filtrando a `cfg["chargeplace_scotland"]["clients"]`
+    (lista di nomi di local_authority esatti, es. "Glasgow City"). Sessioni di
+    council area non in questa lista vengono scartate qui, PRIMA che arrivino
+    a group_sessions_by_site() — altrimenti risulterebbero in 32 client FL
+    invece dei client scelti.
+
+    LIMITE NOTO (da tenere presente leggendo i risultati): questo dataset non
+    ha equivalenti di kwh_requested/minutes_available (sempre 0.0/0, vedi
+    adapter) — 2 delle 6 feature di input (input_dim=6, vedi cfg["ml"]) sono
+    quindi costanti per ogni sessione. compute_feature_stats() gestisce già
+    fmax==fmin senza errori (fallback fmin+1.0), quindi non c'è un crash o un
+    NaN, ma il modello ha di fatto solo 4 feature informative invece di 6 —
+    diverso da ACN-Data, da menzionare se questi risultati finiscono nel paper.
+    """
+    section = cfg.get("chargeplace_scotland") or {}
+    session_paths = section.get("session_files") or []
+    metadata_dir = section.get("metadata_dir")
+    clients = set(section.get("clients") or [])
+    if not session_paths or not metadata_dir:
+        raise ValueError(
+            "cfg['chargeplace_scotland'] deve avere 'session_files' e 'metadata_dir' "
+            "quando cfg['dataset_adapter'] == 'chargeplace_scotland'"
+        )
+
+    dataset = ChargePlaceScotlandDataset()
+    resolved_paths = [str(PROJECT_ROOT / p) for p in session_paths]
+    dataset.load_with_metadata(
+        session_paths=resolved_paths,
+        metadata_dir=str(PROJECT_ROOT / metadata_dir),
+    )
+    all_sessions = [dataset.get_sample(i) for i in range(len(dataset))]
+    logger.info(f"ChargePlace Scotland: {len(all_sessions)} sessioni totali caricate (tutte le council area)")
+
+    if clients:
+        sessions = [s for s in all_sessions if s.get("site_id") in clients]
+        logger.info(
+            f"ChargePlace Scotland: {len(sessions)} sessioni dopo il filtro client "
+            f"({sorted(clients)}) — {len(all_sessions) - len(sessions)} scartate (altre council area)"
+        )
+    else:
+        sessions = all_sessions
+        logger.warning(
+            "cfg['chargeplace_scotland']['clients'] vuoto — usando TUTTE le 32 council "
+            "area come client FL separati (probabilmente non voluto, verifica il config)"
+        )
+
+    if not sessions:
+        raise ValueError(
+            f"Nessuna sessione trovata per i client richiesti: {sorted(clients)} — "
+            "controlla che i nomi in cfg['chargeplace_scotland']['clients'] combacino "
+            "esattamente con i valori di local_authority in CPID_and_local_authority.xlsx"
+        )
+    return sessions
+
+
 def load_sessions(cfg: dict) -> list[dict[str, Any]]:
     """
-    Carica sessioni EV da ACN-Data, da TUTTI i siti/anni elencati in
-    cfg["sites"] (2026-07-22: sostituisce il precedente cfg["datasets"] — un
-    solo dataset condiviso affettato arbitrariamente in 4 "cluster" fittizi).
+    Carica sessioni EV — da ACN-Data (default, comportamento storico) o da
+    ChargePlace Scotland (task #37) se cfg["dataset_adapter"] ==
+    "chargeplace_scotland". Il default resta "acn" per retrocompatibilità
+    totale: nessun config esistente (config/experiment.yaml e derivati) è
+    affetto da questo dispatch, perché nessuno di essi imposta questa chiave.
+
+    Per ACN-Data: carica da TUTTI i siti/anni elencati in cfg["sites"]
+    (2026-07-22: sostituisce il precedente cfg["datasets"] — un solo dataset
+    condiviso affettato arbitrariamente in 4 "cluster" fittizi).
     cfg["sites"] è {nome_sito: [path_anno1, path_anno2, ...]} — ogni sito reale
     combina tutti gli anni disponibili in un unico pool (stessa logica già
     usata per jpl_2019+jpl_2020 prima di oggi, ora per sito invece che globale).
@@ -145,9 +215,13 @@ def load_sessions(cfg: dict) -> list[dict[str, Any]]:
     Restituisce una lista PIATTA (stesso contratto di sempre — compute_feature_stats/
     normalize_sessions/il train-holdout split lavorano su questa lista intera).
     L'appartenenza al sito reale di ciascuna sessione resta comunque disponibile
-    nel campo "site_id" (estratto da ACNDataset) — vedi group_sessions_by_site()
-    per il raggruppamento usato da run_fl_rounds()/run_lira().
+    nel campo "site_id" (estratto da ACNDataset/ChargePlaceScotlandDataset) —
+    vedi group_sessions_by_site() per il raggruppamento usato da
+    run_fl_rounds()/run_lira().
     """
+    if cfg.get("dataset_adapter") == "chargeplace_scotland":
+        return load_sessions_chargeplace_scotland(cfg)
+
     sessions: list[dict[str, Any]] = []
     sites_cfg = cfg.get("sites") or cfg.get("datasets") or {}
     for site_name, paths in sites_cfg.items():

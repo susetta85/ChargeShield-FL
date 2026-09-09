@@ -1,0 +1,107 @@
+# ChargeShield-FL — Experiment Configuration: ChargePlace Scotland (task #37)
+# Usato da: scripts/run_experiments.py --config config/experiment_chargeplace_scotland.yaml
+#
+# Stessa struttura di config/experiment.yaml (ACN-Data) — vedi quel file per
+# la spiegazione dettagliata di ogni parametro DP/ML/LiRA, non ripetuta qui.
+# Le uniche differenze reali sono la sezione "chargeplace_scotland" al posto
+# di "sites", e dataset_adapter: chargeplace_scotland che dice a load_sessions()
+# (scripts/run_experiments.py) di usare ChargePlaceScotlandDataset invece di
+# ACNDataset.
+#
+# LIMITI NOTI DI QUESTO DATASET (vedi src/adapters/chargeplace_scotland_adapter.py
+# per il dettaglio):
+# - user_id sempre None → NON abilitare mai --entity-aware-split con questo
+#   config: il dataset non ha il concetto di utente, solo di charge point (CPID).
+# - kwh_requested/minutes_available sempre 0.0/0 → 2 delle 6 feature di input
+#   (input_dim=6 sotto) sono costanti per ogni sessione di questo dataset.
+#   compute_feature_stats()/normalize_sessions() gestiscono già fmax==fmin senza
+#   crash (fallback fmin+1.0) — non c'è un bug, ma il modello ha di fatto solo
+#   4 feature informative invece di 6. Da menzionare esplicitamente se questi
+#   risultati finiscono nel paper.
+
+experiment:
+  name: chargeshield_chargeplace_scotland
+  fl_rounds: 10   # stesso protocollo di config/experiment.yaml, per comparabilità diretta
+  seed: 42
+  epsilon: 1.0
+  delta: 1.0e-5
+  max_grad_norm: 1.0
+
+dataset_adapter: chargeplace_scotland
+
+# Client FL: top-3 council area per volume di sessioni (decisione utente,
+# 2026-09-09) — mirror diretto della struttura a 3 siti di ACN-Data
+# (caltech/jpl/office1), per massima comparabilità con i risultati già nel
+# paper. Conteggi reali verificati (2026-09-09, tutti i 18 file mensili):
+#   Glasgow City       260347 sessioni
+#   East Ayrshire       215198 sessioni
+#   City of Edinburgh   213351 sessioni
+# (le altre 29 council area, es. North Lanarkshire 187478/Dundee City 180608,
+# NON sono incluse in questo config — restano disponibili in
+# CPID_and_local_authority.xlsx per un eventuale ampliamento futuro dei client).
+chargeplace_scotland:
+  metadata_dir: datasets/alt/chargeplace_scotland/CPID_information
+  clients:
+    - Glasgow City
+    - East Ayrshire
+    - City of Edinburgh
+  session_files:
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/October22.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/November22.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/DEC-22.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/JAN-23.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/FEB-2023.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/March23.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/April23.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/MAY23.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/JUNE-23.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/JULY-23.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/AUG-23.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/SEP-23.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/OCT-23.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/NOV-23.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/DEC-23.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/JAN-24.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/FEB-24.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/MARCH-24.xlsx
+    # Tutti e 18 i mesi disponibili (Oct22-Mar24) sono inclusi qui — vedi la
+    # nota SMOKE TEST in fondo al file per come ridurre temporaneamente lo
+    # scope per un primo test rapido, prima della campagna piena.
+
+ml:
+  input_dim: 6
+  lr: 0.001
+  epochs: 50
+  batch_size: 32
+  proximal_mu: 0.01
+
+output:
+  experiments_dir: experiments
+
+lira:
+  n_shadow: 16
+
+byzantine_attack:
+  enabled: false
+  attack_type: gradient_scaling
+  byzantine_node: synthetic_1
+  scale_factor: 10
+
+# ── SMOKE TEST (da fare PRIMA della campagna piena — vedi risposta in chat) ──
+# Il sottoinsieme di 3 council area sopra (Glasgow City + East Ayrshire + City
+# of Edinburgh) totalizza ~688.896 sessioni — circa 10.3× le 66.713 sessioni
+# totali di ACN-Data (3 siti, tutti gli anni) su cui la campagna paper (10
+# config × 5 seed) ha impiegato ~108 ore/6485 min wall-clock. Il tempo NON è
+# garantito scalare linearmente (dipende da quanti shadow LiRA vengono
+# ri-addestrati e su quanti dati), va misurato empiricamente, non assunto.
+#
+# Per un primo smoke test rapido (1 config, 1 seed, tempo contenuto) PRIMA di
+# lanciare la campagna piena, ridurre temporaneamente session_files sopra a
+# 2-3 mesi soli (es. solo OCT-23.xlsx + NOV-23.xlsx) e lanciare:
+#   python scripts/run_experiments.py --config config/experiment_chargeplace_scotland.yaml \
+#       --rounds 10 --dry-run   # prima verifica che carichi senza errori
+#   python scripts/run_experiments.py --config config/experiment_chargeplace_scotland.yaml \
+#       --rounds 10             # smoke test reale, no-DP, cronometrato
+# Ripristinare la lista completa dei 17 mesi sopra solo dopo aver visto il
+# tempo reale del smoke test e deciso insieme che la campagna piena è
+# sostenibile prima della deadline abstract (2026-11-25).

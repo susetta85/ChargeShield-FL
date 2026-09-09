@@ -502,3 +502,92 @@ class TestRunIDS:
         # (a)... (b)...") ed era semplicemente sbagliato per lo scenario testato.
         # Rimosso invece di "correggerne il messaggio", perché non c'è nessuna
         # invariante di design che garantisca l'assenza di BUDGET_EXHAUSTED qui.
+
+
+# ── load_sessions() dispatch: ACN-Data (default) vs ChargePlace Scotland (task #37) ──
+# Aggiunto 2026-09-09: load_sessions() ora sceglie l'adapter in base a
+# cfg["dataset_adapter"] (default "acn", retrocompatibile al 100%). Questi
+# test verificano SOLO il dispatch/filtro client — non l'intera pipeline FL,
+# già coperta sopra e indipendente dal dataset sorgente (entrambi gli adapter
+# rispettano lo stesso contratto AbstractDataset/FEATURE_NAMES).
+class TestLoadSessionsChargePlaceScotland:
+    CHARGEPLACE_DIR = PROJECT_ROOT / "datasets" / "alt" / "chargeplace_scotland"
+    OCT_23 = str(CHARGEPLACE_DIR / "Sessions_from_CPS" / "OCT-23.xlsx")
+    NOV_23 = str(CHARGEPLACE_DIR / "Sessions_from_CPS" / "NOV-23.xlsx")
+    METADATA_DIR = str(CHARGEPLACE_DIR / "CPID_information")
+
+    def _cfg(self, clients):
+        return {
+            "dataset_adapter": "chargeplace_scotland",
+            "chargeplace_scotland": {
+                "metadata_dir": "datasets/alt/chargeplace_scotland/CPID_information",
+                "clients": clients,
+                "session_files": [
+                    "datasets/alt/chargeplace_scotland/Sessions_from_CPS/OCT-23.xlsx",
+                    "datasets/alt/chargeplace_scotland/Sessions_from_CPS/NOV-23.xlsx",
+                ],
+            },
+        }
+
+    def test_default_adapter_is_acn_unaffected(self):
+        """
+        Nessuna chiave dataset_adapter (comportamento di TUTTI i config esistenti,
+        inclusi quelli che hanno prodotto i risultati già nel paper) deve continuare
+        a passare per il percorso ACN-Data, non essere intercettata dal nuovo dispatch.
+        """
+        cfg = {"sites": {}}
+        # sites vuoto -> load_sessions() solleva FileNotFoundError (percorso ACN),
+        # NON l'errore di validazione di ChargePlace Scotland: conferma che il
+        # dispatch non è stato preso.
+        with pytest.raises(FileNotFoundError):
+            run_exp.load_sessions(cfg)
+
+    def test_filters_to_requested_clients_only(self):
+        """Solo le sessioni delle council area richieste devono restare, le altre scartate."""
+        cfg = self._cfg(["Glasgow City"])
+        sessions = run_exp.load_sessions_chargeplace_scotland(cfg)
+        assert len(sessions) > 0
+        assert all(s["site_id"] == "Glasgow City" for s in sessions)
+
+    def test_multiple_clients_all_present(self):
+        """Con più client richiesti, le sessioni di entrambi devono essere presenti."""
+        cfg = self._cfg(["Glasgow City", "City of Edinburgh"])
+        sessions = run_exp.load_sessions_chargeplace_scotland(cfg)
+        site_ids = {s["site_id"] for s in sessions}
+        assert site_ids == {"Glasgow City", "City of Edinburgh"}
+
+    def test_unknown_client_name_yields_empty_raises(self):
+        """
+        Un nome di council area sbagliato/inesistente deve sollevare un errore
+        esplicito, non restituire silenziosamente un dataset vuoto (che
+        produrrebbe un crash oscuro molto più a valle, nel training FL).
+        """
+        cfg = self._cfg(["Nonexistent Council Area"])
+        with pytest.raises(ValueError, match="Nessuna sessione trovata"):
+            run_exp.load_sessions_chargeplace_scotland(cfg)
+
+    def test_missing_config_section_raises(self):
+        """cfg['chargeplace_scotland'] mancante/incompleto deve fallire in modo esplicito."""
+        cfg = {"dataset_adapter": "chargeplace_scotland"}
+        with pytest.raises(ValueError, match="chargeplace_scotland"):
+            run_exp.load_sessions_chargeplace_scotland(cfg)
+
+    def test_load_sessions_dispatches_to_chargeplace_scotland(self):
+        """load_sessions() (l'entry point usato da tutta la pipeline) deve
+        effettivamente prendere il percorso ChargePlace Scotland quando richiesto,
+        non solo la funzione dedicata chiamata direttamente."""
+        cfg = self._cfg(["Glasgow City"])
+        sessions = run_exp.load_sessions(cfg)
+        assert len(sessions) > 0
+        assert all(s["site_id"] == "Glasgow City" for s in sessions)
+
+    def test_kwh_requested_and_minutes_available_are_constant_zero(self):
+        """
+        Limite noto documentato nell'adapter e nel config: queste 2 delle 6
+        feature di input sono sempre 0 per ChargePlace Scotland — verificato
+        qui per evitare che smetta di essere vero senza che nessuno se ne accorga.
+        """
+        cfg = self._cfg(["Glasgow City"])
+        sessions = run_exp.load_sessions_chargeplace_scotland(cfg)
+        assert all(s["kwh_requested"] == 0.0 for s in sessions[:200])
+        assert all(s["minutes_available"] == 0 for s in sessions[:200])

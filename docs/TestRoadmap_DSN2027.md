@@ -627,10 +627,21 @@ design prese scrivendo l'adapter:
   (NaN).
 
 Rafforzerebbe il claim da "nessun leakage rilevabile su ACN-Data" a "...replicato su un secondo
-dataset EV indipendentemente raccolto". **Non ancora fatto**: wiring dell'adapter in
-`scripts/run_experiments.py` (serve decidere quali/quante council area usare come client FL) e un
-primo run reale di training+MIA su questi dati. Non bloccante: il claim su un solo dataset resta
-pubblicabile, solo più stretto nello scope dichiarato.
+dataset EV indipendentemente raccolto". **Aggiornamento 2026-09-09**: wiring completato —
+`scripts/run_experiments.py::load_sessions()` sceglie l'adapter via `cfg["dataset_adapter"]`
+(default "acn", retrocompatibile al 100% con ogni config esistente), nuovo
+`config/experiment_chargeplace_scotland.yaml` con i 3 client scelti dall'utente (Glasgow City,
+East Ayrshire, City of Edinburgh — top-3 per volume, 688.896 sessioni totali). 6 nuovi test in
+`tests/test_run_experiments_integration.py` (non eseguibili in questo sandbox, richiedono torch —
+da eseguire sulla macchina reale). **Non ancora fatto**: uno smoke test cronometrato (vedi nota nel
+config) prima della campagna piena — il sottoinsieme scelto è ~10.3× più grande di tutto ACN-Data
+(66.713 sessioni, 3 siti, tutti gli anni) su cui la campagna da 10 config × 5 seed ha impiegato
+~108 ore/6485 min: il tempo NON scala necessariamente lineare con la dimensione dati, va misurato
+prima di lanciare la campagna piena, non assunto. Limite noto verificato: kwh_requested e
+minutes_available sono sempre 0 in questo dataset (nessun equivalente di userInputs di ACN-Data) —
+2 delle 6 feature di input sono quindi costanti, gestito senza crash da compute_feature_stats() ma
+da menzionare se questi risultati finiscono nel paper. Non bloccante: il claim su un solo dataset
+resta pubblicabile, solo più stretto nello scope dichiarato.
 
 ### 7. Sweep IDS/Byzantine n=5 (task #50)
 
