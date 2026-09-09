@@ -13,9 +13,10 @@ Owner task: #63 (v1, this document) / #64 (v2/full, blocked on Gradient Inversio
 > Sprint 10dd) — the "first nonzero PES_v1" and "most damning PES_v1" readings below were computed
 > from AUC numbers that are now known to be substantially an artifact, not real leakage. **The PES
 > formula itself (`L(AUC)`/`strength(ε)`/`U_cost` below) is unaffected and remains valid** — it is
-> a generic function of whatever AUC/ε pair you feed it. Once the 5-seed × 8-config bootstrap
-> campaign (README task #1) produces corrected numbers, this document's worked examples should be
-> recomputed from those, not from the values below.
+> a generic function of whatever AUC/ε pair you feed it. **Aggiornamento 2026-09-09**: la campagna
+> a 5-seed × 10-config (task #52) è ora completa e questo documento è stato aggiornato con i
+> numeri corretti (vedi tabella più sotto) — le cifre invalidate qui sopra restano solo come
+> storico di cosa è stato superato, non vanno più cercate altrove nel documento.
 
 > **Addendum (2026-08-31, Fase 8) — the ε fed into `strength(ε)` is a nominal noise-calibration
 > parameter, not a proven formal (ε,δ)-DP guarantee for the training procedure actually used.**
@@ -213,32 +214,42 @@ PES v1.1 — una proposta nuova di questo progetto, da dichiarare come tale nel 
 `PES_v1.1 = None` (non 0): non esiste un soffitto ε contro cui normalizzare, diverso da
 `strength(ε)=0` di v1, che è invece un valore definito ("nessuna promessa di privacy da violare").
 
-**Risultato reale (2026-09-02), calcolato retroattivamente su TUTTA la campagna già completata**
-(`python3 scripts/compute_pes.py`, nessun nuovo run necessario — richiede solo
-`mean_lira_auc_roc`/`config.epsilon`/`config.delta`, sempre salvati, più `tpr_at_fpr_0.01`
-dell'ultimo round, disponibile per ogni run eseguito dopo Sprint 10pp 2026-08-28):
+**AGGIORNAMENTO 2026-09-09 (post task #52/#73) — tabella sotto sostituita con i numeri
+DEFINITIVI**, ricalcolati con `python3 scripts/compute_pes.py` dopo il completamento della
+campagna a 10 configurazioni (task #52) e il fix del bug di pseudo-replicazione in
+`discover_groups()` (task #73, di cui `compute_pes.py` beneficia automaticamente essendo
+importato da `check_significance.py`). La tabella precedente (2026-09-02) usava solo 8
+configurazioni (mancavano central/local ε=0.5) e il gruppo no-DP era ancora conflazionato con
+`entity-split-sweep1` (n=10 invece di 5) — entrambi i problemi sono ora risolti: **ogni gruppo
+sotto ha esattamente n=5 file** (verificato, un file per seed).
 
 | Sweep | ε | n file | PES_v1 (range) | PES_v1.1 (range, dove disponibile) |
 |---|---|---|---|---|
-| dp-sweep1 (dp-fedavg) | 1.0 | 5 | 0.0000–0.0003 | N/A (predata Sprint 10pp) |
-| dp-sweep2 (dp-fedavg) | 0.5 | 5 | 0.0000–0.0012 | N/A per 4/5 (predata Sprint 10pp), 0.0005 per 1 |
-| dp-sweep3 (dp-fedavg) | 0.1 | 5 | 0.0000–0.0024 | 0.0000–0.0009 |
-| central-sweep1 | 1.0 | 5 | 0.0000–0.0013 | 0.0000–0.0043 |
-| central-sweep2 | 0.1 | 5 | 0.0000–0.0029 | 0.0000–0.0234 |
-| local-sweep1 | 1.0 | 5 | 0.0000–0.0003 | 0.0000–0.0053 |
-| local-sweep2 | 0.1 | 5 | 0.0000–0.0024 | 0.0000–0.0009 |
-| nodp-sweep1 / entity-split-sweep1 | — (no-DP) | 10 | 0.0000 (per costruzione) | N/A (nessun ε da normalizzare) |
+| dp-sweep4 (dp-fedavg) | 1.0 | 5 | 0.0000–0.0003 | 0.0000–0.0053 |
+| dp-sweep5 (dp-fedavg) | 0.5 | 5 | 0.0000–0.0012 | 0.0000–0.0066 |
+| dp-sweep6 (dp-fedavg) | 0.1 | 5 | 0.0000–0.0024 | 0.0000–0.0009 |
+| central-sweep6 | 1.0 | 5 | 0.0000–0.0018 | 0.0000–0.0029 |
+| central-sweep5 | 0.5 | 5 | 0.0000–0.0010 | 0.0000–0.0023 |
+| central-sweep7 | 0.1 | 5 | 0.0000–0.0036 | 0.0000–0.0309 |
+| local-sweep4 | 1.0 | 5 | 0.0000–0.0003 | 0.0000–0.0053 |
+| local-sweep3 | 0.5 | 5 | 0.0000–0.0012 | 0.0000–0.0066 |
+| local-sweep5 | 0.1 | 5 | 0.0000–0.0024 | 0.0000–0.0009 |
+| nodp-sweep2 | — (no-DP) | 5 | 0.0000 (per costruzione) | N/A (nessun ε da normalizzare) |
+
+(`dp-fedavg`/`local` mostrano numeri identici allo stesso ε — atteso e già documentato, README
+nota 2026-08-06: le due modalità coincidono in questa simulazione single-process.)
 
 **Lettura onesta**: sia PES_v1 sia PES_v1.1 restano vicinissimi a zero in OGNI configurazione DP
-già testata (central/dp-fedavg/local, ε∈{1.0,0.5,0.1}) — coerente, con due formulazioni
+ora testata — tutte e 9 le combinazioni central/dp-fedavg/local × ε∈{1.0,0.5,0.1}, incluse le 2
+(central/local ε=0.5) assenti dalla tabella precedente — coerente, con due formulazioni
 indipendenti, con il risultato principale già pubblicato (AUC LiRA composito 0.4995–0.5005
-ovunque, Sprint 10tt). Nessuna configurazione mostra il "PES alto" che il metric fu progettato per
-segnalare (ε nominale piccolo ma leakage reale) — perché, semplicemente, non c'è leakage reale da
-segnalare in questa architettura/dataset, con nessuna delle due normalizzazioni. Questo NON
-invalida il disegno della metrica (progettata correttamente per catturare quel caso, se si fosse
-presentato) — conferma solo, con un secondo strumento più teoricamente fondato (v1.1 normalizza
-contro il bound di Humphries et al. 2020, non contro un peso euristico come v1), la stessa
-conclusione null-leakage già stabilita.
+ovunque, task #52, confermato con Wilcoxon reale). Nessuna configurazione mostra il "PES alto" che
+il metric fu progettato per segnalare (ε nominale piccolo ma leakage reale) — perché,
+semplicemente, non c'è leakage reale da segnalare in questa architettura/dataset, con nessuna
+delle due normalizzazioni. Questo NON invalida il disegno della metrica (progettata correttamente
+per catturare quel caso, se si fosse presentato) — conferma solo, con un secondo strumento più
+teoricamente fondato (v1.1 normalizza contro il bound di Humphries et al. 2020, non contro un peso
+euristico come v1), la stessa conclusione null-leakage già stabilita.
 
 **Nota sui valori PES_v1 diversi da zero (2026-08-28/29/30, es. 0.0029, 0.0024)**: non sono errori
 — corrispondono a run in cui `mean_lira_auc_roc` è marginalmente sopra 0.5 per varianza campionaria
