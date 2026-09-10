@@ -196,9 +196,13 @@ from __future__ import annotations
 
 import json
 import logging
+import random
 import sys
 from pathlib import Path
 from typing import Any
+
+import numpy as np
+import torch
 
 # BUG REALE trovato al primo run vero (2026-07-24, `make nvflare-sim-smoke`) —
 # vedi il commento identico e più dettagliato in chargeshield_executor.py.
@@ -314,9 +318,62 @@ class ChargeShieldAggregator(Aggregator):
         dp_mode: str = "dp-fedavg",
         results_export_path: str = "experiments/nvflare_ids_audit_results.json",
         fl_results_export_path: str = "experiments/nvflare_fl_results.pkl",
+        # FIX 2026-09-10 (bug reale trovato investigando perché il round 1 di
+        # nvflare_ids_audit_results_*.json era byte-identico su TUTTI e 5 i
+        # seed della campagna Step B, e anche sul run dp_mode="central"):
+        # config_fed_client.json ha sempre avuto un campo "seed", ma veniva
+        # usato SOLO lato client (chargeshield_executor.py: split train/holdout
+        # + shuffle del DataLoader) — MAI per seedare l'inizializzazione dei
+        # pesi del modello globale, che il persistor NVFLARE
+        # (PTFileModelPersistor, componente successivo nella lista
+        # "components" di config_fed_server.json) crea una sola volta,
+        # deterministicamente uguale ad ogni submit_job, indipendentemente dal
+        # seed dichiarato. A differenza della simulazione single-process
+        # (scripts/run_experiments.py::main(), che chiama
+        # random.seed/np.random.seed/torch.manual_seed(seed) PRIMA di
+        # costruire il modello), qui non esisteva alcun punto che seedasse il
+        # RNG globale di torch prima della costruzione del persistor. Fix:
+        # nuovo parametro opt-in `seed` (default None, retro-compatibile con
+        # qualunque job/test esistente che non lo passi — nessun cambio di
+        # comportamento se omesso), seedato qui in __init__() PRIMA che
+        # NVFLARE costruisca il componente successivo della lista (il
+        # persistor, che istanzia l'Autoencoder) — l'ordine dei componenti in
+        # config_fed_server.json (aggregator prima di persistor, già fissato
+        # nel fix 2026-07-24 per un motivo di sys.path diverso) rende questo
+        # sicuro: l'intero __init__ di ChargeShieldAggregator, incluso questo
+        # seeding, completa prima che PTFileModelPersistor venga costruito.
+        # config_fed_server.json aggiornato per passare lo STESSO valore di
+        # "seed" già presente in config_fed_client.json (stesso principio
+        # "DEVONO combaciare, nessuna validazione incrociata automatica" già
+        # documentato per epsilon/delta/dp_mode). Non tocca in alcun modo le
+        # conclusioni MIA già raccolte (LiRA/Yeom/Shadow leggono raw_updates
+        # dal pickle, non l'inizializzazione del modello) — i 5 run dp-fedavg
+        # e il run central già completati restano validi per quello che
+        # misurano; il fix vale per le campagne NVFLARE future (es. la
+        # variazione di epsilon o il DP mode "local" ancora da fare), che ora
+        # avranno un round 1 genuinamente seed-dipendente come in simulazione.
+        seed: int | None = None,
     ):
         super().__init__()
         self._auditor_config_path = str(_PROJECT_ROOT / auditor_config_path)
+        self._seed = seed
+        if seed is not None:
+            random.seed(seed)
+            np.random.seed(seed)
+            torch.manual_seed(seed)
+            logger.info(
+                f"ChargeShieldAggregator — seed={seed} applicato a "
+                "random/numpy/torch PRIMA della costruzione del persistor "
+                "(fix 2026-09-10: l'inizializzazione del modello globale ora "
+                "dipende dal seed della campagna, come nella simulazione)."
+            )
+        else:
+            logger.warning(
+                "ChargeShieldAggregator — nessun seed passato: "
+                "l'inizializzazione del modello globale NON è seedata "
+                "(comportamento storico pre-2026-09-10) — round 1 identico "
+                "tra run diversi che non passano questo parametro."
+            )
         # Fix 2026-07-24 (bug reale trovato dall'utente sul primo
         # `make nvflare-sim-smoke -n 1`): min_clients=3 è corretto per il
         # deploy reale (3 siti ACN-Data), ma rende STRUTTURALMENTE impossibile
