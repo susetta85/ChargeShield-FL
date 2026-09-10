@@ -148,6 +148,26 @@ parametrica per due motivi dichiarati, verificati sul testo (non a memoria):
    sfruttato in questo progetto (nessuna query augmentation, coerente con un target
    autoencoder/non-immagine), ma un limite dichiarabile esplicitamente, non un'omissione silenziosa.
 
+**Quanti shadow model, e come vengono generati i loro dati di training (aggiunto 2026-09-09, su
+domanda esplicita dell'utente)**: `n_shadow` è impostato a **16 per cluster/sito** (default in
+`config/experiment.yaml`, commentato esplicitamente come "buona qualità, consigliato per il paper
+submission" — 8 resta disponibile solo per iterazione rapida/smoke test). Con i **3 siti reali**
+del progetto (Caltech/JPL/Office1), questo significa **48 shadow model addestrati per round**, non
+16 in totale — ognuno riaddestrato ogni round con warm-start (non da zero), come previsto dalla
+costruzione LiRA di Carlini et al. 2022 citata sopra.
+
+I dati di training di ciascuno shadow **non sono sintetici**: `run_lira()` (righe ~2774-2828 di
+`scripts/run_experiments.py`) campiona ogni shadow da un pool di sessioni REALI specifico del suo
+sito — l'unione delle sessioni membro (usate nel training FL reale di quel sito) e delle sessioni
+hold-out (mai viste dal training FL, riservate come pool di non-membri) — poi partiziona
+casualmente quel pool in IN/OUT per costruire le due distribuzioni Gaussiane per-shadow. Non viene
+generato alcun dato sintetico (né tramite ricerca hill-climbing sullo spazio degli input, né tramite
+statistiche di popolazione, né tramite perturbazione di dati reali con feature invertite): l'intero
+pool di training degli shadow è dati ACN-Data realmente osservati. Questo riflette il modello di
+minaccia del progetto — un aggregatore FL semi-onesto ha per costruzione accesso diretto a dati
+reali della stessa distribuzione (le sessioni degli altri client/round), quindi non ha bisogno di
+sintetizzarli.
+
 **Sì, è importante da citare nel paper**: non è solo "abbiamo implementato LiRA", è "abbiamo
 implementato la variante PARAMETRICA di LiRA, la stessa scelta e per le stesse ragioni degli
 autori originali" — una frase in più nella sezione metodologia che preempta la domanda naturale di
@@ -556,6 +576,26 @@ post-fix (corretti) nella stessa media — un errore reale se fosse rimasto nel 
 finale per central resta comunque dentro 0.5 dopo la correzione. Nessun risultato già pubblicato
 altrove in questo progetto dipendeva dai numeri "central" pre-fix.
 
+**Nota esplicita (aggiunta 2026-09-09, per anticipare la domanda di un revisore che confronti le
+righe della tabella sopra): perché le righe `dp-fedavg` e `local` sono IDENTICHE, valore per
+valore, ad ogni ε?** Non è un errore né una tabella duplicata per sbaglio — è un risultato atteso
+e già verificato indipendentemente su dati reali (confermato di nuovo il 2026-09-09 confrontando
+`experiments/local-sweep2` e `experiments/dp-sweep6`, stesso seed=42/ε=0.1: `mean_auc_roc`
+identico bit-per-bit, 0.49887861868608124 in entrambi). Il motivo è architetturale, non
+statistico: nella simulazione single-process, sia `dp-fedavg` che `local` applicano clip+rumore
+tramite la STESSA funzione, `GradientManager.privatize()` (vedi `src/ml/gradient_manager.py`) —
+l'unica differenza dichiarata fra i due modi è SE questa chiamata avviene concettualmente "lato
+client, prima dell'invio" (`local`) o "lato server, subito dopo la ricezione, prima di ogni altra
+elaborazione" (`dp-fedavg`). In una simulazione senza un vero confine di processo/rete fra client
+e server, queste due collocazioni collassano nella stessa operazione sugli stessi dati — da cui
+l'identità numerica. **`central` non è affetto da questa identità** perché usa un meccanismo
+strutturalmente diverso, `GradientManager.privatize_aggregate()` (un solo draw di rumore
+sull'aggregato pesato, non un draw indipendente per client) — e infatti le sue righe nella tabella
+sopra sono genuinamente diverse dalle altre due, non un artefatto della stessa collisione. Questa
+identità dp-fedavg≡local NON si è riprodotta nel deployment NVFLARE reale multi-container (dove
+client e server sono processi/container separati con RNG indipendenti) — coerente con la
+spiegazione data, non una contraddizione.
+
 ---
 
 ## 9. Privacy Exposure Score (PES) v1
@@ -650,6 +690,18 @@ TN = n_non_membri - FP
 ```
 Il dict restituito include anche `threshold` e `advantage` (ricalcolato, per verifica incrociata
 con §10) oltre ai quattro conteggi e ai totali di classe `n_members`/`n_nonmembers`.
+
+**Nota (aggiunta 2026-09-09): perché non riportiamo precision/recall/F1 come metriche principali.**
+Il progetto NON calcola/riporta precision (`TP/(TP+FP)`), recall (`TP/(TP+FN)`, equivalente al TPR
+a quella soglia) o F1 come metriche a sé — ma sono banalmente derivabili dai quattro conteggi
+TP/FN/FP/TN sopra, se servissero per un confronto diretto con lavori che le usano. La scelta di non
+enfatizzarle come principali è deliberata, non un'omissione: precision/recall richiedono di fissare
+UNA soglia operativa (qui quella che massimizza Youden J), mentre la valutazione MIA di questo
+progetto segue esplicitamente la critica di Carlini et al. 2022 (citata in §2/§3) secondo cui una
+metrica a soglia singola nasconde il comportamento nella coda a basso-FPR, che è la zona
+rilevante per un attaccante realistico — da cui la scelta di riportare AUC-ROC, TPR@FPR-fisso (§2)
+e Advantage (§10) come indicatori primari, con i conteggi assoluti di questa sezione come
+supplemento leggibile, non come sostituto.
 
 ---
 

@@ -21,13 +21,28 @@
 > already corrected in `docs/ThreatModel.md`/`docs/CaseStudies.md` — the real, deployed topology is
 > 5 plain nodes. AUC≈0.5172 is cited here as a current/settled number; it is a pre-fix reading (see
 > `docs/ThreatModel.md` §6.5) — the corrected, Wilcoxon-confirmed result is AUC~0.4992–0.5018,
-> no detectable leakage at any tested configuration. The §13 checklist marks the statistical
-> significance campaign as "Not Started" — it is in fact complete and confirmed
-> (`docs/MetricsReference_DSN2027.md` §8). `docs/Research_Roadmap.md` has a more complete addendum
-> (2026-08-28) covering some of this same drift, itself also not fully propagated through that
+> no detectable leakage at any tested configuration. (Note: the "§13 checklist" referenced in an
+> earlier draft of this notice does not exist in this document — that item belongs to
+> `docs/Research_Roadmap.md`'s own §13 Publication Readiness Checklist, corrected there on
+> 2026-09-09.) `docs/Research_Roadmap.md` has a more complete addendum (2026-08-28, extended
+> 2026-09-09) covering some of this same drift, itself also not fully propagated through that
 > document's body — see the addendum there, plus `README.md` and `docs/DSN2027_Positioning.md`, for
 > the actual current state of the project. Treat this entire file as historical/superseded, not as
 > an active plan.
+
+> **Addendum (2026-09-09, documentation audit).** Since the note above (2026-09-04), the project's
+> real headline campaign (5-seed × 10-config: dp-fedavg/central/local × ε∈{1.0,0.5,0.1} + no-DP
+> baseline — not the 40-condition FedAvg/FedProx × ε × rounds grid described in this document's
+> Section 3) **completed 2026-09-08**, with real Wilcoxon-signed-rank p-values 0.3125–1.0000 across
+> all 10 groups — no configuration shows significant membership-inference leakage. This is the
+> paper's central empirical claim and is done, not in-progress or planned. Also since 2026-09-04: a
+> real multi-container NVFLARE/Containerlab deployment (5-node topology — server/caltech/jpl/
+> office1/fl-admin, not the 12-node/4-cluster/OCPP/MQTT topology described in Section 3.3/Section
+> 4.1 below) was independently re-verified end-to-end on 2026-09-09, with a 5-seed statistical
+> campaign for one config (dp-fedavg ε=1.0) completed on that real deployment and a second dp_mode
+> cross-check in progress; and a ChargePlace Scotland adapter (second EV dataset) was built and
+> unit-tested 2026-09-09, though a full experimental campaign on it has not been run. See
+> `docs/TestRoadmap_DSN2027.md` for authoritative current status.
 
 ---
 

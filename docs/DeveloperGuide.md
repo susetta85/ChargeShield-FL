@@ -57,8 +57,11 @@
 > `from src.core.config import ExperimentConfig, FLConfig, DPConfig, MIAConfig` and calls
 > `ExperimentConfig(...)` — this Pydantic schema doesn't exist, same as §1/§2/§4 above; the real
 > config is the plain-dict `yaml.safe_load()` result from `load_config()`. §12's Sprint table also
-> references `tests/test_sprint6.py`, which doesn't exist in `tests/` (21 real files today, none
-> named that). Treat §12 as unreviewed/aspirational like §1/§2/§4/§9/§10/§11, not as a working
+> references `tests/test_sprint6.py`, which doesn't exist in `tests/` (23 real files as of 2026-09-09
+> — up from 21 on 2026-09-04; two new files landed the same day as the ChargePlace Scotland adapter,
+> task #78: `test_chargeplace_scotland_adapter.py` and `test_pure_helpers.py` — see `docs/Testing.md`
+> §1's correction notice for current per-file counts; none of the 23 is named `test_sprint6.py`).
+> Treat §12 as unreviewed/aspirational like §1/§2/§4/§9/§10/§11, not as a working
 > example to copy.
 
 ---

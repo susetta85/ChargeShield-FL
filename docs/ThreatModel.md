@@ -41,6 +41,24 @@
 > codebase, not evidence that the plugin is active. Do not cite `fedmia.py` as an
 > active module in the paper.
 
+> **Addendum (2026-09-09, found during a documentation audit, task #80) — the null MIA result is
+> missing from this document.** `docs/IDS.md` and `docs/PrivacyAuditor.md` both already carry a
+> 2026-09-04 correction notice for this same finding; this document does not yet have one, and
+> still presents an epsilon-vs-AUC monotonic relationship as an open/expected/confirmed result
+> (§8.5 "expected to be monotonically decreasing in ε"; §9.1–9.2's "Expected result: AUC-ROC
+> significantly above 0.5" and "Confirmed data point: Mean AUC-ROC ≈ 0.5172... indicating DP is
+> largely effective"). Under the corrected, independently re-verified LiRA/Yeom/Shadow/
+> Sablayrolles implementation (README Sprint 10dd onward, 2026-08-26+), the actual, current result
+> across the completed 5-seed × 10-config campaign (dp-fedavg/central/local × ε ∈ {1.0, 0.5, 0.1}
+> + no-DP; `docs/MetricsReference_DSN2027.md` §8) is a **flat** AUC-ROC ~0.4992–0.5018 at every
+> tested ε, including no-DP — no detectable epsilon-vs-leakage relationship at all in the current
+> model/dataset/FL configuration, Wilcoxon p-values 0.3125–1.0000 throughout. This is the paper's
+> central claim and should not be contradicted. The `AUC-ROC ≈ 0.5172` "confirmed data point" in
+> §9.2 and the "significantly above 0.5" framing in §9.1 are pre-fix readings from before the
+> 2026-08-11 through 2026-08-21 LiRA pooling/floor/outlier-exclusion fixes and should not be cited.
+> The formal DP mechanism (§8.1–8.4) and the case-study *design* (§9) remain structurally valid;
+> only the specific numbers/expected-shape language are stale.
+
 ---
 
 ## Abstract
@@ -103,9 +121,9 @@ The ChargeShield-FL system comprises the following logical participants, each wi
 
 **PrivacyAuditor.** A monitoring component co-located with the aggregator. It intercepts gradient updates post-decryption (the aggregator must decrypt to aggregate; PrivacyAuditor observes at this point), computes L2 norms, estimates epsilon consumed per round using the Gaussian mechanism formula, and issues AuditReport objects to the IDS.
 
-**ByzantineDetector.** The Intrusion Detection System, co-located with the aggregator. Applies CUSUM drift detection, Krum Byzantine fault detection, cosine similarity alignment analysis, and FedMIA membership inference scoring to incoming gradient updates. Returns a per-node action (PASS / ALERT / THROTTLE) based on the composite score.
+**ByzantineDetector.** The Intrusion Detection System, running server-side inside the single `ChargeShieldAggregator` component (not a separate service). Applies CUSUM drift detection, Krum Byzantine fault detection, and cosine similarity alignment analysis to incoming gradient updates, returning a per-node action of MONITOR / THROTTLE / EXCLUDE based on the composite risk score. **Corrected 2026-09-09 (task #80; see the 2026-08-28 addendum above, point 2):** this paragraph previously also listed "FedMIA membership inference scoring" as one of ByzantineDetector's signals and "PASS/ALERT/THROTTLE" as its action set — neither is accurate. `ByzantineDetector(...)` at the real call site in `scripts/run_experiments.py` never passes `fedmia=`, so the FedMIA plugin signal defaults to disabled; the real action names are MONITOR/THROTTLE/EXCLUDE, matching `docs/IDS.md`.
 
-**FedMIA.** The shadow-model MIA attacker module. Trained offline on the public ACN-Data JPL split, calibrated against reference reconstruction errors, and applied at each round to score incoming gradient updates for membership. FedMIA is simultaneously the **subject of study** (the attack being evaluated) and a **component of ByzantineDetector** (providing membership scores as one signal among several).
+**FedMIA.** The shadow-model MIA attacker module (`src/plugins/attacks/fedmia.py`). Trained offline on the public ACN-Data split, calibrated against reference reconstruction errors. **Corrected 2026-09-09 (task #80):** contrary to the "applied at each round... component of ByzantineDetector" framing previously given here, this plugin is not wired into the real ByzantineDetector call site (see addendum above) and does not score any of the project's reported results. The attacks actually evaluated for every reported result are Yeom, Shadow, LiRA (primary), and the Sablayrolles et al. (2019) scorer, run via `run_experiments.py::run_lira()`/`run_fedmia()`/`run_fedmia_shadow()` — not the `fedmia.py` plugin.
 
 **MLPlaneListener (observer pattern).** A transversal logical layer that crosses the Purdue Model from Level 0 to Level 3. The ML Plane is not a network protocol: it is an observer-pattern interface that decouples telemetry producers (EVSE, CSC, Edge Controller) from telemetry consumers (FL client trainer, IDS, PrivacyAuditor). Any component implementing `MLPlaneListener` receives ML-relevant events without coupling to the specific transport (OCPP, MQTT, or direct function call).
 
@@ -182,8 +200,8 @@ graph TD
     subgraph "Purdue L4 — Cloud Aggregator"
         SRV[NVFLARE 2.7.2 Server\nFedAvg / FedProx aggregation]
         PA[PrivacyAuditor\nL2 norm + ε estimation\nAuditReport]
-        IDS[ByzantineDetector\nCUSUM + Krum + CosSim\nAction: PASS/ALERT/THROTTLE]
-        MIA[FedMIA\nShadow model\nReconstruction error → AUC-ROC]
+        IDS[ByzantineDetector\nCUSUM + Krum + CosSim\nAction: MONITOR/THROTTLE/EXCLUDE\nreal action names, corrected 2026-09-09]
+        MIA[FedMIA plugin - design-only\nnot wired into real ByzantineDetector\nsee 2026-08-28 addendum]
         SHADOW[Shadow Autoencoder\nTrained on public ACN-Data\nReference error calibration]
     end
 
@@ -713,7 +731,16 @@ Alert threshold: CosSim(i) < 0.3. Interpretation: CosSim = 1.0 implies identical
 
 ### 7.4 FedMIA Integration in ByzantineDetector
 
-FedMIA is integrated into ByzantineDetector as a fourth signal. When membership scores are computed (Section 6.3, Phase 4), the IDS assigns a THROTTLE action to nodes with `membership_score > 0.5` and `confidence > 0.7`. The THROTTLE action does not exclude the node from aggregation; it flags its updates for closer audit in subsequent rounds. This reflects the asymmetry between Byzantine fault detection (where exclusion is appropriate) and privacy leakage detection (where throttling and auditing are more appropriate, as the node may be an innocent victim of the aggregator's inference).
+> **Corrected 2026-09-09 (task #80; see the 2026-08-28 addendum above, point 2, which already
+> flagged this section but had not yet rewritten it).** The paragraph below describes a
+> design-time integration that is **not** how the real system behaves. `ByzantineDetector(...)`
+> at the actual call site in `scripts/run_experiments.py` — which produces every reported result —
+> never passes `fedmia=`, so this signal defaults to disabled (`fedmia: FedMIA | None = None`).
+> ByzantineDetector's real signals are CUSUM, Krum, and cosine similarity only (§7.1–7.3); it does
+> not consume membership scores from `fedmia.py`, and no real result was produced with this
+> integration active. Do not cite the mechanism below as describing the current system.
+
+FedMIA was designed to be integrated into ByzantineDetector as a fourth signal. The design called for: when membership scores are computed (Section 6.3, Phase 4), the IDS assigns a THROTTLE action to nodes with `membership_score > 0.5` and `confidence > 0.7`. The THROTTLE action does not exclude the node from aggregation; it flags its updates for closer audit in subsequent rounds. This reflects the asymmetry between Byzantine fault detection (where exclusion is appropriate) and privacy leakage detection (where throttling and auditing are more appropriate, as the node may be an innocent victim of the aggregator's inference). This design was never activated at the real call site and should not be cited as an implemented or evaluated mechanism.
 
 ---
 
@@ -774,7 +801,7 @@ The central empirical question of ChargeShield-FL is:
 
     AUC-ROC(ε) = FedMIA(θ_global^(R)(ε))
 
-where θ_global^(R)(ε) is the global model after R rounds of FL with privacy budget ε. This function is expected to be monotonically decreasing in ε (weaker privacy → higher MIA success) — but the shape of the curve, particularly the "knee" where DP begins to meaningfully degrade MIA effectiveness, is non-trivial and depends on:
+where θ_global^(R)(ε) is the global model after R rounds of FL with privacy budget ε. This function was originally hypothesized to be monotonically decreasing in ε (weaker privacy → higher MIA success); **the real, current result (see the 2026-09-09 addendum at the top of this document) is a flat AUC-ROC ~0.4992–0.5018 at every tested ε, i.e. no detectable epsilon-vs-leakage relationship in the current model/dataset/FL configuration.** The discussion below of the curve's shape and "knee" describes the originally planned analysis, not the actual finding. The factors below remain relevant as candidate explanations for *why* no knee was observed:
 
 1. **Model architecture:** The Autoencoder's memorization capacity (controlled by the 4-dimensional bottleneck) limits how much private information is encoded in the weights.
 2. **Dataset size:** Larger datasets are harder to memorize, providing some natural privacy. 13,073 sessions distributed across 4 clusters (approximately 3,268 sessions per cluster) is a moderate dataset size.
@@ -795,7 +822,7 @@ The OT context therefore introduces a hard constraint on minimum acceptable mode
 
 **Purpose:** Establish the **MIA upper bound** — the maximum AUC-ROC achievable by FedMIA in the absence of any privacy countermeasure. This baseline characterizes the inherent memorization of the Autoencoder architecture and the effectiveness of the shadow model approach before DP is applied. Without CS1, subsequent CS2 results have no reference point: a DP-protected system at AUC-ROC = 0.52 is meaningful only if the unprotected system shows substantially higher AUC-ROC.
 
-**Expected result:** AUC-ROC significantly above 0.5 (exact value to be measured). The magnitude of the CS1 AUC-ROC relative to 0.5 determines the attack's baseline effectiveness and the "room" that DP has to close.
+**Expected result (superseded — see 2026-09-09 addendum at top of document):** AUC-ROC significantly above 0.5 (exact value to be measured). The magnitude of the CS1 AUC-ROC relative to 0.5 determines the attack's baseline effectiveness and the "room" that DP has to close. **Actual result under the corrected LiRA/Yeom/Shadow/Sablayrolles implementation:** even the no-DP baseline shows AUC-ROC ~0.4992–0.5018 (no detectable leakage), so there is no measurable "room" for DP to close in the current model/dataset/FL configuration — this is itself a notable finding, not an experimental failure.
 
 **Secondary measurements:** Reconstruction loss (MSE) on the held-out evaluation set (utility baseline), training convergence curve, per-cluster AUC-ROC (to identify which cluster is most susceptible to MIA in the absence of DP).
 
@@ -821,7 +848,7 @@ The OT context therefore introduces a hard constraint on minimum acceptable mode
 
 **Per-round AUC-ROC measurement.** In CS2, AUC-ROC is not a single value per ε condition — it is measured for every FL round. The experiment evaluator (`run_experiments.py::run_fedmia()`) loads `global_weights` from each round's `AggregatedUpdate` into the Autoencoder, computes reconstruction errors, and calls `sklearn.metrics.roc_auc_score` per round. The experiment JSON output records `per_round[round]["auc_roc"]` for every round, plus summary statistics: `mean_auc_roc`, `max_auc_roc`, and `min_auc_roc` across all rounds. The per-round progression reflects how MIA susceptibility evolves as FL training proceeds and the global model memorizes training patterns.
 
-**Confirmed data point:** Mean AUC-ROC ≈ 0.5172 across rounds at ε = 1.0, 100 rounds, FedAvg — marginally above random, indicating DP is largely effective at ε = 1.0 for this setting.
+**Superseded data point (pre-fix reading; see 2026-09-09 addendum at top of document):** Mean AUC-ROC ≈ 0.5172 across rounds at ε = 1.0, 100 rounds, FedAvg — marginally above random, indicating DP is largely effective at ε = 1.0 for this setting. This number predates the 2026-08-11 through 2026-08-21 LiRA pooling/floor/outlier-exclusion fixes and should not be cited. **Current result:** across the completed 5-seed × 10-config campaign, composed AUC-ROC is ~0.4992–0.5018 at ε = 1.0 (and at every other tested ε, and at no-DP), with Wilcoxon p > 0.05 throughout — statistically indistinguishable from chance, not "marginally above random."
 
 **Statistical analysis:** Each ε condition is run with multiple random seeds. AUC-ROC confidence intervals are computed via DeLong's method [DeLong et al. 1988]. The null hypothesis (AUC-ROC = 0.5) is tested for each condition to determine statistical significance of any privacy advantage.
 

@@ -29,6 +29,53 @@
 > 2026 state, not as current fact — do not cite the 12-node topology or FedMIA
 > as active in the actual DSN 2027 paper.
 
+> **Addendum (2026-09-09) — the review's own priority action items and gap
+> findings are themselves now largely stale, not just the architecture/dataset
+> details already flagged above.** Read Section 9 ("Priority Action Items") and
+> the related findings in Sections 2, 4, 7, and 8 with the same point-in-time
+> caveat: almost every top-priority item this review demanded has since been
+> completed, and treating them as open gaps today would itself be a stale claim.
+> Specifically: (1) **"No related work section" (§2.11 item 3, §4.9, §7, §9
+> item 3)** — no longer true; `docs/LiteratureReview.md` (10-category search
+> across MIA/GIA/property-inference/DP/SecAgg/EV-FL/smart-grid/FL-IDS/benchmark
+> literature) and `docs/ReadingList_DSN2027.md` (tiered full-text reading list)
+> both exist and are actively maintained. (2) **"Incomplete experimental sweep" /
+> single preliminary result (§2.7, §4.3, §9 items 1 and 4)** — the sweep this
+> review imagined (rounds × ε factorial) was never the actual design; the real
+> campaign (dp-fedavg/central/local × ε∈{1.0,0.5,0.1} + no-DP, 5 seeds each) is
+> **complete** (task #52, 2026-09-08) with real Wilcoxon signed-rank p-values
+> (0.3125–1.0000 across all 10 groups) — see `docs/MetricsReference_DSN2027.md`
+> §8. (3) **PrivacyAuditor epsilon-formula inconsistency (§2.6, §5.3, §8.5, §9
+> item 2)** — `src/auditor/privacy_auditor.py` uses the exact Gaussian Mechanism
+> inversion (`sigma = max_grad_norm * sqrt(2*ln(1.25/delta)) / epsilon`), matching
+> `GradientManager`; no discrepancy exists in the current code. (4) **Single-site
+> dataset (§4.1, §6.1)** — superseded twice over: first by the 3-real-site
+> ACN-Data design (2026-07-22, per the first correction notice above), and now
+> by a second EV dataset adapter, `src/adapters/chargeplace_scotland_adapter.py`
+> (ChargePlace Scotland, built and tested 2026-09-09) — not ElaadNL as this
+> review suggested (§4.6, §9 item 9), but the same category of gap, now
+> partially addressed (adapter exists; no experimental campaign on it has run
+> yet, so "second dataset validated" would still be an overclaim). (5) **"77
+> unit tests" (§2.9, §8)** — the suite has grown to 213 passing (1 skipped)
+> non-torch tests as of 2026-09-09, with substantial integration coverage added
+> since (`check_significance.py`, attack-registry, ROC-curve, worst-case,
+> Gaussian-fit tests, etc.), though a dedicated end-to-end gradient-flow
+> regression test of the kind §2.9 asks for still does not exist. (6) **Real
+> deployment / emulation-only limitation (§4.8, §6.7, §8.8, §8.9)** — the
+> Containerlab/NVFLARE topology was independently re-verified end-to-end on
+> 2026-09-09 (a clean 10-round deploy plus a full 5-seed statistical campaign on
+> dp-fedavg ε=1.0 on the real multi-container deployment, not just simulation);
+> this remains containerized emulation, not physical charging hardware, so the
+> real-hardware-validation recommendation (§9 item 10) is still open, but "not
+> yet tested under realistic deployment conditions" is no longer accurate. None
+> of this retroactively validates the review's praise of the fictional 12-node
+> topology or the FedMIA-as-central-mechanism framing (still wrong, per the
+> addendum above) — it only means the review's *legitimate* methodological
+> demands (related work, statistical rigor, formula correctness, deployment
+> validation, test coverage) have since been substantially met, and citing this
+> document's Section 9 as a live TODO list would itself be citing stale
+> documentation.
+
 ---
 
 ## 1. Executive Summary

@@ -19,6 +19,23 @@
 > document are unaffected by this correction — it is the specific §9.4/§11.5–11.6 empirical
 > numbers/curve that are stale and should not be cited in the paper. Not yet propagated through the
 > rest of this document's prose — see `README.md`/`docs/DSN2027_Positioning.md` for current facts.
+> §9.4/§11.5/§11.6 have since been corrected in place (2026-09-09, task #80).
+
+> **Correction notice (2026-09-09, found during a documentation audit, task #80).** Many examples
+> throughout this document (the `AuditReport`/`node_id` docstrings and code samples in §6, §7.2,
+> §7.3, and the visualization descriptions in §11.1–11.3) use a pre-pivot, fictional 4-cluster
+> taxonomy — node IDs like `"highway_cluster_1"`, `"urban_cluster_3"`, `"residential_cluster_1"`,
+> `"corporate_cluster_2"` — as their running example. **This taxonomy does not exist in the current
+> system.** The real, current architecture has exactly **3 real ACN-Data sites**: `caltech`, `jpl`,
+> `office1`, and real node IDs observed in the actual experiment corpus look like `"office1-01"`
+> (site name + numeric suffix), not `"<cluster_type>_cluster_<index>"`. Claims that this convention
+> "matches the node identifiers used in the NVFLARE client configuration" (§6.2) are incorrect for
+> the real NVFLARE config. Likewise, the "paper's hypothesis"/"paper implication"/"paper
+> contribution" framing in §7.2, §7.3, and §11.1–11.3 that highway/urban/residential/corporate
+> cluster types show heterogeneous privacy-budget consumption was never validated against the real
+> 3-site data and should not be cited as a current paper finding — it is retained below purely as
+> illustrative pseudocode for how the API and metrics work, not as a description of the real
+> deployment or a real result.
 
 ## Implementation Status: PrivacyAuditor.audit() Is Now Actively Called
 
@@ -346,10 +363,13 @@ class AuditReport:
     Fields
     ------
     node_id : str
-        Unique identifier for the FL client or charging cluster. Follows the
-        convention "<cluster_type>_cluster_<index>", e.g., "highway_cluster_1",
-        "urban_cluster_3". Matches the node identifiers used in the NVFLARE
-        client configuration.
+        Unique identifier for the FL client. The illustrative examples in this
+        document use a pre-pivot "<cluster_type>_cluster_<index>" convention
+        (e.g., "highway_cluster_1", "urban_cluster_3") that does NOT match the
+        real system (corrected 2026-09-09, task #80). The real, current node
+        IDs come from the 3 real ACN-Data sites — caltech, jpl, office1 — and
+        look like "office1-01" (site name + numeric suffix), as seen in the
+        real NVFLARE client configuration and the real experiment corpus.
 
     round_id : int
         FL training round number (1-indexed). Round 0 is the initialization
@@ -652,13 +672,23 @@ Shokri et al. (2017) and Nasr et al. (2019) both demonstrate empirically that MI
 
 ### 9.4 The Epsilon–AUC Tradeoff Curve
 
-The central empirical finding that the `PrivacyAuditor` enables is the **epsilon–AUC tradeoff curve**: a scatter plot with $\hat{\epsilon}_{i}^{(T)}$ on the x-axis and `FedMIA` AUC-ROC on the y-axis, with one point per (node, round) pair. The expected shape of this curve is:
+> **Corrected (2026-09-09, task #80; see also the top-of-file 2026-09-04 correction notice).**
+> The rising epsilon-vs-AUC curve described below was the paper's originally hypothesized
+> shape and has not materialized in the real, corrected LiRA/Yeom/Shadow/Sablayrolles results.
+> The real, current finding across the completed 5-seed × 10-config campaign (dp-fedavg/
+> central/local × $\varepsilon \in \{1.0, 0.5, 0.1\}$ + no-DP; `docs/MetricsReference_DSN2027.md`
+> §8) is a **flat** curve: composed AUC-ROC ~0.4992–0.5018 at every tested $\varepsilon$,
+> including no-DP, Wilcoxon p-values 0.3125–1.0000 throughout — i.e. no detectable
+> epsilon-vs-leakage relationship at all in the current model/dataset/FL configuration. The
+> hypothesized shape below should not be cited as an empirical result.
+
+The originally hypothesized **epsilon–AUC tradeoff curve** was: a scatter plot with $\hat{\epsilon}_{i}^{(T)}$ on the x-axis and MIA attack AUC-ROC on the y-axis, with one point per (node, round) pair, expected to show:
 
 - At $\hat{\epsilon} \approx 0$ (early rounds, before significant budget consumption): AUC-ROC $\approx 0.5$ (random, DP noise dominates).
 - As $\hat{\epsilon}$ increases: AUC-ROC increases monotonically, approaching the ceiling determined by the data distribution and model architecture.
 - At $\hat{\epsilon} \geq \epsilon_{\text{budget}}$ (budget exhausted): AUC-ROC plateaus at the maximum achievable attack success.
 
-The `PrivacyAuditor` provides the x-axis values for this curve. `FedMIA` provides the y-axis values. The curve itself is the paper's most concise and impactful visualization.
+The `PrivacyAuditor` still provides the real x-axis values ($\hat{\epsilon}$ per node/round) used by the real analysis; it is only the shape of the curve — a monotonic rise rather than a flat line at chance — that is not supported by the real data.
 
 ---
 
@@ -760,25 +790,33 @@ The `PrivacyAuditor` generates data that supports six paper-level evaluation met
 
 **Data source:** `AuditReport.threats_detected` collected across all (node, round) pairs.
 
-### 11.5 FedMIA AUC vs. Cumulative Epsilon Scatter
+### 11.5 MIA AUC vs. Cumulative Epsilon Scatter
 
-**Visualization:** Scatter plot with $\hat{\epsilon}^{(T)}$ on the x-axis and FedMIA AUC-ROC on the y-axis, one point per (node, round) pair. A trend line (LOWESS or polynomial fit) is overlaid. Points are colored by cluster type.
+> **Corrected (2026-09-09, task #80).** This metric was originally described as showing "a
+> positive correlation" and as "the paper's central empirical finding." Neither holds under the
+> real, corrected results: the real 5-seed × 10-config campaign shows **no** correlation between
+> $\hat{\epsilon}$ and MIA AUC-ROC — AUC-ROC is flat at ~0.4992–0.5018 regardless of $\varepsilon$
+> (Wilcoxon p > 0.05 for all 10 groups; `docs/MetricsReference_DSN2027.md` §8). The description
+> below is retained as the originally *planned* visualization, not as a description of what the
+> real plot shows.
 
-**What it shows:** A positive correlation between cumulative epsilon consumption and MIA success probability. As nodes consume more of their privacy budget (epsilon increases), the FedMIA attack becomes progressively more successful (AUC-ROC increases).
+**Visualization:** Scatter plot with $\hat{\epsilon}^{(T)}$ on the x-axis and MIA attack AUC-ROC on the y-axis, one point per (node, round) pair. A trend line (LOWESS or polynomial fit) is overlaid.
 
-**Paper contribution:** This is the paper's central empirical finding. It establishes the causal chain: data heterogeneity → heterogeneous gradient sensitivity → heterogeneous epsilon consumption → heterogeneous MIA vulnerability. It motivates DP with a strict, per-type epsilon budget as the primary countermeasure.
+**What it was expected to show, and what it actually shows:** The plan was a positive correlation between cumulative epsilon consumption and MIA success probability. The real plot instead shows a flat scatter with no discernible trend — AUC-ROC stays at chance across the full range of tested $\varepsilon$, including no-DP.
 
-**Data source:** `PrivacyAuditor.get_epsilon_history()` (x-axis) cross-referenced with `FedMIA` AUC-ROC results (y-axis).
+**Paper contribution:** Rather than establishing a heterogeneous-vulnerability causal chain, the real finding is a null result: in the current model/dataset/FL configuration, none of the tested attacks (Yeom, Shadow, LiRA, Sablayrolles) achieve significant membership inference regardless of DP configuration. This is still a meaningful, citable finding for the paper — just not the one originally hypothesized here.
+
+**Data source:** `PrivacyAuditor.get_epsilon_history()` (x-axis) cross-referenced with the real attack evaluators' AUC-ROC results (y-axis) — see `scripts/run_experiments.py::run_lira()`/`run_fedmia()` and `docs/MetricsReference_DSN2027.md` §8 for the real, current numbers.
 
 ### 11.6 IDS Non-Detection of Passive MIA
 
-**Visualization:** Table or bar chart showing IDS action distribution (ALLOW/MONITOR/THROTTLE/EXCLUDE rates) conditioned on whether FedMIA AUC-ROC exceeded the significance threshold (0.7). Two columns: "MIA Not Significant (AUC < 0.7)" and "MIA Significant (AUC >= 0.7)".
+**Visualization:** Table or bar chart showing IDS action distribution (ALLOW/MONITOR/THROTTLE/EXCLUDE rates) conditioned on whether the attack's AUC-ROC exceeded the significance threshold (0.7). Two columns: "MIA Not Significant (AUC < 0.7)" and "MIA Significant (AUC >= 0.7)".
 
-**What it shows:** The IDS action distribution is statistically indistinguishable between rounds where MIA is significant and rounds where it is not. The IDS cannot detect the passive MIA because gradient observation leaves no behavioral anomaly.
+**What it shows (corrected 2026-09-09):** In the real data, MIA AUC-ROC never exceeds 0.7 at any tested configuration, so the "MIA Significant" column is empty by construction — this metric cannot demonstrate IDS-vs-attack-success independence the way it was originally designed to, since there is no significant-MIA condition to compare against in the current results. What real data *does* support is a related but distinct point: ByzantineDetector's CUSUM and Krum detectors generate zero alerts throughout, while its cosine-similarity detector does generate a small number of real alerts — but only against the `office1` site, and only for reasons unrelated to MIA (site-specific data scarcity; see `docs/IDS.md` §12.1). So the IDS is not perfectly blind, but its few real alerts are uncorrelated with attack success in this dataset.
 
-**Paper contribution:** Empirically validates the paper's second claim: that behavioral IDS is insufficient for MIA detection. Establishes the need for the `PrivacyAuditor` as an independent observation layer.
+**Paper contribution:** Still supports the paper's second claim (behavioral IDS is insufficient for MIA detection) but via the null-MIA-result path rather than the originally planned "IDS blind despite significant MIA" contrast.
 
-**Data source:** `AuditReport.threats_detected` and `ByzantineDetector` action logs, cross-referenced with `FedMIA` AUC-ROC results.
+**Data source:** `AuditReport.threats_detected` and `ByzantineDetector` action logs, cross-referenced with the real attack evaluators' AUC-ROC results.
 
 ### 11.7 Collective Contribution
 

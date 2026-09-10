@@ -16,7 +16,7 @@ dalla revisione esterna del 2026-08-27, e cosa è opzionale/stretch entro la dea
 | 5 | Test di significatività Wilcoxon | ✅ **completato 2026-08-28** — trovato e corretto anche un bug reale di conflazione dati in `check_significance.py` | Should | No, ma richiesto dal revisore |
 | 6 | Replica su secondo dataset EV (ChargePlace Scotland) | 🟡 **adapter completato e testato 2026-09-09** (task #37, `src/adapters/chargeplace_scotland_adapter.py`, 30 test) — wiring in `run_experiments.py` + primo run ancora da fare, vedi nota sotto | Da decidere | Vedi nota sotto |
 | 7 | Sweep IDS/Byzantine n=5 (task #50) | ⚪ mai eseguito | Nice-to-have | No |
-| 8 | Seconda run del deployment reale ContainerLab | 🟡 **Step A (re-verifica singola con codice aggiornato) completata 2026-09-09** — 10/10 round FedAvg completati puliti, 3 client (caltech/jpl/office1), nessun errore. Conferma ML Plane fase 7+8 / fix sensibilità DP / rename ByzantineDetector sul deployment reale, non solo simulatore. La "seconda run" statistica multi-seed (task #76) resta da fare | Nice-to-have | No |
+| 8 | Seconda run del deployment reale ContainerLab | 🟡 **Step B in corso 2026-09-09** — dp-fedavg ε=1.0 × 5 seed (42/123/456/789/1234) completati sul deployment reale, tutti 10/10 round puliti (nessun byzantine_detected/threats_detected). File rinominati con seed nel nome in `experiments/nvflare_fl_results_seed<N>_*.pkl`. Analisi MIA offline (`run_nvflare_mia.py`) in corso. **dp_mode=central ε=1.0** lanciata subito dopo (stesso ε, per verificare se l'equivalenza dp-fedavg/central osservata in simulazione regge anche nel deployment reale). **Pianificato successivamente**: variazione di ε (0.1, il punto di privacy più forte già validato in simulazione) sullo stesso dp_mode, 1-2 seed — stessa logica "validazione ridotta", non un nuovo CI statistico formale | Nice-to-have | No |
 | 9 | Confronto con gradient clipping adattivo (vs soglia fissa attuale) | ⚪ non iniziato, nuovo 2026-08-27 | Da decidere | No, ma richiesto da una revisione esterna |
 | 10 | Modernizzazione completa di `docs/ThreatModel.md` (conteggi/cluster/versioni obsoleti in tutto il documento) | ⚪ non iniziato, trovato 2026-08-27 | Da decidere | No — ma contiene una vera contraddizione già corretta (vedi nota) |
 | 11 | Controllo centralizzato-vs-federato (capacità vs FL-regolarizzatore, task #40) | ✅ **run a budget pieno completato 2026-09-01** — centralized_control_auc_roc=0.5003 vs LiRA composto 0.5030 vs Yeom 0.4981, stessa banda 0.48-0.54. Vedi README Sprint 10zz+6, `docs/DSN2027_Positioning.md` punto 11. ⚠ **Il numero di smoke test precedente (0.496674, 20 epoche) è SUPERSEDED — non citare, usare solo il run a 500 epoche.** ⚠ Singolo seed — serve trattamento multi-seed (task #43) prima di essere citabile nel paper. | Should | Consigliato, rafforza la sezione validazione |
@@ -633,15 +633,24 @@ dataset EV indipendentemente raccolto". **Aggiornamento 2026-09-09**: wiring com
 `config/experiment_chargeplace_scotland.yaml` con i 3 client scelti dall'utente (Glasgow City,
 East Ayrshire, City of Edinburgh — top-3 per volume, 688.896 sessioni totali). 6 nuovi test in
 `tests/test_run_experiments_integration.py` (non eseguibili in questo sandbox, richiedono torch —
-da eseguire sulla macchina reale). **Non ancora fatto**: uno smoke test cronometrato (vedi nota nel
-config) prima della campagna piena — il sottoinsieme scelto è ~10.3× più grande di tutto ACN-Data
-(66.713 sessioni, 3 siti, tutti gli anni) su cui la campagna da 10 config × 5 seed ha impiegato
-~108 ore/6485 min: il tempo NON scala necessariamente lineare con la dimensione dati, va misurato
-prima di lanciare la campagna piena, non assunto. Limite noto verificato: kwh_requested e
-minutes_available sono sempre 0 in questo dataset (nessun equivalente di userInputs di ACN-Data) —
-2 delle 6 feature di input sono quindi costanti, gestito senza crash da compute_feature_stats() ma
-da menzionare se questi risultati finiscono nel paper. Non bloccante: il claim su un solo dataset
-resta pubblicabile, solo più stretto nello scope dichiarato.
+da eseguire sulla macchina reale). Limite noto verificato: kwh_requested e minutes_available sono
+sempre 0 in questo dataset (nessun equivalente di userInputs di ACN-Data) — 2 delle 6 feature di
+input sono quindi costanti, gestito senza crash da compute_feature_stats() ma da menzionare se
+questi risultati finiscono nel paper.
+
+**Aggiornamento 2026-09-10 — smoke test no-DP baseline COMPLETATO**: lanciato 2026-09-09 16:24,
+terminato 2026-09-10 04:41 (~12h17min totali) — training FL (10 round) e attacchi Yeom/Shadow
+veloci (pochi minuti), ma LiRA da solo ha impiegato ~9h (10 round × ~54 min/round, contro pochi
+minuti per round su ACN-Data — coerente con la scala ~10.3× più grande). Il tempo NON scala
+linearmente con la dimensione dati come temuto: va tenuto in conto seriamente per pianificare
+un'eventuale campagna DP completa su questo dataset (10 config × 5 seed a questa velocità sarebbe
+comparabile o peggiore delle ~108 ore già spese su ACN-Data). **Risultato (no-DP baseline,
+`experiments/experiment_20260910_044144.json`)**: mean_auc_roc=0.5008, mean_lira_auc_roc=0.5006,
+privacy_risk=LOW — **nessun leakage rilevabile, primo risultato empirico sul secondo dataset**.
+Rafforza già, anche solo con la baseline no-DP, il claim di generalizzabilità del progetto. Ancora
+da fare se il tempo lo permette: configurazioni con DP attivo (dp-fedavg/central/local × ε) su
+questo dataset, e più seed per un confronto statistico pari a quello di ACN-Data — non bloccante
+per la submission, il claim su ACN-Data da solo resta pubblicabile.
 
 ### 7. Sweep IDS/Byzantine n=5 (task #50)
 
@@ -651,13 +660,51 @@ Byzantine iniettato a n=5 client. Rilevante solo se il paper vuole riportare anc
 F1/Precision/Recall/AUROC dell'IDS stesso, non solo la parte privacy/MIA — verificare con l'utente
 se rientra nello scope del paper DSN 2027 o è materiale per un lavoro futuro.
 
-### 8. Seconda run del deployment reale ContainerLab
+### 8. Validazione statistica sul deployment reale ContainerLab
 
-Oggi esiste una sola run reale completata e analizzata (README Sprint 10dd, job `e19cfa15`).
-Una seconda run (seed diverso, se il job lo supporta) darebbe una conferma multi-seed anche sul
-deployment reale, non solo sulla simulazione — ma ogni run reale richiede ore di setup/esecuzione
-manuale (containerlab deploy, submit_job, analisi offline). Costo/beneficio da valutare rispetto
-al tempo restante prima della deadline.
+**Aggiornamento 2026-09-09/10 — molto più avanti di quanto scritto sopra.** Step A (redeploy da
+zero con codice aggiornato — ByzantineDetector rinominato, DP-sensitivity fix, ML Plane reale) ha
+girato pulito, 10/10 round, zero errori. Step B — campagna statistica multi-seed:
+- **dp-fedavg, ε=1.0, 5 seed (42/123/456/789/1234)**: tutti completi, 10/10 round ciascuno, zero
+  `byzantine_detected`/`threats_detected`. 2 alert HIGH cosine-similarity su `office1` (seed 42
+  round 4, seed 789 round 7) — stesso pattern già noto e documentato in `docs/IDS.md` §12
+  (office1 è il sito più piccolo/rumoroso, mai caltech/jpl).
+- **central, ε=1.0, 1 seed (42)**: completo, pulito. Confrontato round-per-round col dp-fedavg
+  seed 42: round 1 identico su tutti i client, poi diverge genuinamente dal round 2 in poi (non
+  un artefatto — vedi nota sotto e `docs/MetricsReference_DSN2027.md` per la spiegazione
+  architetturale completa) — conferma che dp-fedavg e central esercitano davvero percorsi di
+  codice diversi nel deployment reale, cosa che la sola simulazione single-process non può provare
+  (lì dp-fedavg risulta identico a **local**, non a central — vedi nota dedicata in
+  MetricsReference).
+- **Rianalisi MIA offline** (`scripts/run_nvflare_mia.py`, n_shadow=16, stesso `run_lira()` della
+  simulazione): seed 42 dp-fedavg completata — `mean_lira_auc_roc=0.499`, `privacy_risk=LOW`,
+  nessuna fuga rilevata, coerente con la simulazione. Seed 123 in corso; 456/789/1234 e il run
+  central ancora da rianalizzare.
+
+**Finding metodologico trovato investigando questi dati (2026-09-10, non un bug che invalida i
+risultati MIA, ma da documentare)**: i valori di round 1 in `nvflare_ids_audit_results_*.json`
+(privacy_score/epsilon per client) sono **byte-identici in tutti e 5 i seed dp-fedavg E nel run
+central** — perché il seed della campagna NVFLARE viene usato solo per lo split train/holdout
+lato client (`chargeshield_executor.py`) e lo shuffle del DataLoader, MAI per l'inizializzazione
+dei pesi del modello globale (il persistor NVFLARE crea sempre lo stesso checkpoint iniziale,
+senza seeding esplicito) — a differenza della simulazione single-process, dove
+`torch.manual_seed(seed)` viene chiamato in `main()` prima della creazione del modello. Inoltre al
+round 1 `_compute_sensitivity` clippa la norma assoluta dei pesi (non un delta, perché
+`reference_weights` è `None` al primo round) — dominata dal checkpoint condiviso e non seedato,
+da cui l'identità esatta. Dal round 2 in poi (quando `reference_weights` esiste ed è
+genuinamente diverso per seed/dp_mode) i valori divergono normalmente. **Non tocca le conclusioni
+MIA**: LiRA/Yeom/Shadow operano su `raw_updates`/errore di ricostruzione (`nvflare_fl_results_*.pkl`),
+non su questo specifico campo di audit — ma va tenuto a mente se in futuro si volesse citare la
+varianza inter-seed del round 1 specificamente come evidenza di robustezza: al round 1 quella
+varianza è artificialmente zero, non un segnale reale.
+
+**Ancora da fare per un confronto pienamente allineato con la campagna single-process (10 config ×
+5 seed)**: `local` DP mode (zero run finora su NVFLARE), variazione di epsilon (0.5/0.1 — solo
+ε=1.0 testato finora), `central` a 5 seed invece di 1. Non bloccante per la submission — il claim
+principale del paper si basa sulla campagna single-process, già completa e statisticamente
+solida; questi run NVFLARE sono una validazione supplementare "il risultato regge anche in un
+deployment reale multi-container", non un sostituto. Costo/beneficio da valutare rispetto al tempo
+restante prima della deadline (abstract 2026-11-25).
 
 ---
 

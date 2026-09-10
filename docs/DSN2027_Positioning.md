@@ -601,6 +601,14 @@ experiments) — full detail lives in the documents cross-referenced below, not 
    a re-run. State in the paper: validated on one real EV dataset; replication on a second,
    independently-collected dataset is future work (see `docs/TestRoadmap_DSN2027.md` #6 for the
    reasoning already on record).
+
+   **Update (2026-09-09, task #37):** the adapter (`src/adapters/chargeplace_scotland_adapter.py`)
+   has since been written, tested, and wired into `scripts/run_experiments.py` — faster than the
+   "multi-week" estimate above assumed. This does **not** change the paper-facing claim yet: no
+   full campaign has been run on ChargePlace Scotland (only a timed smoke test is planned before
+   any scope decision), so there are no paper-citable ChargePlace Scotland numbers as of this
+   writing. Continue to state replication on a second dataset as future work until a campaign
+   actually completes.
 6. **Fixed-threshold gradient clipping only, no adaptive clipping comparison.** Same review point:
    `GradientManager` uses a fixed `max_grad_norm` in every DP mode tested; no adaptive/percentile-based
    clipping (e.g. Andrew et al. 2021) is implemented or compared. **Decision (2026-08-27,
@@ -782,7 +790,7 @@ experiments) — full detail lives in the documents cross-referenced below, not 
     held at the entity level, confirming `entity_aware_split()` groups correctly): **LiRA composite
     AUC-ROC = 0.4983** (gap=0.034890, n=26860, TPR@1%FPR=0.0083), mean per-round LiRA AUC 0.4998,
     Yeom mean AUC 0.4989 — chance level, consistent with every other configuration in the main
-    5-seed×8-config campaign (0.4995–0.5005). The null-leakage finding holds under a split that
+    5-seed×10-config campaign (0.4995–0.5005). The null-leakage finding holds under a split that
     guarantees non-members share no EVSE station with any training session, closing the
     non-independence objection empirically, not just architecturally.
 

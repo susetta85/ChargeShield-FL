@@ -40,27 +40,39 @@
 
 ChargeShield-FL adopts a sprint-aligned, unit-first testing strategy grounded in the principle that scientific reproducibility is a first-class software requirement. Because the framework is intended to support peer-reviewed claims at DSN 2027, every algorithmic component must be independently verifiable by an external reviewer who obtains the repository and executes the test suite without additional configuration. This document describes the testing architecture, provides a complete catalogue of all test cases across Sprint 4 and Sprint 5, documents known API fixes applied between sprints, and outlines the integration test work still required before submission.
 
-> **Correction notice (2026-09-04, found during a documentation audit, task #69).** The table below
-> (6 files, 140 tests, Sprint 4/5-only) is stale and does not reflect the current suite. As of
-> today, `tests/` has **21 files, 186 collectible tests** in this sandbox (3 additional files —
-> `test_run_experiments_integration.py`, `test_sprint4.py`, `test_sprint5.py` — require torch and
-> aren't collectible here, but exist and run on the user's real machine). Crucially, **LiRA — the
-> project's primary attack — has no dedicated file in the table below at all**, despite being the
-> subject of most of the project's later test additions (`test_sablayrolles_score.py`,
-> `test_lira_log_score.py`, `test_mia_advantage.py`, `test_mia_confusion.py`,
-> `test_canary_group_sampling.py`, `test_gaussian_fit.py`, `test_check_significance.py`,
-> `test_composed_tpr_prefix.py`, `test_attack_registry.py`, `test_fedmia_gradient_pairing.py`,
-> `test_worst_case_vulnerability.py`, `test_plot_roc_log_scale.py`,
-> `test_generate_excel_report_history.py`, `test_generate_excel_report_dp_mode.py`, and the two
-> Excel-report tests). Real per-file counts as of 2026-09-04 (`pytest --collect-only`):
-> `test_fedmia_gradient_pairing.py` 30, `test_privacy_auditor.py` 23, `test_acn_dataset.py` 16,
-> `test_flare_connector.py` 15, `test_core_interfaces.py` 14, `test_plot_roc_log_scale.py` 12,
-> `test_check_significance.py` 12, `test_gaussian_fit.py` 10, `test_worst_case_vulnerability.py` 8,
-> `test_attack_registry.py` 8, `test_sablayrolles_score.py` 7, `test_lira_log_score.py` 6,
-> `test_mia_confusion.py` 5, `test_mia_advantage.py` 5, `test_canary_group_sampling.py` 5,
-> `test_generate_excel_report_history.py` 4, `test_generate_excel_report_dp_mode.py` 3,
-> `test_composed_tpr_prefix.py` 3, plus the 3 torch-dependent files not counted above. Not yet
-> rewritten below — treat this note as authoritative over the table/§8 heading until it is.
+> **Correction notice (2026-09-04, found during a documentation audit, task #69; numbers refreshed
+> 2026-09-09, task #81 — the 2026-09-04 counts below were themselves only 5 days stale, which is the
+> point: this table drifts fast and any snapshot here needs to be re-verified, not assumed).** The
+> table below (6 files, 140 tests, Sprint 4/5-only) is stale and does not reflect the current suite.
+> As of 2026-09-09, `tests/` has **23 real test files** (excluding `tests/__init__.py`), of which
+> **20 are collectible without torch — 244 tests collected, confirmed by actually running
+> `python3 -m pytest tests/ -q --ignore=tests/test_run_experiments_integration.py
+> --ignore=tests/test_sprint4.py --ignore=tests/test_sprint5.py`: 243 passed, 1 skipped in 149s.**
+> The 3 remaining files — `test_run_experiments_integration.py`, `test_sprint4.py`, `test_sprint5.py`
+> — require torch and aren't collectible in every sandbox, but exist and run on the user's real
+> deployment machine (torch is available and required there). Crucially, **LiRA — the project's
+> primary attack — has no dedicated file in the table below at all**, despite being the subject of
+> most of the project's later test additions (`test_sablayrolles_score.py`, `test_lira_log_score.py`,
+> `test_mia_advantage.py`, `test_mia_confusion.py`, `test_canary_group_sampling.py`,
+> `test_gaussian_fit.py`, `test_check_significance.py`, `test_composed_tpr_prefix.py`,
+> `test_attack_registry.py`, `test_fedmia_gradient_pairing.py`, `test_worst_case_vulnerability.py`,
+> `test_plot_roc_log_scale.py`, `test_generate_excel_report_history.py`,
+> `test_generate_excel_report_dp_mode.py`, `test_pure_helpers.py`, and
+> `test_chargeplace_scotland_adapter.py`). Real per-file counts as of 2026-09-09
+> (`pytest --collect-only`): `test_fedmia_gradient_pairing.py` 30,
+> `test_chargeplace_scotland_adapter.py` 30 (**new since 2026-09-04** — tests for the
+> just-added ChargePlace Scotland dataset adapter, task #78; the adapter itself has no completed
+> experimental campaign yet, only these unit tests), `test_privacy_auditor.py` 23,
+> `test_pure_helpers.py` 21 (**new since 2026-09-04**), `test_check_significance.py` 19 (was 12 on
+> 2026-09-04 — 7 tests added), `test_acn_dataset.py` 16, `test_flare_connector.py` 15,
+> `test_core_interfaces.py` 14, `test_plot_roc_log_scale.py` 12, `test_gaussian_fit.py` 10,
+> `test_worst_case_vulnerability.py` 8, `test_attack_registry.py` 8, `test_sablayrolles_score.py` 7,
+> `test_lira_log_score.py` 6, `test_mia_confusion.py` 5, `test_mia_advantage.py` 5,
+> `test_canary_group_sampling.py` 5, `test_generate_excel_report_history.py` 4,
+> `test_generate_excel_report_dp_mode.py` 3, `test_composed_tpr_prefix.py` 3, plus the 3
+> torch-dependent files not counted above. Not yet rewritten below — treat this note as authoritative
+> over the table/§8 heading until it is, and re-verify the count again before citing it, since it has
+> already gone stale once in 5 days.
 
 ### 1.2 Sprint-Aligned Unit Test Structure
 
@@ -82,7 +94,7 @@ Tests are written with `pytest` and `unittest.TestCase`. All random seeds are fi
 
 Reproducibility in the context of DSN 2027 means two distinct things:
 
-1. **Software reproducibility.** Any collaborator, reviewer, or artefact evaluator can clone the repository, install the pinned dependencies from `requirements.txt`, and run `make test` to obtain a green suite. No environment-specific secrets, paths, or network connections are required.
+1. **Software reproducibility.** Any collaborator, reviewer, or artefact evaluator can clone the repository, install the dependencies declared in `pyproject.toml` (`make install-dev`, plus `make install-flare` for the torch/nvflare-dependent test files — see the correction in §5.1; there is no `requirements.txt` in this repository), and run `make test` to obtain a green suite. No environment-specific secrets, paths, or network connections are required.
 
 2. **Scientific reproducibility.** The numerical outputs of the framework — AUC-ROC of FedMIA, Krum scores, CUSUM alarm thresholds, differential privacy noise calibration — must be derivable from documented hyperparameters via auditable formulas. Unit tests serve as executable specifications of these formulas. For example, `test_sigma_computed` in `TestGradientManager` directly verifies the Gaussian mechanism formula σ = C × sqrt(2 ln(1.25/δ)) / ε against an analytically computed expected value, ensuring that the implementation matches the theoretical privacy guarantee stated in the paper.
 
@@ -314,21 +326,45 @@ The following failures in the pre-existing test suite were identified and resolv
 
 ### 5.1 Prerequisites
 
+**Correction (2026-09-09, task #81): there is no `requirements.txt` in this repository** (`ls
+requirements.txt` fails) and the pins quoted below never matched what's actually declared. Dependencies
+are declared in `pyproject.toml` and installed via the `make install*` targets (see
+`docs/DeveloperGuide.md` §7.1):
+
 ```bash
-# Python 3.10 or 3.11 recommended
-pip install -r requirements.txt
-# requirements.txt pins: torch==2.2.*, nvflare==2.7.2, pytest==8.*, numpy, scikit-learn
+# Python 3.10+ (pyproject.toml: requires-python = ">=3.10")
+make install-dev    # pip install -e ".[dev]" — runtime deps (torch>=2.0, numpy>=1.24, pyyaml>=6.0,
+                     # scikit-learn>=1.3, pandas>=2.0, openpyxl>=3.1) + dev tools
+                     # (pytest>=7.0, pytest-cov>=4.0, ruff>=0.1, mypy>=1.0)
+make install-flare   # only needed for tests/test_sprint4.py, tests/test_sprint5.py, and
+                     # tests/test_run_experiments_integration.py — pulls in nvflare>=2.7.2
+                     # (the `flare` extra; verified/pinned against 2.7.2 specifically, see
+                     # docs/NVFlareIntegration.md)
 ```
+
+None of the dependencies above are pinned to an exact version except `nvflare`, whose `flare` extra
+requests `>=2.7.2` (Makefile and `Dockerfile.flare` both install the exact `nvflare==2.7.2`).
+`torch>=2.0` / `pytest>=7.0` are minimum-version constraints, not the `torch==2.2.*`/`pytest==8.*`
+exact pins this section used to claim.
 
 No NVFLARE server process, no Containerlab installation, and no ACN-Data API credentials are required to run the unit test suites.
 
 ### 5.2 Make Targets
 
+**Correction (2026-09-09, task #81): the test counts below are stale (Sprint 4/5-only, same root
+cause as §1's correction notice) — do not cite them.** As of 2026-09-09, `pytest --collect-only`
+against `tests/` (torch unavailable in this sandbox, so excluding the 3 torch-dependent files) finds
+**244 collectible tests across 20 files**; a real run of that same subset passes 243 with 1 skipped.
+`test_sprint4.py`/`test_sprint5.py` themselves have grown since these numbers were written (53 and
+39 `def test_` methods respectively counted directly in the file, vs. 52/25 below) — re-run
+`pytest --collect-only` on a machine with torch installed for the authoritative current numbers
+rather than trusting either this table or the raw method count quoted here.
+
 | Command | Description |
 |---------|-------------|
-| `make test` | Runs the full test suite (140 tests across 6 test files). Equivalent to `pytest tests/ -v --tb=short`. |
-| `make test-sprint4` | Runs Sprint 4 tests only (52 tests). Equivalent to `pytest tests/test_sprint4.py -v --tb=short`. |
-| `make test-sprint5` | Runs Sprint 5 tests only (25 tests). Equivalent to `pytest tests/test_sprint5.py -v --tb=short`. |
+| `make test` | Runs the full test suite (stale count below; see correction above). Equivalent to `pytest tests/ -v --tb=short`. |
+| `make test-sprint4` | Runs Sprint 4 tests only (stale count below; see correction above). Equivalent to `pytest tests/test_sprint4.py -v --tb=short`. |
+| `make test-sprint5` | Runs Sprint 5 tests only (stale count below; see correction above). Equivalent to `pytest tests/test_sprint5.py -v --tb=short`. |
 
 ### 5.3 Direct pytest Invocations
 

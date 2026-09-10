@@ -21,6 +21,25 @@
 > through the rest of this document's prose — see `README.md`/`docs/DSN2027_Positioning.md` for
 > current facts.
 
+> **Correction notice (2026-09-09, found during a documentation audit, task #80).** Two further
+> corrections to §12.1 and related sections, now applied in this revision:
+> (1) **"CS1" as described here (8 federated nodes, 50 training rounds) is a pre-pivot design-time
+> scenario that was never run against the current architecture.** The real, current FL setup —
+> used in every actual ACN-Data simulation campaign and in the real NVFLARE/Containerlab deployment
+> (validated 2026-09-09) — has exactly **3 real sites (`caltech`, `jpl`, `office1`)** running
+> **10 FL rounds**, not 8 nodes/50 rounds. §12.1 has been rewritten below to describe the real
+> scenario and real parameters; §12.2's 8-node Byzantine positive control and the `node_006`
+> examples throughout §11 remain illustrative API-usage pseudocode only and do not correspond to
+> any node that exists in the real 3-site deployment.
+> (2) **The "zero alerts" / "FPR = 0.0" claim itself is not accurate for the real system's cosine
+> detector.** Grepping the real experiment JSON corpus (`experiments/*/experiment_*.json`, 287
+> files) turns up 36 real HIGH-severity cosine-similarity alerts with `recommended_action: EXCLUDE`
+> — every single one against node `office1-01`, never `caltech` or `jpl`. This is a real,
+> reproducible, low-rate false positive tied to `office1` being by far the smallest/noisiest ACN
+> site, not a sign of actual Byzantine or inference behavior. CUSUM and Krum genuinely do show zero
+> alerts in real runs; the cosine detector does not. §12.1 has been corrected accordingly — see
+> also the `cosine_threshold` correction in §6.4/§6.5 (operative default is `0.3`, not `0.85`).
+
 ---
 
 ## Abstract
@@ -29,7 +48,7 @@ ByzantineDetector is a behavioral anomaly detection system developed as a **defe
 
 ByzantineDetector implements an ensemble of three behavioral detectors — CUSUM change-point detection, Krum Byzantine fault detection, and cosine similarity gradient analysis — operating over AuditReport objects produced by the Privacy Auditor module. It generates structured IDSAlert objects with graduated severity levels (MONITOR, THROTTLE, EXCLUDE) and maintains comprehensive historical records for post-hoc experimental analysis.
 
-The central thesis demonstrated by the CS1 experimental scenario is: **behavioral monitoring generates zero alerts against an honest-but-curious aggregator performing MIA, even as that aggregator achieves statistically significant membership inference (AUC-ROC > 0.7)**. This result motivates the necessity of cryptographic privacy guarantees — specifically differential privacy (DP) — rather than behavioral monitoring as the primary defense against inference-based attacks. The analogy to the insider threat problem in information security is direct and intentional: just as a malicious but policy-compliant insider cannot be detected by access-log anomaly detection, a protocol-compliant aggregator cannot be detected by gradient-behavior anomaly detection.
+The central thesis of the CS1 scenario (see §12.1 for the corrected, real numbers) is: **behavioral monitoring cannot reliably reveal an honest-but-curious aggregator performing MIA** — the two of its three detectors that could plausibly key on inference-adjacent behavior (CUSUM, Krum) genuinely generate zero alerts in the real 3-site system, and the one detector that does occasionally fire (cosine similarity, against `office1` only) does so for reasons unrelated to inference activity (site-specific data scarcity), not because it has somehow detected the aggregator's private analysis. This result motivates the necessity of cryptographic privacy guarantees — specifically differential privacy (DP) — rather than behavioral monitoring as the primary defense against inference-based attacks. The analogy to the insider threat problem in information security is direct and intentional: just as a malicious but policy-compliant insider cannot be detected by access-log anomaly detection, a protocol-compliant aggregator cannot be detected by gradient-behavior anomaly detection.
 
 ---
 
@@ -54,7 +73,7 @@ The critical question for system designers is: **what defenses are available, an
 1. **Behavioral anomaly detection** (ByzantineDetector): monitoring gradient submission patterns, detecting deviations from expected behavior, and taking graduated enforcement action.
 2. **Cryptographic privacy guarantees** (Differential Privacy with the Gaussian Mechanism): injecting calibrated noise into gradient updates before aggregation, providing a formal privacy bound $(\varepsilon, \delta)$-DP.
 
-ByzantineDetector, the subject of this document, implements the first class of defense. Its role in the ChargeShield-FL experimental design is to serve as a **falsifiable baseline**: if ByzantineDetector generates alerts against an honest-but-curious aggregator, the experimental design is flawed, because such an attacker produces no behavioral anomaly by construction. The expected — and experimentally confirmed — result is that ByzantineDetector generates zero alerts in the MIA scenario, while successfully detecting Byzantine attackers in a contrasting experimental condition.
+ByzantineDetector, the subject of this document, implements the first class of defense. Its role in the ChargeShield-FL experimental design is to serve as a **falsifiable baseline**: if ByzantineDetector generates alerts that track the presence of an honest-but-curious aggregator's MIA activity, the experimental design is flawed, because such an attacker produces no behavioral anomaly by construction. The actual, real result (§12.1) is more nuanced than "zero alerts": CUSUM and Krum generate zero alerts in the real 3-site MIA scenario, but the cosine-similarity detector does generate a small, reproducible number of real alerts against the `office1` site specifically — a benign false positive tied to `office1`'s small dataset size, uncorrelated with MIA activity, not a sign that the falsifiable-baseline design has failed.
 
 ### 1.2 Scientific Contribution of ByzantineDetector
 
@@ -247,7 +266,7 @@ ByzantineDetector.analyze_round(round_reports)   [per-round]
     │
     ├─── Cosine Similarity Detector
     │       Computes pairwise cosine similarity matrix
-    │       Flags nodes with mean cosine < 0.85
+    │       Flags nodes with mean cosine < 0.3 (operative default; see §6.4)
     │
     └─── Returns RoundAnalysis(
               round_id, alerts, byzantine_nodes,
@@ -406,7 +425,7 @@ class CUSUMDetector:
 
 In the CS1 scenario — a passive, honest-but-curious aggregator performing MIA — the CUSUM detector is expected to generate **zero alerts** for all nodes throughout the experiment. The reason is direct: the honest-but-curious aggregator does not alter the gradient submissions of any node. The privacy_scores observed at the aggregator are the DP-noised gradient norms submitted by nodes according to their local training data and the configured DP mechanism. These scores evolve according to the natural FL training dynamics — convergence, local data heterogeneity, model capacity — none of which constitute a sustained upward drift detectable as a CUSUM change-point.
 
-This is the expected experimental result and constitutes confirmation that CUSUM is correctly calibrated (it does not generate false positives in normal FL operation) and that it cannot detect inference activity by a protocol-compliant aggregator.
+This is the expected experimental result and constitutes confirmation that CUSUM is correctly calibrated (it does not generate false positives in normal FL operation) and that it cannot detect inference activity by a protocol-compliant aggregator. This specific claim — zero CUSUM alerts — does hold in the real 3-site (`caltech`/`jpl`/`office1`), 10-round system; it is the cosine-similarity detector, not CUSUM, that occasionally fires on `office1` in real runs (see §12.1).
 
 ---
 
@@ -528,7 +547,7 @@ class KrumDetector:
 
 The fundamental limitation of Krum — and the reason it cannot detect honest-but-curious MIA — is that it operates entirely on **gradient geometry**, not on inference behavior. An honest-but-curious aggregator does not modify the gradient vectors submitted by nodes; it only observes them. Therefore, the gradient geometry presented to Krum is exactly the geometry of the benign FL run. Krum scores for all nodes will be within the normal range, the two-standard-deviation outlier threshold will not be exceeded, and no Byzantine detection will occur.
 
-This is not a failure of Krum — it is Krum functioning correctly for the threat it was designed to address (Byzantine gradient injection). It is simply inapplicable to the honest-but-curious threat model. The experimental confirmation of zero Krum alerts in the CS1 scenario is therefore both expected and scientifically informative.
+This is not a failure of Krum — it is Krum functioning correctly for the threat it was designed to address (Byzantine gradient injection). It is simply inapplicable to the honest-but-curious threat model. The experimental confirmation of zero Krum alerts in the CS1 scenario is therefore both expected and scientifically informative. As with CUSUM, this specific claim holds for the real system: Krum genuinely shows zero real alerts across the actual 3-site campaign. The one detector that does not stay silent in real runs is cosine similarity, and only against `office1` (see §12.1) — Krum and CUSUM are unaffected.
 
 ---
 
@@ -550,7 +569,7 @@ For each node $i$, the mean cosine similarity to all other nodes is computed:
 
 $$\bar{C}_i = \frac{1}{n-1} \sum_{j \neq i} C_{ij}$$
 
-Node $i$ is flagged as a low-similarity node (potential directional adversary) if $\bar{C}_i < \tau_{\cos}$, where $\tau_{\cos} = 0.85$ is the cosine similarity threshold.
+Node $i$ is flagged as a low-similarity node (potential directional adversary) if $\bar{C}_i < \tau_{\cos}$, where $\tau_{\cos} = 0.3$ is the cosine similarity threshold used by the operative implementation (see §6.4 correction note).
 
 ### 6.3 Why Cosine, Not Euclidean Distance?
 
@@ -564,13 +583,23 @@ The choice of cosine similarity over Euclidean distance for directional anomaly 
 
 ### 6.4 Threshold Justification
 
-The threshold $\tau_{\cos} = 0.85$ is a conservative choice calibrated to allow natural inter-node variation while flagging adversarial directional deviations:
+> **Correction (2026-09-09, task #80).** An earlier revision of this section justified
+> $\tau_{\cos} = 0.85$. That value was a **theoretical, design-time figure taken from the general
+> FL security literature and was never adopted as the shipped default.** The operative default in
+> every real implementation — `ByzantineDetector.__init__` in `src/ids/charging_ids.py`, the
+> `ChargeShieldAggregator` in `nvflare/jobs/chargeshield_poc/app/custom/chargeshield_aggregator.py`,
+> and every real `config_fed_server.json` in `nvflare/sim_workspace/*` and
+> `nvflare/jobs/chargeshield_poc/app/config/` — is `cosine_threshold = 0.3`, and this is the value
+> every real ChargeShield-FL experiment has actually used. The justification below is rewritten
+> around the real, much more lenient, $\tau_{\cos} = 0.3$.
 
-- **Natural inter-node variation**: In heterogeneous FL settings (non-IID local data distributions, as is typical in EV charging deployments where different stations serve different user populations), gradient vectors may have cosine similarities as low as 0.7–0.8 between nodes with significantly different local distributions. Setting $\tau_{\cos} = 0.85$ provides a margin above this natural variation floor.
+The threshold $\tau_{\cos} = 0.3$ is a deliberately lenient choice, calibrated to tolerate the substantial natural inter-node variation observed among the 3 real ACN-Data sites (`caltech`, `jpl`, `office1`) while still flagging genuinely adversarial directional deviations:
 
-- **Adversarial direction reversals**: Gradient reversal and sign-flipping attacks produce cosine similarities in the range $[-1.0, 0.0]$, well below $\tau_{\cos} = 0.85$. The threshold is thus effective at flagging these attack classes.
+- **Natural inter-node variation**: The 3 real ACN-Data sites are highly heterogeneous in both volume and session pattern — `office1` in particular is far smaller and noisier than `caltech`/`jpl`. In practice, benign gradient vectors across these sites have been observed with mean pairwise cosine similarities well below the 0.85 range assumed by the earlier design-time analysis; a strict threshold at 0.85 would have produced frequent false positives against `office1` purely from its small sample size, not from adversarial behavior. Setting $\tau_{\cos} = 0.3$ accepts a much wider natural variation floor. Even so, `office1` occasionally dips below 0.3 in real runs (see §12.1) — a known, low-rate, reproducible false positive tied to its dataset size, not to `caltech` or `jpl`.
 
-- **Empirical derivation**: The value 0.85 is consistent with thresholds reported in the FL security literature (Fung et al., 2020; Cao et al., 2021) for distinguishing benign heterogeneity from adversarial directional manipulation.
+- **Adversarial direction reversals**: Gradient reversal and sign-flipping attacks produce cosine similarities in the range $[-1.0, 0.0]$, still comfortably below $\tau_{\cos} = 0.3$. The threshold remains effective at flagging these attack classes even at the more lenient setting.
+
+- **Relationship to the literature**: Thresholds around 0.85 have been reported in the FL security literature (Fung et al., 2020; Cao et al., 2021) for distinguishing benign heterogeneity from adversarial directional manipulation, but those studies do not reflect the degree of cross-site heterogeneity present in the real 3-site ACN-Data deployment used here. 0.3 was chosen empirically for this deployment rather than carried over directly from that literature.
 
 ### 6.5 Implementation
 
@@ -587,13 +616,16 @@ class CosineSimilarityDetector:
     The Limitations of Federated Learning in Sybil Settings. RAID 2020.
     """
 
-    def __init__(self, threshold: float = 0.85):
+    def __init__(self, threshold: float = 0.3):
         """
         Parameters
         ----------
         threshold : float
             Cosine similarity threshold below which a node is flagged
-            as a potential directional adversary. Default: 0.85.
+            as a potential directional adversary. Default: 0.3 (matches
+            the operative `cosine_threshold` default in
+            `src/ids/charging_ids.py::ByzantineDetector` and every real
+            NVFLARE `config_fed_server.json`).
         """
         self.threshold = threshold
 
@@ -721,7 +753,7 @@ The graduated response allows ByzantineDetector to take proportionate action: re
 
 **Rationale:** At severity levels below 0.4, the evidence of anomalous behavior is insufficient to justify operational intervention. The node may be experiencing a transient fault (network jitter, data heterogeneity spike) that will self-resolve. The MONITOR action provides visibility without disruption: alert metadata is logged and available for analyst review or automated post-hoc analysis.
 
-**Scientific role in paper:** MONITOR alerts against legitimate nodes in the CS1 scenario would constitute false positives. The expected zero MONITOR alerts in CS1 confirms that ByzantineDetector does not conflate MIA with behavioral anomaly.
+**Scientific role in paper:** MONITOR alerts against legitimate nodes in the CS1 scenario would constitute false positives. Zero MONITOR alerts are in fact observed in the real system, which confirms that ByzantineDetector does not conflate MIA with behavioral anomaly — but note this is not the whole real-world picture: the real cosine detector's `office1` false positives (§12.1) resolve directly to `HIGH` severity / `EXCLUDE`, not `MONITOR`, so "zero MONITOR" does not imply "zero false positives overall."
 
 ### 8.3 THROTTLE (0.4 <= severity < 0.7)
 
@@ -741,15 +773,15 @@ The graduated response allows ByzantineDetector to take proportionate action: re
 
 **Rationale:** EXCLUDE is reserved for nodes with sustained, high-confidence evidence of anomalous behavior. The high threshold (0.7) reflects the operational cost of exclusion and the importance of minimizing false-positive exclusions. A node can reach the EXCLUDE threshold only through multiple rounds of multi-detector triggering — consistent with a sustained Byzantine attack.
 
-**Scientific note:** The EXCLUDE threshold of 0.7 is never expected to be crossed in the CS1 scenario. The risk score for all nodes in CS1 should remain at 0.0 throughout the experiment.
+**Scientific note (corrected 2026-09-09, task #80):** This section's original claim — that EXCLUDE is never crossed in CS1 and the risk score for all nodes stays at 0.0 — does **not** hold for the real system. In the real experiment corpus, the cosine detector's direct HIGH-severity finding against `office1` maps straight to `recommended_action: EXCLUDE` (36 real occurrences across `experiments/*/experiment_*.json`, node `office1-01` in every case, never `caltech`/`jpl`). This is a real, low-rate, reproducible false positive tied to `office1`'s small dataset size, not evidence of an undetected Byzantine attacker or a system misconfiguration; see §12.1 for the corrected experimental narrative.
 
 ### 8.5 Action Level Summary
 
-| Action    | Severity Range | Operational Effect                                        | Expected in CS1? |
+| Action    | Severity Range | Operational Effect                                        | Observed in the real 3-site system? |
 |-----------|---------------|-----------------------------------------------------------|-----------------|
 | MONITOR   | [0.0, 0.4)    | Log alert; no operational change                          | No              |
 | THROTTLE  | [0.4, 0.7)    | Reduce aggregation weight by risk-proportional factor     | No              |
-| EXCLUDE   | [0.7, 1.0]    | Remove from current round                                 | No              |
+| EXCLUDE   | [0.7, 1.0]    | Remove from current round                                 | Yes — real, low-rate cosine-similarity false positives against `office1` only (see §12.1) |
 
 ---
 
@@ -769,7 +801,7 @@ The alert history enables the following post-hoc analyses relevant to the Charge
 
 $$\text{FPR}_{\text{CS1}} = \frac{|\{(i, t) : \text{IDSAlert generated for node } i \text{ in round } t\}|}{N \cdot T}$$
 
-where $N$ is the number of nodes and $T$ is the number of rounds. The expected result is $\text{FPR}_{\text{CS1}} = 0.0$.
+where $N$ is the number of nodes and $T$ is the number of rounds. **Corrected (2026-09-09, task #80):** the real result is *not* $\text{FPR}_{\text{CS1}} = 0.0$ — the real 3-site, 10-round system shows a small, consistently reproducible nonzero FPR driven entirely by the cosine-similarity detector against `office1` (36 alerts across the real 287-file experiment corpus, always `office1`, never `caltech`/`jpl`). See §12.1 for the corrected numbers and interpretation.
 
 **Alert frequency distribution.** The distribution of alert severities across nodes and rounds can be analyzed to characterize the IDS's sensitivity profile under benign conditions.
 
@@ -831,8 +863,12 @@ ids:
 
   # Cosine similarity detector configuration
   cosine:
-    threshold: 0.85      # Cosine similarity below which a node is
-                         # flagged as a directional outlier.
+    threshold: 0.3       # Cosine similarity below which a node is
+                         # flagged as a directional outlier. (Corrected
+                         # 2026-09-09: this is the real operative default
+                         # in src/ids/charging_ids.py and every real
+                         # config_fed_server.json; 0.85 was an earlier
+                         # design-time value never shipped.)
 
   # Composite risk score configuration
   risk_score:
@@ -861,7 +897,7 @@ The key configuration parameters and their sensitivity are summarized:
 | `cusum.ema_alpha` | 0.3 | More responsive baseline, less drift detection | More stable baseline, better drift detection |
 | `cusum.warmup_rounds` | 10 | More stable baseline estimation | Higher early FPR |
 | `krum.f` | 1 | Tolerates more Byzantine nodes, higher threshold | Less tolerance, more sensitive |
-| `cosine.threshold` | 0.85 | Less sensitive to directional divergence | More sensitive; higher FPR with non-IID data |
+| `cosine.threshold` | 0.3 | Less sensitive to directional divergence | More sensitive; higher FPR with non-IID data |
 | `risk_score.decay_factor` | 0.9 | Slower recovery, longer memory | Faster recovery, shorter memory |
 
 ---
@@ -1036,14 +1072,14 @@ IDSAlert(
     severity=0.56,
     reasons=[
         "krum_outlier: score=14.72 (threshold=9.31, mean+2std)",
-        "cosine_low: mean_similarity=0.61 (threshold=0.85)",
+        "cosine_low: mean_similarity=0.21 (threshold=0.3)",
     ],
     recommended_action="THROTTLE",
     metadata={
         "krum_score": 14.72,
         "krum_threshold": 9.31,
-        "mean_cosine_similarity": 0.61,
-        "cosine_threshold": 0.85,
+        "mean_cosine_similarity": 0.21,
+        "cosine_threshold": 0.3,
         "cusum_statistic": 0.0,
         "risk_score_before": 0.38,
         "risk_score_after": 0.56,
@@ -1071,7 +1107,7 @@ RoundAnalysis(
     cosine_scores={
         "node_000": 0.921, "node_001": 0.934, "node_002": 0.918,
         "node_003": 0.927, "node_004": 0.922, "node_005": 0.930,
-        "node_006": 0.612,  # Low directional similarity
+        "node_006": 0.21,  # Low directional similarity (below the real 0.3 threshold)
         "node_007": 0.925,
     }
 )
@@ -1083,43 +1119,61 @@ RoundAnalysis(
 
 ### 12.1 CS1 Scenario: Passive MIA by Honest-but-Curious Aggregator
 
-The CS1 experimental scenario is the primary scenario of interest for the ByzantineDetector baseline evaluation. It consists of:
+> **Rewritten 2026-09-09 (task #80).** This section previously described a pre-pivot,
+> design-time scenario — 8 fictional federated nodes, 50 training rounds — that was never
+> actually run against the current architecture, and it claimed a "zero false positives"
+> result that does not hold for the real system. Both are corrected below to describe the
+> scenario as actually implemented and actually run.
 
-- **FL setup**: 8 federated nodes (EV charging station controllers), 50 training rounds, FedAvg aggregation, Gaussian DP with $\varepsilon = 1.0$, $\delta = 10^{-5}$.
-- **Attacker**: Honest-but-curious aggregator performing membership inference using the FedMIA module (shadow model plus membership inference classifier following Nasr et al., 2019).
-- **IDS**: ByzantineDetector with default configuration (`auditor.yaml`).
+The CS1 scenario is the primary scenario of interest for the ByzantineDetector baseline evaluation. As actually implemented and run, it consists of:
 
-**Expected IDS results in CS1:**
+- **FL setup**: **3 real ACN-Data sites (`caltech`, `jpl`, `office1`)**, **10 FL rounds**, FedAvg (or a configured DP variant: `dp-fedavg`/`central`/`local`), Gaussian DP at the configured $\varepsilon$. This is the real topology used in both the single-process ACN simulation campaign and the real NVFLARE/Containerlab 5-node deployment (server, `caltech`, `jpl`, `office1`, `fl-admin`; independently re-verified end-to-end 2026-09-09).
+- **Attacker**: Honest-but-curious aggregator. The primary attacks actually evaluated are Yeom (2018), Shadow MIA, LiRA (Carlini et al. 2022 — the strongest, primary attack), and the Sablayrolles et al. (2019) scorer, all operating on raw pre-aggregation updates. (The FedMIA-gradient attack exists only as an opt-in, post-hoc, explicitly not-validated diagnostic and is not part of this scenario's headline result — see §6.6.)
+- **IDS**: ByzantineDetector, running server-side inside the single `ChargeShieldAggregator` component (not a separate service), with the real default configuration (`cosine_threshold = 0.3`; see the correction in §6.4/§6.5).
 
-| Metric | Expected Value | Interpretation |
+**Actual IDS results in CS1 (real, from `experiments/*/experiment_*.json`, 287 files):**
+
+| Metric | Actual Value | Interpretation |
 |--------|---------------|----------------|
-| CUSUM alerts | 0 | No sustained drift detected |
-| Krum Byzantine flags | 0 | No geometric gradient outliers |
-| Cosine low-similarity flags | 0 | No directional anomalies |
-| MONITOR actions | 0 | Zero false positives |
-| THROTTLE actions | 0 | Zero false positives |
-| EXCLUDE actions | 0 | Zero false positives |
-| Total alerts | 0 | IDS completely blind to MIA |
+| CUSUM alerts | 0 | No sustained drift detected — holds in reality |
+| Krum Byzantine flags | 0 | No geometric gradient outliers — holds in reality |
+| Cosine low-similarity flags | 36 (all `office1-01`, 0 on `caltech`/`jpl`) | Real, low-rate false positive tied to `office1` being the smallest/noisiest site |
+| MONITOR actions | 0 | — |
+| THROTTLE actions | 0 | — |
+| EXCLUDE actions | 36 (all `office1-01`) | Direct consequence of the cosine detector's `HIGH`-severity finding on `office1`; **not** zero |
+| Total alerts | 36 | IDS is *not* completely blind to CS1 — it has a small, known, site-specific false-positive rate |
 
-**Expected FedMIA results in CS1 (attacker perspective):**
+This is a materially different (and more interesting) result than "zero alerts everywhere": CUSUM and Krum genuinely never fire against the honest-but-curious aggregator, which remains consistent with the section's thesis for those two detectors. The cosine-similarity detector, however, does occasionally (and reproducibly) flag `office1` — never `caltech` or `jpl` — because `office1` is by far the smallest of the 3 real ACN-Data sites and its gradient updates are correspondingly noisier. This is a benign false positive, not evidence that the honest-but-curious aggregator's MIA activity is somehow detectable; it is not associated with the presence or success of any inference attack.
 
-| Metric | Expected Value | Interpretation |
+**Actual MIA results in CS1 (attacker perspective):**
+
+As documented in the top-of-file correction notice, the AUC-ROC > 0.7 finding previously reported here is superseded. The real, Wilcoxon-verified result of the completed 5-seed × 10-config campaign (dp-fedavg/central/local × $\varepsilon \in \{1.0, 0.5, 0.1\}$ + no-DP baseline; see `docs/MetricsReference_DSN2027.md` §8) is:
+
+| Metric | Actual Value | Interpretation |
 |--------|---------------|----------------|
-| MIA AUC-ROC | > 0.70 | Statistically significant membership inference |
-| Reconstruction error (low-DP) | < 0.15 | Meaningful gradient information leakage |
+| LiRA composed AUC-ROC | ~0.4992–0.5018 across all 10 groups | No LiRA-detectable membership leakage at any tested configuration |
+| Wilcoxon p-value range | 0.3125–1.0000 across all 10 groups | No configuration shows statistically significant leakage |
 
-The juxtaposition of these two result sets is the core finding: MIA achieves statistically significant inference capability while the IDS generates zero alerts. This demonstrates conclusively that behavioral anomaly detection cannot protect against honest-but-curious MIA.
+The juxtaposition of these two result sets is the corrected core finding: in the real system, neither the IDS nor the attacker shows the dramatic "attacker wins, IDS is silent" contrast originally claimed. The IDS is *mostly* silent (with a small, well-characterized, `office1`-specific cosine false-positive rate), and the strongest attack tested does not achieve significant membership inference at all in the current model/dataset/FL configuration. The behavioral-detection-vs-cryptographic-privacy argument in §12.3 is reframed accordingly.
 
 ### 12.2 Byzantine Poisoning Scenario: Positive Control
 
-To validate that ByzantineDetector is not trivially non-functional (a degenerate IDS that never alerts), the experimental campaign includes a Byzantine poisoning scenario:
+> **Note (2026-09-09, task #80).** Like the original §12.1, this positive control describes a
+> pre-pivot, design-time scenario (an 8-node topology with a synthetic Byzantine node
+> `node_006`) that has no counterpart in the current 3-site (`caltech`/`jpl`/`office1`) codebase
+> — there is no such scenario or node in `scripts/run_experiments.py` or elsewhere in the real
+> pipeline. It is preserved below **only** as an illustrative design description of what a
+> Byzantine positive control would look like against ByzantineDetector's Krum/cosine detectors;
+> it should not be cited as an executed experiment.
+
+To validate that ByzantineDetector is not trivially non-functional (a degenerate IDS that never alerts), the experimental design called for a Byzantine poisoning scenario:
 
 - **Attacker**: One Byzantine node (`node_006`) submitting gradient reversal attacks ($g_{\text{attack}} = -g_{\text{true}}$) from round 10 onward.
 - **IDS**: ByzantineDetector with default configuration.
 
-**Expected IDS results in Byzantine scenario:**
+**Illustrative/designed IDS results in Byzantine scenario (not an executed experiment):**
 
-| Metric | Expected Value | Rounds |
+| Metric | Designed Value | Rounds |
 |--------|---------------|--------|
 | First Krum alert | Round 10 | First attack round |
 | First Cosine alert | Round 10 | First attack round |
@@ -1128,19 +1182,19 @@ To validate that ByzantineDetector is not trivially non-functional (a degenerate
 | EXCLUDE action | Round 14+ | Risk score >= 0.70 |
 | True positive rate | 1.0 | All attack rounds detected |
 
-This positive control confirms that ByzantineDetector correctly detects Byzantine gradient manipulation, validating the detection infrastructure and confirming that the zero-alert result in CS1 is a genuine negative finding, not a system misconfiguration.
+This design was never executed against the current codebase, so it cannot be cited as validating detection infrastructure. What *is* real is that the cosine detector demonstrably fires (against `office1`, in the actual honest-but-curious scenario itself — see §12.1), which is itself evidence the detector is not a degenerate always-silent IDS; a dedicated synthetic Byzantine-node re-run would still be useful future work to more directly exercise Krum, but is not needed to establish that ByzantineDetector can alert.
 
 ### 12.3 Implication: Differential Privacy is Necessary
 
-The experimental results jointly demonstrate:
+The corrected experimental results (§12.1) establish:
 
-1. ByzantineDetector correctly detects Byzantine gradient attacks (positive control).
-2. ByzantineDetector generates zero alerts against honest-but-curious MIA (CS1).
-3. Honest-but-curious MIA achieves statistically significant inference capability (AUC-ROC > 0.70).
+1. There is no executed Byzantine positive control against the current 3-site codebase (§12.2 is a design-time illustration only); what the real data does show is that ByzantineDetector's cosine detector is capable of firing (against `office1`), so it is not a degenerate always-silent system.
+2. ByzantineDetector generates zero CUSUM/Krum alerts and a small, `office1`-specific cosine false-positive rate against the honest-but-curious aggregator in CS1 — it is not perfectly blind, but it generates no alerts that track the presence of MIA.
+3. The strongest attack tested (LiRA) does **not** achieve statistically significant membership inference at any tested configuration in the current model/dataset/FL setup (composed AUC-ROC ~0.4992–0.5018, Wilcoxon p > 0.05 throughout).
 
-These three findings together establish that **differential privacy — not behavioral monitoring — is the appropriate defense against honest-but-curious MIA in federated learning**. Behavioral monitoring is a necessary component of a defense-in-depth architecture for Byzantine threats, but it is fundamentally insufficient for inference threats. The formal privacy guarantee of $(\varepsilon, \delta)$-DP is the only defense that directly bounds the information leakage exploited by MIA.
+These findings still support **differential privacy — not behavioral monitoring — as the appropriate defense against honest-but-curious MIA in federated learning**, but for a more nuanced reason than originally stated: behavioral monitoring's few real alerts are a site-specific artifact of `office1`'s small dataset size, uncorrelated with inference activity, so it provides no reliable signal either way about MIA; only the formal $(\varepsilon, \delta)$-DP guarantee (or, in the current results, the underlying model/task's apparent resistance to the tested attacks) bounds the actual information leakage. Behavioral monitoring remains a necessary component of a defense-in-depth architecture for Byzantine threats, but it is fundamentally insufficient — and, per the `office1` false positive, not even a clean signal — for inference threats.
 
-This result has direct practical implications for EV charging infrastructure designers: deploying only behavioral IDS (which is comparatively easy to implement and operationally familiar) while omitting DP noise injection leaves the system fully exposed to honest-but-curious MIA by any party with legitimate access to the gradient aggregation layer.
+This result has direct practical implications for EV charging infrastructure designers: deploying only behavioral IDS (which is comparatively easy to implement and operationally familiar) while omitting DP noise injection leaves the system without a formal privacy bound against honest-but-curious MIA by any party with legitimate access to the gradient aggregation layer, regardless of what behavioral monitoring does or does not report.
 
 ---
 

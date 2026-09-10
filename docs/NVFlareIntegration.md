@@ -1,7 +1,23 @@
 # NVFLARE / Containerlab Integration — Status and Plan
 
 **Started:** 2026-07-22
-**Status:** Job scaffold + client Executor + custom Aggregator + DP wiring + structured exports (fase 1-5) written. **First real execution: 2026-07-24** (see "First real run" section below) — 4 real bugs found and fixed across three attempts; **the third attempt completed all 10 rounds successfully** (`make nvflare-sim-smoke`, 1 client/caltech, `min_clients=1`: "Round 9 finished" → "Finished ScatterAndGather Training", no errors). This confirms the DXO/Executor/Aggregator/DP/IDS-export pipeline runs end-to-end for a single client. **Same day, follow-up fix**: raw exports are now timestamped per run (see "Fix 2026-07-24: export non più sovrascritti tra run" below) so a second/accidental run can no longer silently overwrite a prior run's results. **Not yet run**: the 3-real-site shape (`make nvflare-sim`, `-n 3 -c caltech,jpl,office1`) — that is the next concrete step, not yet attempted.
+**Status:** Job scaffold + client Executor + custom Aggregator + DP wiring + structured exports (fase 1-5) written. **First real execution: 2026-07-24** (see "First real run" section below) — 4 real bugs found and fixed across three attempts; **the third attempt completed all 10 rounds successfully** (`make nvflare-sim-smoke`, 1 client/caltech, `min_clients=1`: "Round 9 finished" → "Finished ScatterAndGather Training", no errors). This confirms the DXO/Executor/Aggregator/DP/IDS-export pipeline runs end-to-end for a single client. **Same day, follow-up fix**: raw exports are now timestamped per run (see "Fix 2026-07-24: export non più sovrascritti tra run" below) so a second/accidental run can no longer silently overwrite a prior run's results.
+
+> **Status correction (2026-09-09, found during a documentation audit, task #81) — the rest of this
+> intro paragraph was never updated after it was overtaken by events.** It used to end here with
+> "Not yet run: the 3-real-site shape (`make nvflare-sim`, `-n 3 -c caltech,jpl,office1`) — that is
+> the next concrete step, not yet attempted." That framing is long stale: the 3-site simulator shape
+> ran to completion the same week (see "Verified 2026-08-31" below), the real multi-container
+> Containerlab deployment (5 nodes: `server`/`caltech`/`jpl`/`office1`/`fl-admin`) went through
+> several real bug-fix cycles from 2026-08-01 through 2026-08-31 (see the dated updates further
+> down), and — most recently — was **independently re-verified end-to-end on 2026-09-09**: "Step A"
+> redeployed the containers fresh with the latest code and ran a full clean 10-round FedAvg job with
+> no errors, and "Step B" ran a 5-seed statistical campaign on `dp_mode=dp-fedavg`, `epsilon=1.0` —
+> all 5 seeds completed cleanly — and is currently being cross-validated against a `central` dp_mode
+> variant. The real Containerlab multi-container deployment is a working, repeatedly-verified path
+> today, not a "next step" or a simulator-only story — treat every "not yet attempted" phrase
+> elsewhere in this document's older dated sections as historical (true when written), superseded by
+> the runs recorded below.
 
 **Update (2026-07-22, later same day):** the 4 fictional same-site "clusters" (`highway`/`urban`/`residential`/`corporate`) referenced throughout the fase 1-5 sections below have been replaced project-wide with the 3 real ACN-Data sites (`caltech`/`jpl`/`office1` — see README "Real multi-site experiment" and the JPL/Caltech mislabeling correction in the same section). `nvflare/project.yml`, `chargeshield_executor.py`, `config_fed_client.json`, and `config_fed_server.json` (`min_clients: 4→3`) were all updated to match. The fase 1-5 narrative and `VERIFY:` points below are left as originally written (historical record of that work) except where explicitly annotated as updated; read `highway`/`urban`/`residential`/`corporate` in what follows as referring to the old 4-cluster scheme this superseded, not the current client set.
 **Why:** the environment used to write this code cannot install `torch` (proxy blocks `download.pytorch.org`) or, by extension, verify `nvflare` behaviour (nvflare depends on torch). Every NVFLARE API call below was written from documented/standard NVFLARE 2.x patterns and careful reading of the existing `src/ml/`/`src/auditor/`/`src/ids/` code, but **none of it has run**. Treat this as a first draft to debug on a machine with the real dependencies installed, not as working code. **Update (2026-07-24)**: re-checked — `pip install torch`/`pip install nvflare==2.7.2` now resolve their dependency graphs fine in this sandbox (no proxy block observed today), but the actual wheel downloads are large enough (CUDA toolkit dependencies pulled in alongside torch) to exceed this session's per-command execution time budget, so a full install still wasn't completed here. This is a sandbox time-limit constraint, not necessarily a hard network block anymore — worth trying a plain `pip install torch nvflare==2.7.2` on a normal (non-time-boxed) machine before assuming it will fail the same way.
@@ -472,10 +488,88 @@ Due gap identificati da una review esterna e confermati leggendo il codice (non 
 **Verificato**: `python3 -m py_compile` su tutti i file toccati (`chargeshield_aggregator.py`,
 `privacy_auditor.py`, `privacy_auditor_subscriber.py`, `gradient_manager.py`,
 `fedavg_aggregator.py`) + tutti gli 83 test non-torch passano — stesso limite ambientale di sempre
-(niente torch/nvflare in questo sandbox): **non ancora eseguito con un run NVFLARE reale**. I due
+(niente torch/nvflare in questo sandbox) al momento in cui questa sezione fu scritta. I due
 job reali completati il 2026-08-04 (citati sopra in questo documento) sono stati prodotti PRIMA di
-questo fix — un nuovo run è necessario per confermare il wiring a runtime, ma i valori numerici
-attesi non cambiano (stessa formula, ora genuinamente sourced dal ML Plane invece che da variabili
-locali).
+questo fix. **Aggiornamento (2026-08-31, vedi "Verified 2026-08-31" più sopra) e di nuovo
+2026-09-09 (Step A/B, vedi sezione dedicata sotto)**: il wiring del ML Plane/Privacy Auditor
+subscriber è stato da allora effettivamente esercitato da run NVFLARE reali sui 3 siti — questo
+paragrafo, che diceva "un nuovo run è necessario per confermare il wiring a runtime", è quindi
+superato; quel run è stato fatto, più volte.
 
-Steps 1-2 are a few hours of real debugging once someone has `nvflare` installed. Steps 4-6 are the "multi-week" part of the original estimate — this document doesn't shrink that estimate, it just gives it a concrete starting point. Step 7 (this pass) only prepared the configuration correctly on paper; it has not yet been executed once, so treat every claim in it as "should work by design," not "verified."
+Steps 1-2 are a few hours of real debugging once someone has `nvflare` installed — done, repeatedly, since 2026-07-24. Steps 4-6 are the "multi-week" part of the original estimate — this document doesn't shrink that estimate, it just gives it a concrete starting point. Step 7 (fase 7+8, ML Plane + Privacy Auditor subscriber) was verified against a real NVFLARE run by 2026-08-31 (see above) and again by the 2026-09-09 Step A/B verification below — no longer "should work by design, not verified."
+
+## Independent end-to-end re-verification (2026-09-09, "Step A" / "Step B", task #77/#81)
+
+With `src/adapters/chargeplace_scotland_adapter.py` added the same day (see README/DeveloperGuide —
+unrelated to NVFLARE, a second-dataset adapter, not yet run through any campaign), the team took the
+opportunity to re-verify the real Containerlab/NVFLARE path end-to-end against the current codebase,
+since the most recent fully-documented real multi-container run above was 2026-08-31 and a fair
+amount of unrelated `src/` work had landed since.
+
+- **Step A — fresh redeploy + clean job.** Rebuilt `chargeshield-fl:latest` from `Dockerfile.flare`,
+  re-ran `nvflare provision`, redeployed the full 5-node Containerlab topology
+  (`server`/`caltech`/`jpl`/`office1`/`fl-admin`) from scratch against the current `main`, and
+  submitted `nvflare/jobs/chargeshield_poc/` through the admin console exactly as in the 2026-08-01
+  through 2026-08-31 runbook above. Result: a full 10-round FedAvg job completed cleanly, no errors —
+  the best single confirmation to date that the whole chain (image build → provisioning → Containerlab
+  deploy → job submission → 10 real FL rounds → ML Plane/Privacy Auditor/ByzantineDetector wiring)
+  still works end-to-end on top of everything landed since 2026-08-31.
+- **Step B — statistical campaign on real containers, not just the simulator.** Building on Step A,
+  ran a 5-seed statistical campaign on the real Containerlab deployment with `dp_mode=dp-fedavg`,
+  `epsilon=1.0`. All 5 seeds completed cleanly, 10/10 rounds each, zero `byzantine_detected`. 2 of 5
+  seeds show one HIGH cosine-similarity alert on `office1` (round 4 and round 7 respectively) — the
+  same long-standing, non-NVFLARE-specific pattern documented in `docs/IDS.md` §12. A
+  `dp_mode=central` run at the same epsilon (seed 42) also completed cleanly. **Correction
+  (2026-09-10)**: the paragraph above previously claimed dp-fedavg and central "are expected to be
+  numerically identical at the same epsilon in the current single-process simulation" — this was
+  wrong. The pair that is expected (and verified, bit-for-bit, against real experiment data) to be
+  numerically identical in the single-process simulation is **dp-fedavg and local**, not central —
+  see `docs/MetricsReference_DSN2027.md` for the full architectural explanation (both call the same
+  `GradientManager.privatize()` with no real client/server process boundary in the simulation;
+  `central` uses the structurally different `privatize_aggregate()` and is not part of that
+  identity). Comparing the real central-seed-42 run against the real dp-fedavg-seed-42 run
+  round-by-round confirms this directly: round 1 is identical on all three clients, but the two
+  runs diverge genuinely from round 2 onward — central is a real, independently-validated mechanism
+  on the real deployment, not a duplicate of dp-fedavg.
+- **MIA re-analysis on the real pickles** (`scripts/run_nvflare_mia.py`, reusing `run_lira()`
+  unmodified): seed 42 (dp-fedavg) done — `mean_lira_auc_roc=0.499`, `privacy_risk=LOW`, no leakage,
+  consistent with the simulation. Seeds 123/456/789/1234 and the central run still pending as of
+  2026-09-10.
+- **Methodological finding (2026-09-10, does not affect the MIA conclusions above, but worth
+  recording):** round 1 in every `nvflare_ids_audit_results_*.json` (privacy_score/epsilon per
+  client) is byte-identical across all 5 dp-fedavg seeds *and* the central run. Root cause: the
+  NVFLARE campaign's `seed` value is only used client-side, for the train/holdout split
+  (`chargeshield_executor.py`) and DataLoader shuffle — never to seed the initial global model's
+  weights (the persistor always instantiates the same, unseeded `Autoencoder` checkpoint), unlike
+  the single-process simulation, which calls `torch.manual_seed(seed)` before model creation. On
+  top of that, round 1's clipping uses the absolute weight norm (not a delta, since
+  `reference_weights` is `None` at round 1) — dominated by that shared, unseeded checkpoint, hence
+  the exact match. From round 2 onward, `reference_weights` reflects genuinely seed-dependent
+  training and the values diverge normally. This means round-1 audit-metric variance across seeds on
+  NVFLARE is not informative (it's artificially zero) — a caveat for anyone tempted to cite
+  cross-seed variance starting at round 1 specifically. It does not touch the actual LiRA/Yeom/Shadow
+  MIA results, which read `raw_updates`/reconstruction loss from `nvflare_fl_results_*.pkl`, not this
+  audit field.
+- **Fixed, not just documented (2026-09-10).** `ChargeShieldAggregator.__init__()` now accepts an
+  opt-in `seed` parameter (default `None`, fully backward-compatible) and, when provided, seeds
+  `random`/`numpy`/`torch` before returning — which happens before NVFLARE constructs the next
+  component in `config_fed_server.json`'s list, the persistor that instantiates the initial
+  `Autoencoder`. `config_fed_server.json` now carries a `"seed"` field that must match the client's
+  (same "no automatic cross-check" caveat already documented for `epsilon`/`delta`/`dp_mode`). This
+  makes round-1 model initialization genuinely seed-dependent on NVFLARE, matching the
+  single-process simulation's `torch.manual_seed(seed)` call in `main()`. **Not yet re-verified with
+  a real run** — py_compile passes, but torch/nvflare aren't installable in this sandbox; the next
+  NVFLARE job submission (whichever seed/mode is used next) is the real test that round 1 now
+  differs across seeds. The 5 dp-fedavg seeds and the 1 central seed already collected predate this
+  fix and keep their byte-identical round 1 — still valid for the MIA conclusions they support, just
+  not for a round-1-specific cross-seed variance claim.
+
+This supersedes every earlier "not yet attempted"/"next step" framing about the real multi-container
+deployment elsewhere in this document (including this document's own opening paragraph, corrected
+above): the Containerlab path is not a speculative next step, it is a working, twice-independently-run
+deployment target, with a real statistical campaign now underway on it directly (not only via
+`make nvflare-sim`, the single-process simulator). **Still missing for a comparison fully aligned
+with the single-process 10-config × 5-seed campaign**: `local` mode on NVFLARE (zero runs so far),
+epsilon variation (only ε=1.0 tested), and `central` at more than 1 seed. Not blocking for
+submission — the paper's primary claim rests on the single-process campaign, already complete and
+statistically robust; this NVFLARE work is supplementary validation, not a replacement.

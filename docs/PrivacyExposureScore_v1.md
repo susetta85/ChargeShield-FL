@@ -321,7 +321,9 @@ Yeom bound `e^ε − 1` has a different shape entirely (it is a ceiling that gro
 read as "the empirical advantage normalized against its theoretical ceiling" — it isn't that,
 today.
 
-**Concrete refinement this suggests (PES v1.1, not yet implemented):** a more tightly grounded
+**Concrete refinement this suggests (PES v1.1 — implemented since Sprint 10zz+13, 2026-09-02;
+this "Theoretical grounding" section predates that and is kept as the original proposal
+rationale, see the "PES v1.1" section above for the final, computed numbers):** a more tightly grounded
 successor metric would normalize the *observed* advantage against the *Humphries (ε,δ) ceiling*
 directly — `PES_v1.1 = L(AUC) / ((e^ε − 1 + 2δ) / (e^ε + 1))`, read as "what fraction of the
 maximum advantage this (ε,δ)-DP mechanism formally permits did the attacker actually achieve."

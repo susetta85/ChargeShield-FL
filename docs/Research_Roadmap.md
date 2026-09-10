@@ -39,7 +39,26 @@
 > AUC significantly different from 0.5 (`docs/MetricsReference_DSN2027.md` §8,
 > `docs/TestRoadmap_DSN2027.md`). Treat §13 and any AUC/attack/topology claim in the body of this
 > document as superseded by `README.md` and `docs/DSN2027_Positioning.md`, not as a current
-> checklist to plan work from.
+> checklist to plan work from. **§13 itself has now been corrected below (2026-09-09) rather than
+> left contradicting this notice** — see the checklist for current status.
+
+> **Addendum (2026-09-09, documentation audit).** Since the 2026-09-04 note above, the project's
+> actual headline campaign (not the ε×rounds×FedAvg/FedProx design described in this document's
+> body, which was abandoned — see below) **completed 2026-09-08**: 5-seed × 10-config
+> (dp-fedavg/central/local × ε∈{1.0,0.5,0.1} + no-DP baseline), real Wilcoxon-signed-rank p-values
+> 0.3125–1.0000 across all 10 groups, no configuration shows significant membership-inference
+> leakage — this is the paper's central empirical result and is done, not future work. Also
+> completed since 2026-09-04: entity-aware split (5-seed replicated), canary positive control
+> (raw-loss level, all 3 real sites, scale-dependent limitation documented), TPR@low-FPR (applied
+> to all attacks), a full paper skeleton (docx) with final numbers, and — as of 2026-09-09 — a real
+> multi-container NVFLARE/Containerlab deployment (5-node topology, server/caltech/jpl/office1/
+> fl-admin, NOT the 12-node/4-cluster OCPP/MQTT design below) independently re-verified end-to-end,
+> with a 5-seed statistical campaign on that real deployment also completed for one config
+> (dp-fedavg ε=1.0) and a second dp_mode cross-check in progress. A new adapter for a second
+> dataset (ChargePlace Scotland) was built and unit-tested 2026-09-09
+> (`src/adapters/chargeplace_scotland_adapter.py`), but a full experimental campaign on it has not
+> been run yet. See `docs/TestRoadmap_DSN2027.md` for authoritative current status of all of the
+> above.
 
 ---
 
@@ -541,27 +560,27 @@ Documents the Flower FL framework, a flexible research-oriented alternative to N
 
 - [x] **77 unit tests passing** — The full unit test suite (77 tests, covering all components) passes with zero failures. Tests are organized by component and run in CI on every pull request via GitHub Actions.
 
-### In Progress
+### In Progress / Superseded (2026-09-09 correction)
 
-- [ ] **Full ε × rounds sweep (Sprint 6)** — The parameter sweep across ε ∈ {0.1, 0.5, 1.0, 2.0, 5.0} × rounds ∈ {100, 200, 500, 1000} × {FedAvg, FedProx} is currently in execution. Estimated completion: end of Sprint 6. Results for the first condition (ε = 1.0, 100 rounds) are complete; remaining conditions are in progress.
+- [x] ~~Full ε × rounds sweep (Sprint 6)~~ — **This exact design (ε∈{0.1,0.5,1.0,2.0,5.0} × rounds∈{100,200,500,1000} × FedAvg/FedProx, 40 conditions) was abandoned**, not completed as originally scoped. It was superseded by the real headline campaign actually run: **5-seed × 10-config (dp-fedavg/central/local × ε∈{1.0,0.5,0.1} + no-DP baseline)**, which **completed 2026-09-08** with real Wilcoxon-confirmed p-values 0.3125–1.0000 across all 10 groups — no configuration shows significant MIA leakage. See `docs/TestRoadmap_DSN2027.md` item #1/#13 and `docs/MetricsReference_DSN2027.md` §8 for the actual final table. Do not plan further work against the old 40-condition grid.
 
-- [ ] **Sprint 6 development** — Sprint 6 is underway, addressing sweep automation, result logging infrastructure, and statistical analysis tooling. Sprint completion is the prerequisite for executing the full sweep in a reproducible and automated manner.
+- [x] ~~Sprint 6 development~~ — Sprint 6 as originally scoped (sweep automation for the abandoned 40-condition grid) is moot; the equivalent real tooling (`scripts/run_multiseed_consolidation.sh`, `scripts/check_significance.py`) was built and used to run and analyze the actual 10-config campaign above.
 
-### Not Started
+### Not Started (corrected 2026-09-09 — several of these are in fact done or in progress)
 
-- [ ] **CS2 (multi-cluster heterogeneity) experiment** — The cluster-stratified AUC-ROC analysis has not yet been executed. Blocked on CS1 sweep completion and result logging.
+- [x] **Statistical significance analysis (confidence intervals, repeated seeds)** — ~~Repeated runs with different random seeds and bootstrapped confidence intervals have not yet been computed.~~ **This is done.** Bootstrap CIs and a real `scipy.stats.wilcoxon` significance test are implemented (`scripts/check_significance.py`) and were run against the completed 5-seed × 10-config campaign (2026-09-08) — all 10 groups' CIs contain 0.5, Wilcoxon p between 0.3125 and 1.0000. See `docs/TestRoadmap_DSN2027.md` items #1, #5, #13.
 
-- [ ] **CS3 (DP vs. no-DP utility) experiment** — The utility evaluation experiment has not yet been executed. Blocked on CS1 analysis to identify ε* and on no-DP baseline training runs.
+- [ ] **CS2 (multi-cluster heterogeneity) experiment** — Not applicable to the real 3-site (Caltech/JPL/Office1) architecture in this form; the 4-cluster design it was scoped against does not exist. Not tracked as an open item in `docs/TestRoadmap_DSN2027.md`.
+
+- [ ] **CS3 (DP vs. no-DP utility) experiment** — Superseded by the real no-DP baseline arm that is part of the completed 10-config campaign above (`docs/TestRoadmap_DSN2027.md` item #1).
 
 - [ ] **Related work survey** — The structured survey of 20–30 papers across all relevant topic areas has not yet been conducted. This is an independent activity that can begin immediately in parallel with ongoing development.
 
-- [ ] **Statistical significance analysis (confidence intervals, repeated seeds)** — Repeated runs with different random seeds and bootstrapped confidence intervals have not yet been computed. Blocked on CS1 sweep completion.
+- [🟡] **Second-dataset integration** — Not ElaadNL as described below (never started), but a **ChargePlace Scotland adapter** was written and unit-tested 2026-09-09 (`src/adapters/chargeplace_scotland_adapter.py`, 30 passing tests) and wired into `scripts/run_experiments.py`. A full experimental campaign on it has **not** been run yet. See `docs/TestRoadmap_DSN2027.md` item #6.
 
-- [ ] **ElaadNL dataset integration** — The ElaadNL Dutch EV charging dataset has not yet been downloaded, pre-processed, or integrated into the framework. This optional activity strengthens external validity considerably.
+- [ ] **Paper draft** — A full paper skeleton (docx, IEEE format) exists with final campaign numbers filled in (`docs/paper/ChargeShield-FL_DSN2027_paper_skeleton.docx`); prose sections (related work, discussion) are still being written.
 
-- [ ] **Paper draft** — No sections of the DSN 2027 paper have been drafted. Blocked on all experiments and the related work survey.
-
-- [ ] **Real hardware validation (desirable, not required)** — Validation of key results on real EV charging hardware (physical EVSE with OCPP stack) has not been attempted. This would significantly strengthen external validity but is not required for DSN submission.
+- [🟡] **Real hardware/deployment validation** — Not physical EVSE hardware (still not attempted), but the **real multi-container NVFLARE/Containerlab deployment** (5-node topology: server/caltech/jpl/office1/fl-admin, NOT the 12-node/4-cluster design below) was independently re-verified end-to-end 2026-09-09, and a 5-seed statistical campaign (dp-fedavg ε=1.0) completed on that real deployment, with a second dp_mode cross-check in progress. See `docs/TestRoadmap_DSN2027.md` item #8.
 
 - [ ] **Rényi DP composition** — The RDP accountant implementation has not been started. This independent activity would strengthen the theoretical rigor of the DP analysis by providing tighter composition bounds across training rounds.
 

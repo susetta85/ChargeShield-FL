@@ -10,6 +10,19 @@ Berlin), quindi non c'è più una dipendenza temporale stretta tra demo e paper.
 paper, questa spec) sono state condotte in parallelo su esplicita richiesta dell'utente ("Entrambi in
 parallelo").
 
+> **Nota di aggiornamento (2026-09-09).** Questo documento è stato scritto il 2026-08-28, mentre la
+> campagna citata sotto come lavoro bloccante era ancora in corso. Da allora: (1) la campagna è
+> cresciuta da 5-seed×8-config a **5-seed×10-config** (task #52, le 2 configurazioni aggiunte sono
+> central/local ε=0.5) ed è **COMPLETATA il 2026-09-08** — tutti e 10 i gruppi hanno AUC LiRA composito
+> medio 0.4995–0.5005, CI bootstrap al 95% contenente 0.5, e p-value Wilcoxon reali 0.3125–1.0000 (non
+> più il sign-test placeholder disponibile quando questo documento fu scritto); (2) il deployment reale
+> Containerlab/NVFLARE è stato ri-verificato end-to-end il 2026-09-09 (10 round puliti + una campagna
+> statistica a 5 seed su dp-fedavg ε=1.0, entrambi su deployment reale, non solo in simulazione). Le
+> occorrenze di "5-seed×8-config" più sotto in questo documento sono quindi lo stato **al momento della
+> scrittura**, non lo stato attuale — nessun codice della dashboard è stato scritto nel frattempo, quindi
+> la spec stessa resta valida, ma non è più bloccata in attesa dei risultati: i numeri reali per le Tab
+> 2/3 sono ora disponibili.
+
 ---
 
 ## 1. Perché ridimensionare (motivazione, non solo decisione)
@@ -92,8 +105,12 @@ nel gruppo "no-DP baseline"). La dashboard deve escludere di default le cartelle
 ### Tab 1 — Overview
 - Riepilogo a colpo d'occhio: numero totale di esperimenti, range di epsilon testati, DP mode disponibili,
   data dell'ultimo run.
-- Headline claim del paper in un box ben visibile: "AUC LiRA composito, tutte le configurazioni DP: 0.48–0.52
-  — nessun segnale di membership rilevabile" con link diretto alla Tab 2 per i numeri esatti.
+- Headline claim del paper in un box ben visibile: "AUC LiRA composito, tutte e 10 le configurazioni
+  (dp-fedavg/central/local × ε∈{1.0,0.5,0.1} + no-DP): 0.4995–0.5005 — nessun segnale di membership
+  rilevabile (Wilcoxon p 0.3125–1.0000)" con link diretto alla Tab 2 per i numeri esatti. **Aggiornamento
+  2026-09-09**: questo è il range reale finale della campagna task #52 (completata 2026-09-08); il
+  range 0.48–0.52 di una stesura precedente di questa spec era una stima approssimativa scritta prima
+  del completamento della campagna.
 
 ### Tab 2 — Results Explorer (il cuore della dashboard)
 - Tabella filtrabile (dp_mode, epsilon, numero round) sui dati aggregati per seed, letta dai gruppi già
@@ -141,9 +158,13 @@ nel gruppo "no-DP baseline"). La dashboard deve escludere di default le cartelle
 
 ## 7. Effort stimato e sequenza suggerita
 
-Non bloccante rispetto al paper — da avviare solo dopo che lo scheletro del paper è stabile e la campagna
-5-seed×8-config è conclusa (i numeri reali della Tab 2/3 dipendono da quei risultati). Stima approssimativa
-(nessun codice scritto, quindi solo un ordine di grandezza):
+Non bloccante rispetto al paper — pensata per essere avviata solo dopo che lo scheletro del paper fosse
+stabile e la campagna (allora 5-seed×8-config, poi cresciuta a 5-seed×10-config) fosse conclusa, perché i
+numeri reali della Tab 2/3 dipendono da quei risultati. **Aggiornamento 2026-09-09**: entrambe le
+condizioni sono ora soddisfatte (scheletro paper esistente da Sprint 10qq; campagna 5-seed×10-config
+completata task #52, 2026-09-08) — l'implementazione non è più bloccata da dati mancanti, resta solo in
+attesa di conferma esplicita dell'utente per iniziare (§8). Stima approssimativa (nessun codice scritto,
+quindi solo un ordine di grandezza):
 
 1. Scaffold Streamlit + lettura/caching dei JSON esistenti (riuso di `discover_groups()` da
    `check_significance.py` per evitare di duplicare la logica di raggruppamento) — piccolo.
