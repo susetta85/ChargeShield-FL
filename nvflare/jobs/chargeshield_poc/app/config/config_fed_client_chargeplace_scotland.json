@@ -1,0 +1,40 @@
+{
+  "_comment": "ChargeShield-FL — client-side config di ESEMPIO per ChargePlace Scotland su NVFLARE (task #37/#93, 2026-09-10). Per usarlo: sostituire (o copiare sopra) nvflare/jobs/chargeshield_poc/app/config/config_fed_client.json con questo file prima di submit_job — NVFLARE legge sempre il file con quel nome esatto, esattamente come già avviene per cambiare seed/dp_mode tra un run e l'altro (vedi seed_snapshots/ per il precedente di ACN-Data). Nessuna modifica a nvflare/project.yml o containerlab/topology.clab.yml: i 3 siti NVFLARE restano identificati come caltech/jpl/office1 — 'dataset_adapter'+'chargeplace_scotland' sotto dicono a ChargeShieldExecutor._setup() di caricare dati ChargePlace Scotland per quelle identità invece di ACN-Data, tramite 'site_mapping'. Stessa mappatura dei 3 client scelti per la campagna single-process (config/experiment_chargeplace_scotland.yaml, task #37): Glasgow City/East Ayrshire/City of Edinburgh (top-3 per volume reale). session_files elenca solo un sottoinsieme ridotto (2 mesi) per un primo smoke test su NVFLARE — allineare alla lista completa di 18 mesi in config/experiment_chargeplace_scotland.yaml solo dopo aver verificato il tempo reale (ogni round LiRA su questo dataset ha impiegato ~54 min nella simulazione single-process, ~10x ACN-Data — non ancora misurato il costo lato NVFLARE, presumibilmente dominato dallo stesso training FL, non dalla rianalisi MIA offline che è un passo separato).",
+  "format_version": 2,
+  "executors": [
+    {
+      "tasks": ["train"],
+      "executor": {
+        "path": "chargeshield_executor.ChargeShieldExecutor",
+        "args": {
+          "cluster_id": "caltech",
+          "input_dim": 6,
+          "lr": 0.001,
+          "epochs": 50,
+          "batch_size": 32,
+          "proximal_mu": 0.01,
+          "seed": 42,
+          "dataset_adapter": "chargeplace_scotland",
+          "chargeplace_scotland": {
+            "metadata_dir": "datasets/alt/chargeplace_scotland/CPID_information",
+            "site_mapping": {
+              "caltech": "Glasgow City",
+              "jpl": "East Ayrshire",
+              "office1": "City of Edinburgh"
+            },
+            "session_files": [
+              "datasets/alt/chargeplace_scotland/Sessions_from_CPS/OCT-23.xlsx",
+              "datasets/alt/chargeplace_scotland/Sessions_from_CPS/NOV-23.xlsx"
+            ]
+          },
+          "dp_mode": "central",
+          "epsilon": 1.0,
+          "delta": 1.0e-5,
+          "max_grad_norm": 1.0
+        }
+      }
+    }
+  ],
+  "task_result_filters": [],
+  "task_data_filters": []
+}

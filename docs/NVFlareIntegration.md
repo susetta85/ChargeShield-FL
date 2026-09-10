@@ -570,6 +570,27 @@ above): the Containerlab path is not a speculative next step, it is a working, t
 deployment target, with a real statistical campaign now underway on it directly (not only via
 `make nvflare-sim`, the single-process simulator). **Still missing for a comparison fully aligned
 with the single-process 10-config × 5-seed campaign**: `local` mode on NVFLARE (zero runs so far),
-epsilon variation (only ε=1.0 tested), and `central` at more than 1 seed. Not blocking for
+epsilon variation (only ε=1.0 tested — **explicitly deprioritized by the user, low priority, do
+after the round-1 seed fix is verified**), and `central` at more than 1 seed. Not blocking for
 submission — the paper's primary claim rests on the single-process campaign, already complete and
 statistically robust; this NVFLARE work is supplementary validation, not a replacement.
+
+**ChargePlace Scotland on NVFLARE — no longer a structural limitation (2026-09-10, task #37/#93).**
+The gap wasn't Containerlab or NVFLARE's provisioning — the 3 NVFLARE site identities
+(`caltech`/`jpl`/`office1`, from `nvflare/project.yml`) don't need to change to serve a different
+dataset. The actual gap was that `chargeshield_executor.py::_setup()` hardcoded
+`from adapters.acn_dataset import ACNDataset`, with no equivalent of `run_experiments.py`'s
+`dataset_adapter` dispatch. Fixed: `ChargeShieldExecutor` now accepts `dataset_adapter` (default
+`"acn"`, fully backward-compatible) and, when set to `"chargeplace_scotland"`, a `chargeplace_scotland`
+dict (`metadata_dir`, `session_files`, and `site_mapping` — mapping each fixed NVFLARE site identity
+to a real Scotland council area, e.g. `caltech` → `Glasgow City`). New helper methods
+`_load_acn_sessions()`/`_load_chargeplace_scotland_sessions()` replace the single hardcoded block;
+`ChargePlaceScotlandDataset.load_with_metadata()` loads the shared monthly pool (all 32 council
+areas together — ChargePlace Scotland has no per-site files, unlike ACN-Data) and each client
+filters to its own mapped council area. A ready-to-use example,
+`config_fed_client_chargeplace_scotland.json` (2 months only, for a first smoke test — same
+reasoning as the single-process smoke-test-first plan), sits alongside the ACN one. **Not yet run**
+— py_compile passes but torch/nvflare aren't installable in this sandbox; the next `submit_job`
+with this config swapped in is the real test. Expect the same wall-clock caveat as the
+single-process ChargePlace Scotland run (LiRA is the dominant cost, ~54 min/round there due to the
+much larger per-site volume) — untested whether NVFLARE's per-round cost scales the same way.

@@ -343,7 +343,31 @@ class ChargeShieldExecutor(Executor):
                       "datasets/acn") — _setup() vi accoda self._cluster_id
                       per ottenere la cartella reale del sito (es.
                       "datasets/acn/caltech/") e carica TUTTI i file .json
-                      al suo interno (tutti gli anni disponibili).
+                      al suo interno (tutti gli anni disponibili). Usato SOLO
+                      quando dataset_adapter="acn" (default) — vedi sotto.
+        dataset_adapter: "acn" (default, comportamento invariato, retro-
+                      compatibile al 100% con ogni job esistente) oppure
+                      "chargeplace_scotland" (aggiunto 2026-09-10, task #37 —
+                      mirror del dispatch identico in
+                      scripts/run_experiments.py::load_sessions()). NON
+                      richiede toccare nvflare/project.yml/containerlab —
+                      l'identità dei 3 siti NVFLARE resta caltech/jpl/office1
+                      in entrambi i casi; cambia solo QUALE dataset viene
+                      caricato per ciascun sito (vedi chargeplace_scotland
+                      sotto per la mappatura).
+        chargeplace_scotland: dict richiesto SOLO se dataset_adapter=
+                      "chargeplace_scotland" — {"metadata_dir": str,
+                      "session_files": [str, ...] (i file mensili .xlsx da
+                      caricare — ChargePlace Scotland non ha un file per
+                      sito, ogni mensile copre tutte le 32 council area),
+                      "site_mapping": {"caltech": "<local_authority>",
+                      "jpl": "<local_authority>", "office1": "<local_authority>"}
+                      — la mappatura da identità NVFLARE (fissa) a council
+                      area scozzese reale (i 3 client scelti per la campagna
+                      single-process: Glasgow City/East Ayrshire/City of
+                      Edinburgh, ma qualunque council area valida può essere
+                      usata qui indipendentemente dalla config della
+                      simulazione)}.
     """
 
     def __init__(
@@ -356,6 +380,8 @@ class ChargeShieldExecutor(Executor):
         proximal_mu: float = 0.0,
         seed: int = 42,
         dataset_path: str = "datasets/acn",
+        dataset_adapter: str = "acn",
+        chargeplace_scotland: dict[str, Any] | None = None,
         train_task_name: str = "train",
         dp_mode: str = "dp-fedavg",
         epsilon: float = 1.0,
@@ -364,6 +390,8 @@ class ChargeShieldExecutor(Executor):
     ):
         super().__init__()
         self._cluster_id = cluster_id
+        self._dataset_adapter = dataset_adapter
+        self._chargeplace_scotland = chargeplace_scotland
         self._trainer_cfg = {
             "input_dim": input_dim,
             "lr": lr,
@@ -410,7 +438,6 @@ class ChargeShieldExecutor(Executor):
         volta sola per run, non ad ogni round (lo stato del trainer, ottimizzatore
         incluso, deve persistere tra round — vedi ricognizione in
         docs/NVFlareIntegration.md sullo stato persistente richiesto)."""
-        from adapters.acn_dataset import ACNDataset
         from ml.autoencoder_trainer import AutoencoderTrainer
 
         site_name = fl_ctx.get_identity_name() if fl_ctx else None
@@ -456,21 +483,25 @@ class ChargeShieldExecutor(Executor):
         # Risolve la limitazione "Per-client dataset access è fake" documentata
         # in docs/NVFlareIntegration.md — ogni sito ha ORA davvero solo i propri
         # dati, non una fetta arbitraria di un pool condiviso.
-        dataset_dir = _PROJECT_ROOT / self._dataset_path / self._cluster_id
-        if not dataset_dir.is_dir():
-            logger.error(f"[{self._cluster_id}] Directory dataset non trovata: {dataset_dir}")
-            self._sessions = []
-            return
-
-        all_sessions: list[dict[str, Any]] = []
-        json_files = sorted(dataset_dir.glob("*.json"))
-        for f in json_files:
-            ds = ACNDataset()
-            ds.load(str(f))
-            all_sessions.extend(ds.get_sample(i) for i in range(len(ds)))
+        #
+        # FIX 2026-09-10 (task #37, richiesto esplicitamente dall'utente —
+        # "che senso ha fare un exp nella macchina fisica e poi non avere la
+        # controprova nell'ambiente container?"): dispatch tra dataset_adapter,
+        # stesso principio di scripts/run_experiments.py::load_sessions().
+        # L'identità dei 3 siti NVFLARE (caltech/jpl/office1, da
+        # nvflare/project.yml/containerlab, sopra in _CLUSTER_IDS) NON cambia
+        # in nessuno dei due casi — cambia solo quale dataset alimenta ciascun
+        # sito, tramite site_mapping quando dataset_adapter=
+        # "chargeplace_scotland". Nessuna modifica a project.yml/topology
+        # richiesta: è per questo che finora "mancava" solo il wiring
+        # nell'executor, non un limite strutturale di Containerlab.
+        if self._dataset_adapter == "chargeplace_scotland":
+            all_sessions = self._load_chargeplace_scotland_sessions()
+        else:
+            all_sessions = self._load_acn_sessions()
 
         if not all_sessions:
-            logger.error(f"[{self._cluster_id}] Nessuna sessione trovata in {dataset_dir}")
+            logger.error(f"[{self._cluster_id}] Nessuna sessione trovata (adapter={self._dataset_adapter})")
             self._sessions = []
             return
 
@@ -531,8 +562,73 @@ class ChargeShieldExecutor(Executor):
         logger.info(
             f"[{self._cluster_id}] ChargeShieldExecutor pronto — "
             f"{len(self._sessions)} sessioni di training (hold-out riservato: "
-            f"{n_holdout}) caricate da {len(json_files)} file in {dataset_dir}"
+            f"{n_holdout}) caricate via adapter={self._dataset_adapter}"
         )
+
+    def _load_acn_sessions(self) -> list[dict[str, Any]]:
+        """Caricamento ACN-Data (comportamento storico, invariato) — tutti i
+        file .json in dataset_path/<cluster_id>/ (un file per anno)."""
+        from adapters.acn_dataset import ACNDataset
+
+        dataset_dir = _PROJECT_ROOT / self._dataset_path / self._cluster_id
+        if not dataset_dir.is_dir():
+            logger.error(f"[{self._cluster_id}] Directory dataset non trovata: {dataset_dir}")
+            return []
+
+        all_sessions: list[dict[str, Any]] = []
+        for f in sorted(dataset_dir.glob("*.json")):
+            ds = ACNDataset()
+            ds.load(str(f))
+            all_sessions.extend(ds.get_sample(i) for i in range(len(ds)))
+        return all_sessions
+
+    def _load_chargeplace_scotland_sessions(self) -> list[dict[str, Any]]:
+        """Caricamento ChargePlace Scotland (2026-09-10, task #37/#93) — mirror
+        di scripts/run_experiments.py::load_sessions_chargeplace_scotland().
+
+        A differenza di ACN-Data (un file per sito), i mensili ChargePlace
+        Scotland coprono TUTTE le 32 council area insieme — si carica quindi
+        l'intero pool via load_with_metadata() (session_files/metadata_dir da
+        config) e si filtra a site_id == site_mapping[self._cluster_id], la
+        council area mappata a QUESTA identità NVFLARE (caltech/jpl/office1,
+        invariata — nessuna modifica a project.yml/containerlab richiesta).
+        """
+        from adapters.chargeplace_scotland_adapter import ChargePlaceScotlandDataset
+
+        cfg = self._chargeplace_scotland
+        if not cfg:
+            logger.error(
+                f"[{self._cluster_id}] dataset_adapter='chargeplace_scotland' ma "
+                "'chargeplace_scotland' non è configurato in config_fed_client.json "
+                "(servono metadata_dir/session_files/site_mapping)."
+            )
+            return []
+
+        site_mapping = cfg.get("site_mapping", {})
+        local_authority = site_mapping.get(self._cluster_id)
+        if not local_authority:
+            logger.error(
+                f"[{self._cluster_id}] Nessuna voce in chargeplace_scotland.site_mapping "
+                f"per l'identità NVFLARE '{self._cluster_id}' (mapping configurato: "
+                f"{list(site_mapping.keys())})."
+            )
+            return []
+
+        ds = ChargePlaceScotlandDataset()
+        ds.load_with_metadata(
+            session_paths=[str(_PROJECT_ROOT / p) for p in cfg.get("session_files", [])],
+            metadata_dir=str(_PROJECT_ROOT / cfg["metadata_dir"]),
+        )
+        all_sessions = [
+            ds.get_sample(i) for i in range(len(ds))
+            if ds.get_sample(i).get("site_id") == local_authority
+        ]
+        logger.info(
+            f"[{self._cluster_id}] ChargePlace Scotland — mappato a council area "
+            f"'{local_authority}': {len(all_sessions)}/{len(ds)} sessioni del pool "
+            "totale appartengono a questo sito."
+        )
+        return all_sessions
 
     # ── Task execution ───────────────────────────────────────────────────────
 
