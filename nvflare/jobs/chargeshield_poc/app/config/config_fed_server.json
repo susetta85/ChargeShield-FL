@@ -19,8 +19,8 @@
         "byzantine_tolerance": 0,
         "cosine_threshold": 0.3,
         "krum_threshold": 3.5,
-        "dp_mode": "central",
-        "seed": 1234,
+        "dp_mode": "local",
+        "seed": 42,
         "results_export_path": "experiments/nvflare_ids_audit_results.json",
         "fl_results_export_path": "experiments/nvflare_fl_results.pkl"
       }
