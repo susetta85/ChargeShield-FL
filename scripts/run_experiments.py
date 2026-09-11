@@ -4196,7 +4196,15 @@ def run_lira(
                 f"{len(lira_results)} round) — AUC-ROC: {_composed_auc:.4f} "
                 f"(gap={composed_output['composed_lira_score_gap']:.6f}, "
                 f"n_samples={len(_cumulative_scores)}, "
-                f"TPR@1%FPR={composed_output.get('tpr_at_fpr_0.01')})"
+                # Fix 2026-09-11 (trovato preparando la ri-analisi statistica
+                # TPR@low-FPR, non da un run fallito): questa chiave era rimasta
+                # "tpr_at_fpr_0.01" (bare) da prima del fix Sprint 10zz+41 sopra,
+                # che ha rinominato il campo effettivamente scritto in
+                # composed_output a "composed_tpr_at_fpr_0.01" per eliminare la
+                # collisione di chiavi. Da allora questo log stampava sempre
+                # "None" (la chiave bare non viene più scritta) — nessun dato
+                # nei JSON è mai stato affetto, solo la riga di log a schermo.
+                f"TPR@1%FPR={composed_output.get('composed_tpr_at_fpr_0.01')})"
             )
         else:
             composed_output["composed_lira_auc_roc"] = None

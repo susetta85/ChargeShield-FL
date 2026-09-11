@@ -252,6 +252,45 @@ def discover_groups(
     return groups
 
 
+# Ri-analisi TPR@low-FPR (2026-09-11, su richiesta esplicita dell'utente dopo
+# aver verificato che il paper cita Carlini et al. 2022 — che argomenta
+# esplicitamente che le metriche average-case come AUC-ROC nascondono la
+# capacità di un attacco a bassi FPR — mentre la statistica primaria
+# effettivamente testata (questo script) era solo mean_lira_auc_roc).
+#
+# Metrica usata: composed_tpr_at_fpr_{0.001,0.01,0.05} — il valore LiRA
+# "composto" (evidenza sommata su tutti i round, non la media dei singoli
+# round), stessa metrica "headline" già usata per composed_lira_auc_roc nel
+# paper (§7/§8). Posizione nel JSON: per_round[<ultimo round>]["mia"]
+# (composed_output viene mergiato lì da src/plugins/attacks/lira.py — vedi
+# il commento sul fix Sprint 10zz+41 in run_experiments.py per la ragione
+# del prefisso "composed_").
+#
+# IMPORTANTE — livello di caso per TPR@FPR fisso: a differenza di AUC-ROC
+# (caso = 0.5 sempre), sotto un attacco non informativo la ROC è la
+# diagonale, quindi TPR@FPR=t == t al caso — es. TPR@1%FPR=0.01, non 0.5.
+# bootstrap_ci()/significance_test() sotto sono già generiche sul parametro
+# `popmean` per questo motivo esatto: qui viene passato il target FPR stesso,
+# non 0.5.
+TPR_FPR_TARGETS = ("0.001", "0.01", "0.05")
+
+
+def extract_composed_tpr(d: dict, fpr_target: str) -> float | None:
+    """Legge composed_tpr_at_fpr_<fpr_target> dall'ultimo round del file.
+
+    Ritorna None se il file non ha ancora questo campo (run precedenti al
+    Sprint 10pp/2026-08-28, o run diagnostici a 1 solo round senza LiRA
+    composto) — silenziosamente escluso dal gruppo, stessa convenzione già
+    usata per mean_lira_auc_roc in main().
+    """
+    per_round = d.get("per_round", {})
+    if not per_round:
+        return None
+    last_round = max(per_round.keys(), key=int)
+    mia = per_round[last_round].get("mia", {})
+    return mia.get(f"composed_tpr_at_fpr_{fpr_target}")
+
+
 def bootstrap_ci(values, n_resamples=10000, alpha=0.05):
     n = len(values)
     if n < 2:
@@ -320,6 +359,60 @@ def main():
             "paper se questi p-value vengono citati (il bootstrap CI sopra resta il test "
             "primario per questa numerosita' campionaria)."
         )
+
+    # ── Ri-analisi TPR@low-FPR (2026-09-11) ─────────────────────────────────
+    for fpr_target in TPR_FPR_TARGETS:
+        print()
+        print("=" * 140)
+        print(
+            f"TPR @ FPR={fpr_target} (composed_lira, evidenza sommata su tutti i round) "
+            f"— livello di caso = {fpr_target} (ROC diagonale, NON 0.5)"
+        )
+        print("=" * 140)
+        print(
+            f"{'gruppo (letto da config, non dal nome cartella)':<42} {'n':>3} {'mean':>8} "
+            f"{'std':>8} {'95% CI':>20} {'contiene ' + fpr_target + '?':>17} "
+            f"{'p (' + method_label + ')':>26}"
+        )
+        print("-" * 140)
+        for label, files in sorted(groups.items()):
+            tprs = []
+            for f in files:
+                d = json.load(open(f))
+                v = extract_composed_tpr(d, fpr_target)
+                if v is not None:
+                    tprs.append(v)
+            if not tprs:
+                print(f"{label:<42} nessun dato (campo assente in questi file)")
+                continue
+            mean = statistics.mean(tprs)
+            std = statistics.stdev(tprs) if len(tprs) > 1 else float("nan")
+            ci = bootstrap_ci(tprs)
+            popmean = float(fpr_target)
+            if ci is None:
+                ci_str = "n<2, N/A"
+                contains = "N/A"
+            else:
+                ci_str = f"[{ci[0]:.4f}, {ci[1]:.4f}]"
+                contains = "SI" if ci[0] <= popmean <= ci[1] else "NO"
+            p_value, method = significance_test(tprs, popmean=popmean)
+            if p_value is None:
+                p_str = f"N/A (tutti uguali a {fpr_target})" if len(tprs) > 1 else "N/A (n<2)"
+            else:
+                p_str = f"{p_value:.4f} [{method}]"
+            print(
+                f"{label:<42} {len(tprs):>3} {mean:>8.4f} {std:>8.4f} {ci_str:>20} "
+                f"{contains:>17} {p_str:>26}"
+            )
+    print()
+    print(
+        "NOTA metodologica: un gruppo con TPR@FPR=t significativamente > t (CI sopra la "
+        "diagonale, p<0.05) indicherebbe un attacco capace di isolare membri con confidenza "
+        "a quel FPR specifico anche quando l'AUC-ROC medio resta ~0.5 — esattamente il tipo "
+        "di segnale che Carlini et al. 2022 argomenta essere nascosto da una metrica "
+        "average-case come l'AUC. Un CI che include t (o lo attraversa) e p non significativo "
+        "sono coerenti con la stessa conclusione null-leakage già riportata per l'AUC."
+    )
 
 
 if __name__ == "__main__":
