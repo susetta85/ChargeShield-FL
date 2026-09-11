@@ -194,6 +194,91 @@ def _inject_canaries_for_site(
     return injected_train, injected_holdout
 
 
+def _load_client_sessions_chargeplace_scotland(
+    client_args: dict[str, Any],
+    seed: int,
+) -> tuple[list[dict[str, Any]], dict[str, list[int]], list[dict[str, Any]]]:
+    """
+    Ricostruzione offline per dataset_adapter="chargeplace_scotland" (2026-09-11)
+    — mirror di chargeshield_executor.py::_load_chargeplace_scotland_sessions(),
+    esteso a TUTTI e 3 i siti (l'executor ne carica solo uno per processo client
+    reale; questa funzione, chiamata una volta sola offline, deve ricostruire
+    l'intera campagna multi-sito per popolare cluster_membership, esattamente
+    come il ramo ACN-Data sopra).
+
+    A differenza di ACN-Data (un file per sito), i mensili ChargePlace Scotland
+    coprono tutte le 32 council area insieme — si carica quindi il pool
+    condiviso UNA sola volta (session_files/metadata_dir da
+    client_args["chargeplace_scotland"]) e si filtra, per ciascuna identità
+    NVFLARE fissa (caltech/jpl/office1), a site_id == site_mapping[identità] —
+    stessa logica dell'executor, non una re-implementazione diversa.
+    """
+    from adapters.chargeplace_scotland_adapter import ChargePlaceScotlandDataset
+
+    cfg = client_args.get("chargeplace_scotland")
+    if not cfg:
+        raise ValueError(
+            "dataset_adapter='chargeplace_scotland' ma 'chargeplace_scotland' "
+            "non è configurato in config_fed_client.json (servono "
+            "metadata_dir/session_files/site_mapping)."
+        )
+    site_mapping: dict[str, str] = cfg.get("site_mapping", {})
+    if not site_mapping:
+        raise ValueError(
+            "'chargeplace_scotland.site_mapping' è vuoto o assente — non è "
+            "possibile sapere quale council area corrisponde a quale identità "
+            "NVFLARE (caltech/jpl/office1)."
+        )
+
+    ds = ChargePlaceScotlandDataset()
+    ds.load_with_metadata(
+        session_paths=[str(PROJECT_ROOT / p) for p in cfg.get("session_files", [])],
+        metadata_dir=str(PROJECT_ROOT / cfg["metadata_dir"]),
+    )
+    all_pool_sessions = [ds.get_sample(i) for i in range(len(ds))]
+
+    train_sessions: list[dict[str, Any]] = []
+    holdout_sessions: list[dict[str, Any]] = []
+    cluster_membership: dict[str, list[int]] = {}
+    canary_cfg = client_args.get("canary")
+
+    for cluster_id, local_authority in site_mapping.items():
+        site_sessions = [
+            s for s in all_pool_sessions if s.get("site_id") == local_authority
+        ]
+        if not site_sessions:
+            logger.warning(
+                f"[{cluster_id}] Nessuna sessione trovata per la council area "
+                f"'{local_authority}' — sito saltato."
+            )
+            continue
+        # Stesso ordine di operazioni di _load_acn_sessions sopra:
+        # enrichment prima dello split, split seed-based 80/20 per sito,
+        # poi (opzionale) canary — identico al ramo ACN-Data.
+        site_sessions = enrich_sessions(site_sessions)
+        random.seed(seed)
+        random.shuffle(site_sessions)
+        split = max(1, int(len(site_sessions) * 0.8))
+        site_train = site_sessions[:split]
+        site_holdout = site_sessions[split:]
+
+        site_train, site_holdout = _inject_canaries_for_site(
+            site_train, site_holdout, canary_cfg, cluster_id, seed,
+        )
+
+        start = len(train_sessions)
+        train_sessions.extend(site_train)
+        cluster_membership[cluster_id] = list(range(start, len(train_sessions)))
+        holdout_sessions.extend(site_holdout)
+
+    logger.info(
+        f"Sessioni ChargePlace Scotland ricostruite — {len(train_sessions)} train / "
+        f"{len(holdout_sessions)} hold-out su {len(cluster_membership)} siti reali "
+        f"(seed={seed}): " + ", ".join(f"{k}={len(v)}" for k, v in cluster_membership.items())
+    )
+    return train_sessions, cluster_membership, holdout_sessions
+
+
 def load_client_sessions(
     client_config_path: Path,
     seed: int = 42,
@@ -268,7 +353,23 @@ def load_client_sessions(
 
     with open(client_config_path) as f:
         client_cfg = _json.load(f)
-    dataset_path_str = client_cfg["executors"][0]["executor"]["args"]["dataset_path"]
+    client_args = client_cfg["executors"][0]["executor"]["args"]
+
+    # FIX 2026-09-11 (bug reale trovato durante un audit richiesto
+    # dall'utente, non da un run fallito): questa funzione assumeva sempre
+    # "dataset_path" (l'adapter ACN) — un dump NVFLARE reale prodotto con
+    # dataset_adapter="chargeplace_scotland" (task #37/#93,
+    # chargeshield_executor.py::_load_chargeplace_scotland_sessions(), quel
+    # config non ha affatto la chiave "dataset_path") sollevava un
+    # KeyError non gestito qui sotto, prima ancora di provare a caricare
+    # qualunque sessione — la rianalisi MIA offline era quindi
+    # completamente inutilizzabile per quell'adapter. Fix: stesso dispatch
+    # già presente lato executor, mirror di
+    # scripts/run_experiments.py::load_sessions().
+    if client_args.get("dataset_adapter") == "chargeplace_scotland":
+        return _load_client_sessions_chargeplace_scotland(client_args, seed)
+
+    dataset_path_str = client_args["dataset_path"]
     dataset_path = PROJECT_ROOT / dataset_path_str
 
     if dataset_path.is_dir():

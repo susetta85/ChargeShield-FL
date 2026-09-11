@@ -2773,6 +2773,35 @@ def run_lira(
 
     for cluster_idx, cid in enumerate(_CLUSTER_IDS):
         cluster_shadow_universe = cluster_members[cid] + cluster_holdout.get(cid, [])
+
+        # FIX 2026-09-11 (bug reale trovato durante un audit richiesto
+        # dall'utente, non da un run fallito): quando controlled_composition=True
+        # (solo run_fedmia_gradient(), mai la vera LiRA registrata), il ramo IN
+        # sopra in questo loop NON passa da _sample_preserving_canary_groups()
+        # (Sprint 10zz+16) — usa due rng.sample() diretti su cluster_members/
+        # cluster_holdout, perché la composizione IN deliberata per-shadow
+        # (10%-90% membri) è incompatibile con la nozione di "gruppo canary
+        # atomico" di quella funzione. Se cfg["canary"]["enabled"] fosse MAI
+        # True insieme a --include-fedmia-gradient, questo riaprirebbe
+        # silenziosamente la stessa contaminazione shadow-canary già trovata e
+        # corretta per la vera LiRA (Sprint 10zz+15/16) — ma solo qui, in un
+        # diagnostico esplicitamente "primo draft, mai validato, mai nel
+        # registro" (vedi docstring di run_fedmia_gradient()). Invece di
+        # lasciare la lacuna silenziosa, la rendiamo rumorosa: fallisce subito
+        # e in modo esplicito piuttosto che produrre un canary_auc_roc
+        # silenziosamente inaffidabile in questo path specifico.
+        if controlled_composition and any(
+            s.get("_canary_group") is not None for s in cluster_shadow_universe
+        ):
+            raise ValueError(
+                f"[{cid}] controlled_composition=True con canary abilitato non è "
+                "supportato: il campionamento a composizione deliberata bypassa "
+                "_sample_preserving_canary_groups() (Sprint 10zz+16), riaprendo la "
+                "contaminazione shadow-canary già corretta per la vera LiRA. "
+                "Disabilita cfg['canary']['enabled'] per questo run, oppure non "
+                "usare --include-fedmia-gradient insieme al canary."
+            )
+
         _member_id_set = {id(s) for s in cluster_members[cid]}
         cluster_in_idx_sets: list[set[int]] = []
         cluster_tensors: list[torch.Tensor | None] = []
@@ -5280,10 +5309,24 @@ def save_results(
             # ANOMALY ha priorità su tutto il resto: un min_*_auc_roc < 0.40 indica
             # quasi certamente un bug nell'attacco (score invertito), non un dato
             # di privacy risk affidabile — va investigato, non riportato come LOW.
+            #
+            # FIX 2026-09-11 (bug reale trovato durante un audit richiesto
+            # dall'utente, non da un run fallito): questa soglia usava
+            # HIGH>0.7/MEDIUM>0.6, ma scripts/generate_excel_report.py
+            # (_auc_risk_color(), Fix 2026-07-21 successivo a questo — mai
+            # riportato qui) affina la banda a BAD>0.60/WARN>0.52/GOOD<=0.52
+            # per lo stesso identico _primary_mean. Le due soglie erano
+            # divergute silenziosamente: un AUC in (0.52, 0.7] veniva
+            # riportato "LOW"/"MEDIUM" qui ma colorato WARN/BAD (giallo/rosso)
+            # nello stesso report Excel — due verdetti incoerenti per lo
+            # stesso numero. Nessun risultato già pubblicato è interessato
+            # (ogni campagna reale è ~0.49-0.52, ben dentro "LOW" in
+            # entrambi gli schemi) — allineato ora alla banda più fine
+            # dell'Excel, l'unica delle due già corretta con un fix datato.
             "privacy_risk": (
                 "ANOMALY" if _is_anomalous else
-                "HIGH"    if _primary_mean is not None and _primary_mean > 0.7 else
-                "MEDIUM"  if _primary_mean is not None and _primary_mean > 0.6 else
+                "HIGH"    if _primary_mean is not None and _primary_mean > 0.60 else
+                "MEDIUM"  if _primary_mean is not None and _primary_mean > 0.52 else
                 "LOW"
             ),
         },
