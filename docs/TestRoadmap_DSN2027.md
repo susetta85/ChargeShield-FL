@@ -669,17 +669,35 @@ girato pulito, 10/10 round, zero errori. Step B — campagna statistica multi-se
   `byzantine_detected`/`threats_detected`. 2 alert HIGH cosine-similarity su `office1` (seed 42
   round 4, seed 789 round 7) — stesso pattern già noto e documentato in `docs/IDS.md` §12
   (office1 è il sito più piccolo/rumoroso, mai caltech/jpl).
-- **central, ε=1.0, 1 seed (42)**: completo, pulito. Confrontato round-per-round col dp-fedavg
-  seed 42: round 1 identico su tutti i client, poi diverge genuinamente dal round 2 in poi (non
-  un artefatto — vedi nota sotto e `docs/MetricsReference_DSN2027.md` per la spiegazione
-  architetturale completa) — conferma che dp-fedavg e central esercitano davvero percorsi di
-  codice diversi nel deployment reale, cosa che la sola simulazione single-process non può provare
-  (lì dp-fedavg risulta identico a **local**, non a central — vedi nota dedicata in
-  MetricsReference).
+- **central, ε=1.0**: ora **5/5 seed completi** (42 pre-fix, 123/456/789/1234 post-fix — vedi fix
+  round-1 sotto), tutti 10/10 round, zero alert/byzantine/threats. Il seed 42 confrontato
+  round-per-round col dp-fedavg seed 42: round 1 identico su tutti i client, poi diverge
+  genuinamente dal round 2 in poi (non un artefatto — vedi nota sotto e
+  `docs/MetricsReference_DSN2027.md` per la spiegazione architetturale completa) — conferma che
+  dp-fedavg e central esercitano davvero percorsi di codice diversi nel deployment reale, cosa che
+  la sola simulazione single-process non può provare (lì dp-fedavg risulta identico a **local**,
+  non a central — vedi nota dedicata in MetricsReference). `scripts/set_nvflare_seed.py` (nuovo,
+  2026-09-11) scrive i due config JSON via `json.dump` invece di edit manuale, e salva uno snapshot
+  dedicato `seed_snapshots/config_fed_client_seed<N>_<dp_mode>.json` per ogni run — evita la stessa
+  classe di bug già vista con seed123/dp-fedavg (snapshot sbagliato usato per la rianalisi).
+- **Fix round-1 (2026-09-10) VERIFICATO con dati reali (2026-09-11)**: sottomesso un run
+  central/seed=999 (mai usato prima) e confrontato `raw_global_weights` del round 1 contro il
+  vecchio run seed=42 pre-fix via `scripts/verify_seed_fix_round1.py` — tutti e 22 i tensori
+  differiscono (max abs diff 0.006–1.04), l'inizializzazione del modello è ora genuinamente
+  seed-dipendente. L'epsilon dell'audit JSON restava identico anche post-fix (falso allarme, non
+  un fallimento del fix — è una funzione a forma chiusa di config statica per-client, non del
+  contenuto reale dei pesi).
 - **Rianalisi MIA offline** (`scripts/run_nvflare_mia.py`, n_shadow=16, stesso `run_lira()` della
   simulazione): seed 42 dp-fedavg completata — `mean_lira_auc_roc=0.499`, `privacy_risk=LOW`,
-  nessuna fuga rilevata, coerente con la simulazione. Seed 123 in corso; 456/789/1234 e il run
-  central ancora da rianalizzare.
+  nessuna fuga rilevata, coerente con la simulazione. Central 123/456 rianalizzati
+  (`mean_lira_auc_roc` 0.5000/0.5015, `privacy_risk=LOW`, nessuna anomalia); 789/1234 completi lato
+  training, rianalisi in corso/da fare.
+- **Canary positive control portato su NVFLARE (2026-09-11, mai esistito lì finora)**: l'utente ha
+  chiesto se il null result NVFLARE fosse verificato contro un attacco silenziosamente rotto —
+  `chargeshield_executor.py` accetta ora un blocco opzionale `canary`, `run_nvflare_mia.py`
+  ricostruisce offline la stessa iniezione (stesso seed, stesso offset RNG) — verificato in
+  isolamento (stessa selezione di template su entrambi i lati), non ancora lanciato per davvero.
+  Vedi `docs/NVFlareIntegration.md` per il dettaglio completo.
 
 **Finding metodologico trovato investigando questi dati (2026-09-10, non un bug che invalida i
 risultati MIA, ma da documentare)**: i valori di round 1 in `nvflare_ids_audit_results_*.json`
@@ -699,8 +717,8 @@ varianza inter-seed del round 1 specificamente come evidenza di robustezza: al r
 varianza è artificialmente zero, non un segnale reale.
 
 **Ancora da fare per un confronto pienamente allineato con la campagna single-process (10 config ×
-5 seed)**: `local` DP mode (zero run finora su NVFLARE), variazione di epsilon (0.5/0.1 — solo
-ε=1.0 testato finora), `central` a 5 seed invece di 1. Non bloccante per la submission — il claim
+5 seed)**: `local` DP mode (zero run finora su NVFLARE) e variazione di epsilon (0.5/0.1 — solo
+ε=1.0 testato finora, bassa priorità esplicita). `central` è ora completo a 5 seed (vedi sopra). Non bloccante per la submission — il claim
 principale del paper si basa sulla campagna single-process, già completa e statisticamente
 solida; questi run NVFLARE sono una validazione supplementare "il risultato regge anche in un
 deployment reale multi-container", non un sostituto. Costo/beneficio da valutare rispetto al tempo

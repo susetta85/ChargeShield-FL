@@ -563,16 +563,32 @@ amount of unrelated `src/` work had landed since.
   differs across seeds. The 5 dp-fedavg seeds and the 1 central seed already collected predate this
   fix and keep their byte-identical round 1 — still valid for the MIA conclusions they support, just
   not for a round-1-specific cross-seed variance claim.
+- **Verified with a real run (2026-09-10).** Submitted a job with `seed=999` in both config files
+  (first NVFLARE seed ever used other than the paper's five) and compared round 1's
+  `raw_global_weights` (the clean pre-DP-noise FedAvg average, from `nvflare_fl_results_*.pkl`)
+  against the pre-fix `central`/seed=42 run via `scripts/verify_seed_fix_round1.py`. Every one of the
+  22 weight tensors differs (max abs diff 0.006–1.04 depending on layer) — round 1 model
+  initialization is now genuinely seed-dependent, confirming the fix works. Caveat worth recording:
+  the per-round **audit-JSON epsilon** (`nvflare_ids_audit_results_*.json`, `per_client_audit.*.epsilon`)
+  stayed identical across seeds even on this post-fix run (office1=0.053503, caltech=1.0,
+  jpl=1.070064, matching the old pre-fix numbers exactly) — this is *not* evidence the fix failed,
+  it's a separate, expected property of that particular metric: it reads as a closed-form function of
+  static per-client config (participant sample counts, `max_grad_norm`, `delta`), not of the actual
+  weight values, so it is not a useful signal for this specific check either way. Anyone re-verifying
+  this fix on a future seed should compare `raw_global_weights` directly (as
+  `scripts/verify_seed_fix_round1.py` does), not the audit-JSON epsilon.
 
 This supersedes every earlier "not yet attempted"/"next step" framing about the real multi-container
 deployment elsewhere in this document (including this document's own opening paragraph, corrected
 above): the Containerlab path is not a speculative next step, it is a working, twice-independently-run
 deployment target, with a real statistical campaign now underway on it directly (not only via
-`make nvflare-sim`, the single-process simulator). **Still missing for a comparison fully aligned
-with the single-process 10-config × 5-seed campaign**: `local` mode on NVFLARE (zero runs so far),
-epsilon variation (only ε=1.0 tested — **explicitly deprioritized by the user, low priority, do
-after the round-1 seed fix is verified**), and `central` at more than 1 seed. Not blocking for
-submission — the paper's primary claim rests on the single-process campaign, already complete and
+`make nvflare-sim`, the single-process simulator). **Update (2026-09-11): `central` now has all 5
+paper seeds** (42 pre-fix, 123/456/789/1234 post-fix, all ε=1.0, all 10/10 rounds; `mean_lira_auc_roc`
+for 123/456 already reanalyzed: 0.5000/0.5015, consistent with the rest of the campaign, 1234's
+reanalysis pending as of this write-up). **Still missing for a comparison fully aligned with the
+single-process 10-config × 5-seed campaign**: `local` mode on NVFLARE (zero runs so far) and epsilon
+variation (only ε=1.0 tested — **explicitly deprioritized by the user, low priority**). Not blocking
+for submission — the paper's primary claim rests on the single-process campaign, already complete and
 statistically robust; this NVFLARE work is supplementary validation, not a replacement.
 
 **ChargePlace Scotland on NVFLARE — no longer a structural limitation (2026-09-10, task #37/#93).**
@@ -594,3 +610,29 @@ reasoning as the single-process smoke-test-first plan), sits alongside the ACN o
 with this config swapped in is the real test. Expect the same wall-clock caveat as the
 single-process ChargePlace Scotland run (LiRA is the dominant cost, ~54 min/round there due to the
 much larger per-site volume) — untested whether NVFLARE's per-round cost scales the same way.
+
+**Canary positive control on NVFLARE (2026-09-11).** Until now the canary positive control (Carlini
+"The Secret Sharer" 2019/Jagielski et al. 2020 — see the "Quanti shadow model..." section of
+`docs/MetricsReference_DSN2027.md` and README Sprint 10vv–10zz+18) only existed in the single-process
+simulation (`scripts/run_experiments.py::inject_canaries()`). Ported to NVFLARE, on the user's direct
+request after asking whether `privacy_risk: LOW` could be hiding a silently-broken attack pipeline:
+`ChargeShieldExecutor` now accepts an opt-in `canary` dict (`enabled`/`site`/`n_templates`/
+`n_duplicates` — same schema as the single-process YAML, minus `n_nonmember_templates`, which only
+matters offline). When `canary["site"]` matches this client's own `cluster_id`, `_inject_canary_members()`
+duplicates `n_templates` real local sessions `n_duplicates` times each into the actual local training
+set (same `_canary_group`/`_canary_role="member"` tagging as the simulation), right after the 80/20
+split and before normalization — the other two sites, receiving the identical `config_fed_client.json`
+via `deploy_map="@ALL"`, see `site != cluster_id` and stay untouched (no-op, same default-off guarantee
+as `dataset_adapter`). The executor never keeps its own hold-out list, so it cannot construct the
+non-member twins itself — those are reconstructed offline instead: `scripts/run_nvflare_mia.py::
+load_client_sessions()` now also reads the same `canary` block from the same config file and applies
+a mirrored `_inject_canaries_for_site()` per site, drawing `member_templates` from the reconstructed
+`site_train` with the identical `random.Random(seed + 271828)` sequence the executor used (verified
+with a standalone reproduction, same seed/content: identical 5 template indices selected on both
+sides), then `nonmember_templates` from `site_holdout` (a second draw from the same RNG, exactly
+mirroring `inject_canaries()`'s original member-then-nonmember order) — giving `run_lira()` the same
+`_canary_group`/`_canary_role` tags it already knows how to bucket into `canary_auc_roc`/
+`canary_raw_mse_auc_roc`, with zero changes to that function. **Not yet run for real** — py_compile
+passes and the RNG-matching logic is verified standalone (pure Python, no torch/nvflare needed for
+that part), but no actual `submit_job` with `canary.enabled=true` has been submitted yet; that's the
+next step before trusting NVFLARE-side canary numbers the way the single-process ones are trusted.

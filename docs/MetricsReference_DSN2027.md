@@ -398,6 +398,35 @@ output degli shadow model.
 `tpr_at_fpr_0.001/0.01/0.05`, `shadow_advantage`, `shadow_confusion` — stesso motivo di §4. Non
 retroattivo sui JSON storici.
 
+**Deviazioni dichiarate rispetto alla costruzione originale (Shokri et al. 2017, aggiunto
+2026-09-10)**: come già fatto per Carlini et al. 2022 (§3), dichiariamo esplicitamente dove Shadow
+MIA si discosta dalla costruzione originale di Shokri — non per minimizzare il debito, ma perché la
+citazione è comunque motivata (origine diretta del concetto di shadow model, §"Fonte" sopra) e le
+differenze vanno rese esplicite prima della submission:
+- **Dati di training degli shadow model**: Shokri usa tre tecniche per sintetizzare dati shadow
+  quando non è disponibile un dataset realistico (model-based synthesis via hill-climbing sul
+  modello target, statistics-based synthesis, o dati reali rumorosi). ChargeShield-FL non ne ha
+  bisogno: gli `n_shadow=16` modelli per sito sono addestrati su dati reali campionati dai pool
+  member∪holdout dello stesso sito (`_sample_preserving_canary_groups()`, vedi nota su n_shadow più
+  sopra) — un'assunzione di minaccia più forte (onest-ma-curioso con accesso ai dati locali reali),
+  non un'approssimazione del caso in cui l'attaccante non ha dati realistici.
+- **Metriche riportate**: Shokri riporta precision/recall (e F1 implicito). ChargeShield-FL riporta
+  AUC-ROC, TPR@FPR fisso, Advantage e matrice di confusione (§1, §4, §10b) — scelta guidata dal
+  fatto che precision/recall dipendono dalla soglia di decisione e dal bilanciamento member/non
+  member del dataset di valutazione, mentre AUC-ROC/TPR@low-FPR sono invarianti alla soglia e
+  standard nella letteratura DP-audit più recente (Carlini et al. 2022; Jagielski et al. 2020).
+- **Incertezza della previsione**: Shokri usa anche l'entropia normalizzata del vettore di
+  probabilità in output come feature/segnale aggiuntivo. Non applicabile qui: l'autoencoder di
+  ChargeShield-FL è un modello ricostruttivo (MSE di ricostruzione come segnale, non un
+  classificatore multi-classe con vettore di probabilità in output), quindi non esiste un
+  equivalente diretto dell'entropia della softmax.
+- **Regolarizzazione**: Shokri nota che i modelli target con overfitting più marcato (anche indotto
+  con meno regolarizzazione) sono più vulnerabili al suo attacco. ChargeShield-FL non usa dropout
+  (vedi `docs/MLPlane.md` §4.2, "Regolarizzazione — nessun dropout") — la difesa primaria contro la
+  memorizzazione qui è il rumore DP (`GradientManager`), non una regolarizzazione anti-overfitting
+  lato architettura, per cui il confronto diretto con la sensibilità di Shokri al livello di
+  overfitting non è la leva principale studiata in questo lavoro.
+
 ---
 
 ## 6. Canary positive control (AUC su record iniettati)
