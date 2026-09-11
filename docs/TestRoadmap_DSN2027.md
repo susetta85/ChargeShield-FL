@@ -690,8 +690,10 @@ girato pulito, 10/10 round, zero errori. Step B — campagna statistica multi-se
 - **Rianalisi MIA offline** (`scripts/run_nvflare_mia.py`, n_shadow=16, stesso `run_lira()` della
   simulazione): seed 42 dp-fedavg completata — `mean_lira_auc_roc=0.499`, `privacy_risk=LOW`,
   nessuna fuga rilevata, coerente con la simulazione. Central 123/456 rianalizzati
-  (`mean_lira_auc_roc` 0.5000/0.5015, `privacy_risk=LOW`, nessuna anomalia); 789/1234 completi lato
-  training, rianalisi in corso/da fare.
+  (`mean_lira_auc_roc` 0.5000/0.5015, `privacy_risk=LOW`, nessuna anomalia); **aggiornamento
+  2026-09-11: 789/1234 ora rianalizzati anch'essi** (`mean_lira_auc_roc` 0.5003/0.5012,
+  `privacy_risk=LOW` per entrambi, nessuna anomalia) — tutti e 5 i seed central (42 pre-fix +
+  123/456/789/1234 post-fix) hanno ora sia il training sia la rianalisi MIA offline completi.
 - **Canary positive control portato su NVFLARE (2026-09-11, mai esistito lì finora)**: l'utente ha
   chiesto se il null result NVFLARE fosse verificato contro un attacco silenziosamente rotto —
   `chargeshield_executor.py` accetta ora un blocco opzionale `canary`, `run_nvflare_mia.py`

@@ -1,9 +1,11 @@
 {
-  "_comment": "ChargeShield-FL — client-side config, NVFLARE 2.7.2 (2026-07-22, NON verificato). L'Executor custom (chargeshield_executor.py) avvolge AutoencoderTrainer.train_local() — la STESSA classe usata da scripts/run_experiments.py in simulazione single-process. FIX 2026-07-22 (review A1): questo stesso file viene deployato a TUTTI i siti (meta.json deploy_map='@ALL'), quindi 'cluster_id' qui sotto è solo un FALLBACK — a runtime ChargeShieldExecutor._setup() deriva cluster_id dal nome del sito NVFLARE (fl_ctx.get_identity_name(), che nvflare/project.yml garantisce essere caltech/jpl/office1 — 3 SITI REALI, non più nomi fittizi). FIX 2026-07-22 (3 siti reali): dataset_path è ora la directory PADRE ('datasets/acn'), non un file condiviso — ogni client carica TUTTI i .json nella propria sottocartella datasets/acn/<cluster_id>/ (tutti gli anni disponibili di quel sito reale), risolvendo la limitazione 'per-client dataset access è fake' (vedi docs/NVFlareIntegration.md). FASE 3 (stesso giorno, pomeriggio): dp_mode/epsilon/delta/max_grad_norm aggiunti — vedi docstring di chargeshield_executor.py per la semantica dei 3 dp_mode. epsilon/delta/max_grad_norm DEVONO combaciare con i valori equivalenti in config_fed_server.json (ChargeShieldAggregator) — nessuna validazione incrociata automatica ancora.",
+  "_comment": "ChargeShield-FL \u2014 client-side config, NVFLARE 2.7.2 (2026-07-22, NON verificato). L'Executor custom (chargeshield_executor.py) avvolge AutoencoderTrainer.train_local() \u2014 la STESSA classe usata da scripts/run_experiments.py in simulazione single-process. FIX 2026-07-22 (review A1): questo stesso file viene deployato a TUTTI i siti (meta.json deploy_map='@ALL'), quindi 'cluster_id' qui sotto \u00e8 solo un FALLBACK \u2014 a runtime ChargeShieldExecutor._setup() deriva cluster_id dal nome del sito NVFLARE (fl_ctx.get_identity_name(), che nvflare/project.yml garantisce essere caltech/jpl/office1 \u2014 3 SITI REALI, non pi\u00f9 nomi fittizi). FIX 2026-07-22 (3 siti reali): dataset_path \u00e8 ora la directory PADRE ('datasets/acn'), non un file condiviso \u2014 ogni client carica TUTTI i .json nella propria sottocartella datasets/acn/<cluster_id>/ (tutti gli anni disponibili di quel sito reale), risolvendo la limitazione 'per-client dataset access \u00e8 fake' (vedi docs/NVFlareIntegration.md). FASE 3 (stesso giorno, pomeriggio): dp_mode/epsilon/delta/max_grad_norm aggiunti \u2014 vedi docstring di chargeshield_executor.py per la semantica dei 3 dp_mode. epsilon/delta/max_grad_norm DEVONO combaciare con i valori equivalenti in config_fed_server.json (ChargeShieldAggregator) \u2014 nessuna validazione incrociata automatica ancora.",
   "format_version": 2,
   "executors": [
     {
-      "tasks": ["train"],
+      "tasks": [
+        "train"
+      ],
       "executor": {
         "path": "chargeshield_executor.ChargeShieldExecutor",
         "args": {
@@ -13,11 +15,11 @@
           "epochs": 50,
           "batch_size": 32,
           "proximal_mu": 0.01,
-          "seed": 42,
+          "seed": 1234,
           "dataset_path": "datasets/acn",
           "dp_mode": "central",
           "epsilon": 1.0,
-          "delta": 1.0e-5,
+          "delta": 1e-05,
           "max_grad_norm": 1.0
         }
       }
