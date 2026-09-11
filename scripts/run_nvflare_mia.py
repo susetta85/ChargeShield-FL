@@ -117,6 +117,83 @@ def load_nvflare_fl_results(path: Path) -> tuple[dict[int, dict[str, Any]], dict
     return fl_results, meta
 
 
+def _inject_canaries_for_site(
+    site_train: list[dict[str, Any]],
+    site_holdout: list[dict[str, Any]],
+    canary_cfg: dict[str, Any] | None,
+    site_name: str,
+    seed: int,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """
+    Ricostruisce, offline, la STESSA iniezione canary che
+    chargeshield_executor.py::_inject_canary_members() applica dal vivo
+    (2026-09-11) — stesso blocco "canary" letto dal medesimo config_fed_
+    client.json, stesso seed, stesso offset RNG (+271828). Aggiunge in più
+    i gemelli non-membro (n_nonmember_templates), che l'executor non calcola
+    mai (non mantiene una lista esplicita del proprio hold-out — vedi
+    _inject_canary_members()) ma servono qui per canary_auc_roc/
+    canary_raw_mse_auc_roc in run_lira().
+
+    Ordine dei draw dallo stesso oggetto random.Random — DEVE combaciare con
+    inject_canaries() in run_experiments.py (member_templates prima,
+    nonmember_templates dopo) e con _inject_canary_members() lato executor
+    (che pesca SOLO member_templates, stesso primo draw): la sequenza resta
+    quindi allineata finché train/holdout ricostruiti qui coincidono con
+    quelli reali — già garantito dallo split seed-based 80/20 (fix
+    2026-08-03), invariato da questo cambiamento.
+
+    No-op (restituisce gli input invariati) se canary_cfg è None/disabled o
+    se "site" non è questo sito — stesso identico criterio di
+    _inject_canary_members(), quindi zero rischio per ogni job/analisi
+    esistente che non usa canary.
+    """
+    if not canary_cfg or not canary_cfg.get("enabled", False):
+        return site_train, site_holdout
+    target_site = canary_cfg.get("site", "office1")
+    if target_site != site_name:
+        return site_train, site_holdout
+
+    n_templates           = int(canary_cfg.get("n_templates", 5))
+    n_duplicates          = int(canary_cfg.get("n_duplicates", 30))
+    n_nonmember_templates = int(canary_cfg.get("n_nonmember_templates", n_templates))
+
+    if len(site_train) < n_templates or len(site_holdout) < n_nonmember_templates:
+        logger.warning(
+            f"[CANARY] site={site_name} non ha abbastanza sessioni ricostruite per "
+            f"{n_templates} template membro / {n_nonmember_templates} gemelli "
+            f"non-membro (train={len(site_train)}, holdout={len(site_holdout)}) — "
+            "canary NON ricostruiti, la rianalisi prosegue senza canary_auc_roc."
+        )
+        return site_train, site_holdout
+
+    rng = random.Random(seed + 271828)
+    member_templates = rng.sample(site_train, n_templates)
+    nonmember_templates = rng.sample(site_holdout, n_nonmember_templates)
+
+    injected_train = list(site_train)
+    for i, template in enumerate(member_templates):
+        group = f"canary_m{i}"
+        for _ in range(n_duplicates):
+            clone = dict(template)
+            clone["_canary_group"] = group
+            clone["_canary_role"] = "member"
+            injected_train.append(clone)
+
+    injected_holdout = list(site_holdout)
+    for j, template in enumerate(nonmember_templates):
+        clone = dict(template)
+        clone["_canary_group"] = f"canary_n{j}"
+        clone["_canary_role"] = "nonmember"
+        injected_holdout.append(clone)
+
+    logger.info(
+        f"[CANARY] site={site_name}: ricostruiti {n_templates}x{n_duplicates} "
+        f"record membro + {n_nonmember_templates} gemelli non-membro (seed={seed}) "
+        "— stessa iniezione applicata dal client reale."
+    )
+    return injected_train, injected_holdout
+
+
 def load_client_sessions(
     client_config_path: Path,
     seed: int = 42,
@@ -227,6 +304,16 @@ def load_client_sessions(
             split = max(1, int(len(site_sessions) * 0.8))
             site_train = site_sessions[:split]
             site_holdout = site_sessions[split:]
+
+            # Canary positive control (2026-09-11) — ricostruisce offline la
+            # stessa iniezione che chargeshield_executor.py applica dal vivo
+            # lato training, leggendo lo stesso blocco "canary" da questo
+            # config del client reale. No-op se non configurato/disabilitato
+            # o se questo non è il sito bersaglio — vedi _inject_canaries_for_site().
+            canary_cfg = client_cfg["executors"][0]["executor"]["args"].get("canary")
+            site_train, site_holdout = _inject_canaries_for_site(
+                site_train, site_holdout, canary_cfg, site_dir.name, seed,
+            )
 
             start = len(train_sessions)
             train_sessions.extend(site_train)

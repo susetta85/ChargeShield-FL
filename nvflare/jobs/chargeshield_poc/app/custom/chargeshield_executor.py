@@ -323,6 +323,79 @@ def _normalize_sessions(
     return normalized
 
 
+# ── Canary positive control su NVFLARE (2026-09-11, task esplicito dell'utente) ──
+# Porta su NVFLARE lo stesso meccanismo di scripts/run_experiments.py::
+# inject_canaries() (Sprint 10vv, Carlini "The Secret Sharer" 2019/Jagielski et
+# al. 2020), finora disponibile solo nella simulazione single-process. Duplicato
+# qui (non importato) per lo stesso motivo di _enrich_sessions()/_normalize_
+# sessions() sopra: importare scripts/run_experiments.py dentro un processo
+# client NVFLARE reale riconfigurerebbe silenziosamente logging.basicConfig().
+#
+# Semplificato rispetto all'originale multi-sito: ogni ChargeShieldExecutor
+# vede già SOLO le proprie sessioni (un cluster_id per client reale, non un
+# pool condiviso multi-sito) — non serve quindi _resolved_site_name()/
+# _SITE_ID_TO_NAME per filtrare "quale sito", solo un confronto diretto
+# canary_cfg["site"] == self._cluster_id, prima di iniettare. Nota IMPORTANTE
+# per chi analizza offline (scripts/run_nvflare_mia.py::load_client_sessions()):
+# questa funzione inietta SOLO i duplicati lato training (membro) — i gemelli
+# non-membro (mai in training, serve solo l'hold-out per costruirli) sono
+# ricostruiti offline, non qui, perché questo executor non mantiene mai una
+# lista esplicita del proprio hold-out (vedi _setup(): solo n_holdout, un
+# conteggio, non la lista). Per questo l'RNG qui pesca SOLO i member_templates
+# (un rng.sample) — mentre la ricostruzione offline pesca member_templates
+# POI nonmember_templates dallo stesso rng, nello stesso ordine di
+# inject_canaries() originale: la sequenza di draw deve combaciare finché il
+# seed/l'ordine delle sessioni combaciano (già garantito dallo stesso split
+# seed-based 80/20 usato da entrambi i lati, verificato dal 2026-08-03).
+def _inject_canary_members(
+    train_sessions: list[dict[str, Any]],
+    canary_cfg: dict[str, Any] | None,
+    cluster_id: str,
+    seed: int,
+) -> list[dict[str, Any]]:
+    """Inietta n_templates x n_duplicates record canary nel training LOCALE di
+    questo client, se canary_cfg["site"] == cluster_id — no-op altrimenti
+    (incluso canary_cfg=None, il default, quindi zero rischio per ogni job
+    NVFLARE esistente/già lanciato)."""
+    if not canary_cfg or not canary_cfg.get("enabled", False):
+        return train_sessions
+    target_site = canary_cfg.get("site", "office1")
+    if target_site != cluster_id:
+        return train_sessions  # canary destinato a un altro sito — questo client resta invariato
+
+    n_templates  = int(canary_cfg.get("n_templates", 5))
+    n_duplicates = int(canary_cfg.get("n_duplicates", 30))
+
+    if len(train_sessions) < n_templates:
+        logger.warning(
+            f"[{cluster_id}] [CANARY] training set troppo piccolo per {n_templates} "
+            f"template ({len(train_sessions)} sessioni) — canary NON iniettati."
+        )
+        return train_sessions
+
+    # Stesso offset di seed dedicato (271828, cifre di 'e') di inject_canaries()
+    # in scripts/run_experiments.py — indipendente da random.seed(seed) già
+    # usato sopra per lo shuffle/split, per non alterare quel campionamento.
+    rng = random.Random(seed + 271828)
+    member_templates = rng.sample(train_sessions, n_templates)
+
+    injected = list(train_sessions)
+    for i, template in enumerate(member_templates):
+        group = f"canary_m{i}"
+        for _ in range(n_duplicates):
+            clone = dict(template)
+            clone["_canary_group"] = group
+            clone["_canary_role"] = "member"
+            injected.append(clone)
+
+    logger.info(
+        f"[{cluster_id}] [CANARY] Iniettati {n_templates} template x {n_duplicates} "
+        f"duplicati ({n_templates * n_duplicates} record membro) nel training locale "
+        "(positive control, task #37/canary-nvflare 2026-09-11)."
+    )
+    return injected
+
+
 class ChargeShieldExecutor(Executor):
     """
     Avvolge AutoencoderTrainer (src/ml/autoencoder_trainer.py) per l'esecuzione
@@ -368,6 +441,21 @@ class ChargeShieldExecutor(Executor):
                       Edinburgh, ma qualunque council area valida può essere
                       usata qui indipendentemente dalla config della
                       simulazione)}.
+        canary:       dict opzionale (default None, no-op — zero rischio per
+                      ogni job esistente), aggiunto 2026-09-11 per portare su
+                      NVFLARE lo stesso canary positive control della
+                      simulazione (scripts/run_experiments.py::
+                      inject_canaries(), Sprint 10vv). Stesso schema del
+                      blocco "canary" in config/experiment_canary_positive_
+                      control*.yaml: {"enabled": bool, "site": str (uno dei
+                      3 cluster_id — SOLO quel client inietta, gli altri due
+                      restano invariati anche ricevendo lo stesso
+                      config_fed_client.json via deploy_map="@ALL"),
+                      "n_templates": int, "n_duplicates": int}. I gemelli
+                      non-membro (n_nonmember_templates) NON si configurano
+                      qui — servono solo lato analisi offline (vedi
+                      scripts/run_nvflare_mia.py::load_client_sessions(), che
+                      legge lo stesso blocco "canary" da questo file).
     """
 
     def __init__(
@@ -382,6 +470,7 @@ class ChargeShieldExecutor(Executor):
         dataset_path: str = "datasets/acn",
         dataset_adapter: str = "acn",
         chargeplace_scotland: dict[str, Any] | None = None,
+        canary: dict[str, Any] | None = None,
         train_task_name: str = "train",
         dp_mode: str = "dp-fedavg",
         epsilon: float = 1.0,
@@ -392,6 +481,7 @@ class ChargeShieldExecutor(Executor):
         self._cluster_id = cluster_id
         self._dataset_adapter = dataset_adapter
         self._chargeplace_scotland = chargeplace_scotland
+        self._canary_cfg = canary
         self._trainer_cfg = {
             "input_dim": input_dim,
             "lr": lr,
@@ -541,6 +631,14 @@ class ChargeShieldExecutor(Executor):
         train_sessions = all_sessions[:split]
         n_holdout = len(all_sessions) - len(train_sessions)
 
+        # Canary positive control (2026-09-11, opt-in via self._canary_cfg,
+        # None di default — no-op per ogni job esistente): iniettato DOPO lo
+        # split, PRIMA della normalizzazione, stesso punto della pipeline di
+        # scripts/run_experiments.py::main() — vedi _inject_canary_members().
+        n_train_before_canary = len(train_sessions)
+        train_sessions = _inject_canary_members(train_sessions, self._canary_cfg, self._cluster_id, seed)
+        n_canary_injected = len(train_sessions) - n_train_before_canary
+
         # Normalizzazione [0,1]: calcolata SOLO su train_sessions (no leakage
         # dall'hold-out riservato sopra — stesso principio di
         # scripts/run_experiments.py::main()). Calcolata sulle sessioni DI
@@ -562,7 +660,8 @@ class ChargeShieldExecutor(Executor):
         logger.info(
             f"[{self._cluster_id}] ChargeShieldExecutor pronto — "
             f"{len(self._sessions)} sessioni di training (hold-out riservato: "
-            f"{n_holdout}) caricate via adapter={self._dataset_adapter}"
+            f"{n_holdout}, canary iniettati: {n_canary_injected}) caricate via "
+            f"adapter={self._dataset_adapter}"
         )
 
     def _load_acn_sessions(self) -> list[dict[str, Any]]:

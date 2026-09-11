@@ -1,0 +1,79 @@
+# ChargeShield-FL — Canary positive control, CALTECH ad alta densità (2026-09-11)
+#
+# SCOPO: experiment_canary_positive_control_caltech.yaml (Sprint 10zz+4) ha
+# usato la STESSA aggressività di manipolazione di office1 (5 template x 30
+# duplicati = 150 record) per isolare la variabile "sito" a parità di
+# manipolazione — risultato: canary NON rilevato (canary_auc_roc 0.42-0.50,
+# raw_loss_auc 0.35-0.44), a differenza di office1 (0.6375/0.6625/0.5875
+# calibrato, 0.66-0.90 raw-loss). Causa identificata (non solo ipotizzata,
+# vedi README Sprint 10zz+4/10zz+22b, replicata anche su jpl): DILUIZIONE —
+# gli stessi 150 duplicati pesano ~0.5% del training set di caltech
+# (25123 sessioni post-split 80/20, calcolato su 31404 sessioni totali reali,
+# verificato contando i 4 file datasets/acn/caltech/*.json) contro ~9-11%
+# in office1 (1680 sessioni).
+#
+# QUESTO CONFIG isola l'altra variabile — la densità di duplicazione —
+# invece di tenerla fissa: n_templates alzato da 5 a 84 (84 x 30 duplicati
+# = 2520 record, ≈10.03% del training set di caltech, stessa percentuale
+# di office1). n_duplicates resta 30 (stessa aggressività "per template",
+# già validata e già coperta dal fix _sample_preserving_canary_groups
+# — Sprint 10zz+15/16 — che tratta ogni gruppo canary come atomico nel
+# campionamento shadow, quindi scala correttamente a più gruppi senza
+# richiedere modifiche al codice).
+#
+# n_nonmember_templates lasciato a 20 (invariato) — la domanda qui è
+# specificamente "più densità di membri duplicati rende il canary
+# rilevabile a scala grande?", non "quanti gemelli non-membro servono";
+# cambiare una sola variabile alla volta resta la stessa disciplina
+# metodologica del config originale.
+#
+# ATTENZIONE TEMPI: 2520 record duplicati aggiuntivi (vs 150) allungano il
+# training FL per round — aspettati un tempo superiore al run
+# _caltech.yaml originale (già "sostanzialmente più lento" di office1).
+#
+# Comando di lancio (sulla macchina fisica, MAI in parallelo con un altro
+# esperimento/job NVFLARE in corso):
+#   python3 scripts/run_experiments.py \
+#       --config config/experiment_canary_positive_control_caltech_highdensity.yaml \
+#       --no-dp --sweep-dir experiments/_canary_positive_control_caltech_highdensity
+
+experiment:
+  name: chargeshield_canary_positive_control_caltech_highdensity
+  fl_rounds: 3
+  seed: 42
+  epsilon: 1.0
+  delta: 1.0e-5
+  max_grad_norm: 1.0
+
+sites:
+  caltech:
+    - datasets/acn/caltech/acndata_sessions_2018.json
+    - datasets/acn/caltech/acndata_sessions_2019.json
+    - datasets/acn/caltech/acndata_sessions_2020.json
+    - datasets/acn/caltech/acndata_sessions_2021.json
+
+ml:
+  input_dim: 6
+  lr: 0.001
+  epochs: 1000   # invariato rispetto a _caltech.yaml, per isolare solo la densità canary
+  batch_size: 32
+  proximal_mu: 0.01
+
+canary:
+  enabled: true
+  site: caltech
+  n_templates: 84            # da 5 a 84 — 84x30=2520 record, ~10.03% del training set (25123 sessioni)
+  n_duplicates: 30           # invariato — stessa aggressività "per template" già validata su office1
+  n_nonmember_templates: 20  # invariato — variabile isolata è la densità membro, non i gemelli non-membro
+
+output:
+  experiments_dir: experiments
+
+lira:
+  n_shadow: 8   # invariato rispetto a office1/_caltech.yaml, per velocità
+
+byzantine_attack:
+  enabled: false
+  attack_type: gradient_scaling
+  byzantine_node: synthetic_1
+  scale_factor: 10
