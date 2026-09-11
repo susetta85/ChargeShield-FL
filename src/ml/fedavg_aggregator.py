@@ -105,6 +105,31 @@ class FedAvgAggregator(AbstractMLModel):
             )
             return None
 
+        # Fix 2026-09-11 (deep review round 2): _weighted_average() filtra ULTERIORMENTE
+        # 'valid' scartando update con struttura pesi incompatibile (len(weights) diverso
+        # dal primo), e ricalcola il proprio total_samples SOLO sui compatibili — ma quel
+        # ricalcolo era locale alla funzione e non tornava indietro qui. Risultato: se un
+        # update incompatibile veniva scartato, i metadata sotto (total_samples,
+        # participant_ids, participant_n_samples, n_participants) restavano costruiti su
+        # 'valid' (pre-filtro) e quindi includevano un partecipante che in realtà NON
+        # contribuiva a global_weights — participant_n_samples è esattamente il dict che
+        # GradientManager.privatize_aggregate() usa per calcolare max_weight_fraction (la
+        # sensibilità del rumore DP central), quindi un fantasma qui distorcerebbe
+        # silenziosamente il calibro del rumore. Filtro qui, una sola volta, PRIMA di
+        # costruire sia total_samples che i metadata, cosicché tutto derivi dalla stessa
+        # lista — _weighted_average() riceve già solo update compatibili (il suo filtro
+        # interno resta come guardia difensiva, ora sempre no-op in questo percorso).
+        first_weights = valid[0].weights
+        n_expected = len(first_weights)
+        compatible = [u for u in valid if len(u.weights) == n_expected]
+        if len(compatible) < len(valid):
+            skipped = [u.node_id for u in valid if len(u.weights) != n_expected]
+            logger.error(
+                f"Round {round_num} — struttura pesi incompatibile per {skipped} — "
+                "esclusi da metadata E aggregazione"
+            )
+        valid = compatible
+
         total_samples = sum(u.n_samples for u in valid)
 
         # FedAvg: media pesata per n_samples

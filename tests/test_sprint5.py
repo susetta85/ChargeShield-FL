@@ -378,6 +378,26 @@ class TestFedAvgAggregator:
         for w in result.global_weights:
             assert torch.allclose(w, torch.ones_like(w) * 0.5, atol=1e-5)
 
+    def test_aggregate_incompatible_weights_excluded_from_metadata(self, trainer):
+        """Fix 2026-09-11 (deep review round 2): un update con struttura pesi
+        incompatibile (len diverso) veniva scartato da global_weights ma restava
+        conteggiato in total_samples/participant_ids/participant_n_samples —
+        quest'ultimo alimenta max_weight_fraction in
+        GradientManager.privatize_aggregate() (sensibilità del rumore DP central),
+        quindi un partecipante fantasma ne distorceva silenziosamente il calibro."""
+        agg = FedAvgAggregator({"min_participants": 2})
+        w_ok = trainer.get_weights()
+        w_bad = w_ok[:-1]  # un tensore in meno → struttura incompatibile
+        agg.collect(self._make_update("n1", "A", w_ok, 100, 0.1))
+        agg.collect(self._make_update("n2", "B", w_ok, 100, 0.1))
+        agg.collect(self._make_update("n_bad", "C", w_bad, 900, 0.9))
+        result = agg.aggregate(round_num=1)
+        assert result is not None
+        assert result.n_participants == 2
+        assert "n_bad" not in result.metadata["participant_ids"]
+        assert "n_bad" not in result.metadata["participant_n_samples"]
+        assert result.metadata["total_samples"] == 200
+
     def test_aggregate_below_min_returns_none(self, trainer):
         agg = FedAvgAggregator({"min_participants": 3})
         w = trainer.get_weights()
