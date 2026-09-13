@@ -718,13 +718,20 @@ non su questo specifico campo di audit — ma va tenuto a mente se in futuro si 
 varianza inter-seed del round 1 specificamente come evidenza di robustezza: al round 1 quella
 varianza è artificialmente zero, non un segnale reale.
 
+**Aggiornamento 2026-09-13**: anche `local` DP mode è ora completo a 5 seed su NVFLARE (42/123/456/
+789/1234, ε=1.0, `run_nvflare_mia.py` con `n_shadow=16` per ognuno) — `mean_lira_auc_roc` per seed:
+0.4993/0.5007/0.4991/0.5003/0.5007, tutti `privacy_risk=LOW`, nessuna anomalia. Bootstrap (10000
+resample): mean=0.500000, std=0.000785, 95% CI=[0.499388, 0.500611] — contiene 0.5, coerente con
+`central` (stesso null result) e con l'intera campagna single-process. `central` e `local` sono ora
+entrambi completi a 5 seed su NVFLARE.
+
 **Ancora da fare per un confronto pienamente allineato con la campagna single-process (10 config ×
-5 seed)**: `local` DP mode (zero run finora su NVFLARE) e variazione di epsilon (0.5/0.1 — solo
-ε=1.0 testato finora, bassa priorità esplicita). `central` è ora completo a 5 seed (vedi sopra). Non bloccante per la submission — il claim
-principale del paper si basa sulla campagna single-process, già completa e statisticamente
-solida; questi run NVFLARE sono una validazione supplementare "il risultato regge anche in un
-deployment reale multi-container", non un sostituto. Costo/beneficio da valutare rispetto al tempo
-restante prima della deadline (abstract 2026-11-25).
+5 seed)**: solo la variazione di epsilon (0.5/0.1 — solo ε=1.0 testato finora su NVFLARE, bassa
+priorità esplicita) resta aperta. Non bloccante per la submission — il claim principale del paper
+si basa sulla campagna single-process, già completa e statisticamente solida; questi run NVFLARE
+sono una validazione supplementare "il risultato regge anche in un deployment reale
+multi-container", non un sostituto. Costo/beneficio da valutare rispetto al tempo restante prima
+della deadline (abstract 2026-11-25).
 
 ---
 

@@ -20,7 +20,7 @@
         "cosine_threshold": 0.3,
         "krum_threshold": 3.5,
         "dp_mode": "local",
-        "seed": 42,
+        "seed": 1234,
         "results_export_path": "experiments/nvflare_ids_audit_results.json",
         "fl_results_export_path": "experiments/nvflare_fl_results.pkl"
       }
