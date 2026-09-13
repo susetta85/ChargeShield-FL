@@ -3179,6 +3179,25 @@ def run_lira(
         # _diag_raw_loss_members/nonmembers ma ristretto ai canary.
         round_canary_member_raw_loss:    list[float] = []
         round_canary_nonmember_raw_loss: list[float] = []
+        # Diagnostica 2026-09-13 (richiesta esplicita dell'utente dopo il run
+        # experiment_canary_positive_control_caltech_highdensity.yaml:
+        # canary_n_member=2490 invece dei 2520 attesi — 84×30 — e
+        # canary_n_nonmember=19 invece di 20; run precedenti mostravano
+        # deficit diversi e non multipli di n_duplicates, es. office1 -30,
+        # caltech originale -5, jpl -1 sul lato non-membro). Esclusa
+        # sperimentalmente la soglia _UNCALIBRATED_Z_THRESHOLD (skip_rate=0.0
+        # in ogni round di quel run) e l'estrazione feature (enrich_sessions
+        # assegna hour_of_day/duration_hours incondizionatamente). Resta da
+        # verificare se il colpevole sia uno dei tre `continue` per-campione
+        # qui sotto (estrazione tensore, guard cross-cluster, calibrazione
+        # insufficiente out_losses<2) — puramente additivo, incrementa un
+        # contatore SOLO per campioni già taggati _canary_group, zero impatto
+        # su qualunque score/soglia/formula esistente o su run senza canary.
+        _diag_canary_skip_reason: dict[str, int] = {
+            "tensor_extraction": 0,
+            "cross_cluster_guard": 0,
+            "insufficient_calibration": 0,
+        }
 
         # DIAGNOSTICA 2026-08-15 (indagine anomalia no-DP AUC≈0.5, vedi
         # docs/ReadingList_DSN2027.md e README Sprint-log 2026-08-15):
@@ -3369,6 +3388,8 @@ def run_lira(
                         recon       = client_model(tensor)
                         target_loss = float(torch.mean((recon - tensor) ** 2).item())
                 except (KeyError, TypeError, ValueError):
+                    if id(sample) in _sample_canary_group:
+                        _diag_canary_skip_reason["tensor_extraction"] += 1
                     continue
 
                 is_member = (j < len(members_bal))
@@ -3385,6 +3406,8 @@ def run_lira(
                     _member_cluster = _sample_to_cluster.get(id(sample))
                     _client_cluster = getattr(update, "cluster_id", None)
                     if _member_cluster is not None and _member_cluster != _client_cluster:
+                        if id(sample) in _sample_canary_group:
+                            _diag_canary_skip_reason["cross_cluster_guard"] += 1
                         continue
                 else:
                     # Fix 2026-08-11: guard simmetrico — vedi commento su
@@ -3397,6 +3420,8 @@ def run_lira(
                     _nonmember_cluster = _holdout_sample_to_cluster.get(id(sample))
                     _client_cluster = getattr(update, "cluster_id", None)
                     if _nonmember_cluster is not None and _nonmember_cluster != _client_cluster:
+                        if id(sample) in _sample_canary_group:
+                            _diag_canary_skip_reason["cross_cluster_guard"] += 1
                         continue
 
                 # Split shadow losses: IN = shadows (di QUESTO cluster, QUESTO round)
@@ -3425,6 +3450,8 @@ def run_lira(
                         out_losses.append(mse)
 
                 if len(out_losses) < 2:
+                    if id(sample) in _sample_canary_group:
+                        _diag_canary_skip_reason["insufficient_calibration"] += 1
                     continue  # insufficient calibration data
 
                 μ_out = float(np.mean(out_losses))
@@ -3888,6 +3915,15 @@ def run_lira(
                 f"| raw_loss_auc={canary_raw_mse_auc_roc} "
                 f"(mean_loss_member={round(float(np.mean(round_canary_member_raw_loss)), 8) if round_canary_member_raw_loss else 'N/A'}, "
                 f"mean_loss_nonmember={round(float(np.mean(round_canary_nonmember_raw_loss)), 8) if round_canary_nonmember_raw_loss else 'N/A'})"
+            )
+        # Diagnostica 2026-09-13 (vedi commento all'inizializzazione di
+        # _diag_canary_skip_reason sopra) — logga solo se almeno un canary è
+        # stato effettivamente saltato in questo round, per non sporcare il
+        # log di ogni run senza canary o senza skip.
+        if _sample_canary_group and sum(_diag_canary_skip_reason.values()) > 0:
+            logger.info(
+                f"Round {round_num} — [CANARY DIAG] campioni canary saltati per motivo: "
+                f"{_diag_canary_skip_reason} (su {len(_sample_canary_group)} taggati totali)"
             )
 
         # DIAGNOSTICA 2026-08-15 — vedi commento all'inizializzazione dei
