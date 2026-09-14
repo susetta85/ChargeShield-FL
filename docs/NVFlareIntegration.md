@@ -585,11 +585,15 @@ deployment target, with a real statistical campaign now underway on it directly 
 `make nvflare-sim`, the single-process simulator). **Update (2026-09-11): `central` now has all 5
 paper seeds** (42 pre-fix, 123/456/789/1234 post-fix, all ε=1.0, all 10/10 rounds; `mean_lira_auc_roc`
 for 123/456 already reanalyzed: 0.5000/0.5015, consistent with the rest of the campaign, 1234's
-reanalysis pending as of this write-up). **Still missing for a comparison fully aligned with the
-single-process 10-config × 5-seed campaign**: `local` mode on NVFLARE (zero runs so far) and epsilon
-variation (only ε=1.0 tested — **explicitly deprioritized by the user, low priority**). Not blocking
-for submission — the paper's primary claim rests on the single-process campaign, already complete and
-statistically robust; this NVFLARE work is supplementary validation, not a replacement.
+reanalysis pending as of this write-up). **Update 2026-09-13**: `local` mode on NVFLARE is now also
+complete at all 5 seeds (42/123/456/789/1234, ε=1.0) — `mean_lira_auc_roc` per seed 0.4993/0.5007/
+0.4991/0.5003/0.5007, all `privacy_risk=LOW`, bootstrap 95% CI [0.4994, 0.5006] (contains 0.5), same
+null result as `central` and the single-process campaign (README Sprint 10zz+63). **Still missing for
+a comparison fully aligned with the single-process 10-config × 5-seed campaign**: epsilon variation
+(only ε=1.0 tested so far — a 5-seed sweep at ε∈{0.5, 0.1} for both `central` and `local` is in
+progress as of 2026-09-14, per explicit user request for full rigor). Not blocking for submission —
+the paper's primary claim rests on the single-process campaign, already complete and statistically
+robust; this NVFLARE work is supplementary validation, not a replacement.
 
 **ChargePlace Scotland on NVFLARE — no longer a structural limitation (2026-09-10, task #37/#93).**
 The gap wasn't Containerlab or NVFLARE's provisioning — the 3 NVFLARE site identities

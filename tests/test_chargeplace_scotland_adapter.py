@@ -33,17 +33,28 @@ NOV_23 = "datasets/alt/chargeplace_scotland/Sessions_from_CPS/NOV-23.xlsx"
 METADATA_DIR = "datasets/alt/chargeplace_scotland/CPID_information"
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def ds():
-    """Fixture: carica OCT-23 con metadati CPID (site_id/charging_mode popolati)."""
+    """Fixture: carica OCT-23 con metadati CPID (site_id/charging_mode popolati).
+
+    Fix 2026-09-14 (deep review round 3): era function-scoped, quindi
+    ricaricava OCT-23.xlsx (162.896 righe, ~7.5s) da zero per OGNI test che
+    la usa (19/30 test in questo file) — nessun test muta il dataset
+    (verificato: nessuna scrittura su ds.*/ds_no_metadata.* in questo file),
+    quindi scope="module" e' sicuro e riduce il tempo della suite da minuti
+    a pochi secondi.
+    """
     dataset = ChargePlaceScotlandDataset()
     dataset.load_with_metadata(session_paths=[OCT_23], metadata_dir=METADATA_DIR)
     return dataset
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def ds_no_metadata():
-    """Fixture: carica OCT-23 SENZA metadati (contratto AbstractDataset puro)."""
+    """Fixture: carica OCT-23 SENZA metadati (contratto AbstractDataset puro).
+
+    Stesso fix di `ds` sopra — module-scoped, nessun test muta il dataset.
+    """
     dataset = ChargePlaceScotlandDataset()
     dataset.load(OCT_23)
     return dataset

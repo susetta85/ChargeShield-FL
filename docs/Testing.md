@@ -16,7 +16,7 @@
    - 2.3 [TestGradientAnalyzer (8 tests)](#23-testgradientanalyzer-8-tests)
    - 2.4 [TestKrumDetector (6 tests)](#24-testkrumdetector-6-tests)
    - 2.5 [TestFedMIA (7 tests)](#25-testfedmia-7-tests)
-   - 2.6 [TestByzantineDetector (11 tests)](#26-testchargingids-11-tests)
+   - 2.6 [TestByzantineDetector (11 tests)](#26-testbyzantinedetector-11-tests)
 3. [Sprint 5 Test Suite — 25 Tests](#3-sprint-5-test-suite--25-tests)
    - 3.1 [TestAutoencoderTrainer (12 tests)](#31-testautoencodertrainer-12-tests)
    - 3.2 [TestGradientManager (7 tests)](#32-testgradientmanager-7-tests)
