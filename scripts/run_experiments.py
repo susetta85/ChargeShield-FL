@@ -4498,6 +4498,9 @@ def run_fedmia_gradient(
                                                 # mescolato con score di altri
                                                 # cluster su scale diverse.
             "fedmia_gradient_n_test_per_cluster":  dict[str, int],
+            "fedmia_gradient_advantage_per_cluster":  dict[str, float | None],   # Sprint 10zz+70
+            "fedmia_gradient_confusion_per_cluster":  dict[str, dict],          # Sprint 10zz+70
+            "fedmia_gradient_tpr_at_fpr_per_cluster": dict[str, dict],          # Sprint 10zz+70
         }}
         composed_output (se fornito) riceve, dopo l'ultimo round:
             "fedmia_gradient_composed_auc_roc_per_cluster": dict[str, float | None],
@@ -4508,6 +4511,9 @@ def run_fedmia_gradient(
                                                 # round, riduce il rumore
                                                 # campionario di n_test~8/round.
             "fedmia_gradient_composed_n_test_per_cluster": dict[str, int],
+            "fedmia_gradient_composed_advantage_per_cluster":  dict[str, float | None],  # Sprint 10zz+70
+            "fedmia_gradient_composed_confusion_per_cluster":  dict[str, dict],          # Sprint 10zz+70
+            "fedmia_gradient_composed_tpr_at_fpr_per_cluster": dict[str, dict],          # Sprint 10zz+70
     """
     from sklearn.metrics import roc_auc_score
 
@@ -4546,6 +4552,14 @@ def run_fedmia_gradient(
         # "Nota metodologica" nel docstring sopra.
         per_cluster_auc: dict[str, float | None] = {}
         per_cluster_n_test: dict[str, int] = {}
+        # Sprint 10zz+70: stesse metriche già calcolate per Yeom/Shadow/LiRA
+        # (vedi _mia_advantage()/_mia_confusion_at_best_threshold()/
+        # _tpr_at_fixed_fpr()), qui per cluster invece che sul pool intero —
+        # coerente con "l'AUC per-cluster è la metrica primaria" già stabilito
+        # per questo attacco (Sprint 10zz+8, vedi "Nota metodologica" sopra).
+        per_cluster_advantage: dict[str, float | None] = {}
+        per_cluster_confusion: dict[str, dict[str, float | int | None]] = {}
+        per_cluster_tpr_at_fpr: dict[str, dict[str, float | None]] = {}
 
         for cid, cluster_data in _payload.items():
             vectors = cluster_data.get("vectors", [])
@@ -4661,6 +4675,21 @@ def run_fedmia_gradient(
             per_cluster_auc[cid] = _cluster_auc
             per_cluster_n_test[cid] = len(_cluster_labels)
 
+            # Fix (2026-09-14, Sprint 10zz+70 — gap strutturale segnalato in
+            # README Sprint 10zz+34: "run_fedmia_gradient() produce SOLO
+            # fedmia_gradient_auc_roc [...], MAI Advantage/Confusion/
+            # TPR@low-FPR (mai esteso, a differenza di Yeom/Shadow/canary
+            # nel task #53)"). Necessario per confrontare FedMIA-gradient a
+            # parità di metriche con Yeom/Shadow/LiRA quando promosso da
+            # diagnostico opt-in ad attacco citabile nel paper (vedi README
+            # Sprint 10zz+69/+70) — stesse funzioni pure (labels, scores) →
+            # dict già usate ovunque nel file, nessuna nuova formula.
+            per_cluster_advantage[cid] = _mia_advantage(_cluster_labels, _cluster_scores)
+            per_cluster_confusion[cid] = _mia_confusion_at_best_threshold(
+                _cluster_labels, _cluster_scores
+            )
+            per_cluster_tpr_at_fpr[cid] = _tpr_at_fixed_fpr(_cluster_labels, _cluster_scores)
+
             if composed_output is not None:
                 _pooled_cluster_labels.setdefault(cid, []).extend(_cluster_labels)
                 _pooled_cluster_scores.setdefault(cid, []).extend(_cluster_scores)
@@ -4693,6 +4722,11 @@ def run_fedmia_gradient(
             "fedmia_gradient_n_shadow": n_shadow,
             "fedmia_gradient_auc_roc_per_cluster": per_cluster_auc,   # METRICA PRIMARIA
             "fedmia_gradient_n_test_per_cluster":  per_cluster_n_test,
+            # Sprint 10zz+70: stesse tre metriche di Yeom/Shadow/LiRA, per
+            # cluster (coerente con la metrica primaria di questo attacco).
+            "fedmia_gradient_advantage_per_cluster":     per_cluster_advantage,
+            "fedmia_gradient_confusion_per_cluster":     per_cluster_confusion,
+            "fedmia_gradient_tpr_at_fpr_per_cluster":    per_cluster_tpr_at_fpr,
         }
         # Fix (2026-09-01, trovato dal primo smoke test reale — mancava,
         # a differenza di OGNI altro attacco in questo file, che logga
@@ -4709,6 +4743,13 @@ def run_fedmia_gradient(
         # (pooling, non somma di log-likelihood come il "composto" di LiRA).
         _composed_auc_per_cluster: dict[str, float | None] = {}
         _composed_n_test_per_cluster: dict[str, int] = {}
+        # Sprint 10zz+70: stesse tre metriche aggiunte sopra per il per-round,
+        # qui sul pool composto — coerente col fatto che la Tabella 2 del
+        # paper riporta Advantage/Confusion/TPR@low-FPR sul COMPOSTO
+        # multi-round per Yeom/Shadow/LiRA, non solo per round singolo.
+        _composed_advantage_per_cluster: dict[str, float | None] = {}
+        _composed_confusion_per_cluster: dict[str, dict[str, float | int | None]] = {}
+        _composed_tpr_at_fpr_per_cluster: dict[str, dict[str, float | None]] = {}
         for cid, labels in _pooled_cluster_labels.items():
             scores = _pooled_cluster_scores[cid]
             _c_auc = None
@@ -4719,8 +4760,14 @@ def run_fedmia_gradient(
                     _c_auc = None
             _composed_auc_per_cluster[cid] = _c_auc
             _composed_n_test_per_cluster[cid] = len(labels)
+            _composed_advantage_per_cluster[cid] = _mia_advantage(labels, scores)
+            _composed_confusion_per_cluster[cid] = _mia_confusion_at_best_threshold(labels, scores)
+            _composed_tpr_at_fpr_per_cluster[cid] = _tpr_at_fixed_fpr(labels, scores)
         composed_output["fedmia_gradient_composed_auc_roc_per_cluster"] = _composed_auc_per_cluster
         composed_output["fedmia_gradient_composed_n_test_per_cluster"] = _composed_n_test_per_cluster
+        composed_output["fedmia_gradient_composed_advantage_per_cluster"] = _composed_advantage_per_cluster
+        composed_output["fedmia_gradient_composed_confusion_per_cluster"] = _composed_confusion_per_cluster
+        composed_output["fedmia_gradient_composed_tpr_at_fpr_per_cluster"] = _composed_tpr_at_fpr_per_cluster
         logger.info(
             f"FedMIA-gradient composto (pool di {len(results)} round) — "
             f"AUC-ROC per cluster: {_composed_auc_per_cluster} "

@@ -157,12 +157,33 @@ _METHODOLOGY_VARIANT_PREFIXES = ("entity-split",)
 # NVFLARE stessa (separatamente, non mescolata).
 _NVFLARE_PREFIX = "nvflare-"
 
+# Fix preventivo (2026-09-14, Sprint 10zz+70 — preparato PRIMA che la
+# campagna esista, non dopo aver trovato la contaminazione come nei due fix
+# sopra): quando FedMIA-gradient verrà promosso da diagnostico opt-in ad
+# attacco citabile nel paper (vedi README Sprint 10zz+69/+70), girerà con
+# --include-fedmia-gradient su tutte le config della campagna a n_shadow=32
+# — ma quel FLAG fa sì che ogni run produca ANCHE, come sottoprodotto, numeri
+# Yeom/Shadow/LiRA freschi (a n_shadow=32, diverso dai 16 della campagna
+# principale già pubblicata) nello STESSO file. Se le sue sweep-dir non
+# vengono escluse esplicitamente qui, un file con lo stesso (dp_mode,
+# epsilon, seed) della campagna principale e un nome più recente
+# sostituirebbe silenziosamente il dato n_shadow=16 pubblicato con quello
+# n_shadow=32 del run FedMIA-gradient — ESATTAMENTE lo stesso meccanismo di
+# contaminazione già trovato due volte sopra (entity-split, nvflare-*), qui
+# prevenuto in anticipo invece che scoperto a campagna già fatta. Convenzione
+# di naming concordata: ogni sweep-dir del run FedMIA-gradient userà il
+# prefisso `fedmia-gradient-` (es. `fedmia-gradient-central-seed42-eps1.0/`).
+# include_fedmia_gradient=True le reintegra per chi vuole analizzare quella
+# campagna separatamente.
+_FEDMIA_GRADIENT_PREFIX = "fedmia-gradient-"
+
 
 def discover_groups(
     pattern: str = EXPERIMENTS_GLOB,
     include_diagnostic: bool = False,
     include_methodology_variants: bool = False,
     include_nvflare: bool = False,
+    include_fedmia_gradient: bool = False,
 ) -> dict[str, list[str]]:
     """Raggruppa i file per (dp_mode, epsilon) letti dal config di ognuno,
     non dal nome della cartella che li contiene.
@@ -244,6 +265,8 @@ def discover_groups(
         ):
             continue
         if not include_nvflare and sweep_dir_name.startswith(_NVFLARE_PREFIX):
+            continue
+        if not include_fedmia_gradient and sweep_dir_name.startswith(_FEDMIA_GRADIENT_PREFIX):
             continue
         try:
             d = json.load(open(f))
