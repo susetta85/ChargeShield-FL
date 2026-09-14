@@ -73,7 +73,19 @@ def main():
         f.write("\n")
 
     SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
-    snapshot_path = SNAPSHOT_DIR / f"config_fed_client_seed{args.seed}_{args.dp_mode}.json"
+    # Fix 2026-09-14 (bug reale trovato prima di lanciare lo sweep epsilon
+    # 0.5/0.1): il nome non includeva epsilon, quindi due run con stesso
+    # seed+dp_mode ma epsilon diverso (es. central/seed42/eps=1.0 poi
+    # central/seed42/eps=0.5) si sovrascrivevano a vicenda in silenzio —
+    # esattamente la stessa classe di bug (snapshot sbagliato usato per la
+    # rianalisi) che questo script era nato per evitare. Danno reale di
+    # questo giro: lo snapshot storico central/seed42/eps=1.0 e' stato perso
+    # (nessun impatto: quell'analisi, task #94, era gia' completa e salvata
+    # nel suo JSON risultati, che non dipende da questo file per esistere).
+    snapshot_path = (
+        SNAPSHOT_DIR
+        / f"config_fed_client_seed{args.seed}_{args.dp_mode}_eps{args.epsilon}.json"
+    )
     with open(snapshot_path, "w") as f:
         json.dump(client_cfg, f, indent=2)
         f.write("\n")
