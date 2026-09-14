@@ -511,7 +511,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--include-fedmia-gradient", action="store_true",
         help=(
-            "Sprint 10zz+70 (2026-09-14): aggiunge FedMIAGradientAttack alla "
+            "Sprint 10zz+71 (2026-09-14): aggiunge FedMIAGradientAttack alla "
             "rianalisi NVFLARE, stesso meccanismo extra_attacks di "
             "run_experiments.py::main() (vedi --include-fedmia-gradient lì e "
             "run_registered_attacks()). RISTRETTO a dp_mode 'central'/'local' "
@@ -618,7 +618,7 @@ def main() -> None:
     dp_mode = meta.get("dp_mode", cfg["experiment"].get("dp_mode", "dp-fedavg"))
     cfg["experiment"]["dp_mode"] = dp_mode
 
-    # Sprint 10zz+70 (2026-09-14): --include-fedmia-gradient su NVFLARE è
+    # Sprint 10zz+71 (2026-09-14): --include-fedmia-gradient su NVFLARE è
     # ristretto a dp_mode 'central'/'local', per scelta esplicita dell'utente
     # (dp-fedavg escluso dallo scope di questa promozione — nessuna analisi
     # empirica ancora fatta su quel placement con questo attacco). dp_mode qui
@@ -628,7 +628,7 @@ def main() -> None:
         raise ValueError(
             f"--include-fedmia-gradient su NVFLARE è supportato solo per "
             f"dp_mode in {{'central', 'local'}} (scelta esplicita "
-            f"dell'utente, Sprint 10zz+70) — il dump {args.fl_results.name} "
+            f"dell'utente, Sprint 10zz+71) — il dump {args.fl_results.name} "
             f"ha dp_mode={dp_mode!r}. Rilanciare senza --include-fedmia-"
             "gradient per questo dump, o usare un dump central/local."
         )
@@ -757,7 +757,7 @@ def main() -> None:
     # comportamento di prima: yeom, poi shadow, poi lira, merge per round,
     # un attacco fallito non blocca gli altri né il salvataggio finale.
     n_shadow = args.n_shadow if args.n_shadow is not None else cfg.get("lira", {}).get("n_shadow", 8)
-    # Sprint 10zz+70 (2026-09-14): stesso meccanismo extra_attacks di
+    # Sprint 10zz+71 (2026-09-14): stesso meccanismo extra_attacks di
     # run_experiments.py::main() — vedi il commento lì per il razionale
     # completo. ATTACK_REGISTRY resta invariato (solo Yeom/Shadow/LiRA); il
     # guard su dp_mode sopra ha già bloccato il caso dp-fedavg prima di
@@ -771,7 +771,7 @@ def main() -> None:
         extra_attacks=_extra_attacks,
         n_shadow=n_shadow, shadow_epochs_cap=args.shadow_epochs_cap,
         no_dp=no_dp, dp_mode=dp_mode, cluster_membership=cluster_membership,
-        # Sprint 10zz+70: letto solo da FedMIAGradientAttack.run(), ignorato
+        # Sprint 10zz+71: letto solo da FedMIAGradientAttack.run(), ignorato
         # dagli altri wrapper tramite il proprio **kwargs — stesso pattern di
         # run_experiments.py::main().
         fedmia_gradient_normalize=args.fedmia_gradient_normalize,
