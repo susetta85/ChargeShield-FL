@@ -130,11 +130,39 @@ def significance_test(values: list[float], popmean: float = 0.5) -> tuple[float 
 # intenzionale, non un ritorno al bug originale.
 _METHODOLOGY_VARIANT_PREFIXES = ("entity-split",)
 
+# Fix (2026-09-14, Sprint 10zz+65 — trovato da una review indipendente,
+# eseguendo davvero check_significance.py e confrontando l'output con
+# docs/MetricsReference_DSN2027.md invece di fidarsi del testo): le cartelle
+# `nvflare-*` (nvflare-central-seed<N>/, nvflare-local-seed<N>/,
+# nvflare-stepb-*) sono un deployment DIVERSO (container reali multi-sito,
+# non la simulazione single-process) — per esplicita scelta di progetto
+# (docs/TestRoadmap_DSN2027.md: "questi run NVFLARE sono una validazione
+# supplementare... non un sostituto") vanno riportati SEPARATAMENTE dalla
+# campagna principale, non mediati insieme ad essa. Prima di questo fix
+# `discover_groups()` non lo sapeva: dedupava per (dp_mode, epsilon, no_dp,
+# seed) SENZA distinguere la provenienza, quindi un file NVFLARE con lo
+# stesso (dp_mode, epsilon, seed) di un file single-process — e un nome
+# lessicograficamente più recente — vinceva silenziosamente la dedup e
+# sostituiva il dato single-process nella tabella della campagna. Impatto
+# reale, verificato: (a) `nvflare-stepb-dpfedavg-eps1/` (un tentativo di
+# validazione dp-fedavg su NVFLARE mai completato, README Sprint 10zz+55 —
+# "seed 123 in corso, altri 3 seed + central ancora da fare") contamina la
+# cella dp-fedavg/eps=1.0 (mean 0.5000→0.4998, p=0.8125→0.3125 — entrambi
+# non significativi, la conclusione qualitativa non cambia, ma il numero
+# esatto sì); (b) le 5 `nvflare-local-seed*/` (task #95, completate
+# 2026-09-13) hanno silenziosamente sostituito TUTTI e 5 i punti dati
+# single-process nella cella local/eps=1.0. Escluse di default, stesso
+# pattern di include_diagnostic/include_methodology_variants sopra.
+# include_nvflare=True le reintegra per chi vuole analizzare la campagna
+# NVFLARE stessa (separatamente, non mescolata).
+_NVFLARE_PREFIX = "nvflare-"
+
 
 def discover_groups(
     pattern: str = EXPERIMENTS_GLOB,
     include_diagnostic: bool = False,
     include_methodology_variants: bool = False,
+    include_nvflare: bool = False,
 ) -> dict[str, list[str]]:
     """Raggruppa i file per (dp_mode, epsilon) letti dal config di ognuno,
     non dal nome della cartella che li contiene.
@@ -214,6 +242,8 @@ def discover_groups(
         if not include_methodology_variants and sweep_dir_name.startswith(
             _METHODOLOGY_VARIANT_PREFIXES
         ):
+            continue
+        if not include_nvflare and sweep_dir_name.startswith(_NVFLARE_PREFIX):
             continue
         try:
             d = json.load(open(f))
