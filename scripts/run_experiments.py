@@ -1185,6 +1185,61 @@ def _tpr_at_fixed_fpr(
 
 # ── MIA Advantage (task #41, Sprint 10zz+13, 2026-09-02) ────────────────────────
 
+def _advanced_composition_epsilon(
+    epsilon_per_round: float,
+    delta_per_round: float,
+    rounds: int,
+    delta_prime: float | None = None,
+) -> tuple[float, float]:
+    """
+    Advanced composition bound (Dwork & Roth 2014, "The Algorithmic
+    Foundations of Differential Privacy", Theorem 3.20) — closed-form,
+    no external DP-accounting library, no new experimental run required.
+    Task #117/#118 (Sprint 10zz+81/83, 2026-09-14): implements "opzione A"
+    of the three remediation options discussed with the user for the
+    naive-composition gap ("epsilon_cumulative_naive" above) — (A) this
+    bound, cheapest, computed retroactively from already-logged
+    epsilon/delta/fl_rounds; (B) a closed-form RDP accountant specific to
+    the Gaussian mechanism, tighter than (A), NOT implemented; (C) a full
+    external DP-accounting library (Opacus/TF Privacy/dp-accounting) with
+    true per-sample DP-SGD, most rigorous, left as future work.
+
+    For k-fold adaptive composition of (ε, δ)-DP mechanisms, for any
+    δ' > 0, the composition is (ε', kδ + δ')-DP, where:
+
+        ε' = ε · sqrt(2k · ln(1/δ')) + k · ε · (e^ε − 1)
+
+    δ' is a free slack parameter traded against ε': smaller δ' loosens
+    ε' (grows as sqrt(ln(1/δ'))) while barely changing δ_tot (still
+    dominated by k·δ for the δ this project uses, 1e-5). We default
+    δ' = δ_per_round — the same order of magnitude as the per-round δ
+    already in the config, an unremarkable choice not tuned to make
+    either number look better.
+
+    IMPORTANT — this bound is NOT always tighter than naive composition
+    (ε_tot = ε × rounds): advanced composition is a large-k/small-ε
+    asymptotic improvement (its dominant term grows as sqrt(k) instead
+    of k), so for small k or ε not small it can be looser than the
+    trivial ε×k bound. This function does not decide which is tighter —
+    see epsilon_cumulative_best_known (= min of the two) where it is
+    wired in below.
+
+    Returns:
+        (epsilon_prime, delta_total) as floats. rounds<=0 returns
+        (0.0, delta_prime or delta_per_round) rather than raising.
+    """
+    if rounds <= 0:
+        return 0.0, float(delta_prime if delta_prime is not None else delta_per_round)
+    if delta_prime is None:
+        delta_prime = delta_per_round
+    epsilon_prime = (
+        epsilon_per_round * math.sqrt(2 * rounds * math.log(1.0 / delta_prime))
+        + rounds * epsilon_per_round * (math.exp(epsilon_per_round) - 1)
+    )
+    delta_total = rounds * delta_per_round + delta_prime
+    return float(epsilon_prime), float(delta_total)
+
+
 def _mia_advantage(labels: list[int], scores: list[float]) -> float | None:
     """
     Empirical membership advantage (Yeom, Fredrikson, Jha, "Privacy Risk in
@@ -5342,6 +5397,26 @@ def save_results(
             _fedmia_gradient_composed = _r
             break
 
+    # epsilon_cumulative_advanced / _best_known (Sprint 10zz+83, 2026-09-14,
+    # task #118, "opzione A"): closed-form advanced-composition bound
+    # (Dwork & Roth 2014, Theorem 3.20) computed alongside the naive bound
+    # above, from the exact same already-logged epsilon/delta/fl_rounds —
+    # no new experimental run needed, retroactively computable on every
+    # past result too (see scripts/compute_advanced_composition.py). None
+    # under no_dp, same guard as epsilon_cumulative_naive.
+    _no_dp = cfg["experiment"].get("no_dp", False)
+    _epsilon_advanced: float | None = None
+    _delta_advanced: float | None = None
+    _epsilon_best_known: float | None = None
+    if not _no_dp:
+        _epsilon_advanced, _delta_advanced = _advanced_composition_epsilon(
+            epsilon_per_round=cfg["experiment"]["epsilon"],
+            delta_per_round=cfg["experiment"]["delta"],
+            rounds=cfg["experiment"]["fl_rounds"],
+        )
+        _epsilon_naive = cfg["experiment"]["epsilon"] * cfg["experiment"]["fl_rounds"]
+        _epsilon_best_known = min(_epsilon_naive, _epsilon_advanced)
+
     summary = {
         "experiment_name": cfg["experiment"]["name"],
         "timestamp":       timestamp,
@@ -5399,6 +5474,20 @@ def save_results(
                 None if cfg["experiment"].get("no_dp", False)
                 else cfg["experiment"]["epsilon"] * cfg["experiment"]["fl_rounds"]
             ),
+            # epsilon_cumulative_advanced / delta_cumulative_advanced /
+            # epsilon_cumulative_best_known (Sprint 10zz+83, 2026-09-14,
+            # task #118): advanced-composition bound (Dwork & Roth 2014,
+            # Theorem 3.20, see _advanced_composition_epsilon() above) —
+            # "opzione A" of the naive-composition remediation discussed
+            # with the user (Sprint 10zz+81/82). best_known = min(naive,
+            # advanced): advanced composition is NOT always tighter (it's
+            # a large-k/small-ε asymptotic improvement), so we report
+            # whichever closed-form bound is actually smaller for this
+            # specific (ε, δ, rounds) rather than assume advanced wins.
+            # None under no_dp, same guard as epsilon_cumulative_naive.
+            "epsilon_cumulative_advanced": _epsilon_advanced,
+            "delta_cumulative_advanced":   _delta_advanced,
+            "epsilon_cumulative_best_known": _epsilon_best_known,
         },
         "summary": {
             # Yeom 2018 — loss-based MIA sul modello globale (baseline debole)

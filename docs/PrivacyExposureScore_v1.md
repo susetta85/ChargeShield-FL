@@ -356,12 +356,27 @@ how loose naive composition is in practice: RDP matches naive composition's util
 naive composition, two-layer neural-network benchmark). This is the same 50× figure now cited in
 the DSN 2027 paper (§2, §9) as the concrete grounding for why our reported multi-round ε should be
 read as a conservative upper bound, not a tight guarantee. Remediation options, cheapest first:
-(A) closed-form advanced composition (Dwork & Roth, 2014) — no new dependency, retroactively
-computable from already-logged `epsilon`/`fl_rounds`; (B) closed-form RDP accounting specific to
-the Gaussian mechanism — tighter than (A), still no external library; (C) a full external
-DP-accounting library (Opacus / TensorFlow Privacy / `dp-accounting`) with true per-sample DP-SGD
-— most rigorous, most engineering effort, left as future work given the 25/11 abstract deadline.
-None of the three is implemented today.
+(A) closed-form advanced composition (Dwork & Roth, 2014, Theorem 3.20); (B) closed-form RDP
+accounting specific to the Gaussian mechanism — tighter than (A), still no external library; (C) a
+full external DP-accounting library (Opacus / TensorFlow Privacy / `dp-accounting`) with true
+per-sample DP-SGD — most rigorous, most engineering effort, left as future work given the 25/11
+abstract deadline.
+
+**(A) implemented 2026-09-14 (task #118, Sprint 10zz+83) — honest null result, not a fix.**
+`_advanced_composition_epsilon()` in `scripts/run_experiments.py` computes the Dwork & Roth bound
+(ε' = ε·√(2k·ln(1/δ')) + k·ε·(e^ε−1), k=`fl_rounds`) and writes it into every new result as
+`epsilon_cumulative_advanced`/`epsilon_cumulative_best_known`; `scripts/compute_advanced_composition.py`
+recomputes it retroactively on every completed JSON (no rerun needed, since it only needs the
+already-logged `epsilon`/`delta`/`fl_rounds`); `tests/test_advanced_composition.py` verifies the
+formula against known values. Result: at `fl_rounds`=10 (used throughout this project), advanced
+composition is **never tighter than naive** for any of our three ε values (1.0/0.5/0.1) —
+confirmed on all 45 completed DP experiments in the main campaign (0/45 wins) and explained
+analytically: the crossover round-count (where advanced starts beating naive) is k=29 at ε=0.1,
+k=187 at ε=0.5, and **unreachable at any k** for ε=1.0, since ε≥ln(2)≈0.693 makes advanced
+composition's dominant term grow at least as fast as naive's for every round count. `(A)` is
+implemented but does not change which bound this project reports (`epsilon_cumulative_naive`
+remains tighter for every result); `(B)` remains the more promising unimplemented option, since it
+is not subject to the same large-k requirement.
 
 ## v2 / full metric — blocked, tracked as Task #64
 

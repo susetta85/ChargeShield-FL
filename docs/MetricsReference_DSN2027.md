@@ -1075,11 +1075,26 @@ direttamente applicabile alla nostra LiRA composta multi-round senza un argoment
 abbiamo fatto). Il rapporto 50× è ora citato nel paper DSN 2027 (§2, §9) come motivazione concreta
 per cui il nostro ε multi-round riportato va letto come limite superiore conservativo, non garanzia
 stretta. **Rimedi possibili, dal più economico**: (A) composizione avanzata in forma chiusa (Dwork
-& Roth 2014) — nessuna nuova dipendenza, calcolabile retroattivamente da `epsilon`/`fl_rounds` già
-loggati; (B) accounting RDP in forma chiusa specifico per il meccanismo Gaussiano — più stretto di
-(A), ancora nessuna libreria esterna; (C) libreria esterna completa di DP-accounting (Opacus /
-TensorFlow Privacy / `dp-accounting`) con vero DP-SGD per-campione — il più rigoroso, il più
-costoso, lavoro futuro vista la deadline abstract del 25/11. Nessuno dei tre è implementato oggi.
+& Roth 2014, Teorema 3.20); (B) accounting RDP in forma chiusa specifico per il meccanismo
+Gaussiano — più stretto di (A), ancora nessuna libreria esterna; (C) libreria esterna completa di
+DP-accounting (Opacus / TensorFlow Privacy / `dp-accounting`) con vero DP-SGD per-campione — il più
+rigoroso, il più costoso, lavoro futuro vista la deadline abstract del 25/11.
+
+**(A) implementata il 2026-09-14 (task #118, Sprint 10zz+83) — risultato nullo onesto, non un
+fix.** `_advanced_composition_epsilon()` in `scripts/run_experiments.py` calcola il limite di
+Dwork & Roth (ε' = ε·√(2k·ln(1/δ')) + k·ε·(e^ε−1), k=`fl_rounds`) e lo scrive in ogni nuovo
+risultato come `epsilon_cumulative_advanced`/`epsilon_cumulative_best_known`;
+`scripts/compute_advanced_composition.py` lo ricalcola retroattivamente su ogni JSON già
+completato (nessun run necessario, basta epsilon/delta/fl_rounds già loggati);
+`tests/test_advanced_composition.py` verifica la formula contro valori noti. Risultato: a
+`fl_rounds`=10 (usato in tutto questo progetto), la composizione avanzata **non è mai più stretta**
+della naive per nessuno dei tre epsilon usati (1.0/0.5/0.1) — confermato su tutti e 45 gli
+esperimenti DP della campagna principale (0/45 casi in cui vince) e spiegato analiticamente: il
+round di crossover (dove advanced comincia a battere naive) è k=29 a ε=0.1, k=187 a ε=0.5, e **mai
+raggiungibile** a ε=1.0, perché ε≥ln(2)≈0.693 fa crescere il termine dominante di advanced almeno
+quanto quello di naive per ogni k. (A) è implementata ma non cambia quale limite questo progetto
+riporta (`epsilon_cumulative_naive` resta il più stretto per ogni risultato); (B) resta l'opzione
+non implementata più promettente, perché non richiede lo stesso numero enorme di round.
 
 ---
 
