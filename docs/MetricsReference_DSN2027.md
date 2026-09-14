@@ -1060,6 +1060,27 @@ formale del meccanismo Gaussiano vale esattamente solo per `epochs=1`, non per `
 nella campagna principale; e σ è calcolato per un singolo round, la composizione su T round degrada
 la garanzia e richiederebbe RDP/zCDP per un'analisi formale — non ancora fatta.
 
+**Quanto è grande questo gap, in concreto (verificato 2026-09-14).** Jayaraman & Evans (USENIX
+Security '19) — verificato via WebSearch + fetch diretto del testo del paper e del post del blog
+dell'autore stesso, non accettato da un riassunto di seconda mano — misurano su un classificatore
+a rete neurale a due strati che **RDP eguaglia l'utilità della naive composition con un budget
+~50× più stretto** (53% di perdita di accuratezza a ε=10 sotto RDP contro ε=500 per la stessa
+perdita sotto naive composition), e che anche il modello allenato con RDP resta attaccabile (0.399
+di membership advantage a ε=1000 per un attacco white-box). Due claim associati a questo paper in
+un feedback esterno non si sono verificati e non sono citati altrove in questo progetto: "RDP
+mantiene perdita di accuratezza quasi zero" (falso — 53% a ε=10) e un 82% di PPV attribuito a "un
+attaccante che osserva più round/modelli paralleli" (il vero esperimento riallena lo STESSO modello
+5 volte indipendenti, non osserva più round di uno stesso training — framing diverso, non
+direttamente applicabile alla nostra LiRA composta multi-round senza un argomento separato che non
+abbiamo fatto). Il rapporto 50× è ora citato nel paper DSN 2027 (§2, §9) come motivazione concreta
+per cui il nostro ε multi-round riportato va letto come limite superiore conservativo, non garanzia
+stretta. **Rimedi possibili, dal più economico**: (A) composizione avanzata in forma chiusa (Dwork
+& Roth 2014) — nessuna nuova dipendenza, calcolabile retroattivamente da `epsilon`/`fl_rounds` già
+loggati; (B) accounting RDP in forma chiusa specifico per il meccanismo Gaussiano — più stretto di
+(A), ancora nessuna libreria esterna; (C) libreria esterna completa di DP-accounting (Opacus /
+TensorFlow Privacy / `dp-accounting`) con vero DP-SGD per-campione — il più rigoroso, il più
+costoso, lavoro futuro vista la deadline abstract del 25/11. Nessuno dei tre è implementato oggi.
+
 ---
 
 ## Sommario per lavoro citato

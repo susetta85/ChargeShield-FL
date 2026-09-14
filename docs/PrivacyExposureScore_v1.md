@@ -341,6 +341,28 @@ specifically. Substituting a Gaussian-mechanism-specific bound for the generic Y
 above is a natural next refinement for v1.1 but is not done here — flagged as a specific,
 scoped future-work item (not a vague "more theory needed"), consistent with `docs/ReadingList_DSN2027.md`'s existing citation practice.
 
+**Why this gap is open, and how big it is (verified 2026-09-14).** Our composition accounting
+across FL rounds (`GradientManager`, `src/ml/gradient_manager.py`) is naive (ε_total =
+ε_per_round × rounds) by design choice, not oversight: the module implements a closed-form
+single-round Gaussian-mechanism calibration and was scoped without an external DP-accounting
+library (Opacus / TensorFlow Privacy / `dp-accounting` — zero occurrences anywhere in this
+codebase, confirmed by grep), because the paper's central empirical measurement (does LiRA detect
+membership under a DP-nominal configuration?) does not itself depend on how tight the *reported*
+composition bound is — a looser ε_total only makes the DP configuration nominally weaker, which
+is conservative for a paper reporting no detected leakage. Jayaraman & Evans (USENIX Security '19)
+— verified directly against the paper text and the primary author's own blog summary — quantify
+how loose naive composition is in practice: RDP matches naive composition's utility at roughly a
+**50× tighter ε budget** (53% accuracy loss at ε=10 under RDP vs. ε=500 for the same loss under
+naive composition, two-layer neural-network benchmark). This is the same 50× figure now cited in
+the DSN 2027 paper (§2, §9) as the concrete grounding for why our reported multi-round ε should be
+read as a conservative upper bound, not a tight guarantee. Remediation options, cheapest first:
+(A) closed-form advanced composition (Dwork & Roth, 2014) — no new dependency, retroactively
+computable from already-logged `epsilon`/`fl_rounds`; (B) closed-form RDP accounting specific to
+the Gaussian mechanism — tighter than (A), still no external library; (C) a full external
+DP-accounting library (Opacus / TensorFlow Privacy / `dp-accounting`) with true per-sample DP-SGD
+— most rigorous, most engineering effort, left as future work given the 25/11 abstract deadline.
+None of the three is implemented today.
+
 ## v2 / full metric — blocked, tracked as Task #64
 
 The originally proposed formula was:
