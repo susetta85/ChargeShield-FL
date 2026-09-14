@@ -20,6 +20,7 @@ Questo test NON tocca FL, protocolli o il Privacy Auditor.
 
 import pytest
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 from src.adapters.chargeplace_scotland_adapter import (
     ChargePlaceScotlandDataset,
@@ -198,6 +199,78 @@ def test_missing_temperature_is_none(ds):
 def test_missing_anomaly_label_is_none(ds):
     """anomaly_label non è etichettato → deve essere None, mai 0."""
     assert ds.get_sample(0)["anomaly_label"] is None
+
+
+# --- Test conversione UTC (fix 2026-09-14, deep review round 3/4) ---
+#
+# _parse_record() combina 'Start'+'Time' in un orario LOCALE Europe/London
+# (cosi' come scritto nelle celle Excel), poi lo converte a UTC prima di
+# salvarlo in start_time/end_time/done_charging_time — stesso contratto di
+# acn_dataset.py, da cui dipende scripts/run_experiments.py::enrich_sessions()
+# per calcolare hour_of_day. Prima del fix, start_time era lasciato in ora
+# locale grezza: enrich_sessions() lo trattava comunque come UTC e lo
+# "riconvertiva" a Europe/London, sfasando hour_of_day di +1h durante l'ora
+# legale BST (nessun errore in ora solare GMT, dove l'offset locale è 0).
+# Questi test isolano _parse_record() con una riga sintetica (bypassando il
+# caricamento di un intero file .xlsx) per verificare la conversione stessa,
+# non solo il suo effetto a valle — gap segnalato esplicitamente dal deep
+# review round 4 (nessun test esistente copriva la conversione).
+
+def _make_row(cpid="12345", start_date=None, time_val=None, duration=None, kwh=1.0):
+    """Riga sintetica compatibile con l'interfaccia usata da _parse_record()
+    (attributi CPID/Start/Time/Duration/consumed_kwh, come da itertuples())."""
+    from datetime import time as _time
+    if start_date is None:
+        start_date = datetime(2023, 6, 15)  # BST di default
+    if time_val is None:
+        time_val = _time(14, 30, 0)
+    if duration is None:
+        duration = timedelta(hours=1)
+    return SimpleNamespace(
+        CPID=cpid, Start=start_date, Time=time_val, Duration=duration, consumed_kwh=kwh,
+    )
+
+
+def test_parse_record_converts_bst_local_time_to_utc():
+    """15 giugno 2023, 14:30 locale (BST, UTC+1) deve diventare 13:30 UTC."""
+    ds = ChargePlaceScotlandDataset()
+    row = _make_row(start_date=datetime(2023, 6, 15))
+    record = ds._parse_record(row)
+    assert record["start_time"] == "2023-06-15T13:30:00"
+
+
+def test_parse_record_leaves_gmt_local_time_unchanged():
+    """15 dicembre 2023, 14:30 locale (GMT, UTC+0) resta 14:30 UTC (nessuno sfasamento)."""
+    ds = ChargePlaceScotlandDataset()
+    row = _make_row(start_date=datetime(2023, 12, 15))
+    record = ds._parse_record(row)
+    assert record["start_time"] == "2023-12-15T14:30:00"
+
+
+def test_parse_record_end_time_and_done_charging_time_also_converted_to_utc():
+    """end_time e done_charging_time devono riflettere la stessa conversione UTC di start_time (bug trovato: prima del fix done_charging_time restava in ora locale anche dopo il primo fix su start_time)."""
+    ds = ChargePlaceScotlandDataset()
+    row = _make_row(start_date=datetime(2023, 6, 15), duration=timedelta(hours=2))
+    record = ds._parse_record(row)
+    assert record["end_time"] == "2023-06-15T15:30:00"
+    assert record["done_charging_time"] == record["end_time"]
+
+
+def test_parse_record_hour_of_day_matches_true_local_hour_post_fix():
+    """
+    Verifica end-to-end del motivo del fix: applicando la stessa logica di
+    scripts/run_experiments.py::enrich_sessions() (start_time trattato come
+    UTC, poi convertito al fuso 'timezone') si deve ottenere l'ora locale
+    ORIGINALE (14), non 15 (il bug pre-fix) — sia in BST che in GMT.
+    """
+    from zoneinfo import ZoneInfo
+    ds = ChargePlaceScotlandDataset()
+    for start_date in (datetime(2023, 6, 15), datetime(2023, 12, 15)):
+        row = _make_row(start_date=start_date)
+        record = ds._parse_record(row)
+        parsed_utc = datetime.fromisoformat(record["start_time"]).replace(tzinfo=ZoneInfo("UTC"))
+        local = parsed_utc.astimezone(ZoneInfo(record["timezone"]))
+        assert local.hour == 14, f"hour_of_day errato per {start_date}: {local.hour}"
 
 
 # --- Test indici ---
