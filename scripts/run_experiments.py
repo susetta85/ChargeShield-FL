@@ -5319,6 +5319,29 @@ def save_results(
     _ANOMALY_LOW_AUC = 0.40
     _is_anomalous = _primary_min is not None and _primary_min < _ANOMALY_LOW_AUC
 
+    # Sprint 10zz+75 (2026-09-14, fix del gap trovato dalla deep review round 5,
+    # task #112/README): finché FedMIA-gradient restava un diagnostico opt-in,
+    # non avere un aggregato in summary["summary"] (a differenza di Yeom/Shadow/
+    # LiRA sopra) era una scelta deliberata — nessun risultato lo richiedeva.
+    # Ora che è promosso a 4° attacco citabile (task #107), i suoi numeri
+    # restavano visibili SOLO nel JSON grezzo per-round (per_round.<ultimo
+    # round>.mia.fedmia_gradient_composed_*_per_cluster) — invisibili a
+    # generate_excel_report.py, che legge solo summary["summary"] (vedi
+    # load_experiments()). Qui si estrae, SE presente, il pool composto
+    # cross-round per cluster (Sprint 10zz+21 — la metrica meno rumorosa,
+    # coerente con "l'AUC per-cluster composto è la metrica primaria" già
+    # stabilito per questo attacco) dall'UNICO round in cui
+    # FedMIAGradientAttack.run() li scrive (results[max(results.keys())],
+    # vedi src/plugins/attacks/fedmia_gradient.py). Zero impatto su ogni run
+    # senza --include-fedmia-gradient: mia_results non contiene mai queste
+    # chiavi, quindi _fedmia_gradient_composed resta None e i 3 campi sotto
+    # restano None — stesso comportamento di sempre.
+    _fedmia_gradient_composed: dict[str, Any] | None = None
+    for _r in mia_results.values():
+        if "fedmia_gradient_composed_auc_roc_per_cluster" in _r:
+            _fedmia_gradient_composed = _r
+            break
+
     summary = {
         "experiment_name": cfg["experiment"]["name"],
         "timestamp":       timestamp,
@@ -5419,6 +5442,23 @@ def save_results(
                 "HIGH"    if _primary_mean is not None and _primary_mean > 0.60 else
                 "MEDIUM"  if _primary_mean is not None and _primary_mean > 0.52 else
                 "LOW"
+            ),
+            # FedMIA-gradient (Sprint 10zz+75) — None su ogni run senza
+            # --include-fedmia-gradient, vedi commento sopra _fedmia_gradient_composed.
+            # Diagnostico/4° attacco, non usato per primary_attack/privacy_risk
+            # sopra (che restano Yeom/Shadow/LiRA, invariati) — solo per
+            # renderlo visibile a generate_excel_report.py.
+            "fedmia_gradient_auc_roc_per_cluster": (
+                _fedmia_gradient_composed["fedmia_gradient_composed_auc_roc_per_cluster"]
+                if _fedmia_gradient_composed else None
+            ),
+            "fedmia_gradient_advantage_per_cluster": (
+                _fedmia_gradient_composed["fedmia_gradient_composed_advantage_per_cluster"]
+                if _fedmia_gradient_composed else None
+            ),
+            "fedmia_gradient_n_test_per_cluster": (
+                _fedmia_gradient_composed["fedmia_gradient_composed_n_test_per_cluster"]
+                if _fedmia_gradient_composed else None
             ),
         },
         "per_round": {

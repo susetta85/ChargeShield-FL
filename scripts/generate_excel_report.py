@@ -263,6 +263,18 @@ def load_experiments(experiments_dir: Path | None = None) -> list[dict]:
                 "lira_min":     float(summ["min_lira_auc_roc"])  if summ.get("min_lira_auc_roc")  is not None else None,
                 # Seed: necessario per multi-seed aggregation (mean±std) — fix M1
                 "seed":         int(cfg.get("seed", 42)),
+                # FedMIA-gradient (Sprint 10zz+75) — dict {cluster_id: valore} o
+                # None se questo esperimento non ha girato con
+                # --include-fedmia-gradient (la stragrande maggioranza dei file:
+                # zero impatto, questi 3 campi restano semplicemente None/assenti,
+                # stesso comportamento di ogni altro campo opzionale in questo
+                # script, es. epsilon_cumulative_naive sopra). Pool composto
+                # cross-round per cluster (Sprint 10zz+21), non il valore
+                # per-round-singolo — coerente con "l'AUC composto è la metrica
+                # meno rumorosa" già stabilito per questo attacco.
+                "fedmia_gradient_auc_per_cluster": summ.get("fedmia_gradient_auc_roc_per_cluster"),
+                "fedmia_gradient_advantage_per_cluster": summ.get("fedmia_gradient_advantage_per_cluster"),
+                "fedmia_gradient_n_test_per_cluster": summ.get("fedmia_gradient_n_test_per_cluster"),
                 # Metrica primaria: LiRA > Shadow > Yeom (attacco più forte)
                 "primary_attack": summ.get("primary_attack", "Yeom"),
                 "privacy_risk": summ.get("privacy_risk", ""),
@@ -1380,6 +1392,172 @@ def build_seed_aggregation(ws, records: list[dict]) -> None:
         )
 
 
+# ── Sheet 12: FedMIA-Gradient — AUC composto per cluster (Sprint 10zz+75) ──────
+
+def build_fedmia_gradient_aggregation(ws, records: list[dict]) -> None:
+    """
+    Sheet 12 (Sprint 10zz+75) — colma il gap trovato dalla deep review round 5
+    (README Sprint 10zz+74): FedMIA-gradient (task #107, 4° attacco) veniva
+    calcolato con Advantage/Confusion/TPR@low-FPR per-cluster e composti
+    (Sprint 10zz+70) ma restava visibile SOLO nel JSON grezzo per-round —
+    save_results() ora li estrae in summary["summary"] (Sprint 10zz+75), e
+    load_experiments() li legge; questo sheet li rende leggibili.
+
+    Vuoto (solo header, nessuna riga dati) se nessun esperimento in `records`
+    ha girato con --include-fedmia-gradient — comportamento atteso: la
+    stragrande maggioranza delle sweep esistenti (Yeom/Shadow/LiRA, campagna
+    pubblicata) non usa questo flag, zero impatto su quei report.
+
+    A differenza di Seed Aggregation (colonne fisse Yeom/Shadow/LiRA), le
+    colonne qui sono DINAMICHE — un gruppo (AUC composto / Advantage / N test)
+    per ogni cluster_id effettivamente presente nei dati caricati, non
+    hardcoded: un dataset diverso da ACN-Data (es. ChargePlace Scotland,
+    task #37) avrebbe cluster_id diversi da office1/caltech/jpl.
+
+    Raggruppamento/dedup per seed: stessa identica logica (chiave (rounds,
+    epsilon, no_dp, dp_mode), dedup tenendo il file più recente per seed) di
+    build_seed_aggregation() — riusata qui per coerenza, non una nuova euristica
+    da mantenere in sincrono a mano.
+    """
+    import statistics
+
+    ws.title = "FedMIA-Gradient"
+
+    fm_records = [r for r in records if r.get("fedmia_gradient_auc_per_cluster")]
+
+    cluster_ids: list[str] = sorted({
+        cid
+        for r in fm_records
+        for cid in r["fedmia_gradient_auc_per_cluster"].keys()
+    })
+
+    n_cols = max(4 + len(cluster_ids) * 3, 5)
+
+    ws.merge_cells(f"A1:{get_column_letter(n_cols)}1")
+    t = ws["A1"]
+    t.value = "FedMIA-Gradient — AUC-ROC composto per cluster (4° attacco, task #107)"
+    t.font  = _font(bold=True, color=COLOR_HEADER_FG, size=12)
+    t.fill  = _fill(COLOR_HEADER_BG)
+    t.alignment = _center()
+
+    ws.merge_cells(f"A2:{get_column_letter(n_cols)}2")
+    sub = ws["A2"]
+    if not cluster_ids:
+        sub.value = (
+            "Nessun esperimento in questa cartella ha girato con --include-fedmia-gradient "
+            "— foglio vuoto per design, non un errore. Vedi run_experiments.py --help."
+        )
+    else:
+        sub.value = (
+            "AUC composto = pool di TUTTE le coppie (label, score) di ogni round per cluster "
+            "(metrica meno rumorosa del singolo round). Attacco diagnostico promosso a 4° "
+            "attacco citabile — vedi README Sprint 10zz+70/+75 per il razionale completo."
+        )
+    sub.font  = _font(size=9, color="404040")
+    sub.fill  = _fill("EBF3FB")
+    sub.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ws.row_dimensions[2].height = 28
+
+    _header_cell(ws.cell(3, 1), "Rounds",      bg="1F4E79")
+    _header_cell(ws.cell(3, 2), "ε / no-DP",   bg="1F4E79")
+    _header_cell(ws.cell(3, 3), "N Seed",      bg="1F4E79")
+    _header_cell(ws.cell(3, 4), "Seeds usati", bg="1F4E79")
+    _cluster_bgs = ["7030A0", "375623", "7B2C2C", "8B4513", "2E75B6"]
+    for i, cid in enumerate(cluster_ids):
+        bg   = _cluster_bgs[i % len(_cluster_bgs)]
+        base = 5 + i * 3
+        ws.merge_cells(start_row=3, start_column=base, end_row=3, end_column=base + 2)
+        _header_cell(ws.cell(3, base), cid, bg=bg)
+    ws.row_dimensions[3].height = 20
+
+    for col in (1, 2, 3, 4):
+        _header_cell(ws.cell(4, col), "", bg="1F4E79")
+    for i, cid in enumerate(cluster_ids):
+        bg   = _cluster_bgs[i % len(_cluster_bgs)]
+        base = 5 + i * 3
+        _header_cell(ws.cell(4, base),     "AUC composto", bg=bg)
+        _header_cell(ws.cell(4, base + 1), "Advantage",    bg=bg)
+        _header_cell(ws.cell(4, base + 2), "N test",       bg=bg)
+    ws.row_dimensions[4].height = 16
+
+    if not cluster_ids:
+        for col, w in zip("ABCD", [10, 12, 8, 22]):
+            _set_col_width(ws, col, w)
+        return
+
+    # Raggruppa + dedup per seed — stessa logica di build_seed_aggregation()
+    _latest_by_seed: dict[tuple, dict] = {}
+    for rec in fm_records:
+        key = (
+            rec["rounds"], rec["epsilon"], rec.get("no_dp", False),
+            rec.get("dp_mode", "dp-fedavg"),
+        )
+        seed = rec.get("seed", 42)
+        bucket = _latest_by_seed.setdefault(key, {})
+        prev = bucket.get(seed)
+        if prev is None or rec.get("file", "") > prev.get("file", ""):
+            bucket[seed] = rec
+
+    groups: dict[tuple, list[dict]] = {
+        key: list(bucket.values()) for key, bucket in _latest_by_seed.items()
+    }
+
+    def _sort_key(k):
+        rounds, eps, no_dp, dp_mode = k
+        return (0 if no_dp else 1, rounds, eps, dp_mode)
+
+    sorted_keys = sorted(groups.keys(), key=_sort_key)
+
+    def _mean_or_none(vals):
+        vals = [v for v in vals if v is not None]
+        return statistics.mean(vals) if vals else None
+
+    for row_idx, key in enumerate(sorted_keys, 5):
+        rounds, eps, no_dp, dp_mode = key
+        recs = groups[key]
+        alt = row_idx % 2 == 0
+
+        seeds_used = sorted(rec.get("seed", 42) for rec in recs)
+        n_seeds = len(recs)
+        if no_dp:
+            eps_label = "no-DP" if dp_mode == "dp-fedavg" else f"no-DP ({dp_mode})"
+        else:
+            eps_label = str(eps) if dp_mode == "dp-fedavg" else f"{eps} ({dp_mode})"
+
+        _data_cell(ws.cell(row_idx, 1), rounds,    alt_row=alt, bold=True)
+        _data_cell(ws.cell(row_idx, 2), eps_label, alt_row=alt)
+        _data_cell(ws.cell(row_idx, 3), n_seeds,   alt_row=alt)
+        _data_cell(ws.cell(row_idx, 4), ", ".join(str(s) for s in seeds_used), alt_row=alt)
+
+        for i, cid in enumerate(cluster_ids):
+            base = 5 + i * 3
+            auc_vals = [r["fedmia_gradient_auc_per_cluster"].get(cid) for r in recs]
+            adv_vals = [
+                (r.get("fedmia_gradient_advantage_per_cluster") or {}).get(cid)
+                for r in recs
+            ]
+            n_vals = [
+                (r.get("fedmia_gradient_n_test_per_cluster") or {}).get(cid)
+                for r in recs
+            ]
+            auc_mean = _mean_or_none(auc_vals)
+            adv_mean = _mean_or_none(adv_vals)
+            n_mean   = _mean_or_none(n_vals)
+
+            auc_cell = ws.cell(row_idx, base)
+            _data_cell(auc_cell, auc_mean, fmt="0.0000", alt_row=alt)
+            if auc_mean is not None:
+                auc_cell.font = _font(bold=True, color=_auc_risk_color(auc_mean))
+
+            _data_cell(ws.cell(row_idx, base + 1), adv_mean, fmt="0.0000", alt_row=alt)
+            _data_cell(ws.cell(row_idx, base + 2), n_mean,   fmt="0.0",    alt_row=alt)
+
+    widths = [10, 12, 8, 22] + [14, 12, 10] * len(cluster_ids)
+    for i, w in enumerate(widths, 1):
+        _set_col_width(ws, get_column_letter(i), w)
+    ws.freeze_panes = "A5"
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -1430,6 +1608,7 @@ def main() -> None:
     ws_shadow = wb.create_sheet("Shadow Per Round")
     ws_lira   = wb.create_sheet("LiRA Per Round")
     ws_sagg   = wb.create_sheet("Seed Aggregation")
+    ws_fmg    = wb.create_sheet("FedMIA-Gradient")
 
     build_raw_data(ws_raw, records)
     build_heat_map(ws_heat, records)
@@ -1442,6 +1621,7 @@ def main() -> None:
     build_shadow_per_round(ws_shadow, records)
     build_lira_per_round(ws_lira, records)
     build_seed_aggregation(ws_sagg, records)
+    build_fedmia_gradient_aggregation(ws_fmg, records)
 
     # Proprietà workbook
     wb.properties.title   = "ChargeShield-FL Experiment Results"

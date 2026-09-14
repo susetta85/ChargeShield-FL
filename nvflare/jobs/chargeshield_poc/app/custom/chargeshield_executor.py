@@ -242,7 +242,24 @@ _CLUSTER_IDS = ["caltech", "jpl", "office1"]
 def _enrich_sessions(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Aggiunge hour_of_day/duration_hours dai timestamp — stessa logica di
     scripts/run_experiments.py::enrich_sessions() (localizzazione timezone
-    inclusa, fix 2026-07-24)."""
+    inclusa, fix 2026-07-24).
+
+    Fix 2026-09-14 (Sprint 10zz+76, gap trovato dalla deep review round 5,
+    README Sprint 10zz+74): questa copia mancava hour_of_day_sin/
+    hour_of_day_cos (encoding circolare, Fase 8/2026-08-31) e
+    start_time_epoch (Sprint 10kk/2026-08-28) — presenti nella funzione
+    canonica ma mai portati qui. Entrambe le feature sono opt-in (usate dal
+    modello SOLO se elencate esplicitamente in ml.feature_names, nessuna
+    config NVFLARE esistente lo fa) — quindi questo gap non ha mai avuto
+    impatto su alcun risultato pubblicato o run reale. Era comunque un
+    rischio di fallimento silenzioso reale: AutoencoderTrainer._sessions_to_
+    tensor() scarta silenziosamente (senza eccezione) ogni sessione priva di
+    una feature elencata in feature_names — se un futuro config NVFLARE
+    avesse elencato una di queste 3 feature, OGNI sessione di OGNI client
+    reale sarebbe stata scartata, con training set vuoto e nessun errore
+    visibile. Portate qui parola per parola dalla funzione canonica per
+    chiudere il gap prima che possa essere innescato."""
+    import math
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
@@ -269,7 +286,20 @@ def _enrich_sessions(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 hour_of_day = float(start.hour)  # nessun timezone noto — fallback
 
             s["hour_of_day"] = hour_of_day
+            # hour_of_day_sin/_cos (Sprint 10zz+76 — porta qui Fase 8/2026-08-31,
+            # vedi enrich_sessions() in scripts/run_experiments.py per il
+            # razionale completo): calcolate SEMPRE (costo trascurabile), usate
+            # dal modello solo se elencate in feature_names al posto di
+            # "hour_of_day" — nessuna config NVFLARE esistente lo fa.
+            s["hour_of_day_sin"] = math.sin(2.0 * math.pi * hour_of_day / 24.0)
+            s["hour_of_day_cos"] = math.cos(2.0 * math.pi * hour_of_day / 24.0)
             s["duration_hours"] = max(0.0, (end - start).total_seconds() / 3600.0)
+            # start_time_epoch (Sprint 10zz+76 — porta qui Sprint 10kk/
+            # 2026-08-28): timestamp Unix (secondi, UTC — start è naive-UTC,
+            # vedi commento identico nella funzione canonica) dell'inizio
+            # sessione. Opt-in, stesso meccanismo di hour_of_day_sin/_cos sopra
+            # — nessuna config NVFLARE esistente lo referenzia.
+            s["start_time_epoch"] = start.replace(tzinfo=ZoneInfo("UTC")).timestamp()
             enriched.append(s)
         except (KeyError, ValueError):
             pass  # scarta sessioni con timestamp malformati (stesso comportamento dell'originale)
