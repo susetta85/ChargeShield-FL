@@ -56,6 +56,7 @@ import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -65,6 +66,8 @@ from core.base_dataset import AbstractDataset
 
 # ChargePlace Scotland opera esclusivamente in Scozia.
 _TIMEZONE = "Europe/London"
+_LOCAL_TZ = ZoneInfo(_TIMEZONE)
+_UTC = ZoneInfo("UTC")
 
 # Colonne attese nei file mensili Sessions_from_CPS/*.xlsx.
 _REQUIRED_COLUMNS = {"CPID", "Consumed(kWh)", "Duration", "Start", "Time"}
@@ -253,16 +256,43 @@ class ChargePlaceScotlandDataset(AbstractDataset):
 
         kwh = float(row.consumed_kwh) if not pd.isna(row.consumed_kwh) else 0.0
 
+        # Fix 2026-09-14 (deep review round 3, bug reale trovato da subagent
+        # + verificato leggendo scripts/run_experiments.py::enrich_sessions()):
+        # 'start'/'end' qui sopra sono ora LOCALE della Scozia (wall-clock,
+        # presi cosi' come sono scritti nelle celle Excel 'Start'/'Time'),
+        # NON UTC — a differenza di src/adapters/acn_dataset.py, il cui
+        # start_time/end_time SONO UTC nonostante il nome del campo (vedi
+        # commento li' e la verifica empirica sul picco orario di office1).
+        # enrich_sessions() applica pero' lo STESSO contratto a ogni dataset:
+        # tratta sempre start_time come UTC e lo converte al fuso IANA del
+        # campo 'timezone' per calcolare hour_of_day. Senza questa
+        # conversione, un orario gia' locale veniva silenziosamente trattato
+        # come UTC e poi "convertito" di nuovo a Europe/London: un no-op
+        # durante l'ora solare GMT (UTC+0, nessun errore), ma uno sfasamento
+        # sistematico di +1h durante l'ora legale BST (UTC+1, marzo-ottobre
+        # circa) — hour_of_day errato per la maggioranza delle sessioni
+        # estive. Fix: localizziamo qui start/end come Europe/London
+        # (gestendo DST via zoneinfo) e li convertiamo a UTC prima di
+        # salvarli, cosi' start_time/end_time rispettano lo stesso contratto
+        # "sempre UTC" di ACN-Data e downstream non serve alcuna modifica.
+        # _synthesize_session_id() continua a usare 'start' locale (non
+        # UTC): e' solo un hash deterministico, non richiede un fuso
+        # specifico, e cambiare l'input romperebbe la riproducibilita' di
+        # session_id già eventualmente calcolati altrove senza alcun
+        # beneficio.
+        start_utc = start.replace(tzinfo=_LOCAL_TZ).astimezone(_UTC).replace(tzinfo=None)
+        end_utc = end.replace(tzinfo=_LOCAL_TZ).astimezone(_UTC).replace(tzinfo=None)
+
         return {
             "session_id":           _synthesize_session_id(cpid, start),
             "node_id":              cpid,
             "cluster_id":           "",
             "site_id":              self._local_authority.get(cpid, ""),
             "user_id":              None,
-            "start_time":           start.isoformat(),
-            "end_time":             end.isoformat(),
+            "start_time":           start_utc.isoformat(),
+            "end_time":             end_utc.isoformat(),
             "timezone":             _TIMEZONE,
-            "done_charging_time":   end.isoformat(),
+            "done_charging_time":   end_utc.isoformat(),
             "total_energy_kwh":     kwh,
             "max_power_kw":         _compute_max_power_kw(kwh, duration),
             "kwh_requested":        0.0,
