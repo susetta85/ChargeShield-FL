@@ -13,6 +13,15 @@ run_experiments.py importa torch) — se una delle due cambia, aggiornare
 insieme qui. Lo scopo di questo file è verificare che le due copie
 producano ORA lo stesso output sullo stesso input, non solo che
 _enrich_sessions() in isolamento sia "corretta".
+
+Nota (trovata da deep review round 6, 2026-09-14): ENTRAMBE le funzioni
+reali mutano i dict di sessione IN PLACE (nessuna copia difensiva) — le
+due repliche qui sotto devono fare lo stesso per restare fedeli. I test
+di parità (_produce_identical_output_*) per questo passano SEMPRE una
+lista di sessioni fresca e indipendente a ciascuna chiamata (mai la
+stessa lista/stessi dict condivisi fra le due funzioni): con la mutazione
+in-place, riusare gli stessi oggetti renderebbe `a == b` banalmente vero
+per identità, non un confronto reale della logica.
 """
 import math
 from datetime import datetime
@@ -42,7 +51,6 @@ def _enrich_sessions_executor(sessions):
             else:
                 hour_of_day = float(start.hour)
 
-            s = dict(s)
             s["hour_of_day"] = hour_of_day
             s["hour_of_day_sin"] = math.sin(2.0 * math.pi * hour_of_day / 24.0)
             s["hour_of_day_cos"] = math.cos(2.0 * math.pi * hour_of_day / 24.0)
@@ -76,7 +84,6 @@ def _enrich_sessions_canonical(sessions):
             else:
                 hour_of_day = float(start.hour)
 
-            s = dict(s)
             s["hour_of_day"] = hour_of_day
             s["hour_of_day_sin"] = math.sin(2.0 * math.pi * hour_of_day / 24.0)
             s["hour_of_day_cos"] = math.cos(2.0 * math.pi * hour_of_day / 24.0)
@@ -95,27 +102,33 @@ def _mk(start, end, timezone=None):
 # ── Le due copie ora producono output identico (obiettivo del fix) ─────────────
 
 def test_executor_and_canonical_produce_identical_output_no_timezone():
-    sessions = [_mk("2023-06-15T14:30:00", "2023-06-15T16:00:00")]
-    a = _enrich_sessions_executor(sessions)
-    b = _enrich_sessions_canonical(sessions)
+    # Liste INDIPENDENTI per ciascuna chiamata (entrambe le funzioni mutano
+    # i dict in place, come le funzioni reali — vedi nota nel docstring del
+    # modulo): condividere gli stessi dict renderebbe il confronto banale.
+    a = _enrich_sessions_executor([_mk("2023-06-15T14:30:00", "2023-06-15T16:00:00")])
+    b = _enrich_sessions_canonical([_mk("2023-06-15T14:30:00", "2023-06-15T16:00:00")])
     assert a == b
 
 
 def test_executor_and_canonical_produce_identical_output_with_timezone():
-    sessions = [_mk("2023-06-15T14:30:00", "2023-06-15T16:00:00", timezone="America/Los_Angeles")]
-    a = _enrich_sessions_executor(sessions)
-    b = _enrich_sessions_canonical(sessions)
+    a = _enrich_sessions_executor(
+        [_mk("2023-06-15T14:30:00", "2023-06-15T16:00:00", timezone="America/Los_Angeles")]
+    )
+    b = _enrich_sessions_canonical(
+        [_mk("2023-06-15T14:30:00", "2023-06-15T16:00:00", timezone="America/Los_Angeles")]
+    )
     assert a == b
 
 
 def test_executor_and_canonical_identical_across_multiple_sites_and_hours():
-    sessions = [
-        _mk("2023-01-01T00:00:00", "2023-01-01T01:00:00", timezone="America/Los_Angeles"),
-        _mk("2023-06-15T23:45:00", "2023-06-16T02:00:00", timezone="America/New_York"),
-        _mk("2023-03-10T06:00:00", "2023-03-10T06:30:00"),  # nessun timezone -> fallback
-    ]
-    a = _enrich_sessions_executor(sessions)
-    b = _enrich_sessions_canonical(sessions)
+    def _sessions():
+        return [
+            _mk("2023-01-01T00:00:00", "2023-01-01T01:00:00", timezone="America/Los_Angeles"),
+            _mk("2023-06-15T23:45:00", "2023-06-16T02:00:00", timezone="America/New_York"),
+            _mk("2023-03-10T06:00:00", "2023-03-10T06:30:00"),  # nessun timezone -> fallback
+        ]
+    a = _enrich_sessions_executor(_sessions())
+    b = _enrich_sessions_canonical(_sessions())
     assert a == b
 
 
