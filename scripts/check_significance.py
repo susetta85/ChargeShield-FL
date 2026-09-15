@@ -328,6 +328,35 @@ def discover_groups(
 TPR_FPR_TARGETS = ("0.001", "0.01", "0.05")
 
 
+def extract_composed_lira_auc(d: dict) -> float | None:
+    """Legge composed_lira_auc_roc dall'ultimo round del file (evidenza LiRA
+    sommata su TUTTI i round, non la media delle AUC per-round).
+
+    FIX 2026-09-14 (bug reale trovato durante la verifica del Blocker 4 del
+    feedback esterno, non segnalato dal revisore stesso): fino a questa data
+    main() aggregava tra seed `summary["mean_lira_auc_roc"]` (media delle AUC
+    per-round entro ogni seed) e lo presentava come Tabella 2 del paper, il
+    cui testo dichiara pero' esplicitamente di riportare "the mean composed
+    LiRA AUC-ROC" — la statistica qui sotto, mai quella sopra. Le due non sono
+    intercambiabili: mediare AUC indipendenti per-round comprime la varianza
+    inter-seed rispetto a comporre l'evidenza (somma dei log-likelihood ratio)
+    e poi calcolare un'unica AUC finale per seed. Verificato sui dati reali
+    (dp-fedavg, eps=1.0): mean_lira_auc_roc tra seed = 0.5000 (std=0.0004);
+    composed_lira_auc_roc tra seed = 0.4983 (std=0.0039) — un ordine di
+    grandezza di differenza nella deviazione standard, coerente con la critica
+    esterna "sigma implausibilmente piccola per un esperimento MIA". Ritorna
+    None se il file non ha ancora questo campo (run precedenti al Sprint
+    10pp/2026-08-28, o run diagnostici a 1 solo round) — stessa convenzione
+    gia' usata per extract_composed_tpr().
+    """
+    per_round = d.get("per_round", {})
+    if not per_round:
+        return None
+    last_round = max(per_round.keys(), key=int)
+    mia = per_round[last_round].get("mia", {})
+    return mia.get("composed_lira_auc_roc")
+
+
 def extract_composed_tpr(d: dict, fpr_target: str) -> float | None:
     """Legge composed_tpr_at_fpr_<fpr_target> dall'ultimo round del file.
 
@@ -362,6 +391,11 @@ def main():
     groups = discover_groups()
     method_label = "wilcoxon" if _SCIPY_AVAILABLE else "sign_test (scipy assente)"
     print(
+        "TABELLA 2 — statistica primaria del paper: composed_lira_auc_roc "
+        "(evidenza LiRA sommata su tutti i round), NON la media delle AUC "
+        "per-round. Fix 2026-09-14 — vedi docstring extract_composed_lira_auc()."
+    )
+    print(
         f"{'gruppo (letto da config, non dal nome cartella)':<42} {'n':>3} {'mean':>8} "
         f"{'std':>8} {'95% CI':>20} {'contiene 0.5?':>14} {'p (' + method_label + ')':>26}"
     )
@@ -373,14 +407,22 @@ def main():
             "macchina reale per il test dei ranghi con segno di Wilcoxon vero e proprio."
         )
         print("-" * 140)
+    _composed_by_label: dict[str, list[float]] = {}
+    _mean_of_rounds_by_label: dict[str, list[float]] = {}
     for label, files in sorted(groups.items()):
         aucs = []
+        mean_of_rounds = []
         for f in files:
             d = json.load(open(f))
-            s = d.get("summary", {})
-            v = s.get("mean_lira_auc_roc")
+            v = extract_composed_lira_auc(d)
             if v is not None:
                 aucs.append(v)
+            s = d.get("summary", {})
+            v2 = s.get("mean_lira_auc_roc")
+            if v2 is not None:
+                mean_of_rounds.append(v2)
+        _composed_by_label[label] = aucs
+        _mean_of_rounds_by_label[label] = mean_of_rounds
         if not aucs:
             print(f"{label:<42} nessun dato")
             continue
@@ -411,6 +453,38 @@ def main():
             "test non parametrici a campioni molto piccoli, e va riportato come tale nel "
             "paper se questi p-value vengono citati (il bootstrap CI sopra resta il test "
             "primario per questa numerosita' campionaria)."
+        )
+
+    # ── Confronto diagnostico: composed vs mean-of-rounds (trasparenza) ─────
+    # NON la statistica del paper (quella e' la tabella sopra, dopo il fix) —
+    # riportato per mostrare esplicitamente l'entita' della correzione,
+    # invece di far sparire silenziosamente il numero pre-fix.
+    print()
+    print("=" * 140)
+    print(
+        "CONFRONTO DIAGNOSTICO (non per il paper): composed_lira_auc_roc (corretto, sopra) "
+        "vs mean_lira_auc_roc (statistica usata erroneamente fino al 2026-09-14)"
+    )
+    print("=" * 140)
+    print(
+        f"{'gruppo':<42} {'n':>3} {'mean composed':>14} {'std composed':>13} "
+        f"{'mean-of-rounds':>15} {'std m.o.r.':>11} {'|delta std|':>12}"
+    )
+    print("-" * 140)
+    for label in sorted(_composed_by_label.keys()):
+        aucs = _composed_by_label[label]
+        mor = _mean_of_rounds_by_label[label]
+        if not aucs or not mor:
+            print(f"{label:<42} dati insufficienti per il confronto")
+            continue
+        mean_c = statistics.mean(aucs)
+        std_c = statistics.stdev(aucs) if len(aucs) > 1 else float("nan")
+        mean_m = statistics.mean(mor)
+        std_m = statistics.stdev(mor) if len(mor) > 1 else float("nan")
+        delta_std = abs(std_c - std_m) if len(aucs) > 1 and len(mor) > 1 else float("nan")
+        print(
+            f"{label:<42} {len(aucs):>3} {mean_c:>14.4f} {std_c:>13.4f} "
+            f"{mean_m:>15.4f} {std_m:>11.4f} {delta_std:>12.4f}"
         )
 
     # ── Ri-analisi TPR@low-FPR (2026-09-11) ─────────────────────────────────
