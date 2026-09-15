@@ -566,6 +566,27 @@ def inject_canaries(
     aggrega semplicemente tutti i membri taggati contro tutti i non-membri
     taggati — quindi i due lati possono avere numerosità diverse senza
     alcuna modifica alla logica di scoring.
+
+    Fix 2026-09-15 (Sprint 10zz+96, task #155/#121 — root cause del
+    `shadow_canary_auc_roc` invertito 0.26/0.32/0.32 osservato nel primo run
+    reale di Blocker 2 a tre attacchi): l'occorrenza REALE originale di ogni
+    template membro (l'elemento di `site_train_sessions` scelto da
+    `rng.sample()`, prima di questo fix mai taggata) viene ora sostituita
+    dentro `injected_train` con una copia taggata (`_canary_group`/
+    `_canary_role="member"`, stessi valori dei suoi cloni) invece di restare
+    una sessione membro ordinaria indistinguibile. Prima del fix, quella
+    sessione poteva finire nel `shadow_train` di `run_fedmia_shadow()` (la
+    guardia anti-contaminazione di Sprint 10zz+93 la cerca per tag, non per
+    contenuto) e nell'universo shadow non filtrato di `run_lira()` (la
+    stessa classe di contaminazione già corretta per i cloni TAGGATI in
+    `_sample_preserving_canary_groups`, Sprint 10zz+16, ma non per
+    quest'occorrenza priva di tag) — allenando lo shadow model direttamente
+    sul contenuto del canary. Ogni gruppo membro conta ora `n_duplicates + 1`
+    occorrenze taggate identiche (non `n_duplicates` cloni + 1 originale
+    invisibile), un'unità atomica genuina per qualunque guardia/filtro
+    esistente basato su `_canary_role`/`_canary_group`. INVALIDA i numeri
+    canary già raccolti con canary attivo (Sprint 10zz+18 LiRA composed
+    0.6875, Sprint 10zz+95 Blocker 2 a 3 attacchi) — vanno rilanciati.
     """
     canary_cfg = cfg.get("canary", {})
     if not canary_cfg.get("enabled", False):
@@ -614,6 +635,36 @@ def inject_canaries(
 
     for i, template in enumerate(member_templates):
         group = f"canary_m{i}"
+
+        # Fix (2026-09-15, Sprint 10zz+96, task #155/#121 — root cause
+        # diagnosticato leggendo il codice dopo che l'utente ha rilanciato
+        # Blocker 2 e ottenuto shadow_canary_auc_roc invertito: 0.26/0.32/0.32,
+        # sotto 0.5, non spiegabile da campione piccolo). Fino a questo fix,
+        # `template` restava nel pool SENZA tag — la stessa identica sessione
+        # reale di cui sotto vengono inseriti n_duplicates cloni taggati.
+        # `run_fedmia_shadow()` sposta le sessioni `_canary_role=="member"` da
+        # shadow_train a eval_members PRIMA di addestrare lo shadow model
+        # (Sprint 10zz+93) — ma quella guardia non vedeva l'originale, perché
+        # non portava il tag. Se l'originale finiva per caso in shadow_train
+        # (50% di probabilità), lo shadow model si allenava direttamente sullo
+        # stesso vettore di feature dei 30 duplicati canary, arrivando a una
+        # loss bassa quanto o più bassa di quella del target — invertendo lo
+        # score calibrato (shadow_loss - target_loss) per quel gruppo.
+        # `_sample_preserving_canary_groups()` (LiRA, Sprint 10zz+16) aveva lo
+        # stesso buco per lo stesso motivo, solo diluito su n_shadow=8 modelli
+        # invece che su 1 solo, quindi meno visibile nei numeri LiRA.
+        # Fix: sostituire l'occorrenza originale dentro injected_train con una
+        # COPIA taggata (stesso _canary_group/_canary_role dei cloni), invece
+        # di mutare l'oggetto condiviso con train_sessions (che potrebbe
+        # essere riusato altrove dal chiamante). Il gruppo diventa così
+        # genuinamente atomico: n_duplicates + 1 occorrenze identiche, tutte
+        # taggate, non n_duplicates+1 di cui una invisibile alle guardie
+        # esistenti. Zero impatto se canary è disattivato (default).
+        for idx, s in enumerate(injected_train):
+            if s is template:
+                injected_train[idx] = dict(template, _canary_group=group, _canary_role="member")
+                break
+
         for _ in range(n_duplicates):
             clone = dict(template)
             clone["_canary_group"] = group
@@ -632,7 +683,9 @@ def inject_canaries(
 
     logger.info(
         f"[CANARY] Iniettati {n_templates} template × {n_duplicates} duplicati "
-        f"({n_templates * n_duplicates} record membro) nel training di '{site}', "
+        f"({n_templates * n_duplicates} record membro nuovi, + {n_templates} occorrenze "
+        f"originali ora ri-taggate, Sprint 10zz+96 — totale {n_templates * (n_duplicates + 1)} "
+        f"record taggati _canary_role='member') nel training di '{site}', "
         f"+ {n_nonmember_templates} gemelli non-membro nell'holdout — positive control "
         "(Sprint 10vv, vedi docs/TestRoadmap_DSN2027.md)."
     )
