@@ -17,6 +17,14 @@ dependencies = [
     "scikit-learn>=1.3",
     "pandas>=2.0",
     "openpyxl>=3.1",
+    "scipy>=1.10",  # 2026-09-14 — bug reale trovato da un feedback esterno verificato:
+                    # scripts/check_significance.py usa scipy.stats.wilcoxon per il test
+                    # di Wilcoxon citato in Table 2/§7 del paper, ma scipy non era mai
+                    # stato dichiarato come dipendenza — senza, lo script cade
+                    # silenziosamente sul sign-test fallback (meno potente, p-value
+                    # diversi) e chi ricostruisce l'ambiente dall'artifact non riproduce
+                    # gli stessi numeri. Era gia' installato in questo sandbox (per
+                    # questo il vero test girava qui) ma non nell'ambiente dichiarato.
 ]
 
 [project.optional-dependencies]

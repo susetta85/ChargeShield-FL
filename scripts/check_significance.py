@@ -387,6 +387,54 @@ def bootstrap_ci(values, n_resamples=10000, alpha=0.05):
     return means[lo_idx], means[hi_idx]
 
 
+def tost_equivalence(
+    values: list[float],
+    popmean: float = 0.5,
+    margin: float = 0.02,
+    alpha: float = 0.05,
+    n_resamples: int = 10000,
+) -> dict[str, Any]:
+    """TOST (Two One-Sided Tests, Schuirmann 1987) contro un margine di
+    equivalenza dichiarato — sostituisce/affianca il test di significativita'
+    contro il nulla puntuale (AUC=0.5), la cui logica ("fallire a rigettare"
+    non e' evidenza di equivalenza) e' il problema esplicitamente segnalato
+    dal feedback esterno del 2026-09-14 e gia' documentato nella docstring di
+    `_sign_test()` sopra (con n=5 il p minimo a due code e' 0.0625 — il test
+    non puo' MAI risultare significativo a questa numerosita', qualunque sia
+    il dato osservato; questo pero' NON dimostra equivalenza, solo l'assenza
+    di potenza per rigettare).
+
+    Metodo: equivalenza a livello `alpha` (Schuirmann) <=> l'intervallo di
+    confidenza bootstrap a due code di livello (1 - 2*alpha) e' interamente
+    contenuto in [popmean - margin, popmean + margin]. Con alpha=0.05 questo
+    e' l'IC bootstrap al 90% (non al 95%, che corrisponde a un alpha TOST di
+    0.025 per lato) — la conversione standard due-one-sided-test <-> CI.
+
+    Il margine di default (0.02) e' quello gia' proposto nel feedback esterno
+    e coerente con l'ampiezza tipica degli IC bootstrap al 95% gia' riportati
+    per questa campagna (~±0.003-0.006).
+
+    Returns:
+        dict con: equivalent (bool | None se n<2), ci (tupla o None),
+        margin_lo, margin_hi, alpha, margin.
+    """
+    margin_lo, margin_hi = popmean - margin, popmean + margin
+    ci = bootstrap_ci(values, n_resamples=n_resamples, alpha=2 * alpha)
+    if ci is None:
+        return {
+            "equivalent": None, "ci": None,
+            "margin_lo": margin_lo, "margin_hi": margin_hi,
+            "alpha": alpha, "margin": margin,
+        }
+    lo, hi = ci
+    equivalent = (lo >= margin_lo) and (hi <= margin_hi)
+    return {
+        "equivalent": equivalent, "ci": (lo, hi),
+        "margin_lo": margin_lo, "margin_hi": margin_hi,
+        "alpha": alpha, "margin": margin,
+    }
+
+
 def main():
     groups = discover_groups()
     method_label = "wilcoxon" if _SCIPY_AVAILABLE else "sign_test (scipy assente)"
@@ -454,6 +502,43 @@ def main():
             "paper se questi p-value vengono citati (il bootstrap CI sopra resta il test "
             "primario per questa numerosita' campionaria)."
         )
+
+    # ── TOST equivalence test (Sprint 10zz+87, 2026-09-14) ──────────────────
+    # Sostituisce il framing "non rigettiamo il nulla" (che con n=5 e p-min
+    # 0.0625 non e' evidenza di equivalenza, vedi nota sopra) con un test di
+    # equivalenza vero e proprio contro un margine dichiarato |AUC-0.5|<0.02.
+    print()
+    print("=" * 140)
+    print(
+        "TOST equivalence test (margine dichiarato |AUC-0.5| < 0.02, alpha=0.05) — "
+        "sulla statistica composed_lira_auc_roc di Tabella 2 sopra"
+    )
+    print("=" * 140)
+    print(
+        f"{'gruppo':<42} {'n':>3} {'IC 90% (TOST)':>20} {'margine':>18} "
+        f"{'equivalente a 0.5?':>19}"
+    )
+    print("-" * 140)
+    for label in sorted(_composed_by_label.keys()):
+        aucs = _composed_by_label[label]
+        result = tost_equivalence(aucs)
+        if result["ci"] is None:
+            ci_str = "n<2, N/A"
+            eq_str = "N/A"
+        else:
+            ci_str = f"[{result['ci'][0]:.4f}, {result['ci'][1]:.4f}]"
+            eq_str = "SI" if result["equivalent"] else "NO"
+        margin_str = f"[{result['margin_lo']:.2f}, {result['margin_hi']:.2f}]"
+        print(f"{label:<42} {len(aucs):>3} {ci_str:>20} {margin_str:>18} {eq_str:>19}")
+    print(
+        "\nLettura: 'equivalente' = l'IC bootstrap al 90% (metodo Schuirmann, "
+        "corrispondente a due test unilaterali ad alpha=0.05 ciascuno) e' interamente "
+        "contenuto nel margine dichiarato — una dimostrazione positiva di equivalenza, "
+        "non la semplice assenza di un rigetto. 'NO' non significa necessariamente "
+        "'diverso da 0.5': puo' anche indicare un IC piu' ampio del margine (dato "
+        "insufficiente per dimostrare equivalenza a QUESTO margine), da distinguere "
+        "leggendo l'IC stesso."
+    )
 
     # ── Confronto diagnostico: composed vs mean-of-rounds (trasparenza) ─────
     # NON la statistica del paper (quella e' la tabella sopra, dopo il fix) —

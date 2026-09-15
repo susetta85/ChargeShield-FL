@@ -2565,6 +2565,34 @@ def run_lira(
     # di ridurle per gli smoke test (es. 20) senza alterare il regime dei run reali.
     shadow_epochs = shadow_epochs_cap if shadow_epochs_cap is not None else local_epochs
 
+    # Floor simmetrico σ_in/σ_out (Sprint 10zz+87, 2026-09-14) — flag diagnostico
+    # opt-in, su richiesta esplicita dell'utente dopo un feedback esterno
+    # verificato: lira_debug_matched_formula_auc mostra che su `central`
+    # (floor-hit-rate 95-99%) il punteggio calibrato collassa algebricamente
+    # nella forma di _sablayrolles_score() quando σ_in=σ_out=floor condiviso
+    # (vedi _cluster_sigma_symmetric_floor sotto), e il "null result" su
+    # central potrebbe essere la cancellazione tra un'inversione reale
+    # (formula-matched, 0.21-0.34) e l'ancoraggio μ_in dei non-membri, non
+    # un'assenza genuina di segnale. Default "symmetric" = comportamento
+    # ESATTAMENTE invariato (fix 2026-08-15, mai toccato) per ogni config/run
+    # esistente — zero impatto se questa chiave non è presente. Se
+    # "independent", _cluster_sigma_symmetric_floor viene posto a 0.0 più
+    # sotto (un solo punto di modifica, riga dove è calcolato) invece di
+    # max(sigma_in_fb, sigma_out_fb) — ciascun lato torna al proprio floor
+    # indipendente (max_scala/1e-4/fallback pooled), riproducendo il regime
+    # PRE-fix che aveva il problema opposto (σ_out_fb ~30x più grande di
+    # σ_in_fb, instabilità round-a-round) — usare SOLO per il confronto
+    # diagnostico A/B richiesto (floor-hit-rate/matched_formula_auc/lira_auc
+    # prima e dopo), non come nuovo default di produzione senza prima aver
+    # verificato se n_shadow=16 è sufficiente a stimare σ_in per-campione
+    # senza affidarsi a un floor condiviso.
+    _lira_floor_mode = cfg.get("lira", {}).get("floor_mode", "symmetric")
+    if _lira_floor_mode not in ("symmetric", "independent"):
+        raise ValueError(
+            f"cfg['lira']['floor_mode'] non valido: {_lira_floor_mode!r} "
+            "(atteso 'symmetric' o 'independent')"
+        )
+
     # GradientManager per privatizzare gli shadow ESATTAMENTE come i client reali
     # (stesso clipping + stesso meccanismo di rumore) — fix 2026-07-21c: senza
     # questo, un target rumoroso (DP on) verrebbe calibrato contro shadow puliti,
@@ -3427,7 +3455,14 @@ def run_lira(
             # local-sweep raccolti finora (decisione esplicita dell'utente,
             # 2026-08-15, dopo aver visto la conferma diagnostica). Vedi
             # Task #1 (già in sospeso) — l'intera campagna va ripetuta.
-            _cluster_sigma_symmetric_floor = max(_cluster_sigma_in_fb, _cluster_sigma_out_fb)
+            _cluster_sigma_symmetric_floor = (
+                max(_cluster_sigma_in_fb, _cluster_sigma_out_fb)
+                if _lira_floor_mode == "symmetric"
+                else 0.0
+            )  # vedi cfg["lira"]["floor_mode"], Sprint 10zz+87 — 0.0 rende inerte
+               # ogni max(..., _cluster_sigma_symmetric_floor) sotto (le 4 sedi
+               # d'uso restano invariate), riportando ciascun lato al proprio
+               # floor indipendente per il confronto diagnostico A/B richiesto
             if not _cluster_shadow_mse:
                 logger.warning(
                     f"LiRA round {round_num} {_client_cluster_id}: nessun ensemble shadow "

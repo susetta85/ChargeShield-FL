@@ -270,3 +270,61 @@ class TestSignificanceTest:
         p, method = cs.significance_test([])
         assert p is None
         assert method == "n/a"
+
+
+class TestTostEquivalence:
+    """TOST (Sprint 10zz+87, 2026-09-14) — su richiesta esplicita di un
+    feedback esterno verificato: il framing "non rigettiamo il nulla contro
+    AUC=0.5" non e' evidenza di equivalenza (specialmente con n=5, dove il
+    sign test non puo' MAI essere significativo — vedi classe sopra). Il
+    metodo Schuirmann (CI a due code di livello 1-2*alpha interamente dentro
+    il margine) e' verificato qui contro casi costruiti a mano dove il
+    risultato e' noto per costruzione."""
+
+    def test_tight_cluster_near_popmean_is_equivalent(self):
+        # Valori strettissimi intorno a 0.5, ben dentro il margine di 0.02 —
+        # l'IC bootstrap al 90% deve stare comodamente dentro [0.48, 0.52].
+        values = [0.499, 0.501, 0.500, 0.4995, 0.5005]
+        result = cs.tost_equivalence(values, popmean=0.5, margin=0.02)
+        assert result["equivalent"] is True
+        assert result["ci"] is not None
+        lo, hi = result["ci"]
+        assert result["margin_lo"] <= lo <= hi <= result["margin_hi"]
+
+    def test_values_outside_margin_are_not_equivalent(self):
+        # Valori chiaramente fuori dal margine dichiarato (central inversion
+        # style, es. matched_formula_auc ~0.21) — l'IC non puo' stare dentro
+        # [0.48, 0.52].
+        values = [0.21, 0.22, 0.20, 0.23, 0.19]
+        result = cs.tost_equivalence(values, popmean=0.5, margin=0.02)
+        assert result["equivalent"] is False
+
+    def test_wide_spread_straddling_margin_is_not_equivalent(self):
+        # IC largo che copre 0.5 ma sborda oltre il margine su almeno un lato
+        # — "non rigettiamo AUC=0.5" non implica equivalenza a un margine
+        # stretto, esattamente il punto sollevato dal feedback esterno.
+        values = [0.40, 0.45, 0.50, 0.55, 0.60]
+        result = cs.tost_equivalence(values, popmean=0.5, margin=0.02)
+        assert result["equivalent"] is False
+
+    def test_margin_bounds_reported_correctly(self):
+        result = cs.tost_equivalence([0.5] * 5, popmean=0.5, margin=0.02)
+        assert result["margin_lo"] == pytest.approx(0.48)
+        assert result["margin_hi"] == pytest.approx(0.52)
+
+    def test_n_less_than_2_returns_none_ci_not_a_crash(self):
+        result = cs.tost_equivalence([0.5], popmean=0.5, margin=0.02)
+        assert result["ci"] is None
+        assert result["equivalent"] is None
+
+    def test_empty_input_does_not_crash(self):
+        result = cs.tost_equivalence([], popmean=0.5, margin=0.02)
+        assert result["ci"] is None
+        assert result["equivalent"] is None
+
+    def test_custom_margin_and_alpha_reflected_in_output(self):
+        result = cs.tost_equivalence([0.5, 0.5, 0.5], popmean=0.5, margin=0.05, alpha=0.1)
+        assert result["margin"] == 0.05
+        assert result["alpha"] == 0.1
+        assert result["margin_lo"] == pytest.approx(0.45)
+        assert result["margin_hi"] == pytest.approx(0.55)
