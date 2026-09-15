@@ -1,16 +1,22 @@
 # src/plugins/attacks/yeom.py
 """
-YeomAttack — wrapper BaseAttack sottile su run_fedmia() (Yeom et al. 2018,
-loss-based MIA), invariato in scripts/run_experiments.py.
+YeomAttack — wrapper BaseAttack sottile su run_yeom() (Yeom et al. 2018,
+loss-based MIA), in scripts/run_experiments.py.
 
-Import lazy di run_fedmia dentro run() (non a livello di modulo): questo file
+Rinominato da run_fedmia() a run_yeom() (Sprint 10zz+107, 2026-09-15,
+richiesto esplicitamente dall'utente prima di scrivere il paper): "fedmia"
+nel nome era un residuo storico, fuorviante ora che run_fedmia_gradient()
+(un attacco DIVERSO) esiste nello stesso file — un alias run_fedmia=run_yeom
+resta in run_experiments.py solo per compatibilità con codice non toccato.
+
+Import lazy di run_yeom dentro run() (non a livello di modulo): questo file
 vive sotto src/, che NON ha scripts/ nel proprio sys.path — solo
 scripts/run_experiments.py, quando eseguito come script, aggiunge la propria
 directory (auto, comportamento standard di Python) e può quindi importare
 sé stesso sotto il nome "run_experiments" (stesso pattern già usato con
 successo da scripts/run_nvflare_mia.py). Import lazy = questo modulo resta
 importabile (e testabile) senza torch; solo la chiamata a run() lo richiede,
-esattamente come richiedeva già run_fedmia() prima di questo wrapper.
+esattamente come richiedeva già run_yeom() prima di questo wrapper.
 """
 
 from __future__ import annotations
@@ -21,7 +27,7 @@ from core.base_attack import BaseAttack
 
 
 class YeomAttack(BaseAttack):
-    """Loss-based MIA (Yeom et al., 2018) — baseline debole, vedi run_fedmia()."""
+    """Loss-based MIA (Yeom et al., 2018) — baseline debole, vedi run_yeom()."""
 
     name = "yeom"
 
@@ -33,7 +39,7 @@ class YeomAttack(BaseAttack):
         fl_results: dict[int, dict[str, Any]],
         **kwargs: Any,
     ) -> dict[int, dict[str, Any]]:
-        from run_experiments import run_fedmia  # noqa: PLC0415 (lazy, vedi docstring)
+        from run_experiments import run_yeom  # noqa: PLC0415 (lazy, vedi docstring)
 
         # Sprint 10zz+29 (2026-09-03, task #54) — stesso meccanismo di
         # per_sample_dump_path in lira.py: la directory arriva da kwargs
@@ -47,12 +53,12 @@ class YeomAttack(BaseAttack):
             _roc_path = os.path.join(_roc_dir, "roc_curves_yeom.json")
 
         # Sprint 10zz+94 (2026-09-15, task #155) — no_dp/dp_mode servono a
-        # run_fedmia() solo quando cfg["yeom"]["observation_surface"]=="client"
+        # run_yeom() solo quando cfg["yeom"]["observation_surface"]=="client"
         # (Strada B, selezione raw_updates/updates dp_mode-aware, stesso
         # meccanismo già in uso da LiRA in lira.py). Default invariati:
         # observation_surface="global" non li usa, quindi non c'è impatto sul
         # comportamento pubblicato finché il flag opt-in resta al default.
-        return run_fedmia(
+        return run_yeom(
             cfg, train_sessions, holdout_sessions, fl_results,
             roc_curve_dump_path=_roc_path,
             no_dp=kwargs.get("no_dp", False),

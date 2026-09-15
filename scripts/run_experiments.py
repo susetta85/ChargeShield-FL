@@ -1612,7 +1612,7 @@ def _mia_feature_names(cfg: dict) -> list[str]:
     return list(names) if names else _MIA_FEATURES
 
 
-def run_fedmia(
+def run_yeom(
     cfg: dict,
     members: list[dict[str, Any]],
     non_members: list[dict[str, Any]],
@@ -1979,9 +1979,24 @@ def run_fedmia(
     return mia_results
 
 
+# Alias di compatibilità (Sprint 10zz+107, 2026-09-15, richiesto esplicitamente
+# dall'utente prima di scrivere il paper: "run_fedmia" era il nome storico
+# dell'attacco Yeom 2018 — da quando FedMIA-gradient (run_fedmia_gradient()
+# sotto, un attacco DIVERSO) è stato aggiunto, "fedmia" nel nome di QUESTA
+# funzione è fuorviante, non solo storico: un lettore del codice affianco al
+# paper (che chiama questo attacco "Yeom" ovunque) troverebbe due funzioni
+# "fedmia" per due attacchi diversi. Il nome canonico è ora run_yeom(); questo
+# alias resta SOLO per non rompere test/chiamate esterne esistenti (es.
+# tests/test_run_experiments_integration.py, che chiama run_fedmia()
+# direttamente e non può essere eseguito in questo sandbox — niente torch —
+# quindi non lo si tocca senza necessità). Nessun nuovo codice deve usare
+# questo alias: usare run_yeom().
+run_fedmia = run_yeom
+
+
 # ── Shadow Model MIA Attack ────────────────────────────────────────────────────
 
-def run_fedmia_shadow(
+def run_shadow(
     cfg: dict,
     train_sessions: list[dict[str, Any]],
     holdout_sessions: list[dict[str, Any]],
@@ -2517,6 +2532,12 @@ def run_fedmia_shadow(
         })
 
     return shadow_results
+
+
+# Alias di compatibilità (Sprint 10zz+107) — stesso motivo di run_fedmia sopra:
+# nome storico "run_fedmia_shadow" per l'attacco Shadow, non toccato nel
+# codice esistente (test/wrapper), nome canonico ora run_shadow().
+run_fedmia_shadow = run_shadow
 
 
 # ── LiRA Attack (Carlini et al. 2022) ──────────────────────────────────────────

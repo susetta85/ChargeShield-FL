@@ -1428,6 +1428,74 @@ confronto diretto fra i risultati canary di simulazione e quelli NVFlare.
 
 ---
 
+### Review esterna del paper (2026-09-15) — triage e piano preciso
+
+L'utente ha fornito una review dettagliata di più sezioni del paper (§5.2/Privacy Auditor, setup sperimentale,
+§9.1/sanity check, §9.3/simmetria dello scoring) più un framework ε_utility/ε_privacy per Conclusioni/Limitazioni.
+La numerazione citata (5.2, 9.1, 9.3) non corrisponde alla struttura ATTUALE dello skeleton (Privacy Auditor è
+§3.2, il sanity check è dentro §3.6/§6, non esiste ancora un §9) — è la numerazione della struttura FUTURA, quella
+del task #101 (Scrittura paper Results/Discussion/appendici, ancora da fare) e del riordino #161-166 già in coda.
+Questa review va quindi letta come contenuto da includere in quella scrittura, non come correzioni a un testo già
+pubblicato con quei numeri.
+
+**Già vero nel docx attuale (verificato punto per punto, nessuna azione necessaria)**:
+- Range asse epoche: già 0.4767–0.5363 (non -0.5155) — task #130.
+- Non-normalità gaussiana: già riportata con cifre esatte (skewness 10.3/11.4, kurtosis eccesso 172/211,
+  Jarque-Bera rigetta di un fattore ~2.7-4.1 milioni — coerente con le cifre JB grezze 16.3M/24.4M della review
+  divise per la soglia 5.99) e il miglioramento del log-transform (4-5 ordini di grandezza) — §3.6, task #133.
+- n_shadow=16 già dichiarato esplicitamente, col default 8 del codice citato per contrasto — §3.6, task #134.
+- Distinzione composed (LiRA) vs per-round (Yeom/Shadow) già esplicita nel testo attorno a Tabella 2 e alla
+  tabella TPR@FPR — nessuna ambiguità "il testo chiama entrambe composed" trovata nella versione attuale.
+
+**Genuinamente aperto, con piano**:
+
+1. **Naming `run_fedmia`/`fedmia.py` — ✅ risolto ora (Sprint 10zz+107)**, vedi voce README. `run_fedmia()`→
+   `run_yeom()`, `run_fedmia_shadow()`→`run_shadow()`, alias di compatibilità mantenuti, wrapper aggiornati,
+   suite 297/297. `src/plugins/attacks/fedmia.py` (classe storica, mai wired) verificato non essere una fonte di
+   ambiguità propria — resta come da banner "NON ATTIVO" già presente.
+
+2. **`round_epsilon` non data-independent (§3.2/Privacy Auditor)** — il codice (`src/auditor/privacy_auditor.py`,
+   Sprint 10zz+93) ha GIÀ un disclosure esplicito in `AuditReport.metadata["epsilon_accounting_note"]`
+   ("'epsilon' qui è un punteggio di rischio interno... non la cifra DP formale del paper"), ma questo non è
+   ancora nel testo del paper. Piano: portare la stessa disclosure in §3.2 quando si scrive quella sezione, invece
+   di rinominare il campo runtime `epsilon`/`round_epsilon` — un rename tocca lo schema JSON già consumato da
+   `check_significance.py`/dashboard/esperimenti storici, un rischio più alto del beneficio quando la disclosure
+   testuale ottiene lo stesso risultato (un lettore non può più leggere "epsilon" come garanzia DP formale). Se
+   l'utente preferisce comunque il rename dello schema, è una decisione esplicita da prendere separatamente, non
+   ancora presa qui.
+
+3. **§3.2/Privacy Auditor — overhead/FP-rate mancanti** — l'overhead è ora misurabile (Sprint 10zz+106,
+   `auditor_overhead_seconds` per round), ma NESSUN run l'ha ancora prodotto (serve un run completo, es. il D1
+   realdp in coda). Piano: scrivere §3.2 con i numeri reali SOLO dopo che almeno un run genera questo campo — non
+   prima, per non inventare cifre. La precisione delle allerte (gradient-explosion/budget) resta da consolidare
+   in una metrica esplicita (D1 metrica 2, non ancora fatto) — dati utili già esistono da Krum/Byzantine (§8).
+
+4. **ε_utility/ε_privacy framework (Conclusioni + Limitazioni, task #166)** — argomento e qualificazioni fornite
+   dall'utente, pronte per l'inserimento quando si scrive quella parte: risposta a D4 in Conclusioni ("per questo
+   carico operativo, ε→∞ è ottimale — nel range in cui la DP dà una garanzia formale significativa, non offre
+   beneficio misurabile contro LiRA e costa l'intera utility"), con le tre qualificazioni OBBLIGATORIE nello
+   stesso passaggio o in Limitazioni separate: (a) ε_privacy=∞ è empirico su QUESTO attacco/modello, non formale —
+   non vale contro avversari non testati (gradient inversion in primis); (b) la conclusione dipende dalla
+   validità dello strumento LiRA — finché il gate G1–G4 non è verificato, "ε_privacy=∞" e "il nostro LiRA non
+   misura" restano indistinguibili; (c) affermazione DIVERSA e distinta, da mettere in Limitazioni non in
+   Conclusioni: non esiste un ε in cui coesistano modello funzionante e segnale misurabile — la campagna così
+   com'è non può quantificare l'effetto mitigante della DP, motivo per cui serve l'esperimento canary con DP
+   attiva (in corso, D1 punto 3 sopra).
+
+5. **§9.3-equivalente — controllo di simmetria dello scoring (matched_formula_auc)** — il finding citato
+   dall'utente (0.21–0.34 su central) esiste già come nota interna nel docx (paragrafo "AGGIORNAMENTO
+   2026-09-14 (seconda nota)"), ma NON è ancora promosso a sottosezione vera in inglese. Bloccato dalla stessa
+   dipendenza già nota: task #144 (il run reale che conferma il numero) non è ancora stato eseguito. Piano:
+   scrivere la sottosezione descrivendo il meccanismo del controllo e il finding preliminare ESPLICITAMENTE
+   qualificato come provvisorio (come suggerito dall'utente: l'esistenza del controllo e cosa ha trovato conta
+   più del numero finale), poi aggiornare con la cifra definitiva quando task #144 gira.
+
+Nessuna di queste quattro voci aperte è stata scritta nel docx in questo giro — richiedono o un run che non
+esiste ancora (3, 5) o una sessione di scrittura dedicata più lunga (2, 4) che l'utente non ha ancora richiesto
+esplicitamente di eseguire ora.
+
+---
+
 ## Dipendenze tra i test
 
 ```
