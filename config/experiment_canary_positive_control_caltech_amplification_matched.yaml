@@ -1,0 +1,108 @@
+# ChargeShield-FL — Canary positive control, CALTECH ad amplificazione
+# per-record equiparata a office1 (2026-09-15, Sprint 10zz+101)
+#
+# SCOPO: chiude il gap esplicitamente lasciato aperto nel paper (§6.2) e in
+# docs/TestRoadmap_DSN2027.md — la replica ad alta densità
+# (experiment_canary_positive_control_caltech_highdensity.yaml, n_templates=84,
+# n_duplicates=30) equiparava la DENSITÀ AGGREGATA a office1 (~10% del
+# training set) ma NON l'AMPLIFICAZIONE PER RECORD (quante volte il
+# contenuto di UN SINGOLO template viene ripetuto nel pool): 30 duplicati su
+# un pool di 25123 sessioni Caltech è un'amplificazione per-record 17 volte
+# più debole dei 30 duplicati di office1 su un pool di 1344 sessioni — un
+# confondimento identificato leggendo il codice, non solo ipotizzato (vedi
+# commento in _caltech_highdensity.yaml e paper §6.2, frase "Aggregate
+# density and per-record amplification are not the same quantity, and the
+# experiment as run confounds them").
+#
+# QUESTO CONFIG isola l'amplificazione per-record invece della densità
+# aggregata: mantiene n_templates=5 (IDENTICO a office1, non 84) e alza
+# n_duplicates da 30 a 561, calcolato per riprodurre ESATTAMENTE il rapporto
+# duplicati/pool di office1:
+#
+#   office1: n_duplicates / pool_train = 30 / 1344 = 2.2321%
+#            (pool_train verificato contando le sessioni reali nei 3 file
+#            JSON di office1 — 1680 sessioni totali × 80% split = 1344 —
+#            non preso a memoria da un commento precedente)
+#   caltech: pool_train = 25123 (verificato allo stesso modo, 31404 sessioni
+#            totali × 80% split; stesso numero già usato in
+#            _caltech_highdensity.yaml, confermato)
+#   n_duplicates_caltech = 2.2321% × 25123 ≈ 560.85 → 561
+#
+# Con n_templates=5 invariato, questo config riproduce ANCHE la stessa
+# densità aggregata di office1 per costruzione (5×561/25123 = 11.16%,
+# identica a 5×30/1344 = 11.16% di office1) — non serve più scegliere fra
+# le due variabili: tenendo n_templates fisso e scalando solo n_duplicates
+# per la dimensione del pool, densità aggregata e amplificazione per-record
+# coincidono. La replica ad alta densità (84 template) le aveva scollegate
+# cambiando n_templates invece di n_duplicates — quello è il confondimento
+# che questo config evita.
+#
+# n_nonmember_templates lasciato a 20 (invariato, come in tutti gli altri
+# config canary) — la variabile isolata qui è l'amplificazione membro, non
+# il lato non-membro.
+#
+# Include anche l'estensione Blocker 2 (canary su tutti e tre gli attacchi:
+# Yeom/Shadow/LiRA), attiva di default in run_fedmia()/run_fedmia_shadow()/
+# run_lira() dal Sprint 10zz+93 — nessuna configurazione aggiuntiva
+# necessaria, il comando sotto produce automaticamente
+# canary_auc_roc/yeom_canary_auc_roc/shadow_canary_auc_roc nello stesso run.
+#
+# ATTENZIONE TEMPI: 5×561=2805 record duplicati aggiuntivi (leggermente più
+# dei 2520 della replica ad alta densità) — tempo atteso comparabile o
+# lievemente superiore a quel run.
+#
+# Comando di lancio (sulla macchina fisica, MAI in parallelo con un altro
+# esperimento/job NVFLARE in corso):
+#   python3 scripts/run_experiments.py \
+#       --config config/experiment_canary_positive_control_caltech_amplification_matched.yaml \
+#       --no-dp --sweep-dir experiments/_canary_positive_control_caltech_amplification_matched
+#
+# Lettura attesa: se canary_auc_roc/yeom_canary_auc_roc si avvicinano ai
+# valori office1 (LiRA composto ~0.6-0.7, Yeom ~0.7-0.9), l'amplificazione
+# per-record (non la densità aggregata) è confermata come variabile che
+# conta, risolvendo la domanda aperta di §6.2/TestRoadmap. Se restano al
+# livello del caso anche qui, l'ipotesi densità/amplificazione va scartata a
+# favore di una vera differenza di sito (dimensione del dataset, eterogeneità
+# delle sessioni reali, o altro) — da riportare esplicitamente, non da
+# assumere.
+
+experiment:
+  name: chargeshield_canary_positive_control_caltech_amplification_matched
+  fl_rounds: 3
+  seed: 42
+  epsilon: 1.0
+  delta: 1.0e-5
+  max_grad_norm: 1.0
+
+sites:
+  caltech:
+    - datasets/acn/caltech/acndata_sessions_2018.json
+    - datasets/acn/caltech/acndata_sessions_2019.json
+    - datasets/acn/caltech/acndata_sessions_2020.json
+    - datasets/acn/caltech/acndata_sessions_2021.json
+
+ml:
+  input_dim: 6
+  lr: 0.001
+  epochs: 1000   # invariato rispetto agli altri config canary caltech
+  batch_size: 32
+  proximal_mu: 0.01
+
+canary:
+  enabled: true
+  site: caltech
+  n_templates: 5             # invariato rispetto a office1 (NON 84 come in _highdensity)
+  n_duplicates: 561          # 30 × (25123/1344) — amplificazione per-record equiparata a office1
+  n_nonmember_templates: 20  # invariato
+
+output:
+  experiments_dir: experiments
+
+lira:
+  n_shadow: 8   # invariato rispetto agli altri config canary
+
+byzantine_attack:
+  enabled: false
+  attack_type: gradient_scaling
+  byzantine_node: synthetic_1
+  scale_factor: 10

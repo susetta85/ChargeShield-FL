@@ -1122,9 +1122,55 @@ che avrebbe "appianato" la densità aggregata al 10% — ma l'ha fatta con 84 te
 copie invece di 5 template × 30 copie: la densità TOTALE coincide con office1, mentre
 l'amplificazione per singolo record resta ~17× inferiore (è quest'ultima, non la densità
 aggregata, a guidare la memorizzazione di un record specifico). L'esperimento che doveva
-chiudere la domanda non l'ha testata. Per replicare davvero le condizioni di office1 servono
-5 template × ~500 copie ciascuno (stessa densità aggregata, stessa amplificazione per
-record) — non ancora eseguito.
+chiudere la domanda non l'ha testata.
+
+**Stato (2026-09-15, Sprint 10zz+101 — su richiesta esplicita dell'utente "bisogna
+allineare gli esperimenti anche a questo dataset")**: config pronto, calcolo verificato
+contando le sessioni reali (non a memoria da un commento precedente, che citava sia 1680
+sia 1344 per office1 senza specificare quale fosse quello giusto da usare qui):
+
+```
+office1: 3 file JSON = 1680 sessioni totali, split 80/20 → pool training = 1344
+         amplificazione per-record = n_duplicates / pool = 30 / 1344 = 2.2321%
+caltech: 4 file JSON = 31404 sessioni totali, split 80/20 → pool training = 25123
+         n_duplicates necessario = 2.2321% × 25123 ≈ 560.85 → 561
+```
+
+Tenendo `n_templates=5` invariato (NON 84, a differenza della replica high-density) e
+alzando solo `n_duplicates` a 561, densità aggregata E amplificazione per-record coincidono
+entrambe con office1 per costruzione (5×561/25123 = 11.16% = 5×30/1344) — le due variabili
+che la replica high-density aveva scollegato tornano ad essere la stessa cosa, senza dover
+scegliere quale isolare. Nuovo config:
+`config/experiment_canary_positive_control_caltech_amplification_matched.yaml`.
+
+Include automaticamente l'estensione Blocker 2 (canary su Yeom/Shadow/LiRA insieme, attiva
+di default dal Sprint 10zz+93) — un solo run copre sia la domanda sull'amplificazione
+per-record sia l'allineamento di Caltech al lavoro già fatto su office1, senza bisogno di
+comandi separati. Usa già il fix `inject_canaries()` del Sprint 10zz+96 (tag dell'originale),
+quindi non è comparabile bit-per-bit con i 3 run Caltech precedenti (tutti pre-fix), ma è
+comparabile con i run office1 più recenti (v2/v3 di Blocker 2).
+
+**Comando**:
+```
+python3 scripts/run_experiments.py \
+    --config config/experiment_canary_positive_control_caltech_amplification_matched.yaml \
+    --no-dp --sweep-dir experiments/_canary_positive_control_caltech_amplification_matched
+```
+
+**Lettura attesa**: se `canary_auc_roc`/`yeom_canary_auc_roc` si avvicinano ai valori
+office1 (LiRA composto ~0.6-0.7, Yeom ~0.7-0.9), l'amplificazione per-record è confermata
+come variabile che conta, risolvendo la domanda aperta di §6.2. Se restano al livello del
+caso anche qui, l'ipotesi densità/amplificazione va scartata a favore di una vera differenza
+di sito — da riportare esplicitamente, non da assumere. **ATTENZIONE TEMPI**: 2805 record
+duplicati aggiuntivi su un pool di 25123 sessioni — tempo atteso comparabile o lievemente
+superiore alla replica high-density già eseguita (2520 record).
+
+**Correzione minore trovata durante questa verifica (non ancora propagata al resto del
+documento)**: la cifra "Caltech è invertito 0.37-0.42" citata altrove in questo file e nel
+paper proviene dal run ad alta densità (84 template), non dalla replica diretta a 5 template
+(che ha dato invece 0.4328/0.4383/0.3503) — entrambe sotto il caso, la conclusione
+qualitativa non cambia, ma la citazione andrebbe resa precisa (quale run, quali numeri) la
+prossima volta che si tocca questa sezione.
 
 ---
 
