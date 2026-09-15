@@ -3046,12 +3046,51 @@ def run_lira(
     for round_num, round_data in sorted(
         (item for item in fl_results.items() if item[0] > 0), key=lambda x: x[0]
     ):
-        # Fix 2026-07-21c: attacca "updates" (post-privatize, ciò che viene davvero
-        # sottoposto ad aggregazione) invece di "raw_updates" (pre-DP per costruzione).
-        client_updates = round_data.get("updates", [])
-        if not client_updates:
-            logger.warning(f"LiRA round {round_num}: nessun update — skip")
-            continue
+        # Sprint 10zz+92 (2026-09-15) — CORREZIONE del threat model per
+        # dp_mode="dp-fedavg", non un flag diagnostico opt-in: decisione
+        # esplicita dell'utente dopo l'errata esterna verificata (punto
+        # "Three DP placements — SMENTITO"). Il commento su `_store_raw` in
+        # run_fl_rounds() (~riga 1114) documenta GIA' che sotto dp-fedavg un
+        # server "honest-but-curious"/trusted vede l'update RAW (pre-clip,
+        # pre-noise) prima di clippare+rumorizzare esso stesso — a differenza
+        # di "local", dove il client applica clip+noise PRIMA di trasmettere,
+        # quindi il server non vede mai il valore pulito, nemmeno
+        # transitoriamente. Fino a questo fix LiRA attaccava "updates" (post-
+        # privatize) IDENTICAMENTE per dp-fedavg e local, rendendo le due
+        # modalità indistinguibili per costruzione — root cause delle 3 righe
+        # duplicate in Tabella 2 (dp-fedavg == local su ogni ε/seed/attacco,
+        # bit per bit). Sotto dp-fedavg CON DP attivo, l'attaccante ora
+        # preleva "raw_updates" (l'update così com'è stato sottomesso, PRIMA
+        # che il server stesso lo clippi/rumorizzi) invece di "updates" —
+        # central e local NON cambiano (central attacca già clip-only per una
+        # ragione strutturale diversa e già documentata riga ~1010 sopra;
+        # local non ha mai un raw_updates disponibile, per costruzione, vedi
+        # `_store_raw` sopra). Conseguenza attesa, non un effetto collaterale
+        # da correggere: il numero LiRA di dp-fedavg diventa insensibile a ε
+        # per costruzione (identico al caso no-DP) — dp-fedavg misura ora "se
+        # un server che vede il dato grezzo prima di applicare la propria
+        # stessa privatizzazione offre ancora protezione" (risposta: nessuna,
+        # per costruzione), una domanda DIVERSA da quella che central/local
+        # misurano, non un indebolimento della stessa domanda. INVALIDA ogni
+        # numero LiRA già pubblicato per dp-fedavg con DP attivo (non per
+        # no-DP dp-fedavg, né per central/local, che non cambiano codice qui).
+        if dp_mode == "dp-fedavg" and not no_dp:
+            client_updates = round_data.get("raw_updates") or []
+            if not client_updates:
+                logger.warning(
+                    f"LiRA round {round_num}: raw_updates assente per "
+                    "dp_mode=dp-fedavg (atteso presente, vedi _store_raw in "
+                    "run_fl_rounds()) — skip"
+                )
+                continue
+        else:
+            # Fix 2026-07-21c: attacca "updates" (post-privatize, ciò che viene
+            # davvero sottoposto ad aggregazione) invece di "raw_updates" (pre-DP
+            # per costruzione) — invariato per central/local/no-DP.
+            client_updates = round_data.get("updates", [])
+            if not client_updates:
+                logger.warning(f"LiRA round {round_num}: nessun update — skip")
+                continue
 
         # Warm-start per gli shadow di QUESTO round: stesso punto di partenza usato
         # dai client reali per il training locale del round (fix 2026-07-21b).
