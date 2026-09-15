@@ -11,6 +11,25 @@ auditor:
     # Con composizione base: budget_esaurito quando cumulative > epsilon * total_rounds.
     # Impostare al numero massimo di round del sweep (default = 1000).
     total_rounds_budget: 1000
+  # Sprint 10zz+88 (2026-09-15) — corretto dopo un feedback esterno verificato
+  # (errata "config legacy fuorvianti"): elencava solo "FedMIA", che avrebbe
+  # fatto pensare che l'auditor conosca un solo attacco, e per di più quello
+  # sbagliato — FedMIA (src/plugins/attacks/fedmia.py) è un modulo inattivo
+  # (task #29), mentre i tre attacchi realmente eseguiti da
+  # scripts/run_experiments.py sono Yeom/Shadow/LiRA (LiRA ★ PRIMARY, vedi
+  # config/experiment.yaml). Aggiornato per riflettere la realtà; "FedMIA" è
+  # mantenuto in coda come nome storico/ombrello ancora citato da
+  # src/auditor/privacy_auditor.py::_detect_threats() e da
+  # docs/PrivacyAuditor.md (identificatore di minaccia
+  # FEDMIA_SUSPICIOUS_LOW_SENSITIVITY), non perché il plugin fedmia.py sia
+  # attivo. Il campo comunque non seleziona QUALE attacco venga eseguito
+  # (quello è deciso da run_experiments.py) — serve solo a gating
+  # dell'euristica "sensitivity sospettosamente bassa" più sotto nel codice
+  # (si attiva se la lista non è vuota, indipendentemente da quale nome
+  # contiene).
   attacks:
+    - Yeom
+    - Shadow
+    - LiRA
     - FedMIA
   alert_threshold: 0.7

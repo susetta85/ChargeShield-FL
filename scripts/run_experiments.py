@@ -523,10 +523,23 @@ def inject_canaries(
     stesso client, amplificando il contributo di quel record al gradiente
     di un fattore n_duplicates — la manipolazione più diretta e aggressiva
     possibile per indurre memorizzazione, più diretta di qualunque dei 5
-    assi già testati (epoche/capacità/feature/sito). Un gruppo "gemello" di
-    pari numerosità — copie singole degli stessi template, mai inserite in
-    training — resta nell'holdout per un confronto pulito membro-vs-non-
-    membro ristretto ai soli canary (canary_auc_roc in run_lira()).
+    assi già testati (epoche/capacità/feature/sito). Un gruppo di controllo
+    non-membro di pari sito — sessioni REALI distinte campionate
+    dall'holdout dello stesso client, MAI copie dei template membro — serve
+    da confronto pulito membro-vs-non-membro ristretto ai soli canary
+    (canary_auc_roc in run_lira()).
+
+    Correzione (2026-09-15, errata "config legacy fuorvianti" §5 —
+    autocontraddizione nella docstring trovata da un feedback esterno
+    verificato): questo paragrafo diceva "copie singole degli stessi
+    template" per il gruppo non-membro. Falso — vedi il Fix 2026-08-31 più
+    sotto e il codice (`nonmember_templates = rng.sample(site_holdout_sessions,
+    n_nonmember_templates)`): il lato non-membro è sempre stato sessioni
+    reali indipendenti dall'holdout, mai copie dei template membro. Il paper
+    (§6.2) descriveva questo gruppo come "held-out sibling sessions", che
+    suggerisce lo stesso errore — corretto anche lì (Sprint 10zz+87) per
+    dire esplicitamente "independently-sampled ... ordinary holdout
+    sessions, not copies of the duplicated templates".
 
     Attivo SOLO se cfg["canary"]["enabled"] è True — default assente/False,
     quindi no-op per ogni config/run esistente, inclusa l'intera campagna
@@ -2593,6 +2606,31 @@ def run_lira(
             "(atteso 'symmetric' o 'independent')"
         )
 
+    # Shadow init: warm-start vs cold-start (Sprint 10zz+88, 2026-09-15) — flag
+    # diagnostico opt-in, Blocker 1 del feedback esterno verificato (errata
+    # punto §5 "Cosa farei ora"): la nostra Adattamento #1 a §3.5 (shadow
+    # retrained OGNI round, warm-started dai pesi globali reali di quel round)
+    # è una modifica sostanziale rispetto alla costruzione originale di
+    # Carlini et al. (shadow addestrati indipendentemente, una sola volta, da
+    # init casuale, su sottoinsiemi partizionati casualmente) — mai isolata
+    # con un'ablation. Questo flag isola SOLO la variabile warm-start/cold-init
+    # mantenendo invariata la cadenza "retrain ogni round" (già di per sé una
+    # necessità dovuta al fatto che un client FL reale continua ad allenarsi
+    # round dopo round, non un artefatto arbitrario) — un'ablation più fedele
+    # alla costruzione originale (shadow addestrati UNA SOLA volta e mai più
+    # ri-addestrati) richiederebbe un cambiamento strutturale più ampio, non
+    # fatto qui. Default "warm" = comportamento ESATTAMENTE invariato per ogni
+    # config/run esistente. Se "cold", più sotto _warm_start viene forzato a
+    # None ad ogni round (init casuale ad ogni retrain, mai i pesi globali del
+    # round precedente) — isola se è il warm-start stesso, e non l'assunzione
+    # Gaussiana o il floor di varianza, a produrre il null result su LiRA.
+    _lira_shadow_init = cfg.get("lira", {}).get("shadow_init", "warm")
+    if _lira_shadow_init not in ("warm", "cold"):
+        raise ValueError(
+            f"cfg['lira']['shadow_init'] non valido: {_lira_shadow_init!r} "
+            "(atteso 'warm' o 'cold')"
+        )
+
     # GradientManager per privatizzare gli shadow ESATTAMENTE come i client reali
     # (stesso clipping + stesso meccanismo di rumore) — fix 2026-07-21c: senza
     # questo, un target rumoroso (DP on) verrebbe calibrato contro shadow puliti,
@@ -2970,9 +3008,12 @@ def run_lira(
         # Warm-start per gli shadow di QUESTO round: stesso punto di partenza usato
         # dai client reali per il training locale del round (fix 2026-07-21b).
         # Round 1 → init casuale (nessun round precedente, come i client reali).
+        # Sprint 10zz+88: se cfg["lira"]["shadow_init"]=="cold", _warm_start resta
+        # SEMPRE None (init casuale ad ogni round, mai i pesi globali reali) —
+        # vedi commento sopra su _lira_shadow_init per il razionale dell'ablation.
         _warm_start = (
             fl_results.get(round_num - 1, {}).get("global_weights")
-            if round_num > 1 else None
+            if (round_num > 1 and _lira_shadow_init == "warm") else None
         )
 
         shadow_mse_matrix_per_cluster: dict[str, list[list[float | None]]] = {}

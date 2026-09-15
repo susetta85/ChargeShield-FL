@@ -170,6 +170,74 @@ def test_gradient_explosion_detected(auditor, exploding_update):
     assert report.metadata["explosion_threshold"] > 0.0
 
 
+def test_fedmia_suspicious_low_sensitivity_fires_with_real_config(auditor):
+    """
+    Sprint 10zz+88 (errata 'config legacy fuorvianti'): config/auditor.yaml
+    ora elenca Yeom/Shadow/LiRA/FedMIA (prima solo FedMIA, disallineato con
+    gli attacchi realmente eseguiti da run_experiments.py). Verifica che
+    l'euristica di sensitivity sospetta resti attiva con la config reale.
+    """
+    report = auditor.audit("highway-01", round_id=1, model_update={})
+    assert "FEDMIA_SUSPICIOUS_LOW_SENSITIVITY" in report.threats_detected
+
+
+def test_fedmia_suspicious_low_sensitivity_fires_without_literal_fedmia_string(tmp_path):
+    """
+    Regressione mirata sul fix Sprint 10zz+88: PRIMA del fix, il controllo in
+    _detect_threats() era `"FedMIA" in self._attack_types` — un config con
+    attacks: [LiRA] (senza il nome letterale "FedMIA") non avrebbe MAI fatto
+    scattare FEDMIA_SUSPICIOUS_LOW_SENSITIVITY, anche con sensitivity=0,
+    perché LiRA (l'attacco primario di questo progetto dal Sprint 9) non è
+    "FedMIA" testualmente. Dopo il fix, il controllo è
+    `self._attack_types` (lista non vuota) — attack-name-agnostic, perché
+    l'euristica su sensitivity anomala non è specifica di un attacco.
+    Costruisce un auditor.yaml minimale con SOLO LiRA in attacks per isolare
+    esattamente questo caso.
+    """
+    cfg_path = tmp_path / "auditor_lira_only.yaml"
+    cfg_path.write_text(
+        "auditor:\n"
+        "  enabled: true\n"
+        "  dp:\n"
+        "    mechanism: Gaussian\n"
+        "    epsilon: 1.0\n"
+        "    delta: 1.0e-5\n"
+        "    max_grad_norm: 1.0\n"
+        "    total_rounds_budget: 1000\n"
+        "  attacks:\n"
+        "    - LiRA\n"
+        "  alert_threshold: 0.7\n"
+    )
+    pa = PrivacyAuditor(config_path=str(cfg_path))
+    report = pa.audit("highway-01", round_id=1, model_update={})
+    assert "FEDMIA_SUSPICIOUS_LOW_SENSITIVITY" in report.threats_detected, (
+        "il controllo deve attivarsi anche quando 'FedMIA' non compare "
+        "letteralmente nella lista attacks — l'euristica non è specifica "
+        "di un nome di attacco"
+    )
+
+
+def test_fedmia_suspicious_low_sensitivity_absent_when_no_attacks_configured(tmp_path):
+    """Con attacks: [] (nessun attacco dichiarato), il controllo deve restare
+    silente anche a sensitivity=0 — comportamento invariato dal fix."""
+    cfg_path = tmp_path / "auditor_no_attacks.yaml"
+    cfg_path.write_text(
+        "auditor:\n"
+        "  enabled: true\n"
+        "  dp:\n"
+        "    mechanism: Gaussian\n"
+        "    epsilon: 1.0\n"
+        "    delta: 1.0e-5\n"
+        "    max_grad_norm: 1.0\n"
+        "    total_rounds_budget: 1000\n"
+        "  attacks: []\n"
+        "  alert_threshold: 0.7\n"
+    )
+    pa = PrivacyAuditor(config_path=str(cfg_path))
+    report = pa.audit("highway-01", round_id=1, model_update={})
+    assert "FEDMIA_SUSPICIOUS_LOW_SENSITIVITY" not in report.threats_detected
+
+
 def test_gradient_explosion_threshold_adapts_to_epsilon():
     """
     La soglia GRADIENT_EXPLOSION deve scalare con epsilon (inversamente):

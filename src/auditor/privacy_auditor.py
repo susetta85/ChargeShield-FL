@@ -369,9 +369,23 @@ class PrivacyAuditor(AbstractPrivacyAuditor):
         if budget_ratio >= 1.0:
             threats.append("PRIVACY_BUDGET_EXHAUSTED")
 
-        # Pattern FedMIA: sensitivity sospettamente bassa
-        # Il rilevamento completo arriva nella Sprint 4
-        if "FedMIA" in self._attack_types and sensitivity < 1e-6:
+        # Sensitivity sospettosamente bassa (possibile evasione dell'auditor).
+        # Fix (Sprint 10zz+88, 2026-09-15, errata "config legacy fuorvianti"):
+        # prima controllava letteralmente "FedMIA" in self._attack_types —
+        # config/auditor.yaml dichiarava solo attacks: [FedMIA], quindi questo
+        # controllo non si attivava mai per LiRA, l'attacco primario di questo
+        # progetto dal Sprint 9 in poi (FedMIA/fedmia.py è un modulo inattivo,
+        # vedi task #29). L'euristica stessa (sensitivity anomala) non è
+        # specifica di un attacco — riguarda QUALSIASI membership-inference
+        # attack configurato — quindi ora si attiva se è configurato un
+        # qualunque attacco (self._attack_types non vuoto), non solo se il
+        # nome esatto "FedMIA" compare nella lista. L'identificatore della
+        # minaccia resta FEDMIA_SUSPICIOUS_LOW_SENSITIVITY per compatibilità
+        # con docs/PrivacyAuditor.md e src/ids/charging_ids.py, che lo citano
+        # letteralmente — "FedMIA" qui va letto come nome storico/ombrello
+        # della famiglia di attacchi MIA di questo progetto (Yeom/Shadow/LiRA),
+        # non come riferimento al solo plugin fedmia.py inattivo.
+        if self._attack_types and sensitivity < 1e-6:
             threats.append("FEDMIA_SUSPICIOUS_LOW_SENSITIVITY")
 
         return threats

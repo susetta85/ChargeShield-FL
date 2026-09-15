@@ -189,7 +189,7 @@ chargeshield-fl/
 │   │                                 # sites, ML hyperparameters, LiRA n_shadow, Byzantine sweep
 │   ├── auditor.yaml                 # Read by PrivacyAuditor + ByzantineDetector (both simulation and
 │   │                                 # ChargeShieldAggregator) — DP mechanism/budget, alert threshold
-│   ├── clusters.yaml, datasets.yaml, framework.yaml,
+│   ├── datasets.yaml, framework.yaml,
 │   │   nodes.yaml, protocols.yaml, flare.yaml,
 │   │   nodes/cluster_{highway,urban,residential,corporate}.yaml
 │   │                                 # LEGACY — read only by the confirmed-dead code below
@@ -198,6 +198,12 @@ chargeshield-fl/
 │   │                                 # scripts/run_experiments.py or the NVFLARE custom app.
 │   │                                 # Kept for that dead code's own tests; not part of the real
 │   │                                 # experiment configuration surface — see §6.
+│   ├── _legacy_unused/clusters.yaml # Sprint 10zz+88 (2026-09-15) — moved out of config/ (not
+│   │                                 # renamed/deleted): read by NO code, live or dead (unlike the
+│   │                                 # files above), and still defined the old fictional
+│   │                                 # highway/urban/residential/corporate clusters that
+│   │                                 # src/core/autoencoder.py itself calls superseded — confusing
+│   │                                 # to find next to the real experiment.yaml/auditor.yaml.
 ├── src/
 │   ├── core/                        # Abstract base classes + autoencoder architecture.
 │   │   ├── autoencoder.py           # The real model: 6→...→570-param encoder/decoder, used by
@@ -305,10 +311,12 @@ chargeshield-fl/
 **`config/`** — `experiment.yaml` and `auditor.yaml` are the two files actually read by the live
 pipeline (`scripts/run_experiments.py::load_config()` does a plain `yaml.safe_load()`; there is no
 Pydantic schema, no `ConfigLoader` class — see the warning banner above for what §1/§2/§4 still
-claim). Every other YAML file under `config/` (`clusters.yaml`, `datasets.yaml`, `framework.yaml`,
+claim). Every other YAML file under `config/` (`datasets.yaml`, `framework.yaml`,
 `nodes.yaml`, `protocols.yaml`, `flare.yaml`, and everything under `config/nodes/`) is read only by
 the confirmed-dead OT-layer code (`src/nodes/`, `src/adapters/ocpp16_adapter.py`,
 `src/flare/flare_connector.py`) — see §6 for the real configuration surface.
+`config/_legacy_unused/clusters.yaml` (moved there Sprint 10zz+88, 2026-09-15) is read by no code at
+all, live or dead, and is kept only as a historical artifact.
 
 **`src/core/`** — Abstract base classes and the autoencoder architecture. `base_attack.py`
 (`BaseAttack`) is the one abstract interface with a real, live implementation graph (§5.4); the
@@ -1036,10 +1044,13 @@ mechanism: it opens the file passed via `--config` (every real Makefile target p
 validation, no `ConfigLoader`. A second file, `config/auditor.yaml`, is loaded separately by
 `PrivacyAuditor`/`ByzantineDetector` for DP-budget and alert-threshold parameters. These two files are
 the entire real configuration surface. Every other YAML file under `config/`
-(`clusters.yaml`, `datasets.yaml`, `framework.yaml`, `nodes.yaml`, `protocols.yaml`, `flare.yaml`,
+(`datasets.yaml`, `framework.yaml`, `nodes.yaml`, `protocols.yaml`, `flare.yaml`,
 and everything under `config/nodes/`) is read only by the confirmed-dead OT-layer code
 (`src/nodes/`, `src/adapters/ocpp16_adapter.py`, `src/flare/flare_connector.py` — see §3) and is
-irrelevant to any real experiment or NVFLARE run. Most values in `config/experiment.yaml` are also
+irrelevant to any real experiment or NVFLARE run. `config/_legacy_unused/clusters.yaml` (moved
+there Sprint 10zz+88, 2026-09-15 — it still defined the old fictional
+highway/urban/residential/corporate clusters `src/core/autoencoder.py` itself calls superseded) is
+read by no code at all, live or dead. Most values in `config/experiment.yaml` are also
 overridable via CLI flags (`--rounds`, `--epsilon`, `--seed`, `--n-shadow`, `--dp-mode`, `--no-dp`,
 `--byzantine`, `--byzantine-node`, `--scale-factor`, `--sweep-dir`, ...); every real Makefile
 experiment target (§7) passes these explicitly, so the YAML values below are only the defaults used

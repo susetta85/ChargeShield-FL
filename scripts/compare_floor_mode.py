@@ -23,6 +23,22 @@ Accetta anche una directory (prende il file experiment_*.json piu' recente).
 Stampa, per ogni round: floor-hit-rate (in/out), matched_formula_auc, e
 lira_auc_roc — prima vs dopo — cosi' si vede a colpo d'occhio se
 disattivare il floor condiviso cambia il segnale su `central`, e quanto.
+
+Sprint 10zz+88 (2026-09-15): generalizzato con --label-before/--label-after
+(default invariati: "symmetric"/"independent") per riusare lo stesso script
+su QUALUNQUE confronto diagnostico A/B tra due run LiRA che differiscono per
+un solo flag opt-in — es. Blocker 1 (cfg["lira"]["shadow_init"]
+warm/cold, vedi config/experiment_shadow_cold.yaml):
+
+    python3 scripts/compare_floor_mode.py \
+        --before experiments/_blocker1_shadow_warm/experiment_*.json \
+        --after  experiments/_blocker1_shadow_cold/experiment_*.json \
+        --label-before "shadow_init=warm (default)" \
+        --label-after  "shadow_init=cold (Blocker 1)"
+
+I campi letti (floor-hit-rate/matched_formula_auc/lira_auc_roc) sono
+diagnostici generali, non specifici del floor — restano informativi per
+qualunque ablation che tocchi la calibrazione LiRA.
 """
 import argparse
 import glob
@@ -67,12 +83,16 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--before", required=True, help="File/dir/glob del run con floor_mode=symmetric (default)")
     ap.add_argument("--after", required=True, help="File/dir/glob del run con floor_mode=independent")
+    ap.add_argument("--label-before", default="symmetric, default",
+                    help="Etichetta descrittiva per --before (default: comportamento floor_mode originale)")
+    ap.add_argument("--label-after", default="independent",
+                    help="Etichetta descrittiva per --after (default: comportamento floor_mode originale)")
     args = ap.parse_args()
 
     before_path = _resolve_path(args.before)
     after_path = _resolve_path(args.after)
-    print(f"BEFORE (symmetric, default): {before_path}")
-    print(f"AFTER  (independent):       {after_path}")
+    print(f"BEFORE ({args.label_before}): {before_path}")
+    print(f"AFTER  ({args.label_after}):  {after_path}")
     print()
 
     before = _extract_by_round(before_path)
@@ -91,7 +111,7 @@ def main():
     )
     print(header)
     print("-" * len(header))
-    print(f"{'':>5} | {'--- BEFORE (symmetric) ---':^50} || {'--- AFTER (independent) ---':^50}")
+    print(f"{'':>5} | {'--- BEFORE ---':^50} || {'--- AFTER ---':^50}")
 
     def fmt(v):
         return f"{v:.4f}" if isinstance(v, (int, float)) else "N/A"
@@ -108,11 +128,14 @@ def main():
 
     print()
     print(
-        "Lettura: se dopo (independent) matched_formula_auc torna verso 0.5 e/o "
-        "lira_auc_roc si allontana da 0.5 in modo stabile su piu' round, il floor "
-        "condiviso stava mascherando segnale reale su central — vale la pena alzare "
-        "n_shadow e ripetere. Se matched_formula_auc resta lontano da 0.5 anche cosi', "
-        "il problema e' altrove (ancoraggio mu_in dei non-membri, vedi errata punto 3)."
+        "Lettura generale: se AFTER mostra matched_formula_auc piu' vicino a 0.5 e/o "
+        "lira_auc_roc che si allontana da 0.5 in modo stabile su piu' round rispetto a "
+        "BEFORE, il flag cambiato tra i due run (floor_mode, shadow_init, o altro) stava "
+        "mascherando segnale reale — vale la pena indagare oltre (es. alzare n_shadow) "
+        "prima di promuovere il nuovo comportamento a default. Se matched_formula_auc "
+        "resta lontano da 0.5 in entrambi i casi, il problema e' probabilmente altrove "
+        "(es. ancoraggio mu_in dei non-membri, vedi errata punto 3) e non nel flag appena "
+        "testato."
     )
 
 

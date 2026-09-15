@@ -1,0 +1,29 @@
+# Sprint 10zz+88 (2026-09-15) — spostato da config/clusters.yaml in
+# config/_legacy_unused/ dopo un feedback esterno verificato (errata "config
+# legacy fuorvianti"): NON è letto da nessun codice, né vivo né morto
+# (grep esaustivo su src/, scripts/, tests/, nvflare/ — zero occorrenze di
+# "clusters" fuori da questo file). Definisce ancora i quattro cluster
+# fittizi highway/urban/residential/corporate che src/core/autoencoder.py
+# documenta esplicitamente come "vecchio schema fittizio ormai superato" dal
+# vero schema a 3 siti reali ACN-Data (Caltech/JPL/Office1, vedi
+# config/experiment.yaml). Non influenza alcun risultato — era solo
+# fuorviante per chi leggesse l'artifact e trovasse questo file in config/
+# accanto a experiment.yaml/auditor.yaml, che SONO letti dal codice reale.
+# Spostato, non cancellato, per lo stesso motivo per cui experiments/
+# usa cartelle _archive_* invece di eliminare i dati superati.
+clusters:
+  - id: highway
+    name: Highway Cluster
+    nodes: [highway-01, highway-02, highway-03]
+
+  - id: urban
+    name: Urban Cluster
+    nodes: [urban-01, urban-02, urban-03]
+
+  - id: residential
+    name: Residential Cluster
+    nodes: [residential-01, residential-02, residential-03]
+
+  - id: corporate
+    name: Corporate Cluster
+    nodes: [corporate-01, corporate-02, corporate-03]
