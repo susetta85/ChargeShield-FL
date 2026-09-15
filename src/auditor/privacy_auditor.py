@@ -301,6 +301,28 @@ class PrivacyAuditor(AbstractPrivacyAuditor):
                 # Soglia adattiva usata per GRADIENT_EXPLOSION in questo round.
                 # Utile per debug e confronto con la sensitivity nel JSON di output.
                 "explosion_threshold": round(self._explosion_threshold, 4),
+                # Sprint 10zz+93 (2026-09-15) — disclosure esplicita nell'ARTIFACT
+                # esportato, non solo nel commento sorgente sopra (review esterna
+                # verificata: "epsilon" qui può superare epsilon_per_round in un
+                # singolo round — vedi nvflare_ids_audit_results_*.json, client
+                # con sensitivity peer-relative-scaled > max_grad_norm, es.
+                # round_epsilon osservato 1.070064 con epsilon_per_round=1.0 — è
+                # una conseguenza matematica attesa della formula sopra quando
+                # sensitivity/max_grad_norm > 1, non un errore di calcolo. Senza
+                # questo campo, un lettore che apre solo il JSON (non il sorgente)
+                # può scambiare questo valore per una violazione di accounting
+                # DP formale. Puramente additivo: non altera "epsilon" né alcun
+                # campo esistente, non cambia il comportamento di alert/soglie.
+                "epsilon_accounting_note": (
+                    "'epsilon' qui è un punteggio di rischio interno "
+                    "(saturazione del clipping peer-relative × epsilon_per_round), "
+                    "usato SOLO per le soglie di allerta PRIVACY_BUDGET_EXHAUSTED/"
+                    "NEAR_EXHAUSTION di questo IDS. Può superare epsilon_per_round "
+                    "in un singolo round quando sensitivity > max_grad_norm — non "
+                    "è formale DP accounting e NON è la cifra di privacy budget "
+                    "citata nel paper (che usa composizione naive conservativa, "
+                    "T × epsilon_per_round — vedi epsilon_cumulative_naive)."
+                ),
             },
         )
 

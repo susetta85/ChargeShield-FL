@@ -1777,6 +1777,41 @@ def run_fedmia(
             if _curve is not None:
                 _roc_curves_per_round[round_num] = _curve
 
+        # Canary positive control (Sprint 10zz+93, 2026-09-15) — stessa idea
+        # già in uso in run_lira() (Sprint 10vv), estesa qui su richiesta
+        # esplicita dell'utente (Blocker 2): verificare un vero leak di
+        # membership con TUTTI e tre gli attacchi già implementati (Yeom,
+        # Shadow, LiRA), non solo LiRA. AUC calcolato SOLO sui campioni
+        # canary (membri duplicati vs gemelli non-membro mai visti in
+        # training), None se i canary sono disabilitati o un lato del pool
+        # è vuoto in questo round. Usa `members` (pool completo, non il
+        # sotto-campione bilanciato `members_balanced`) per non dipendere
+        # dalla varianza di quel campionamento casuale — stesso modello
+        # `model` già caricato per questo round, nessun training aggiuntivo.
+        # Chiavi prefissate "yeom_" (stesso motivo/bug di collisione già
+        # corretto per tpr_at_fpr_* in task #59, Sprint 10zz+34):
+        # run_registered_attacks() fonde yeom→shadow→lira con .update()
+        # nello stesso dict per round — senza prefisso, il canary_auc_roc
+        # (bare) già pubblicato da LiRA sovrascriverebbe silenziosamente
+        # quello di Yeom.
+        canary_members    = [s for s in members if s.get("_canary_role") == "member"]
+        canary_nonmembers = [s for s in non_members if s.get("_canary_role") == "nonmember"]
+        yeom_canary_auc_roc = None
+        yeom_canary_advantage = None
+        yeom_canary_confusion = None
+        if canary_members and canary_nonmembers:
+            _canary_member_scores    = _score_batch(model, canary_members)
+            _canary_nonmember_scores = _score_batch(model, canary_nonmembers)
+            if _canary_member_scores and _canary_nonmember_scores:
+                _c_labels = [1] * len(_canary_member_scores) + [0] * len(_canary_nonmember_scores)
+                _c_scores = _canary_member_scores + _canary_nonmember_scores
+                try:
+                    yeom_canary_auc_roc = round(float(roc_auc_score(_c_labels, _c_scores)), 6)
+                except ValueError:
+                    yeom_canary_auc_roc = None
+                yeom_canary_advantage = _mia_advantage(_c_labels, _c_scores)
+                yeom_canary_confusion = _mia_confusion_at_best_threshold(_c_labels, _c_scores)
+
         mia_results[round_num] = {
             "auc_roc":               auc,
             "member_score_mean":     float(np.nanmean(member_scores)),
@@ -1784,6 +1819,9 @@ def run_fedmia(
             **tpr_fields,
             "advantage":             advantage,
             "confusion":             confusion,
+            "yeom_canary_auc_roc":   yeom_canary_auc_roc,
+            "yeom_canary_advantage": yeom_canary_advantage,
+            "yeom_canary_confusion": yeom_canary_confusion,
         }
 
     if roc_curve_dump_path is not None and _roc_curves_per_round:
@@ -1875,6 +1913,30 @@ def run_fedmia_shadow(
     mid           = max(1, len(shuffled) // 2)
     shadow_train  = shuffled[:mid]
     eval_members  = shuffled[mid:]
+
+    # Sprint 10zz+93 (2026-09-15) — canary positive control esteso a Shadow
+    # (richiesto dall'utente per Blocker 2: verificare un vero leak di
+    # membership con TUTTI e tre gli attacchi già implementati, non solo
+    # LiRA). Se canary sono abilitati, i duplicati canary non devono MAI
+    # finire in shadow_train: lo shadow model verrebbe addestrato sugli
+    # stessi record esatti che poi valutiamo come "membro", contaminando
+    # la calibrazione shadow-vs-target — stessa causa radice del bug già
+    # corretto per LiRA in _sample_preserving_canary_groups() (Sprint
+    # 10zz+16): uno split casuale che non tratta i gruppi canary come
+    # atomici. Qui la correzione è più semplice perché i canary sono
+    # synthetic controls, non organici: spostarli TUTTI in eval_members
+    # (mai usati per addestrare lo shadow model) è corretto per costruzione,
+    # non solo un workaround. Nessun impatto se canary è disabilitato
+    # (nessuna sessione ha "_canary_role").
+    _canary_in_shadow_train = [s for s in shadow_train if s.get("_canary_role") == "member"]
+    if _canary_in_shadow_train:
+        shadow_train = [s for s in shadow_train if s.get("_canary_role") != "member"]
+        eval_members = eval_members + _canary_in_shadow_train
+        logger.info(
+            f"[CANARY] {len(_canary_in_shadow_train)} sessioni canary spostate da "
+            "shadow_train a eval_members per evitare contaminazione della "
+            "calibrazione shadow (Sprint 10zz+93)."
+        )
 
     logger.info(
         f"Shadow MIA — shadow_train: {len(shadow_train)}, "
@@ -2063,6 +2125,38 @@ def run_fedmia_shadow(
             if _curve is not None:
                 _roc_curves_per_round[round_num] = _curve
 
+        # Canary positive control (Sprint 10zz+93, 2026-09-15) — vedi
+        # run_fedmia() sopra per motivazione/pattern identico (Blocker 2).
+        # canary_members è sempre un sottoinsieme di eval_members (mai di
+        # shadow_train, vedi guardia nello split sopra). Ricalcolato qui sul
+        # pool canary completo (non sul sotto-campione bilanciato
+        # shadow_scores_members/target_scores_members) per non dipendere
+        # dalla varianza di quel bilanciamento casuale. Chiavi prefissate
+        # "shadow_" per lo stesso motivo di yeom_canary_auc_roc in
+        # run_fedmia() — evitare la collisione con il canary_auc_roc (bare)
+        # già pubblicato da LiRA nel merge yeom→shadow→lira.
+        canary_members    = [s for s in eval_members if s.get("_canary_role") == "member"]
+        canary_nonmembers = [s for s in holdout_sessions if s.get("_canary_role") == "nonmember"]
+        shadow_canary_auc_roc = None
+        shadow_canary_advantage = None
+        shadow_canary_confusion = None
+        if canary_members and canary_nonmembers:
+            _c_shadow_m = _mse_batch(shadow_model, canary_members)
+            _c_shadow_n = _mse_batch(shadow_model, canary_nonmembers)
+            _c_target_m = _mse_batch(target_model, canary_members)
+            _c_target_n = _mse_batch(target_model, canary_nonmembers)
+            if _c_shadow_m and _c_shadow_n and _c_target_m and _c_target_n:
+                _c_cal_m = [s - t for s, t in zip(_c_shadow_m, _c_target_m)]
+                _c_cal_n = [s - t for s, t in zip(_c_shadow_n, _c_target_n)]
+                _c_labels = [1] * len(_c_cal_m) + [0] * len(_c_cal_n)
+                _c_scores = _c_cal_m + _c_cal_n
+                try:
+                    shadow_canary_auc_roc = round(float(roc_auc_score(_c_labels, _c_scores)), 6)
+                except ValueError:
+                    shadow_canary_auc_roc = None
+                shadow_canary_advantage = _mia_advantage(_c_labels, _c_scores)
+                shadow_canary_confusion = _mia_confusion_at_best_threshold(_c_labels, _c_scores)
+
         shadow_results[round_num] = {
             "shadow_auc_roc":               round(auc, 6),
             "shadow_member_score_mean":     round(float(np.nanmean(calibrated_members)), 6),
@@ -2073,6 +2167,9 @@ def run_fedmia_shadow(
             **tpr_fields,
             "shadow_advantage":             advantage,
             "shadow_confusion":             confusion,
+            "shadow_canary_auc_roc":        shadow_canary_auc_roc,
+            "shadow_canary_advantage":      shadow_canary_advantage,
+            "shadow_canary_confusion":      shadow_canary_confusion,
         }
 
     if roc_curve_dump_path is not None and _roc_curves_per_round:

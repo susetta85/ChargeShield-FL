@@ -735,6 +735,39 @@ della deadline (abstract 2026-11-25).
 
 ---
 
+## Priorità immediate — aggiornato 2026-09-15 (Sprint 10zz+93)
+
+Sostituisce, per l'ordine di priorità, tutte le sezioni sottostanti dove in conflitto
+(restano come archivio storico di come si è arrivati qui). Riscritta su richiesta esplicita
+dell'utente dopo la conversazione sul doppio consumatore dell'ML Plane (Privacy Auditor vs
+ByzantineDetector/IDS) e sulla richiesta di unificare la superficie di attacco dei tre
+attacchi. Per ognuno: la domanda di ricerca, il risultato atteso in entrambi i sensi, lo
+stato reale, e — se pronto — il comando esatto.
+
+1. **Blocker 2 (sotto, ora sbloccato)** — economico (3 round, 1 sito, nessun training
+   pesante), nessun nuovo codice da scrivere per lanciarlo, e logicamente prioritario su
+   tutto il resto: se il "vero leakage" non si stacca da 0.5 nemmeno con i tre attacchi
+   estesi al canary, va rivista l'interpretazione di OGNI null result già pubblicato prima
+   di investire altro tempo su di essi.
+2. **RQ6 — rilevamento Byzantine sotto DP (nuovo, sotto)** — economico (10-15h stimate
+   dall'utente), zero nuovo codice (il percorso `--byzantine` esiste ed è testato solo a
+   livello unitario), e produce un risultato architetturale forte indipendentemente
+   dall'esito. Va lanciato SUBITO DOPO Blocker 2, con lo stesso principio "prima il
+   positive control, poi la soppressione": baseline no-DP per primo.
+3. **Rerun Strada B — terzo posizionamento DP reale (task #145, codice pronto)** —
+   costoso (~33h, invalida e sostituisce 15 celle dp-fedavg-con-DP già pubblicate). Va
+   dopo i primi due perché è il più costoso e i primi due potrebbero cambiare priorità
+   (es. se Blocker 2 rivela un problema nell'attacco stesso, ha poco senso rilanciare 33h
+   di campagna con lo stesso harness prima di averlo corretto).
+4. **Task #144 — A/B member_scoring=matched_formula vs real** — economico, pronto,
+   nessuna dipendenza dagli altri tre.
+5. **Blocker 3 — ablation filtro 8σ** — bloccato: serve prima il flag opt-in
+   `cfg["lira"]["uncalibrated_z_threshold"]` (non ancora scritto).
+6. **Sweep di utility largo** — bloccato: servono i 6 valori di ε da concordare con
+   l'utente prima di poter dare un comando.
+7. **Unificazione attack-surface Yeom/Shadow/LiRA (richiesta dall'utente 2026-09-15,
+   sotto)** — DESIGN, non ancora implementata. Vedi sezione dedicata per il perché.
+
 ## Blocker aperti dal feedback esterno verificato (errata 2026-09-14) — domanda e risultato atteso
 
 Aggiunto 2026-09-15 su richiesta esplicita dell'utente ("nella roadmap degli esperimenti
@@ -783,11 +816,38 @@ confronto statistico diretto, non un singolo run aneddotico. Se a 5 seed il segn
 instabile: il positive control stesso va rivisto (non solo il numero di seed) prima di
 usarlo come riferimento.
 
-**Stato reale**: non eseguito. Serve rilanciare `config/experiment_canary_positive_control.yaml`
-con 5 seed (42/123/456/789/1234), stesso pattern della campagna principale — nessun nuovo
-codice necessario per questa parte. Il bilanciamento membri/non-membri e i "gemelli veri"
-restano un lavoro di codice separato, non ancora iniziato (vedi nota dell'utente 2026-09-15:
-"sistemare i gemelli non veri").
+**Stato reale**: SBLOCCATO 2026-09-15 (Sprint 10zz+93). L'utente ha chiesto esplicitamente
+di verificare il leakage reale con "i tre attacchi già implementati", non solo LiRA — prima
+di oggi solo `run_lira()` calcolava un `canary_auc_roc` (Sprint 10vv); Yeom e Shadow
+attaccavano solo `global_weights` e non avevano alcuna vista ristretta ai canary. Aggiunto
+`yeom_canary_auc_roc`/`yeom_canary_advantage`/`yeom_canary_confusion` a `run_fedmia()` e
+`shadow_canary_auc_roc`/`shadow_canary_advantage`/`shadow_canary_confusion` a
+`run_fedmia_shadow()` (stesso pattern già in uso per LiRA, chiavi prefissate per lo stesso
+motivo del fix task #59 — altrimenti il merge yeom→shadow→lira nel dict per round le
+sovrascrive silenziosamente). Per Shadow serviva anche una guardia nuova: lo split 50/50
+shadow_train/eval_members è casuale e, senza correzione, poteva far finire dei duplicati
+canary nello shadow_train — contaminando lo shadow model con gli stessi record che poi
+valuta come "membro" (stessa classe di bug già corretta per LiRA in
+`_sample_preserving_canary_groups`, Sprint 10zz+16). Ora i canary vengono sempre spostati in
+`eval_members` prima dello split. Verificato con `py_compile` + suite di test non-torch
+(297/297 passed) — NON ancora con un run reale (nessun torch in questo sandbox).
+
+Comando pronto per la prima gamba (1 seed, no-DP, office1, come già previsto da Fase 0):
+
+```
+python3 scripts/run_experiments.py \
+  --config config/experiment_canary_positive_control.yaml \
+  --no-dp \
+  --sweep-dir experiments/_blocker2_canary_nodp_3attacks
+```
+
+Se `yeom_canary_auc_roc`/`shadow_canary_auc_roc`/`canary_auc_roc` (LiRA) si staccano tutti e
+tre da 0.5 in questa run: i tre attacchi hanno tutti un vero positive control, non solo LiRA
+— il regime di riferimento del Blocker 2 può essere esteso a tutti e tre. Se solo LiRA si
+stacca e Yeom/Shadow restano a ~0.5: significativo di per sé (i tre attacchi non sono
+equivalenti in sensibilità nemmeno di fronte a un leakage iniettato aggressivamente), da
+riportare esplicitamente. Il bilanciamento membri/non-membri, i "gemelli veri" e l'estensione
+a 5 seed restano lavoro separato, non ancora iniziato.
 
 ### Blocker 3 — ablation del filtro 8σ (task #122)
 
@@ -808,6 +868,107 @@ qualunque claim su §3.5.
 configurabile via `cfg["lira"]` — serve prima un flag opt-in analogo (es.
 `cfg["lira"]["uncalibrated_z_threshold"]`, default 8.0) prima di poter dare un comando
 eseguibile.
+
+### RQ6 (nuova, 2026-09-15) — il rilevamento Byzantine sopravvive alla DP?
+
+**Contesto.** L'ML Plane ha due consumatori con modelli di minaccia ortogonali sullo stesso
+substrato di osservabilità: il Privacy Auditor (confidenzialità, server honest-but-curious)
+e ByzantineDetector/IDS (integrità, client malevolo). `byzantine_attack.enabled` è `false`
+in tutti e 13 i file di config esistenti e nessun `experiments/*.json` archiviato mostra
+`byzantine_detected: true` — confermato via grep/find su tutta la repo. Il percorso di
+codice esiste ed è testato SOLO a livello unitario (`gradient_scaling`, client sintetici
+`synthetic_1`/`synthetic_2` per arrivare a n≥5 come richiede Krum), mai su un run FL reale.
+Osservazione dell'utente: l'unica differenza tra `local` e `dp-fedavg` è se `raw_updates`
+viene salvato — che è esattamente l'input dell'IDS. Sotto `local` il server non vede mai gli
+aggiornamenti grezzi: protegge dal server curioso e nello stesso momento acceca il
+rilevatore Byzantine. `ByzantineDetector` usa soglia cosine similarity 0.3 e soglia Krum 3.5
+(verificato in `src/ids/charging_ids.py`, righe 519-541 — non citazione a memoria).
+
+**Domanda.** Il rumore DP calibrato per la privacy (σ=4.84 a ε=1.0) rende inoperante il
+rilevamento Byzantine sullo stesso flusso, indipendentemente dal posizionamento — e quanto?
+
+**Verifica di plausibilità (fatta ora, non un run reale — una simulazione numerica pura
+con `numpy`, nessun training, solo per stabilire se vale la pena spendere 10-15h)**: due
+aggiornamenti onesti simulati (stesso obiettivo, piccola perturbazione locale, norma
+0.1-1) hanno cosine similarity media 0.99 senza rumore. Con rumore gaussiano isotropo
+σ=4.84 aggiunto a entrambi, la similarità media crolla a ~0.01 (range osservato
+-0.05...+0.07) — sotto la soglia di 0.3 nel 100% delle 200 coppie oneste simulate.
+L'ipotesi dell'utente è quantitativamente molto plausibile: a questo livello di rumore il
+detector non solo perderebbe un vero attaccante (falso negativo), ma classificherebbe come
+sospetti anche client completamente onesti (falsi positivi) — il segnale coseno diventa
+puro rumore isotropo, la componente correlata (il vero gradiente) è sommersa. Questa è
+un'indicazione di plausibilità su un modello giocattolo, non una misura sui pesi reali
+dell'autoencoder — il run reale resta necessario.
+
+**Risultato atteso.** Se `byzantine_detected` resta `false` (o il tasso di rilevamento crolla)
+sotto DP attiva a qualunque ε testato, ma funziona nel baseline no-DP: risultato pratico
+diretto per chi progetta un deployment — la DP calibrata per la privacy rende inoperante il
+rilevamento di integrità sullo stesso flusso, e (ipotesi secondaria) `local` lo peggiora
+ulteriormente rispetto a `dp-fedavg`/`central` perché nemmeno l'IDS vede l'update grezzo. Se
+il rilevamento regge sotto DP: risultato comunque interessante (la soglia adattiva o la
+normalizzazione esistente compensano meglio del previsto), da investigare perché.
+
+**Metodologia (stesso principio già imposto ai canary — prima il positive control, poi la
+soppressione)**: baseline no-DP PRIMA di ogni cella con DP attiva, altrimenti non possiamo
+distinguere "la DP sopprime il rilevamento" da "il rilevamento non ha mai funzionato quaggiù".
+
+**Stato reale**: non eseguito, nessun nuovo codice necessario (il percorso `--byzantine` è
+già wired end-to-end, solo mai stato usato con dati reali). Comando per la baseline
+(positive control, DA LANCIARE PER PRIMO):
+
+```
+python3 scripts/run_experiments.py \
+  --config config/experiment.yaml --no-dp \
+  --byzantine --byzantine-node synthetic_1 --scale-factor 10 \
+  --sweep-dir experiments/_rq6_byzantine_nodp_scale10
+```
+
+Se `byzantine_detected: true` compare qui (come atteso, nessun rumore a disturbare la
+similarità coseno): ripetere con `--scale-factor 3` (caso borderline) e poi con DP attiva
+(`--dp-mode central|local|dp-fedavg --epsilon 1.0`, poi 0.5 e 0.1) per lo stesso confronto.
+Se NON compare nemmeno qui: il problema è nel detector o nella sua soglia a questa scala di
+pesi, non nella DP — da investigare prima di procedere con le celle DP.
+
+### Unificazione attack-surface Yeom/Shadow/LiRA (richiesta dall'utente 2026-09-15) — design, non implementata
+
+**Richiesta.** "Per tutti gli attacchi dobbiamo usare la stessa linea: Yeom e Shadow devono
+poter attaccare anche gli update per-client (come LiRA/Strada B), e LiRA deve poter
+attaccare anche i global_weights aggregati (come Yeom/Shadow), per chiudere il cerchio."
+
+**Perché non è stata implementata in questo stesso giro.** Le due direzioni hanno un costo
+molto diverso. LiRA-su-global_weights è relativamente contenuto: LiRA già calibra
+per-campione (σ_in/σ_out via shadow), quindi sostituire "quale modello produce
+target_loss" (un `client_model` per-sito → un unico modello globale condiviso per round,
+come già fa `run_fedmia()`) è un cambiamento localizzato. Yeom/Shadow-su-updates è invece
+strutturale: oggi caricano UN modello per round (`global_weights`) e valutano l'intero pool
+membri/non-membri contro quello; per attaccare gli update per-client dovrebbero, per ogni
+round, iterare sui singoli client (i tre siti reali), caricare il modello di ognuno da
+`update.weights`/`raw_updates` (a seconda di `dp_mode`, stessa logica già scritta per LiRA
+in Strada B), e restringere membri/non-membri al solo sito di quel client — un secondo
+livello di loop che oggi non esiste in queste due funzioni, per giunta dentro una funzione
+(`run_lira()`, ~2200 righe) già stratificata da anni di fix incrociati (floor_mode,
+matched_formula, canary, calibrazione a cluster, diagnostica composed-score). Implementarlo
+"alla cieca" in un solo giro, senza poter eseguire torch per verificarlo, rischia di
+introdurre un bug sottile che emergerebbe solo dopo un run reale di ore — un rischio peggiore
+di un breve rinvio per un design più accurato. Le correzioni "sicure" fatte oggi (Blocker 2
+sopra, e la nota epsilon dell'auditor) erano invece additive/isolate e verificabili con
+`py_compile` + test non-torch senza questo rischio.
+
+**Piano proposto (da confermare con l'utente prima di implementare):**
+- `cfg["lira"]["observation_surface"]`: `"client"` (default, invariato) | `"global"` (nuovo
+  — LiRA valuta contro `round_data["global_weights"]`, un solo modello condiviso per round,
+  stesso schema di calibrazione σ_in/σ_out già esistente per campione).
+- `cfg["yeom"]["observation_surface"]`/`cfg["shadow"]["observation_surface"]`: `"global"`
+  (default, invariato) | `"client"` (nuovo — richiede il secondo livello di loop per-sito
+  descritto sopra, raddoppia il costo computazionale di quei due attacchi per un fattore
+  pari al numero di siti).
+- Tutti e tre gli opt-in, zero impatto sul default, stesso principio già rispettato per
+  `member_scoring`/`floor_mode`/Strada B.
+
+**Stato reale**: design proposto, non implementato. In coda dopo Blocker 2/RQ6/Strada
+B-rerun nella lista di priorità sopra — non perché meno interessante, ma perché è la voce a
+più alto rischio di introdurre un bug non rilevabile senza un run reale, e le prime tre sono
+più economiche e più urgenti (soprattutto Blocker 2, che valida l'intero impianto di misura).
 
 ### Sweep di utility largo — trovare un ε operativo (non ancora nella roadmap prima di oggi)
 
