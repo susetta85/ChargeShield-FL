@@ -1262,6 +1262,77 @@ dell'utente, nell'ordine dato.
 
 ---
 
+### D1 — valutazione del Privacy Auditor (budget auditing, componente runtime) — corretto 2026-09-15
+
+**Errore nella proposta precedente, corretto su segnalazione esplicita dell'utente**: D1 proponeva "latenza di
+rilevamento del leakage" come metrica per valutare il Privacy Auditor. Questa metrica è priva di oggetto — il
+Privacy Auditor (§3.2 del paper) non rileva leakage: fa solo *budget auditing* (accounting online del consumo ε/δ
+e soglie su gradient-explosion/esaurimento budget). Chi rileva leakage è la suite offline di *auditing empirico
+della privacy* (Yeom/Shadow/LiRA, §3.3) — un componente architetturalmente diverso, con un oggetto di misura
+diverso. La distinzione è ora dichiarata esplicitamente in apertura del §3 del paper (EN+IT), prima che il lettore
+incontri §3.2/§3.3, così da non doverla dedurre.
+
+**Le tre metriche corrette per D1** (proposte dall'utente):
+
+1. **Overhead dell'ML Plane** — costo, in tempo/memoria, dell'infrastruttura event-driven (`emit_event()`/
+   `subscribe()`, hub centrale, collector) rispetto a un training loop senza questo layer di osservabilità. Non
+   ancora misurato — richiede un confronto A/B (stesso training, ML Plane attivo vs. bypassato) da progettare.
+2. **Precisione delle allerte** su GRADIENT_EXPLOSION ed esaurimento budget (PRIVACY_BUDGET_NEAR_EXHAUSTION/
+   EXHAUSTED) — quanto spesso questi due tipi di soglia producono veri positivi (es. contro un attacco Byzantine
+   noto, o un budget deliberatamente esaurito da un run lungo) senza falsi positivi sui client legittimi. Il codice
+   ha già dati utili per questo (`ByzantineDetector`/Krum già validato su attacchi Byzantine sintetici, §8 del
+   paper) — da consolidare in una metrica esplicita, non ancora fatto.
+3. **Il segnale di rischio dell'Auditor si alza sui run canary, dove il leakage c'è davvero?** — la più
+   interessante, e testabile SUBITO con i run già esistenti. Risultato di questa verifica sotto.
+
+**Verifica eseguita ora (dati già esistenti, nessun nuovo run)**: controllati i 4 run canary Blocker 2
+(`experiments/_blocker2_canary_nodp_3attacks{,_v2,_v3,_v4}/experiment_*.json`) — run con leakage REALE confermato
+(LiRA canary composto 0.66–0.6875, Yeom canary 0.70–0.86 su target model, cross-validato in questo stesso documento
+sopra). Il campo `per_round[r]["ids"]["alerts"]` è **vuoto in tutti e 3 i round, in tutti e 4 i run**, senza
+eccezioni.
+
+**Ma questo risultato non è direttamente interpretabile come "l'Auditor ignora il leakage reale" — è confuso da
+una scelta di design verificata nel codice**: tutti i run Blocker 2 usano `--no-dp`, e in `run_experiments.py`
+(righe ~5907-5914) il caso `no_dp=True` imposta esplicitamente `explosion_threshold=float("inf")` (disabilita
+GRADIENT_EXPLOSION per costruzione — commento nel codice: "senza DP non c'è sigma di rumore su cui basare la
+soglia") e `epsilon=1000.0` per l'Auditor (mantiene `budget_ratio` vicino a zero per costruzione, quindi
+PRIVACY_BUDGET_NEAR_EXHAUSTION/EXHAUSTED non possono scattare in soli 3 round). Restano vivi solo
+FEDMIA_SUSPICIOUS_LOW_SENSITIVITY (sensitivity anomalmente BASSA, il contrario di quello che cercavamo) e Krum
+(dominio integrità, non privacy). **In un run no-DP, 3 delle 4 categorie di allerta dell'Auditor sono
+strutturalmente non innescabili per costruzione — indipendentemente da quanto sia reale la memorizzazione.**
+
+C'è anche un secondo limite, più profondo, verificato nel codice (`_compute_sensitivity()` in
+`src/auditor/privacy_auditor.py`): il proxy di sensibilità è la norma L2 dell'INTERO update di un client — una
+statistica aggregata di grandezza, non legata a quali record specifici sono presenti. Duplicare 150-2805 sessioni
+canary dentro un pool di 1344-208277 sessioni di un sito (§6.2) è un'alterazione minuscola della norma L2
+complessiva — non c'è ragione a priori per cui questo proxy dovrebbe muoversi anche se il threshold fosse vivo.
+Questo collega direttamente al bug ε>budget già noto (task #146, jpl ε=1.070064): quel bug mostra che questo
+stesso proxy PUÒ muoversi in modo ampio per ragioni di scala/saturazione del clipping, del tutto scollegate dalla
+membership — coerente con l'ipotesi dell'utente ("il bug dell'ε che supera il budget suggerisce che potrebbe
+andare così").
+
+**Conclusione onesta per il paper**: il test come eseguibile OGGI con i dati esistenti è inconclusivo, non
+negativo — la struttura no-DP dei run Blocker 2 rende il test strutturalmente non probante per 3 allerte su 4, e
+il proxy stesso (norma L2 aggregata) non è concettualmente disegnato per essere sensibile a un piccolo sottoinsieme
+di record duplicati. Il risultato "zero allerte" va riportato COME TALE, con questa doppia qualificazione, non
+come "l'Auditor ha fallito il test": è un limite di design (proxy aggregato, non per-record) più un limite di
+questo specifico protocollo di run (no-DP disabilita 3 soglie su 4), non una dimostrazione empirica negativa.
+
+**Per un test genuinamente probante** (non ancora eseguito, proposto qui):
+1. Ripetere un run canary (office1, stesso config di Blocker 2) con `--no-dp` RIMOSSO (DP realmente attivo,
+   `explosion_threshold`/budget realmente vivi) — verifica se GRADIENT_EXPLOSION o budget-based si attivano quando
+   il leakage canary è presente vs. un run gemello senza canary, stesso seed/config/ε.
+2. Aggiungere un dump diagnostico opt-in (stesso pattern di `--raw-loss-dump`/`--roc-curve-dump-dir` già in
+   `run_experiments.py`) che persista `sensitivity`/`round_epsilon`/`budget_ratio` GREZZI per nodo per round nel
+   JSON — oggi questi numeri vengono calcolati da `PrivacyAuditor.audit()` ma scartati prima della
+   serializzazione (`ids_results` salva solo `severity`/`reasons` testuali da `ByzantineDetector.analyze_round()`,
+   mai i numeri grezzi di `AuditReport.metadata`). Senza questo dump, un confronto quantitativo (non solo
+   sì/no-allerta) fra sensitivity in un sito con canary vs. senza resta impossibile anche con DP attivo.
+Nessuno dei due è stato eseguito — entrambi richiedono una decisione esplicita dell'utente su quanto tempo
+investirci, dato lo stato già presente di altri esperimenti in coda (Scotland, sweep DP, ecc.).
+
+---
+
 ## Dipendenze tra i test
 
 ```
