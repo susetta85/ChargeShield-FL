@@ -1,0 +1,141 @@
+# ChargeShield-FL — Canary positive control, CHARGEPLACE SCOTLAND
+# (single-site Glasgow City, amplificazione per-record equiparata a office1)
+# 2026-09-15, Sprint 10zz+102
+#
+# SCOPO: allineare ChargePlace Scotland allo stesso strumento diagnostico già
+# applicato a office1/caltech/jpl (Blocker 2, canary positive control su
+# Yeom/Shadow/LiRA — attivo di default in tutti e tre da Sprint 10zz+93,
+# nessuna configurazione aggiuntiva necessaria).
+#
+# SITE SINGOLO, NON I 3 CLIENT DEL CONFIG PRINCIPALE: mirror esatto della
+# struttura dei config canary ACN (_caltech.yaml, _amplification_matched.yaml,
+# ecc.), che usano sempre UN SOLO sito come "federazione" a singolo nodo, non
+# i 3 siti del paper. Qui si usa Glasgow City (il più grande dei 3 client
+# scelti in config/experiment_chargeplace_scotland.yaml, 260347 sessioni
+# totali verificate 2026-09-09) — non l'unione dei 3.
+#
+# COMPATIBILITÀ SITE_ID VERIFICATA (non assunta) prima di scrivere questo
+# config: in scripts/run_experiments.py, inject_canaries() risolve il sito di
+# ogni sessione via _resolved_site_name() = _SITE_ID_TO_NAME.get(raw, raw or
+# "unknown"). _SITE_ID_TO_NAME contiene solo i 3 codici ACN ("0002"→caltech,
+# "0001"→jpl, "0019"→office1) — per ChargePlace Scotland raw è già il nome
+# leggibile della council area (site_id = self._local_authority.get(cpid, "")
+# in chargeplace_scotland_adapter.py, es. "Glasgow City", "City of
+# Edinburgh"), quindi il fallback restituisce raw invariato: "site: Glasgow
+# City" sotto risolve correttamente senza NESSUNA modifica al codice.
+# inject_canaries() è inoltre chiamato in modo generico su train_sessions/
+# holdout_sessions dopo load_sessions() (riga ~6711), indipendente da
+# cfg["dataset_adapter"] — nessun percorso ACN-specific da aggirare.
+#
+# CALCOLO n_duplicates (stessa logica di amplificazione per-record usata per
+# caltech, Sprint 10zz+101 — NON densità aggregata, vedi quel file per la
+# derivazione completa della formula):
+#   office1: n_duplicates / pool_train = 30 / 1344 = 2.2321%
+#   Glasgow City: pool_train = int(260347 × 0.8) = 208277
+#                 (stesso split 80/20 di scripts/run_experiments.py riga
+#                 ~6696, applicato per-sito; 260347 verificato 2026-09-09
+#                 contando le sessioni reali nei file mensili filtrate per
+#                 questa council area)
+#   n_duplicates = 2.2321% × 208277 ≈ 4649.6 → 4650
+#
+# n_templates=5 e n_nonmember_templates=20 invariati rispetto a office1/
+# caltech — stessa disciplina di isolare una sola variabile alla volta.
+#
+# DEVIAZIONE DELIBERATA epochs=50 (NON 1000 come negli altri config canary):
+# Glasgow City da solo (208277 sessioni train) è già ~155× office1 (1344) per
+# volume; 1000 epoch a questa scala sarebbe un investimento di tempo enorme e
+# incerto prima della deadline abstract (2026-11-25). epochs=50 replica
+# invece esattamente config/experiment_chargeplace_scotland.yaml (il config
+# "principale" già usato per l'unico run reale su questo dataset), quindi il
+# canary è testato nelle STESSE condizioni di training in cui verrà
+# effettivamente riportato nel paper, non in condizioni artificialmente più
+# aggressive. ATTENZIONE IN LETTURA: se il canary non viene rilevato qui, non
+# è possibile distinguere "l'amplificazione per-record non basta a questa
+# scala" da "50 epoch non bastano a far memorizzare il canary" — le due
+# variabili (epoch e scala del sito) NON sono isolate in questo run. Isolarle
+# richiederebbe un secondo run con epochs=1000, costo aggiuntivo non
+# impegnato qui: valutare insieme all'utente solo se il risultato a 50 epoch
+# lo giustifica.
+#
+# n_shadow=8 (non 16 come nel config principale) — stessa scelta di velocità
+# già fatta per tutti gli altri config canary.
+#
+# ATTENZIONE TEMPI: nessuna misura empirica pregressa di un run su un SINGOLO
+# client Scotland (l'unico run reale finora ha usato tutti e 3 i client,
+# 688896 sessioni, con epochs=50/fl_rounds=10). Questo config usa 1 client
+# (260347 sessioni, ~38% di quel totale) e fl_rounds=3 (non 10) — atteso più
+# veloce del run già fatto, ma da cronometrare, non da assumere lineare.
+#
+# Comando di lancio (sulla macchina fisica, MAI in parallelo con un altro
+# esperimento/job NVFLARE in corso):
+#   python3 scripts/run_experiments.py \
+#       --config config/experiment_canary_positive_control_chargeplace_scotland.yaml \
+#       --no-dp --sweep-dir experiments/_canary_positive_control_chargeplace_scotland
+#
+# Lettura attesa: se canary_auc_roc/yeom_canary_auc_roc si allontanano da 0.5
+# in modo sistematico (come office1, non come caltech/jpl), l'amplificazione
+# per-record equiparata funziona anche su questo dataset strutturalmente
+# diverso (nessun entity-aware split possibile, solo 4/6 feature informative).
+# Se restano al livello del caso, va riportato onestamente come ulteriore
+# mancata replica (terzo sito su quattro, dopo caltech e jpl) — non da
+# forzare in una narrazione positiva.
+
+experiment:
+  name: chargeshield_canary_positive_control_chargeplace_scotland
+  fl_rounds: 3
+  seed: 42
+  epsilon: 1.0
+  delta: 1.0e-5
+  max_grad_norm: 1.0
+
+dataset_adapter: chargeplace_scotland
+
+chargeplace_scotland:
+  metadata_dir: datasets/alt/chargeplace_scotland/CPID_information
+  clients:
+    - Glasgow City
+  session_files:
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/October22.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/November22.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/DEC-22.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/JAN-23.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/FEB-2023.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/March23.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/April23.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/MAY23.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/JUNE-23.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/JULY-23.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/AUG-23.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/SEP-23.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/OCT-23.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/NOV-23.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/DEC-23.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/JAN-24.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/FEB-24.xlsx
+    - datasets/alt/chargeplace_scotland/Sessions_from_CPS/MARCH-24.xlsx
+
+ml:
+  input_dim: 6
+  lr: 0.001
+  epochs: 50   # DEVIAZIONE deliberata da 1000 — vedi nota sopra
+  batch_size: 32
+  proximal_mu: 0.01
+
+canary:
+  enabled: true
+  site: "Glasgow City"
+  n_templates: 5
+  n_duplicates: 4650    # 30 × (208277/1344) — amplificazione per-record equiparata a office1
+  n_nonmember_templates: 20
+
+output:
+  experiments_dir: experiments
+
+lira:
+  n_shadow: 8
+
+byzantine_attack:
+  enabled: false
+  attack_type: gradient_scaling
+  byzantine_node: synthetic_1
+  scale_factor: 10

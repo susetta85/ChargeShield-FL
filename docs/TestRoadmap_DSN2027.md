@@ -1174,6 +1174,94 @@ prossima volta che si tocca questa sezione.
 
 ---
 
+### Audit ChargePlace Scotland — stato e piano di allineamento (2026-09-15, Sprint 10zz+102)
+
+**Su richiesta esplicita dell'utente** (dopo aver corretto un proprio refuso: si era
+riferita a Caltech quando intendeva questo dataset), stato completo di ChargePlace Scotland
+rispetto a quanto fatto su ACN-Data (caltech/jpl/office1):
+
+**Fatto**: adapter (`src/adapters/chargeplace_scotland_adapter.py`, stesso contratto
+`AbstractDataset`/6 feature di ACN), wiring in `run_experiments.py` (`dataset_adapter:
+chargeplace_scotland`) e in NVFLARE, fix del bug UTC/ora-legale (sessioni erano salvate in
+ora locale Europe/London grezza invece di UTC, sfasamento sistematico di +1h in BST). **Un
+solo run reale**: no-DP, 3 client (Glasgow City/East Ayrshire/City of Edinburgh, 688896
+sessioni), `experiments/experiment_20260910_044144.json`, `mean_auc_roc≈0.5008`,
+`mean_shadow_auc_roc≈0.5007`, `mean_lira_auc_roc≈0.5006` (LOW) — **ma questo run precede il
+fix UTC**, quindi non è verificato con il codice corretto.
+
+**Non fatto**: nessun rerun post-fix, nessun canary positive control, nessuno sweep
+DP-placement, nessuna replica multi-seed, nessuna integrazione nel paper. Limite strutturale
+permanente (non risolvibile): `user_id` sempre `None` → nessuno split entity-aware possibile
+su questo dataset; `kwh_requested`/`minutes_available` sempre 0.0/0 → solo 4 delle 6 feature
+sono informative.
+
+**Costo/rischio esplicito**: il sottoinsieme a 3 client (688896 sessioni) è ~10.3× l'intero
+ACN-Data (66713 sessioni, 3 siti, tutti gli anni) — la campagna paper 5-seed×10-config su
+quel volume ha impiegato ~108 ore. Il tempo NON scala necessariamente in modo lineare con la
+dimensione dati (dipende da quanti shadow LiRA vengono riaddestrati e su quanti dati), va
+misurato empiricamente. `config/experiment_chargeplace_scotland.yaml` lo segnala già da sé
+(nota SMOKE TEST in fondo al file) raccomandando un test su 2-3 mesi prima di una campagna
+piena, vista la deadline abstract del 2026-11-25.
+
+**Compatibilità canary verificata (non assunta)**: `inject_canaries()` risolve il sito di
+ogni sessione via `_resolved_site_name()` = `_SITE_ID_TO_NAME.get(raw, raw or "unknown")`.
+Per Scotland `site_id` è già il nome leggibile della council area (es. "Glasgow City",
+popolato da `self._local_authority.get(cpid, "")` nell'adapter) — non presente nella mappa
+dei 3 codici ACN, quindi il fallback lo passa invariato: un `canary.site: "Glasgow City"`
+funziona senza nessuna modifica al codice. `inject_canaries()` è inoltre invocato in modo
+generico dopo il caricamento sessioni, indipendente da `cfg["dataset_adapter"]`.
+
+**Piano approvato dall'utente, 3 componenti (in ordine di costo crescente)**:
+
+1. **Re-run economico del baseline no-DP**, config invariato, ora che il fix UTC è in vigore
+   — verifica minima che la conclusione AUC≈0.50/LOW regga col codice corretto:
+   ```
+   python3 scripts/run_experiments.py \
+       --config config/experiment_chargeplace_scotland.yaml \
+       --no-dp --sweep-dir experiments/_chargeplace_scotland_baseline_postfix
+   ```
+
+2. **Canary positive control**, single-site Glasgow City (il più grande dei 3 client,
+   260347 sessioni totali). `n_duplicates=4650`, calcolato con la stessa amplificazione
+   per-record di office1 (2.2321% × pool training 208277 = 260347×80% ≈ 4649.6 → 4650),
+   `n_templates=5`/`n_nonmember_templates=20` invariati. **Deviazione deliberata:
+   `epochs=50`, non 1000 come negli altri config canary** — a questa scala (Glasgow City da
+   sola è ~155× office1 per volume) 1000 epoch sarebbe un costo enorme e incerto prima della
+   deadline; il canary è quindi testato nelle stesse condizioni di training del run
+   principale, con l'avvertenza che un esito negativo non distinguerebbe "amplificazione
+   insufficiente a questa scala" da "50 epoch non bastano a far memorizzare il canary" — le
+   due variabili non sono isolate in questo run. Nuovo config:
+   `config/experiment_canary_positive_control_chargeplace_scotland.yaml`.
+   ```
+   python3 scripts/run_experiments.py \
+       --config config/experiment_canary_positive_control_chargeplace_scotland.yaml \
+       --no-dp --sweep-dir experiments/_canary_positive_control_chargeplace_scotland
+   ```
+
+3. **Sweep DP-placement** (dp-fedavg/central/local × ε∈{1.0,0.5,0.1}) — **la componente più
+   costosa e rischiosa rispetto alla deadline**, non richiede nuovi file YAML (dp-mode/
+   epsilon sono flag CLI, non nel config), quindi è la stessa matrice di comandi già usata
+   per ACN-Data applicata a `config/experiment_chargeplace_scotland.yaml`:
+   ```
+   for dp_mode in dp-fedavg central local; do
+     for eps in 1.0 0.5 0.1; do
+       python3 scripts/run_experiments.py \
+           --config config/experiment_chargeplace_scotland.yaml \
+           --dp-mode $dp_mode --epsilon $eps \
+           --sweep-dir experiments/_chargeplace_scotland_dp_sweep
+     done
+   done
+   ```
+   Da lanciare per ultima, solo dopo aver visto il tempo reale dei primi due run — 9
+   run interi su un dataset ~10× più grande di ACN-Data rischiano concretamente di non
+   stare nei tempi prima del 25/11.
+
+Nessun run eseguito in questa voce — solo verifica di compatibilità (read-only) e
+preparazione di config/comandi; i tre passi sopra restano da lanciare sulla macchina fisica
+dell'utente, nell'ordine dato.
+
+---
+
 ## Dipendenze tra i test
 
 ```
