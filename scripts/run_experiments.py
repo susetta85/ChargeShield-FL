@@ -1565,6 +1565,8 @@ def run_fedmia(
     non_members: list[dict[str, Any]],
     fl_results: dict[int, dict[str, Any]],
     roc_curve_dump_path: str | None = None,
+    no_dp: bool = False,
+    dp_mode: str = "dp-fedavg",
 ) -> dict[int, dict[str, Any]]:
     """
     Loss-based Membership Inference Attack per FL con autoencoder.
@@ -1612,6 +1614,30 @@ def run_fedmia(
 
     logger.info(f"FedMIA — members: {len(members)}, non-members: {len(non_members)}")
 
+    # Observation surface: global (default, invariato) vs client (Sprint 10zz+94,
+    # 2026-09-15) — opt-in richiesto esplicitamente dall'utente per "chiudere il
+    # cerchio" tra i tre attacchi: LiRA attacca già gli update per-client
+    # (round_data["updates"]/["raw_updates"], selezione dp_mode-aware, Strada B);
+    # "client" fa attaccare anche a Yeom quella stessa superficie invece del
+    # modello aggregato round_data["global_weights"] (superficie "global",
+    # INVARIATA, resta il default). Sotto "client", ogni membro è valutato SOLO
+    # dal modello del client del proprio sito (group_sessions_by_site(), già
+    # usato altrove per lo stesso scopo) — una rilevazione positiva attribuisce
+    # l'appartenenza a un operatore specifico, non più "da qualche parte nella
+    # federazione" (vedi §5 del paper). Il pool non-membro resta lo stesso
+    # holdout condiviso, valutato con CIASCUN modello client (concatenato nel
+    # pool finale) — semplificazione dichiarata: non ancora verificato con un
+    # run reale (nessun torch in questo sandbox), vedi TestRoadmap_DSN2027.md.
+    _yeom_observation_surface = cfg.get("yeom", {}).get("observation_surface", "global")
+    if _yeom_observation_surface not in ("global", "client"):
+        raise ValueError(
+            f"cfg['yeom']['observation_surface'] non valido: {_yeom_observation_surface!r} "
+            "(atteso 'global' o 'client')"
+        )
+    _members_by_site_yeom = (
+        group_sessions_by_site(members) if _yeom_observation_surface == "client" else {}
+    )
+
     # ── Bilanciamento pool MIA ──────────────────────────────────────────────────
     # ACN-Data: 10,458 members vs 2,615 non-members (split 80/20).
     # Un pool sbilanciato 4:1 non invalida l'AUC-ROC (che è rank-based) ma produce
@@ -1658,46 +1684,102 @@ def run_fedmia(
     _roc_curves_per_round: dict[int, dict[str, list[float]]] = {}
 
     for round_num, round_data in sorted(fl_results.items()):
-        global_weights = round_data.get("global_weights")
-        if global_weights is None:
-            logger.warning(f"Round {round_num}: global_weights assenti — skip FedMIA")
-            continue
+        # Sprint 10zz+94 — "client" costruisce N modelli (uno per client
+        # sottomittente in questo round) da round_data["updates"]/["raw_updates"]
+        # (stessa selezione dp_mode-aware di run_lira(), Strada B), invece di UN
+        # modello da round_data["global_weights"]. `model` sotto resta l'ultimo
+        # modello costruito (riusato dal blocco canary più sotto SOLO in
+        # modalità "global" — vedi commento lì per il perché in "client" il
+        # canary non è ancora supportato).
+        model = None
+        if _yeom_observation_surface == "client":
+            if dp_mode == "dp-fedavg" and not no_dp:
+                _yeom_client_updates = round_data.get("raw_updates") or []
+            else:
+                _yeom_client_updates = round_data.get("updates", [])
+            if not _yeom_client_updates:
+                logger.warning(
+                    f"Round {round_num}: observation_surface='client' ma nessun "
+                    "update — skip FedMIA"
+                )
+                continue
 
-        # Carica pesi globali FL in un autoencoder locale (inference only).
-        # load_state_dict trasferisce anche i buffer BatchNorm (running_mean/var).
-        # global_weights è una lista con lo stesso ordine di state_dict().values():
-        # sia AutoencoderTrainer.get_weights() che questo zip usano state_dict()
-        # sulla stessa architettura Autoencoder, quindi l'ordine è garantito.
-        model = Autoencoder(input_dim=input_dim, **_autoencoder_arch_kwargs(cfg))
-        orig_state = model.state_dict()
-        keys = list(orig_state.keys())
-        if len(global_weights) != len(keys):
-            logger.error(
-                f"Round {round_num}: global_weights ha {len(global_weights)} elementi, "
-                f"state_dict ne richiede {len(keys)} — skip FedMIA"
-            )
-            continue
-        state = {
-            k: (w if isinstance(w, torch.Tensor) else torch.tensor(w)).to(orig_state[k].dtype)
-            for k, w in zip(keys, global_weights)
-        }
-        model.load_state_dict(state, strict=True)
-        # Clamp BatchNorm running_var a valori positivi: il rumore DP con σ grande
-        # (es. σ=48 per ε=0.1) può rendere running_var negativa, causando NaN in
-        # sqrt(running_var + eps) durante la forward pass in eval mode.
-        # Questo guard è difensivo; con il fix in GradientManager._add_noise() i
-        # buffer BN non ricevono più rumore, quindi running_var sarà già positiva.
-        for buf_name, buf in model.named_buffers():
-            if "running_var" in buf_name:
-                buf.clamp_(min=1e-8)
-        model.eval()
+            member_scores: list[float] = []
+            non_member_scores: list[float] = []
+            for _update in _yeom_client_updates:
+                if _update is None or not _update.weights:
+                    continue
+                _client_model = Autoencoder(input_dim=input_dim, **_autoencoder_arch_kwargs(cfg))
+                _orig_state = _client_model.state_dict()
+                _keys = list(_orig_state.keys())
+                if len(_update.weights) != len(_keys):
+                    logger.warning(
+                        f"Round {round_num} {getattr(_update, 'cluster_id', '?')}: "
+                        "weights shape mismatch — skip client"
+                    )
+                    continue
+                _state = {
+                    k: (w if isinstance(w, torch.Tensor) else torch.tensor(w)).to(_orig_state[k].dtype)
+                    for k, w in zip(_keys, _update.weights)
+                }
+                _client_model.load_state_dict(_state, strict=True)
+                for _buf_name, _buf in _client_model.named_buffers():
+                    if "running_var" in _buf_name:
+                        _buf.clamp_(min=1e-8)
+                _client_model.eval()
+                model = _client_model
 
-        member_scores     = _score_batch(model, members_balanced)
-        non_member_scores = _score_batch(model, non_members)
+                _site_name = getattr(_update, "cluster_id", None)
+                _site_members = _members_by_site_yeom.get(_site_name, [])
+                if not _site_members:
+                    continue
+                member_scores.extend(_score_batch(_client_model, _site_members))
+                non_member_scores.extend(_score_batch(_client_model, non_members))
 
-        if not member_scores or not non_member_scores:
-            logger.warning(f"Round {round_num}: score batch vuoto — skip AUC")
-            continue
+            if not member_scores or not non_member_scores:
+                logger.warning(f"Round {round_num}: score batch vuoto — skip AUC")
+                continue
+        else:
+            global_weights = round_data.get("global_weights")
+            if global_weights is None:
+                logger.warning(f"Round {round_num}: global_weights assenti — skip FedMIA")
+                continue
+
+            # Carica pesi globali FL in un autoencoder locale (inference only).
+            # load_state_dict trasferisce anche i buffer BatchNorm (running_mean/var).
+            # global_weights è una lista con lo stesso ordine di state_dict().values():
+            # sia AutoencoderTrainer.get_weights() che questo zip usano state_dict()
+            # sulla stessa architettura Autoencoder, quindi l'ordine è garantito.
+            model = Autoencoder(input_dim=input_dim, **_autoencoder_arch_kwargs(cfg))
+            orig_state = model.state_dict()
+            keys = list(orig_state.keys())
+            if len(global_weights) != len(keys):
+                logger.error(
+                    f"Round {round_num}: global_weights ha {len(global_weights)} elementi, "
+                    f"state_dict ne richiede {len(keys)} — skip FedMIA"
+                )
+                continue
+            state = {
+                k: (w if isinstance(w, torch.Tensor) else torch.tensor(w)).to(orig_state[k].dtype)
+                for k, w in zip(keys, global_weights)
+            }
+            model.load_state_dict(state, strict=True)
+            # Clamp BatchNorm running_var a valori positivi: il rumore DP con σ grande
+            # (es. σ=48 per ε=0.1) può rendere running_var negativa, causando NaN in
+            # sqrt(running_var + eps) durante la forward pass in eval mode.
+            # Questo guard è difensivo; con il fix in GradientManager._add_noise() i
+            # buffer BN non ricevono più rumore, quindi running_var sarà già positiva.
+            for buf_name, buf in model.named_buffers():
+                if "running_var" in buf_name:
+                    buf.clamp_(min=1e-8)
+            model.eval()
+
+            member_scores     = _score_batch(model, members_balanced)
+            non_member_scores = _score_batch(model, non_members)
+
+            if not member_scores or not non_member_scores:
+                logger.warning(f"Round {round_num}: score batch vuoto — skip AUC")
+                continue
 
         labels = [1] * len(member_scores) + [0] * len(non_member_scores)
         scores = member_scores + non_member_scores
@@ -1794,12 +1876,19 @@ def run_fedmia(
         # nello stesso dict per round — senza prefisso, il canary_auc_roc
         # (bare) già pubblicato da LiRA sovrascriverebbe silenziosamente
         # quello di Yeom.
+        #
+        # Sprint 10zz+94 — limitato a observation_surface=="global": in
+        # modalità "client" `model` è solo l'ultimo modello-client costruito
+        # nel round (non è per-sito), quindi valutarci sopra TUTTI i canary
+        # (che appartengono a siti eterogenei) darebbe un numero fuorviante.
+        # Semplificazione dichiarata: canary sotto "client" non ancora
+        # supportato, vedi TestRoadmap_DSN2027.md.
         canary_members    = [s for s in members if s.get("_canary_role") == "member"]
         canary_nonmembers = [s for s in non_members if s.get("_canary_role") == "nonmember"]
         yeom_canary_auc_roc = None
         yeom_canary_advantage = None
         yeom_canary_confusion = None
-        if canary_members and canary_nonmembers:
+        if _yeom_observation_surface == "global" and canary_members and canary_nonmembers:
             _canary_member_scores    = _score_batch(model, canary_members)
             _canary_nonmember_scores = _score_batch(model, canary_nonmembers)
             if _canary_member_scores and _canary_nonmember_scores:
@@ -1845,6 +1934,8 @@ def run_fedmia_shadow(
     holdout_sessions: list[dict[str, Any]],
     fl_results: dict[int, dict[str, Any]],
     roc_curve_dump_path: str | None = None,
+    no_dp: bool = False,
+    dp_mode: str = "dp-fedavg",
 ) -> dict[int, dict[str, Any]]:
     """
     Calibrated Shadow-Model MIA Attack (ispirato a LiRA, Carlini et al. 2022).
@@ -1943,6 +2034,31 @@ def run_fedmia_shadow(
         f"eval_members: {len(eval_members)}, non-members: {len(holdout_sessions)}"
     )
 
+    # Sprint 10zz+94 (2026-09-15, task #155) — observation_surface opt-in,
+    # stesso significato/design di Yeom sopra: "global" (default, invariato)
+    # confronta shadow_model contro un UNICO target_model per round, costruito
+    # da round_data["global_weights"]; "client" confronta invece contro un
+    # target_model per-client costruito da round_data["updates"]/["raw_updates"]
+    # (stessa selezione dp_mode-aware di run_lira()/run_fedmia(), Strada B),
+    # valutando ogni sito solo sui propri eval_members. Il shadow_model di
+    # calibrazione resta UNICO e globale in entrambe le modalità: è il
+    # riferimento "non ha mai visto questi dati", non dipende dal FL round,
+    # quindi non ha un analogo "per-client" sensato. Semplificazione
+    # dichiarata: il canary block più sotto resta limitato a "global" (stesso
+    # motivo di Yeom — un target_model per-client non è rappresentativo di
+    # tutti i canary, che appartengono a siti eterogenei); non ancora
+    # verificato con un run reale (nessun torch in questo sandbox), vedi
+    # TestRoadmap_DSN2027.md.
+    _shadow_observation_surface = cfg.get("shadow", {}).get("observation_surface", "global")
+    if _shadow_observation_surface not in ("global", "client"):
+        raise ValueError(
+            f"cfg['shadow']['observation_surface'] non valido: {_shadow_observation_surface!r} "
+            "(atteso 'global' o 'client')"
+        )
+    _eval_members_by_site_shadow = (
+        group_sessions_by_site(eval_members) if _shadow_observation_surface == "client" else {}
+    )
+
     # ── Step 2: addestra il shadow model ──────────────────────────────────────
     # Autoencoder locale (non FL, no DP) addestrato sul shadow_train.
     # Epoche totali = local_epochs × total_rounds (equivalente al training FL),
@@ -2026,6 +2142,10 @@ def run_fedmia_shadow(
     # Pre-computa shadow scores una volta sola (non dipende dal round FL)
     shadow_scores_members     = _mse_batch(shadow_model, eval_members)
     shadow_scores_nonmembers  = _mse_batch(shadow_model, holdout_sessions)
+    # Preservata (ordine = holdout_sessions) per observation_surface="client"
+    # sotto — lì ogni client-model valuta l'intero pool non-membro, senza il
+    # sotto-campionamento bilanciato usato dal ramo "global".
+    _shadow_scores_nonmembers_unbalanced = list(shadow_scores_nonmembers)
 
     # Bilanciamento: stessa dimensione per eval_members e non-members
     _bal_rng       = random.Random(seed + 999)
@@ -2033,54 +2153,132 @@ def run_fedmia_shadow(
     shadow_scores_members    = _bal_rng.sample(shadow_scores_members, _n_bal)
     shadow_scores_nonmembers = _bal_rng.sample(shadow_scores_nonmembers, _n_bal)
 
+    # Sprint 10zz+94 — precomputa shadow scores per sito (shadow_model è unico
+    # e non dipende dal round FL, quindi questo va fatto una sola volta, come
+    # sopra). Ordine di ogni lista = ordine di _eval_members_by_site_shadow[sito],
+    # cosi' lo zip con i target scores per-client nel round loop resta allineato
+    # per indice senza ricorrere al trucco "stesso seed" usato dal ramo "global".
+    _shadow_scores_by_site: dict[str, list[float]] = {}
+    if _shadow_observation_surface == "client":
+        for _site_name, _site_members in _eval_members_by_site_shadow.items():
+            if _site_members:
+                _shadow_scores_by_site[_site_name] = _mse_batch(shadow_model, _site_members)
+
     # ── Step 4: per ogni round FL, calcola score calibrato ─────────────────────
     shadow_results: dict[int, dict[str, Any]] = {}
     # Sprint 10zz+29 (2026-09-03, task #54) — vedi run_fedmia() sopra.
     _roc_curves_per_round: dict[int, dict[str, list[float]]] = {}
 
     for round_num, round_data in sorted(fl_results.items()):
-        global_weights = round_data.get("global_weights")
-        if global_weights is None:
-            continue
+        # Sprint 10zz+94 — "client" costruisce N target model (uno per client
+        # sottomittente nel round, da round_data["updates"]/["raw_updates"],
+        # stessa selezione dp_mode-aware di run_lira()/run_fedmia(), Strada B)
+        # invece di UN target model da round_data["global_weights"]. Ogni
+        # client-model valuta SOLO i propri eval_members (via
+        # _eval_members_by_site_shadow) contro i propri shadow scores
+        # pre-calcolati (_shadow_scores_by_site), e l'intero pool non-membro
+        # condiviso; i risultati di tutti i client sono poi concatenati.
+        target_model = None
+        if _shadow_observation_surface == "client":
+            if dp_mode == "dp-fedavg" and not no_dp:
+                _shadow_client_updates = round_data.get("raw_updates") or []
+            else:
+                _shadow_client_updates = round_data.get("updates", [])
+            if not _shadow_client_updates:
+                logger.warning(
+                    f"Shadow MIA round {round_num}: observation_surface='client' ma "
+                    "nessun update — skip round"
+                )
+                continue
 
-        # Carica pesi globali FL nel target model
-        target_model = Autoencoder(input_dim=input_dim, **_autoencoder_arch_kwargs(cfg))
-        orig_state   = target_model.state_dict()
-        keys         = list(orig_state.keys())
-        if len(global_weights) != len(keys):
-            logger.error(
-                f"Shadow MIA round {round_num}: global_weights {len(global_weights)} "
-                f"!= state_dict {len(keys)} — skip"
-            )
-            continue
-        state = {
-            k: (w if isinstance(w, torch.Tensor) else torch.tensor(w)).to(orig_state[k].dtype)
-            for k, w in zip(keys, global_weights)
-        }
-        target_model.load_state_dict(state, strict=True)
-        for buf_name, buf in target_model.named_buffers():
-            if "running_var" in buf_name:
-                buf.clamp_(min=1e-8)
-        target_model.eval()
+            calibrated_members: list[float] = []
+            calibrated_nonmembers: list[float] = []
+            for _update in _shadow_client_updates:
+                if _update is None or not _update.weights:
+                    continue
+                _client_target = Autoencoder(input_dim=input_dim, **_autoencoder_arch_kwargs(cfg))
+                _orig_state = _client_target.state_dict()
+                _keys = list(_orig_state.keys())
+                if len(_update.weights) != len(_keys):
+                    logger.warning(
+                        f"Shadow MIA round {round_num} {getattr(_update, 'cluster_id', '?')}: "
+                        "weights shape mismatch — skip client"
+                    )
+                    continue
+                _state = {
+                    k: (w if isinstance(w, torch.Tensor) else torch.tensor(w)).to(_orig_state[k].dtype)
+                    for k, w in zip(_keys, _update.weights)
+                }
+                _client_target.load_state_dict(_state, strict=True)
+                for _buf_name, _buf in _client_target.named_buffers():
+                    if "running_var" in _buf_name:
+                        _buf.clamp_(min=1e-8)
+                _client_target.eval()
+                target_model = _client_target
 
-        # Scores target model
-        target_scores_members    = _mse_batch(target_model, eval_members)
-        target_scores_nonmembers = _mse_batch(target_model, holdout_sessions)
+                _site_name = getattr(_update, "cluster_id", None)
+                _site_shadow_scores = _shadow_scores_by_site.get(_site_name)
+                _site_members = _eval_members_by_site_shadow.get(_site_name, [])
+                if not _site_shadow_scores or not _site_members:
+                    continue
+                _site_target_scores = _mse_batch(_client_target, _site_members)
+                calibrated_members.extend(
+                    s - t for s, t in zip(_site_shadow_scores, _site_target_scores)
+                )
 
-        # Bilancia anche i target scores allo stesso indice del shadow
-        _bal_rng2 = random.Random(seed + 999)
-        target_scores_members    = _bal_rng2.sample(target_scores_members, _n_bal)
-        target_scores_nonmembers = _bal_rng2.sample(target_scores_nonmembers, _n_bal)
+                _client_nonmember_target_scores = _mse_batch(_client_target, holdout_sessions)
+                calibrated_nonmembers.extend(
+                    s - t for s, t in zip(_shadow_scores_nonmembers_unbalanced, _client_nonmember_target_scores)
+                )
 
-        # score calibrato = loss_shadow − loss_target
-        # Positivo → target conosce il campione meglio del shadow → membro
-        calibrated_members    = [
-            s - t for s, t in zip(shadow_scores_members,    target_scores_members)
-        ]
-        calibrated_nonmembers = [
-            s - t for s, t in zip(shadow_scores_nonmembers, target_scores_nonmembers)
-        ]
+            if not calibrated_members or not calibrated_nonmembers:
+                logger.warning(f"Shadow MIA round {round_num}: score batch vuoto — skip AUC")
+                continue
+        else:
+            global_weights = round_data.get("global_weights")
+            if global_weights is None:
+                continue
 
+            # Carica pesi globali FL nel target model
+            target_model = Autoencoder(input_dim=input_dim, **_autoencoder_arch_kwargs(cfg))
+            orig_state   = target_model.state_dict()
+            keys         = list(orig_state.keys())
+            if len(global_weights) != len(keys):
+                logger.error(
+                    f"Shadow MIA round {round_num}: global_weights {len(global_weights)} "
+                    f"!= state_dict {len(keys)} — skip"
+                )
+                continue
+            state = {
+                k: (w if isinstance(w, torch.Tensor) else torch.tensor(w)).to(orig_state[k].dtype)
+                for k, w in zip(keys, global_weights)
+            }
+            target_model.load_state_dict(state, strict=True)
+            for buf_name, buf in target_model.named_buffers():
+                if "running_var" in buf_name:
+                    buf.clamp_(min=1e-8)
+            target_model.eval()
+
+            # Scores target model
+            target_scores_members    = _mse_batch(target_model, eval_members)
+            target_scores_nonmembers = _mse_batch(target_model, holdout_sessions)
+
+            # Bilancia anche i target scores allo stesso indice del shadow
+            _bal_rng2 = random.Random(seed + 999)
+            target_scores_members    = _bal_rng2.sample(target_scores_members, _n_bal)
+            target_scores_nonmembers = _bal_rng2.sample(target_scores_nonmembers, _n_bal)
+
+            # score calibrato = loss_shadow − loss_target
+            # Positivo → target conosce il campione meglio del shadow → membro
+            calibrated_members    = [
+                s - t for s, t in zip(shadow_scores_members,    target_scores_members)
+            ]
+            calibrated_nonmembers = [
+                s - t for s, t in zip(shadow_scores_nonmembers, target_scores_nonmembers)
+            ]
+
+        _n_members_out    = len(calibrated_members)
+        _n_nonmembers_out = len(calibrated_nonmembers)
         labels = [1] * len(calibrated_members) + [0] * len(calibrated_nonmembers)
         scores = calibrated_members + calibrated_nonmembers
 
@@ -2135,12 +2333,18 @@ def run_fedmia_shadow(
         # "shadow_" per lo stesso motivo di yeom_canary_auc_roc in
         # run_fedmia() — evitare la collisione con il canary_auc_roc (bare)
         # già pubblicato da LiRA nel merge yeom→shadow→lira.
+        #
+        # Sprint 10zz+94 — limitato a observation_surface=="global", stesso
+        # motivo del canary block gemello in run_fedmia(): in modalità
+        # "client" `target_model` è solo l'ultimo client-model costruito nel
+        # round, non rappresentativo di tutti i siti a cui i canary
+        # appartengono. Semplificazione dichiarata, vedi TestRoadmap_DSN2027.md.
         canary_members    = [s for s in eval_members if s.get("_canary_role") == "member"]
         canary_nonmembers = [s for s in holdout_sessions if s.get("_canary_role") == "nonmember"]
         shadow_canary_auc_roc = None
         shadow_canary_advantage = None
         shadow_canary_confusion = None
-        if canary_members and canary_nonmembers:
+        if _shadow_observation_surface == "global" and canary_members and canary_nonmembers:
             _c_shadow_m = _mse_batch(shadow_model, canary_members)
             _c_shadow_n = _mse_batch(shadow_model, canary_nonmembers)
             _c_target_m = _mse_batch(target_model, canary_members)
@@ -2162,8 +2366,8 @@ def run_fedmia_shadow(
             "shadow_member_score_mean":     round(float(np.nanmean(calibrated_members)), 6),
             "shadow_non_member_score_mean": round(float(np.nanmean(calibrated_nonmembers)), 6),
             "shadow_score_gap":             round(score_gap, 6),
-            "n_eval_members":               _n_bal,
-            "n_non_members":                _n_bal,
+            "n_eval_members":               _n_members_out,
+            "n_non_members":                _n_nonmembers_out,
             **tpr_fields,
             "shadow_advantage":             advantage,
             "shadow_confusion":             confusion,
@@ -2703,6 +2907,27 @@ def run_lira(
             "(atteso 'symmetric' o 'independent')"
         )
 
+    # Observation surface: client (default) vs global (Sprint 10zz+94, 2026-09-15) —
+    # opt-in richiesto esplicitamente dall'utente per "chiudere il cerchio" tra i tre
+    # attacchi: Yeom/Shadow attaccano round_data["global_weights"] (il modello
+    # aggregato, superficie "global"), LiRA attacca invece per-client
+    # round_data["updates"]/["raw_updates"] (superficie "client", INVARIATA, resta il
+    # default). "global" fa attaccare a LiRA lo STESSO modello aggregato di
+    # Yeom/Shadow, riusando comunque la calibrazione shadow esistente per-cluster
+    # (μ_in/μ_out/σ_in/σ_out) — cambia SOLO la fonte di target_loss (un modello
+    # condiviso per round invece del modello specifico del client), non quali
+    # campioni vengono valutati né come vengono calibrati. Vedi il punto di
+    # applicazione più sotto (subito prima del loop `for _client_idx, update in
+    # enumerate(client_updates)`) per il motivo per cui questo è un cambiamento
+    # chirurgico: la selezione dei membri per cluster e tutta la diagnostica restano
+    # identiche, cambia solo quale modello produce target_loss.
+    _lira_observation_surface = cfg.get("lira", {}).get("observation_surface", "client")
+    if _lira_observation_surface not in ("client", "global"):
+        raise ValueError(
+            f"cfg['lira']['observation_surface'] non valido: {_lira_observation_surface!r} "
+            "(atteso 'client' o 'global')"
+        )
+
     # Shadow init: warm-start vs cold-start (Sprint 10zz+88, 2026-09-15) — flag
     # diagnostico opt-in, Blocker 1 del feedback esterno verificato (errata
     # punto §5 "Cosa farei ora"): la nostra Adattamento #1 a §3.5 (shadow
@@ -3189,6 +3414,29 @@ def run_lira(
                 logger.warning(f"LiRA round {round_num}: nessun update — skip")
                 continue
 
+        # Observation surface "global" (Sprint 10zz+94) — costruisce UN SOLO modello
+        # condiviso per questo round da round_data["global_weights"], esattamente
+        # come fanno run_fedmia()/run_fedmia_shadow(). Costruito una volta sola qui
+        # fuori dal loop per-client sotto; se "client" (default), resta None e non è
+        # usato — zero costo/impatto per ogni run/config esistente.
+        _lira_global_model = None
+        if _lira_observation_surface == "global":
+            _global_weights_this_round = round_data.get("global_weights")
+            if _global_weights_this_round is None:
+                logger.warning(
+                    f"LiRA round {round_num}: observation_surface='global' ma "
+                    "global_weights assenti — skip round"
+                )
+                continue
+            _lira_global_model = Autoencoder(input_dim=input_dim, **_autoencoder_arch_kwargs(cfg))
+            if not _load_weights_into(_lira_global_model, _global_weights_this_round):
+                logger.warning(
+                    f"LiRA round {round_num}: observation_surface='global' — "
+                    "global_weights shape mismatch — skip round"
+                )
+                continue
+            _lira_global_model.eval()
+
         # Warm-start per gli shadow di QUESTO round: stesso punto di partenza usato
         # dai client reali per il training locale del round (fix 2026-07-21b).
         # Round 1 → init casuale (nessun round precedente, come i client reali).
@@ -3628,15 +3876,24 @@ def run_lira(
             if update is None or not update.weights:
                 continue
 
-            # Load client's submitted update (post-privatize when DP enabled).
-            client_model = Autoencoder(input_dim=input_dim, **_autoencoder_arch_kwargs(cfg))
-            if not _load_weights_into(client_model, update.weights):
-                logger.warning(
-                    f"LiRA round {round_num} {update.cluster_id}: "
-                    f"weights shape mismatch — skip client"
-                )
-                continue
-            client_model.eval()
+            if _lira_observation_surface == "global":
+                # Sprint 10zz+94: riusa lo STESSO modello aggregato per ogni
+                # cluster in questo round invece del modello specifico del
+                # client — vedi commento al punto di costruzione sopra. Tutto
+                # il resto (selezione membri per cluster, calibrazione shadow,
+                # diagnostica) resta invariato: cambia solo la fonte di
+                # target_loss.
+                client_model = _lira_global_model
+            else:
+                # Load client's submitted update (post-privatize when DP enabled).
+                client_model = Autoencoder(input_dim=input_dim, **_autoencoder_arch_kwargs(cfg))
+                if not _load_weights_into(client_model, update.weights):
+                    logger.warning(
+                        f"LiRA round {round_num} {update.cluster_id}: "
+                        f"weights shape mismatch — skip client"
+                    )
+                    continue
+                client_model.eval()
 
             # Fix: usa l'ensemble shadow del cluster di QUESTO client — non un ensemble
             # cross-cluster globale — per calibrare IN/OUT sotto lo stesso regime di

@@ -754,19 +754,50 @@ stato reale, e — se pronto — il comando esatto.
    livello unitario), e produce un risultato architetturale forte indipendentemente
    dall'esito. Va lanciato SUBITO DOPO Blocker 2, con lo stesso principio "prima il
    positive control, poi la soppressione": baseline no-DP per primo.
-3. **Rerun Strada B — terzo posizionamento DP reale (task #145, codice pronto)** —
-   costoso (~33h, invalida e sostituisce 15 celle dp-fedavg-con-DP già pubblicate). Va
-   dopo i primi due perché è il più costoso e i primi due potrebbero cambiare priorità
-   (es. se Blocker 2 rivela un problema nell'attacco stesso, ha poco senso rilanciare 33h
-   di campagna con lo stesso harness prima di averlo corretto).
-4. **Task #144 — A/B member_scoring=matched_formula vs real** — economico, pronto,
-   nessuna dipendenza dagli altri tre.
+3. **GATE obbligatorio prima del rerun Strada B — risolvere l'interazione floor_mode ×
+   member_scoring (aggiunto 2026-09-15, avvertimento esplicito dell'utente).**
+   `floor_mode=symmetric` è ancora il default (mai validato con un A/B reale) e
+   `member_scoring=matched_formula` (l'ancoraggio μ_in, errata punto #3) non è default —
+   entrambi verificati nel codice in questo giro (`cfg.get("lira", {}).get("floor_mode",
+   "symmetric")`, `cfg.get("lira", {}).get("member_scoring", "real")`). Le due variabili
+   interagiscono: l'ablation cold-start (Sprint 10zz+91) mostra `matched_formula_auc` a
+   0.49-0.51 sotto `shadow_init=cold` contro 0.34-0.44 sotto `shadow_init=warm` sullo
+   STESSO config, mentre il floor-hit-rate di σ_in/σ_out sale a quasi il 100%. Se si lancia
+   ora il rerun da ~33h di Strada B e poi si tocca lo scoring (floor o member_scoring),
+   quelle ore vanno rifatte. **Comandi pronti, entrambi economici (10 round, 1 seed,
+   nessun nuovo codice):**
+   ```
+   # A: member_scoring (errata #3, ancoraggio μ_in)
+   python3 scripts/compare_floor_mode.py \
+     --before experiments/<run_con_config/experiment.yaml> \
+     --after experiments/<run_con_config/experiment_matched_formula_scoring.yaml> \
+     --label-before "member_scoring=real (default)" \
+     --label-after "member_scoring=matched_formula"
+
+   # B: floor_mode (mai validato)
+   python3 scripts/compare_floor_mode.py \
+     --before experiments/<run_con_config/experiment.yaml> \
+     --after experiments/<run_con_config/experiment_floor_independent.yaml> \
+     --label-before "floor_mode=symmetric (default)" \
+     --label-after "floor_mode=independent"
+   ```
+   Devono girare entrambi i run "after" (`config/experiment_matched_formula_scoring.yaml`,
+   `config/experiment_floor_independent.yaml`) più un run "before" con
+   `config/experiment.yaml` a parità di seed/ε/dp-mode, PRIMA del comando di rerun Strada B
+   sotto — non in parallelo, in sequenza, perché il risultato di A/B può cambiare quale
+   scoring usare per il rerun stesso.
+4. **Rerun Strada B — terzo posizionamento DP reale (task #145, codice pronto) — BLOCCATO
+   dal gate #3 sopra.** Costoso (~33h, invalida e sostituisce 15 celle dp-fedavg-con-DP già
+   pubblicate). Non lanciare finché il gate #3 non è risolto: se cambia il default di
+   `floor_mode`/`member_scoring` dopo aver già speso 33h con lo scoring vecchio, quelle ore
+   sono da rifare integralmente.
 5. **Blocker 3 — ablation filtro 8σ** — bloccato: serve prima il flag opt-in
    `cfg["lira"]["uncalibrated_z_threshold"]` (non ancora scritto).
 6. **Sweep di utility largo** — bloccato: servono i 6 valori di ε da concordare con
    l'utente prima di poter dare un comando.
 7. **Unificazione attack-surface Yeom/Shadow/LiRA (richiesta dall'utente 2026-09-15,
-   sotto)** — DESIGN, non ancora implementata. Vedi sezione dedicata per il perché.
+   sotto)** — implementazione in corso su istruzione esplicita dell'utente ("procedi con
+   l'implementazione del design che hai scritto"). Vedi sezione dedicata per i dettagli.
 
 ## Blocker aperti dal feedback esterno verificato (errata 2026-09-14) — domanda e risultato atteso
 

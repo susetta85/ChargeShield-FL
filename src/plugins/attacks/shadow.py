@@ -36,7 +36,13 @@ class ShadowAttack(BaseAttack):
             import os  # noqa: PLC0415 (lazy, coerente col resto del modulo)
             _roc_path = os.path.join(_roc_dir, "roc_curves_shadow.json")
 
+        # Sprint 10zz+94 (2026-09-15, task #155) — vedi yeom.py per la
+        # motivazione: no_dp/dp_mode servono solo a
+        # cfg["shadow"]["observation_surface"]=="client" (Strada B). Default
+        # invariati, nessun impatto sul comportamento pubblicato.
         return run_fedmia_shadow(
             cfg, train_sessions, holdout_sessions, fl_results,
             roc_curve_dump_path=_roc_path,
+            no_dp=kwargs.get("no_dp", False),
+            dp_mode=kwargs.get("dp_mode", "dp-fedavg"),
         )

@@ -46,7 +46,15 @@ class YeomAttack(BaseAttack):
             import os  # noqa: PLC0415 (lazy, coerente col resto del modulo)
             _roc_path = os.path.join(_roc_dir, "roc_curves_yeom.json")
 
+        # Sprint 10zz+94 (2026-09-15, task #155) — no_dp/dp_mode servono a
+        # run_fedmia() solo quando cfg["yeom"]["observation_surface"]=="client"
+        # (Strada B, selezione raw_updates/updates dp_mode-aware, stesso
+        # meccanismo già in uso da LiRA in lira.py). Default invariati:
+        # observation_surface="global" non li usa, quindi non c'è impatto sul
+        # comportamento pubblicato finché il flag opt-in resta al default.
         return run_fedmia(
             cfg, train_sessions, holdout_sessions, fl_results,
             roc_curve_dump_path=_roc_path,
+            no_dp=kwargs.get("no_dp", False),
+            dp_mode=kwargs.get("dp_mode", "dp-fedavg"),
         )
