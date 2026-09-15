@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import math
+import time
 from typing import TYPE_CHECKING, Any
 
 import torch
@@ -87,6 +88,19 @@ class PrivacyAuditorSubscriber(MLPlaneListener):
         self._prev_baseline: list[Any] | None = None
         self._reports_by_round: dict[int, dict[str, "AuditReport"]] = {}
         self._gradients_by_round: dict[int, dict[str, dict[str, Any]]] = {}
+        # Overhead ML Plane attribuibile all'Auditor (Sprint 10zz+106, richiesto
+        # esplicitamente dall'utente per il D1 corretto — "overhead con e senza
+        # Auditor"). Misurato qui, non con due run separati: il rumore fra run
+        # (variabilità di training/I-O) sommergerebbe il segnale, che è
+        # tipicamente sotto il millisecondo per round su questi modelli piccoli.
+        # Timer intorno all'UNICA sezione di lavoro reale in questa classe
+        # (normalizzazione peer-relative + N chiamate a self._auditor.audit()),
+        # sempre attivo — costo del timer stesso trascurabile (time.perf_counter()),
+        # nessun flag opt-in necessario. Stessa istanza usata sia dal replay
+        # post-hoc in scripts/run_experiments.py::run_ids() sia dal wiring dal
+        # vivo in nvflare/.../chargeshield_aggregator.py — un solo punto di
+        # strumentazione copre entrambi gli ambienti.
+        self._overhead_seconds_by_round: dict[int, float] = {}
 
     def set_initial_baseline(self, weights: list[Any] | None) -> None:
         self._prev_baseline = weights
@@ -112,7 +126,15 @@ class PrivacyAuditorSubscriber(MLPlaneListener):
         if not updates:
             self._reports_by_round[round_num] = {}
             self._gradients_by_round[round_num] = {}
+            self._overhead_seconds_by_round[round_num] = 0.0
             return
+
+        # Inizio finestra di misura overhead (Sprint 10zz+106) — copre TUTTO
+        # il lavoro reale del componente per questo round: normalizzazione
+        # peer-relative, le N chiamate a self._auditor.audit(), e
+        # l'aggiornamento della baseline. Esclude solo il primo controllo di
+        # idempotenza sopra (non è lavoro dell'Auditor, è un no-op).
+        _overhead_t0 = time.perf_counter()
 
         prev_baseline = self._prev_baseline
 
@@ -182,11 +204,21 @@ class PrivacyAuditorSubscriber(MLPlaneListener):
         # else: baseline invariata rispetto al round precedente (None se mai
         # popolata — sotto local DP resta così per l'intero run, per design).
 
+        self._overhead_seconds_by_round[round_num] = time.perf_counter() - _overhead_t0
+
     def reports_for_round(self, round_num: int) -> dict[str, "AuditReport"]:
         return self._reports_by_round.get(round_num, {})
 
     def gradients_for_round(self, round_num: int) -> dict[str, dict[str, Any]]:
         return self._gradients_by_round.get(round_num, {})
+
+    def overhead_seconds_for_round(self, round_num: int) -> float:
+        """Secondi di wall-clock spesi in questo round dentro
+        _handle_round_complete() — normalizzazione peer-relative + audit() +
+        aggiornamento baseline. 0.0 se il round non ha avuto update (nessun
+        lavoro svolto) o non è ancora stato processato. Vedi commento in
+        __init__ per il perché è misurato qui invece che con due run A/B."""
+        return self._overhead_seconds_by_round.get(round_num, 0.0)
 
     @staticmethod
     def _weighted_average(updates: list[GradientUpdate]) -> list[Any] | None:

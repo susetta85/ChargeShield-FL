@@ -1274,9 +1274,16 @@ incontri §3.2/§3.3, così da non doverla dedurre.
 
 **Le tre metriche corrette per D1** (proposte dall'utente):
 
-1. **Overhead dell'ML Plane** — costo, in tempo/memoria, dell'infrastruttura event-driven (`emit_event()`/
-   `subscribe()`, hub centrale, collector) rispetto a un training loop senza questo layer di osservabilità. Non
-   ancora misurato — richiede un confronto A/B (stesso training, ML Plane attivo vs. bypassato) da progettare.
+1. **Overhead dell'ML Plane** — ✅ **strumentato 2026-09-15 (Sprint 10zz+106)**. Non con un confronto A/B fra due
+   run separati (la varianza naturale di training fra run avrebbe sommerso un segnale atteso sotto il
+   millisecondo), ma con un timer `time.perf_counter()` sempre attivo dentro
+   `PrivacyAuditorSubscriber._handle_round_complete()` (`src/auditor/privacy_auditor_subscriber.py` — il subscriber
+   CONDIVISO da simulazione e NVFlare, quindi la strumentazione copre entrambi gli ambienti da un solo punto),
+   attorno all'unico lavoro reale del componente (normalizzazione peer-relative + le N chiamate a
+   `PrivacyAuditor.audit()` + aggiornamento baseline). Esposto per round in ogni JSON salvato come nuovo campo
+   `per_round[r]["ids"]["auditor_overhead_seconds"]`. Non ancora osservato su un run reale (richiede un run
+   completo per avere numeri) — i run futuri (D1 punto 3 sotto, o qualunque nuovo run canary/DP) lo popoleranno
+   automaticamente, nessun comando aggiuntivo necessario.
 2. **Precisione delle allerte** su GRADIENT_EXPLOSION ed esaurimento budget (PRIVACY_BUDGET_NEAR_EXHAUSTION/
    EXHAUSTED) — quanto spesso questi due tipi di soglia producono veri positivi (es. contro un attacco Byzantine
    noto, o un budget deliberatamente esaurito da un run lungo) senza falsi positivi sui client legittimi. Il codice
@@ -1321,7 +1328,13 @@ questo specifico protocollo di run (no-DP disabilita 3 soglie su 4), non una dim
 **Per un test genuinamente probante** (non ancora eseguito, proposto qui):
 1. Ripetere un run canary (office1, stesso config di Blocker 2) con `--no-dp` RIMOSSO (DP realmente attivo,
    `explosion_threshold`/budget realmente vivi) — verifica se GRADIENT_EXPLOSION o budget-based si attivano quando
-   il leakage canary è presente vs. un run gemello senza canary, stesso seed/config/ε.
+   il leakage canary è presente vs. un run gemello senza canary, stesso seed/config/ε. Comando:
+   `python3 scripts/run_experiments.py --config config/experiment_canary_positive_control.yaml --sweep-dir experiments/_d1_canary_realdp`
+   (nessun `--no-dp`). **Non lanciare in parallelo a un altro run FL/LiRA o job NVFlare sulla stessa macchina** —
+   è un training pesante (1000 epoche/round × 3 round, n_shadow=8) della stessa classe di carico CPU/RAM che ha
+   già causato un OOM kill silenzioso una volta in questo progetto quando due sweep sono girati insieme
+   (2026-07-31, dp-sweep3 — vedi lock anti-concorrenza in `Makefile`); lanciarlo in sequenza, dopo che qualunque
+   altro run canary/NVFlare in corso è terminato.
 2. Aggiungere un dump diagnostico opt-in (stesso pattern di `--raw-loss-dump`/`--roc-curve-dump-dir` già in
    `run_experiments.py`) che persista `sensitivity`/`round_epsilon`/`budget_ratio` GREZZI per nodo per round nel
    JSON — oggi questi numeri vengono calcolati da `PrivacyAuditor.audit()` ma scartati prima della

@@ -5956,6 +5956,7 @@ def run_ids(
         if not _view:
             ids_results[round_num] = {
                 "alerts": [], "byzantine_detected": False, "drift_detected": False,
+                "auditor_overhead_seconds": 0.0,  # subscriber mai attivato per questo round
             }
             continue
 
@@ -5981,10 +5982,18 @@ def run_ids(
 
         reports   = subscriber.reports_for_round(round_num)
         gradients = subscriber.gradients_for_round(round_num)
+        # Letto SEMPRE dopo l'evento "aggregation" sopra, che ha già fatto
+        # avanzare _handle_round_complete() per questo round — vale sia nel
+        # ramo "reports vuoti" sotto sia in quello pieno (D1 corretto, Sprint
+        # 10zz+106: overhead ML Plane attribuibile all'Auditor, misurato per
+        # round invece che con due run A/B separati — vedi commento in
+        # PrivacyAuditorSubscriber.__init__ per il perché).
+        _auditor_overhead = subscriber.overhead_seconds_for_round(round_num)
 
         if not reports:
             ids_results[round_num] = {
                 "alerts": [], "byzantine_detected": False, "drift_detected": False,
+                "auditor_overhead_seconds": _auditor_overhead,
             }
             continue
 
@@ -6007,6 +6016,7 @@ def run_ids(
             "byzantine_detected":   len(analysis.byzantine_nodes) > 0 if analysis else False,
             "drift_detected":       False,
             "low_similarity_nodes": analysis.low_similarity_nodes if analysis else [],
+            "auditor_overhead_seconds": _auditor_overhead,
         }
 
     return ids_results
