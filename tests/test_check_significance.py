@@ -328,3 +328,26 @@ class TestTostEquivalence:
         assert result["alpha"] == 0.1
         assert result["margin_lo"] == pytest.approx(0.45)
         assert result["margin_hi"] == pytest.approx(0.55)
+
+
+class TestExtractYeomShadow:
+    """extract_yeom_auc/extract_shadow_auc (task #123, Blocker 4, 2026-09-15) —
+    leggono summary.mean_auc_roc/mean_shadow_auc_roc, gia' presenti in ogni
+    JSON della campagna pubblicata. Nessun nuovo esperimento necessario per
+    popolare questi campi — la sola cosa che mancava era aggregarli."""
+
+    def test_extract_yeom_auc_reads_summary_field(self):
+        d = {"summary": {"mean_auc_roc": 0.4991, "mean_shadow_auc_roc": 0.4982}}
+        assert cs.extract_yeom_auc(d) == pytest.approx(0.4991)
+
+    def test_extract_shadow_auc_reads_summary_field(self):
+        d = {"summary": {"mean_auc_roc": 0.4991, "mean_shadow_auc_roc": 0.4982}}
+        assert cs.extract_shadow_auc(d) == pytest.approx(0.4982)
+
+    def test_extract_yeom_auc_missing_field_returns_none(self):
+        assert cs.extract_yeom_auc({"summary": {}}) is None
+        assert cs.extract_yeom_auc({}) is None
+
+    def test_extract_shadow_auc_missing_field_returns_none(self):
+        assert cs.extract_shadow_auc({"summary": {}}) is None
+        assert cs.extract_shadow_auc({}) is None

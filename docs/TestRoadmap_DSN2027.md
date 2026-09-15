@@ -735,6 +735,116 @@ della deadline (abstract 2026-11-25).
 
 ---
 
+## Blocker aperti dal feedback esterno verificato (errata 2026-09-14) — domanda e risultato atteso
+
+Aggiunto 2026-09-15 su richiesta esplicita dell'utente ("nella roadmap degli esperimenti
+scrivere quale domanda vogliamo rispondere e quali sono i risultati che ci aspettiamo").
+Per ognuno: la domanda di ricerca precisa, cosa un risultato in un senso o nell'altro
+significherebbe per il paper, e lo stato reale (non quello che i Sprint-log a volte lasciano
+intendere — "fatto e verificato" per questi item ha sempre significato solo `py_compile` +
+suite di test non-torch, MAI un run reale, perché questo sandbox non ha torch).
+
+### Blocker 1 — ablation cold-start vs warm-start dello shadow model (task #120)
+
+**Domanda.** Il retraining warm-started degli shadow ad ogni round (i pesi globali reali
+del round precedente, non init casuale) è un adattamento nostro rispetto alla costruzione
+originale di Carlini et al. 2022 (shadow indipendenti, init casuale, mai ri-addestrati). Il
+null result (~0.50 ovunque) è in parte un artefatto di questo adattamento — il warm-start
+potrebbe far convergere gli ensemble IN/OUT l'uno verso l'altro round dopo round, riducendo
+la separazione che LiRA misura — o regge anche nella costruzione originale?
+
+**Risultato atteso.** Se `shadow_init=cold` produce AUC ancora ~0.50 (banda 0.48-0.54, come
+ogni altro test di questa roadmap): il null result NON dipende dal warm-start, rafforza la
+sua robustezza. Se produce un AUC sistematicamente più alto: il warm-start sopprime segnale
+reale — da riportare come limite importante, possibile necessità di rifare la campagna
+principale con `shadow_init=cold`.
+
+**Stato reale**: flag implementato e verificato (`py_compile` + suite non-torch), zero
+impatto sul default. Prima gamba (`shadow_init=warm`, il default — quindi NON nuova
+informazione, solo conferma che il comportamento invariato produce il pattern atteso)
+eseguita dall'utente 2026-09-15 (`experiments/_blocker1_shadow_warm`, mean_lira_auc_roc=
+0.5025). **Manca la seconda gamba** (`config/experiment_shadow_cold.yaml`) e il confronto
+via `scripts/compare_floor_mode.py` — solo quel confronto risponde davvero alla domanda.
+
+### Blocker 2 — regime con leakage reale come riferimento (task #121)
+
+**Domanda.** Un AUC~0.50 è credibile come "nessun leakage" solo se sappiamo anche a cosa
+assomiglia un AUC quando il leakage C'È — altrimenti non possiamo escludere che l'attacco
+sia insensibile. Il canary positive control (office1, Sprint 10vv-10zz+18) risponde a
+questo, ma con un solo seed, gemelli sbilanciati (120+ membri vs 19-20 non-membri per
+costruzione — mai bilanciati) e solo su office1 (Caltech è invertito 0.37-0.42, JPL è al
+caso 0.47-0.49, §6.2). È abbastanza per servire da "regime di riferimento" citabile nel
+paper con lo stesso rigore statistico della campagna principale (5 seed, bootstrap CI)?
+
+**Risultato atteso.** Se il canary AUC calibrato regge a 5 seed su office1 con CI che
+esclude chiaramente 0.5: il regime di riferimento è stabilito con rigore pari alla campagna
+principale, il contrasto "0.50 (nullo) vs X (con leakage reale iniettato)" diventa un
+confronto statistico diretto, non un singolo run aneddotico. Se a 5 seed il segnale torna
+instabile: il positive control stesso va rivisto (non solo il numero di seed) prima di
+usarlo come riferimento.
+
+**Stato reale**: non eseguito. Serve rilanciare `config/experiment_canary_positive_control.yaml`
+con 5 seed (42/123/456/789/1234), stesso pattern della campagna principale — nessun nuovo
+codice necessario per questa parte. Il bilanciamento membri/non-membri e i "gemelli veri"
+restano un lavoro di codice separato, non ancora iniziato (vedi nota dell'utente 2026-09-15:
+"sistemare i gemelli non veri").
+
+### Blocker 3 — ablation del filtro 8σ (task #122)
+
+**Domanda.** `_UNCALIBRATED_Z_THRESHOLD=8.0` esclude campioni troppo lontani da entrambe le
+distribuzioni IN/OUT invece di forzarli con un segno arbitrario (Sprint 10aa). Il paper
+(§3.5) riporta uno skip rate reale dello 0.0000% nella campagna finale, cioè il filtro non
+scarta MAI nulla a questa scala — ma questo lo sappiamo dal contatore, non da un confronto
+diretto. Disattivare il filtro del tutto cambia davvero zero, come il contatore suggerisce?
+
+**Risultato atteso.** Se disattivare il filtro (soglia effettivamente infinita) produce un
+AUC identico (atteso, dato skip_rate=0.0000% già misurato): conferma empiricamente, non solo
+per inferenza dal contatore, che il filtro è dormiente per questi dati — la citazione nel
+paper diventa più forte ("verificato disattivandolo" invece di "il contatore mostra zero
+skip"). Se cambia qualcosa: il contatore stesso ha un bug, da investigare prima di
+qualunque claim su §3.5.
+
+**Stato reale**: non eseguito, e a differenza di Blocker 1 la soglia non è ancora
+configurabile via `cfg["lira"]` — serve prima un flag opt-in analogo (es.
+`cfg["lira"]["uncalibrated_z_threshold"]`, default 8.0) prima di poter dare un comando
+eseguibile.
+
+### Sweep di utility largo — trovare un ε operativo (non ancora nella roadmap prima di oggi)
+
+**Domanda.** La tabella di utility già in §7 (Sprint 10zz+87/+88) mostra che ogni
+configurazione DP *già testata* (ε∈{1.0,0.5,0.1}) aumenta la loss di ricostruzione di
+~240-290× rispetto a no-DP — un modello quasi non funzionale. Ma copre solo i 3 livelli di
+ε già scelti per la campagna principale, tutti a quanto pare oltre la soglia di rottura.
+Esiste un ε più permissivo (es. 10, 50, 100) per cui il modello resta utilizzabile, così da
+sapere se i 3 livelli della campagna sono stati scelti alla cieca dentro la sola zona
+"il modello è comunque rotto"?
+
+**Risultato atteso.** Se esiste un ε dove mean_loss torna vicino al baseline no-DP: quell'ε
+diventa un punto operativo interessante da aggiungere alla campagna (nuova cella, nuovo
+run completo) — cambia l'interpretazione del null result, perché a quel punto operativo
+DP potrebbe finalmente "avere qualcosa da sopprimere" testando l'utility reale. Se anche a
+ε=100 il modello resta rotto: rafforza ulteriormente la lettura già in §7 (il confondente
+utility/leakage copre l'intero range testato, non solo i 3 punti scelti).
+
+**Stato reale**: non eseguito, non era nella roadmap prima di oggi. Costo indicato
+dall'utente: ~13 ore, un seed, sei punti di ε — comando ancora da preparare (dipende da
+quali 6 valori di ε scegliere, da concordare).
+
+### Diagnosi canary Caltech — amplificazione per record, non densità aggregata
+
+**Nota (non un blocker, una correzione alla diagnosi già in tabella riga 2 sopra).** La
+riga 2 di "Vista d'insieme" attribuisce il fallimento del canary a Caltech/JPL alla
+scale-dependence (duplicati ~11% a office1 vs ~0.5% altrove) e cita una replica high-density
+che avrebbe "appianato" la densità aggregata al 10% — ma l'ha fatta con 84 template × 30
+copie invece di 5 template × 30 copie: la densità TOTALE coincide con office1, mentre
+l'amplificazione per singolo record resta ~17× inferiore (è quest'ultima, non la densità
+aggregata, a guidare la memorizzazione di un record specifico). L'esperimento che doveva
+chiudere la domanda non l'ha testata. Per replicare davvero le condizioni di office1 servono
+5 template × ~500 copie ciascuno (stessa densità aggregata, stessa amplificazione per
+record) — non ancora eseguito.
+
+---
+
 ## Dipendenze tra i test
 
 ```

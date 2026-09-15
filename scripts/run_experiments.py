@@ -2631,6 +2631,37 @@ def run_lira(
             "(atteso 'warm' o 'cold')"
         )
 
+    # Simmetria dello scoring μ_in membri vs non-membri (Sprint 10zz+90,
+    # 2026-09-15) — flag diagnostico opt-in, feedback esterno verificato,
+    # errata punto #3 ("Il valore di `central` è la cancellazione di due
+    # artefatti"): per i MEMBRI, μ_in è quasi sempre una stima REALE
+    # per-campione (calibrazione shadow effettiva, ramo `if len(in_losses) >=
+    # 2` sopra); per i NON-membri, μ_in è invece SEMPRE la formula di
+    # ancoraggio `μ_out + (μ_in_fb - μ_out_fb)` (nessuno shadow si allena mai
+    # su dati hold-out, quindi il ramo `else` è l'UNICO percorso possibile per
+    # loro). Il punteggio ufficiale confronta quindi due classi con
+    # informazione strutturalmente diversa. `lira_debug_matched_formula_auc`
+    # (sopra) misura già cosa succede forzando ANCHE i membri nella stessa
+    # formula di ancoraggio (via `_diag_counterfactual_member_scores`) — ma
+    # solo come diagnostica di sola lettura, mai usata per il punteggio
+    # effettivo (vedi commento lì: "non modifica μ_in/σ_in/log_p_* reali").
+    # Questo flag PROMUOVE quella stessa formula a percorso di scoring
+    # ufficiale per i membri quando è "matched_formula", rendendo il
+    # confronto IN/OUT simmetrico per costruzione. Default "real" =
+    # comportamento ESATTAMENTE invariato per ogni config/run esistente (i
+    # membri continuano a usare la loro calibrazione reale quando disponibile,
+    # come sempre). Confrontare i due regimi con `compare_floor_mode.py`
+    # (stesso schema before/after già usato per floor_mode/shadow_init) dice
+    # se il ~0.50 ufficiale su `central` sopravvive anche a scoring simmetrico
+    # o è, come sospettato nell'errata, la cancellazione di due artefatti
+    # asimmetrici.
+    _lira_member_scoring = cfg.get("lira", {}).get("member_scoring", "real")
+    if _lira_member_scoring not in ("real", "matched_formula"):
+        raise ValueError(
+            f"cfg['lira']['member_scoring'] non valido: {_lira_member_scoring!r} "
+            "(atteso 'real' o 'matched_formula')"
+        )
+
     # GradientManager per privatizzare gli shadow ESATTAMENTE come i client reali
     # (stesso clipping + stesso meccanismo di rumore) — fix 2026-07-21c: senza
     # questo, un target rumoroso (DP on) verrebbe calibrato contro shadow puliti,
@@ -2788,6 +2819,23 @@ def run_lira(
     # chiamante passa composed_output (non None) — default None, quindi zero
     # impatto sul comportamento/output esistente per ogni chiamante attuale.
     _cumulative_scores: dict[int, float] = {}
+    # Sprint 10zz+90 (2026-09-15) — conta in QUANTI round ogni campione ha
+    # effettivamente ricevuto un punteggio (non tutti i round ne danno uno per
+    # ogni campione: `continue` sopra per calibrazione insufficiente, o per lo
+    # skip 8σ di _UNCALIBRATED_Z_THRESHOLD). _cumulative_scores è una SOMMA di
+    # log-likelihood ratio — sommare evidenza indipendente round su round è
+    # la costruzione corretta di Carlini et al. 2022 quando ogni campione è
+    # scorato lo stesso numero di volte, ma se due campioni sono scorati un
+    # numero DIVERSO di volte, la magnitudo del loro punteggio composto
+    # riflette in parte "quante volte è stato possibile scorarlo", non solo
+    # "quanta evidenza di membership c'è" — un potenziale confondente se il
+    # tasso di skip correlasse con la classe (membro/non-membro). Puramente
+    # diagnostico: non modifica composed_lira_auc_roc (la statistica ufficiale
+    # del paper, invariata), aggiunge solo un campo di confronto opt-in
+    # (composed_lira_auc_roc_mean_per_round, sotto) quando composed_output è
+    # fornito — stesso costo zero-impatto delle altre diagnostiche already
+    # esistenti in questa funzione.
+    _cumulative_score_counts: dict[int, int] = {}
     _sample_is_member:  dict[int, bool]  = {id(s): True for s in members_bal}
     _sample_is_member.update({id(s): False for s in nonmembers_bal})
 
@@ -3718,7 +3766,27 @@ def run_lira(
 
                 # Gaussian log-likelihood ratio (Carlini 2022, Eq. 2):
                 # score > 0 → loss matches IN distribution → member
-                log_p_in  = (-0.5 * ((target_loss - μ_in)  / σ_in)  ** 2) - np.log(σ_in)
+                #
+                # Sprint 10zz+90 (2026-09-15) — se cfg["lira"]["member_scoring"]
+                # == "matched_formula" (vedi commento all'inizializzazione di
+                # _lira_member_scoring sopra), un MEMBRO con calibrazione IN
+                # reale (_mu_in_is_real True) viene comunque forzato nella
+                # STESSA formula di ancoraggio usata per i non-membri (μ_out di
+                # QUESTO campione + il gap tipico IN/OUT del cluster/round) —
+                # esattamente la stessa formula già calcolata come diagnostica
+                # di sola lettura in _cf_mu_in/_cf_sigma_in sopra, qui promossa
+                # a punteggio ufficiale. Un non-membro non cambia mai (è già
+                # sempre nel ramo formula-anchored per costruzione). Default
+                # "real": nessun cambiamento, questo blocco non viene mai
+                # eseguito per config/run esistenti.
+                if _lira_member_scoring == "matched_formula" and _mu_in_is_real:
+                    _mf_mu_in = μ_out + (_cluster_mu_in_fb - _cluster_mu_out_fb)
+                    _mf_sigma_in = max(_cluster_sigma_in_fb, _cluster_sigma_symmetric_floor)
+                    log_p_in = (
+                        -0.5 * ((target_loss - _mf_mu_in) / _mf_sigma_in) ** 2
+                    ) - np.log(_mf_sigma_in)
+                else:
+                    log_p_in = (-0.5 * ((target_loss - μ_in) / σ_in) ** 2) - np.log(σ_in)
                 log_p_out = (-0.5 * ((target_loss - μ_out) / σ_out) ** 2) - np.log(σ_out)
                 # DIAGNOSTICA 2026-08-20 (round 3, dump per-campione): il
                 # round 2 (aggregate μ_in<μ_out corretto ma AUC ancora
@@ -3851,6 +3919,7 @@ def run_lira(
                 if composed_output is not None:
                     _sid = id(sample)
                     _cumulative_scores[_sid] = _cumulative_scores.get(_sid, 0.0) + lira_score
+                    _cumulative_score_counts[_sid] = _cumulative_score_counts.get(_sid, 0) + 1
 
         if not round_member_scores or not round_nonmember_scores:
             logger.warning(
@@ -4271,6 +4340,43 @@ def run_lira(
             )
             composed_output["n_samples_scored"]   = len(_cumulative_scores)
             composed_output["n_rounds_aggregated"] = len(lira_results)
+            # Sprint 10zz+90 (2026-09-15) — diagnostica di sola lettura, vedi
+            # commento all'inizializzazione di _cumulative_score_counts sopra:
+            # NON sostituisce composed_lira_auc_roc (la somma resta la
+            # statistica ufficiale), calcola in aggiunta l'AUC sulla media
+            # per-round-scorato di ogni campione (sum/count invece di sum),
+            # che rimuove l'effetto "quante volte è stato scorato" dalla
+            # magnitudo del punteggio. Se le due AUC divergono in modo
+            # sostanziale, il numero di round scorati per campione correla
+            # con la classe — un confondente da investigare prima di citare
+            # composed_lira_auc_roc come statistica "pulita". Se sono vicine,
+            # il confondente non è presente in pratica per questi dati.
+            _mean_per_round_scores = {
+                _sid: (_cumulative_scores[_sid] / _cumulative_score_counts[_sid])
+                for _sid in _cumulative_scores
+                if _cumulative_score_counts.get(_sid, 0) > 0
+            }
+            if _mean_per_round_scores:
+                _mpr_labels = [1 if _sample_is_member[_sid] else 0 for _sid in _mean_per_round_scores]
+                _mpr_scores = list(_mean_per_round_scores.values())
+                try:
+                    composed_output["composed_lira_auc_roc_mean_per_round"] = round(
+                        float(roc_auc_score(_mpr_labels, _mpr_scores)), 6
+                    )
+                except ValueError:
+                    composed_output["composed_lira_auc_roc_mean_per_round"] = None
+                composed_output["composed_score_count_member_mean"] = round(
+                    float(np.mean([
+                        _cumulative_score_counts[_sid] for _sid in _cumulative_scores
+                        if _sample_is_member[_sid]
+                    ])), 4,
+                ) if any(_sample_is_member[_sid] for _sid in _cumulative_scores) else None
+                composed_output["composed_score_count_nonmember_mean"] = round(
+                    float(np.mean([
+                        _cumulative_score_counts[_sid] for _sid in _cumulative_scores
+                        if not _sample_is_member[_sid]
+                    ])), 4,
+                ) if any(not _sample_is_member[_sid] for _sid in _cumulative_scores) else None
             # TPR@low-FPR (roadmap #4, Sprint 10pp 2026-08-28) sul composto —
             # è la metrica "headline" citata nei Sprint-log (vedi README), non
             # solo il per-round, quindi merita la stessa lettura a FPR fisso.

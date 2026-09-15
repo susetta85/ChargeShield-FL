@@ -357,6 +357,29 @@ def extract_composed_lira_auc(d: dict) -> float | None:
     return mia.get("composed_lira_auc_roc")
 
 
+def extract_yeom_auc(d: dict) -> float | None:
+    """Legge summary.mean_auc_roc (Yeom, l'attacco a soglia sulla loss di
+    ricostruzione) — nessun campo "composed" separato per Yeom/Shadow (a
+    differenza di LiRA): sono gia' un unico AUC per seed, media delle AUC
+    per-round dello stesso attacco (stesso significato di mean_lira_auc_roc
+    prima del fix del 2026-09-14, ma qui non esiste un equivalente
+    "evidenza sommata" da preferire — Yeom/Shadow non accumulano un
+    log-likelihood ratio composito round su round come fa LiRA).
+
+    Task #123 (Blocker 4 del feedback esterno, 2026-09-15): la Tabella 2 del
+    paper riporta solo LiRA; l'errata nota che i numeri Yeom/Shadow esistono
+    gia' in ogni JSON della campagna gia' pubblicata (nessun nuovo esperimento
+    necessario) ma non erano mai stati aggregati/riportati qui.
+    """
+    return d.get("summary", {}).get("mean_auc_roc")
+
+
+def extract_shadow_auc(d: dict) -> float | None:
+    """Legge summary.mean_shadow_auc_roc (Shadow model attack). Vedi
+    extract_yeom_auc() sopra per la motivazione/il contesto (task #123)."""
+    return d.get("summary", {}).get("mean_shadow_auc_roc")
+
+
 def extract_composed_tpr(d: dict, fpr_target: str) -> float | None:
     """Legge composed_tpr_at_fpr_<fpr_target> dall'ultimo round del file.
 
@@ -502,6 +525,59 @@ def main():
             "paper se questi p-value vengono citati (il bootstrap CI sopra resta il test "
             "primario per questa numerosita' campionaria)."
         )
+
+    # ── Yeom / Shadow per gruppo (task #123, Blocker 4, 2026-09-15) ─────────
+    # I numeri esistevano gia' in ogni JSON della campagna (summary.mean_auc_roc/
+    # mean_shadow_auc_roc) ma non erano mai stati aggregati qui ne' inclusi
+    # nella Tabella 2 del paper, che riporta solo LiRA. Nessun nuovo
+    # esperimento necessario — stessi file gia' usati sopra per LiRA.
+    for attack_name, extractor in (("Yeom", extract_yeom_auc), ("Shadow", extract_shadow_auc)):
+        print()
+        print("=" * 140)
+        print(
+            f"{attack_name} — mean_auc_roc per seed (media per-round entro ogni seed, "
+            "nessun equivalente 'composed' per questo attacco)"
+        )
+        print("=" * 140)
+        print(
+            f"{'gruppo (letto da config, non dal nome cartella)':<42} {'n':>3} {'mean':>8} "
+            f"{'std':>8} {'95% CI':>20} {'contiene 0.5?':>14} {'p (' + method_label + ')':>26}"
+        )
+        print("-" * 140)
+        for label, files in sorted(groups.items()):
+            vals = []
+            for f in files:
+                d = json.load(open(f))
+                v = extractor(d)
+                if v is not None:
+                    vals.append(v)
+            if not vals:
+                print(f"{label:<42} nessun dato")
+                continue
+            mean = statistics.mean(vals)
+            std = statistics.stdev(vals) if len(vals) > 1 else float("nan")
+            ci = bootstrap_ci(vals)
+            if ci is None:
+                ci_str = "n<2, N/A"
+                contains = "N/A"
+            else:
+                ci_str = f"[{ci[0]:.4f}, {ci[1]:.4f}]"
+                contains = "SI" if ci[0] <= 0.5 <= ci[1] else "NO"
+            p_value, method = significance_test(vals)
+            if p_value is None:
+                p_str = "N/A (tutti uguali a 0.5)" if len(vals) > 1 else "N/A (n<2)"
+            else:
+                p_str = f"{p_value:.4f} [{method}]"
+            print(
+                f"{label:<42} {len(vals):>3} {mean:>8.4f} {std:>8.4f} {ci_str:>20} "
+                f"{contains:>14} {p_str:>26}"
+            )
+    print(
+        "\nNOTA (task #123): questi due blocchi usano gli STESSI file JSON gia' letti sopra "
+        "per LiRA — nessun nuovo esperimento eseguito. Se Yeom/Shadow finiscono in Tabella 2 "
+        "del paper, citare mean_auc_roc/mean_shadow_auc_roc (media per-round), non un "
+        "equivalente 'composed' che per questi due attacchi non esiste nel codice."
+    )
 
     # ── TOST equivalence test (Sprint 10zz+87, 2026-09-14) ──────────────────
     # Sostituisce il framing "non rigettiamo il nulla" (che con n=5 e p-min

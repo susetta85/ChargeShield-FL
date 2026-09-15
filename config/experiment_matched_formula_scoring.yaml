@@ -1,0 +1,65 @@
+# ChargeShield-FL — Experiment Configuration
+# Usato da: scripts/run_experiments.py
+#
+# Copia identica di config/experiment.yaml, con l'aggiunta di
+# lira.member_scoring: matched_formula (Sprint 10zz+90, 2026-09-15).
+#
+# SOLO per il confronto diagnostico A/B richiesto dall'errata esterna
+# verificata (punto #3, "Il valore di `central` è la cancellazione di due
+# artefatti"): forza ANCHE i membri con calibrazione IN reale nella stessa
+# formula di ancoraggio μ_out+(μ_in_fb-μ_out_fb) sempre usata per i
+# non-membri, rendendo lo scoring simmetrico tra le due classi. Confrontare
+# con un run di config/experiment.yaml a parità di seed/dp-mode/epsilon/
+# rounds/n-shadow via:
+#   python3 scripts/compare_floor_mode.py \
+#     --before experiments/<run_con_experiment.yaml> \
+#     --after experiments/<run_con_questo_file> \
+#     --label-before "member_scoring=real (default)" \
+#     --label-after "member_scoring=matched_formula"
+# Non usare questo file per nessun risultato citato nel paper finché il
+# confronto non è stato eseguito e discusso.
+experiment:
+  name: chargeshield_fedmia_baseline
+  fl_rounds: 10
+  seed: 42
+  epsilon: 1.0
+  delta: 1.0e-5
+  max_grad_norm: 1.0
+
+sites:
+  caltech:
+    - datasets/acn/caltech/acndata_sessions_2018.json
+    - datasets/acn/caltech/acndata_sessions_2019.json
+    - datasets/acn/caltech/acndata_sessions_2020.json
+    - datasets/acn/caltech/acndata_sessions_2021.json
+  jpl:
+    - datasets/acn/jpl/acndata_sessions_2018.json
+    - datasets/acn/jpl/acndata_sessions_2019.json
+    - datasets/acn/jpl/acndata_sessions_2020.json
+    - datasets/acn/jpl/acndata_sessions_2021.json
+  office1:
+    - datasets/acn/office1/acndata_sessions_2019.json
+    - datasets/acn/office1/acndata_sessions_2020.json
+    - datasets/acn/office1/acndata_sessions_2021.json
+
+ml:
+  input_dim: 6
+  lr: 0.001
+  epochs: 50
+  batch_size: 32
+  proximal_mu: 0.01
+
+output:
+  experiments_dir: experiments
+
+lira:
+  n_shadow: 16
+  # Sprint 10zz+90 (2026-09-15) — SOLO in questo file di confronto diagnostico,
+  # vedi commento in testa al file per il contesto completo (errata punto #3).
+  member_scoring: matched_formula
+
+byzantine_attack:
+  enabled: false
+  attack_type: gradient_scaling
+  byzantine_node: synthetic_1
+  scale_factor: 10
