@@ -2397,6 +2397,25 @@ def run_fedmia_shadow(
         shadow_canary_auc_roc = None
         shadow_canary_advantage = None
         shadow_canary_confusion = None
+        # Sprint 10zz+97 (2026-09-15) — diagnostica additiva, richiesta dal
+        # secondo run reale di Blocker 2: il fix Sprint 10zz+96 (tag
+        # dell'originale non taggato) non ha risolto l'inversione di
+        # shadow_canary_auc_roc (anzi 0.21/0.24/0.25, leggermente PEGGIO di
+        # 0.26/0.32/0.32 prima del fix) — l'ipotesi "contaminazione
+        # shadow_train" non spiega (da sola) il fenomeno. Ipotesi alternativa
+        # da verificare con un run reale: con solo 5 template distinti (anche
+        # se replicati 31 volte ciascuno dopo il fix), l'AUC canary di Shadow
+        # potrebbe essere dominato da una varianza di campione effettivo
+        # piccolissimo (5 valori distinti lato membro contro 20 lato
+        # non-membro), non da un bug — un singolo shadow model senza
+        # normalizzazione per varianza (a differenza degli 8 shadow Gaussiani
+        # di LiRA) è un estimatore molto più fragile su n_templates=5. Questi
+        # campi espongono la media calibrata PER GRUPPO canary (lato membro)
+        # e le statistiche del lato non-membro, per distinguere le due ipotesi
+        # senza bisogno di un nuovo dump per-campione. Puramente additivo,
+        # nessun impatto su shadow_canary_auc_roc/advantage/confusion sopra.
+        shadow_canary_debug_group_means: dict[str, float] | None = None
+        shadow_canary_debug_nonmember_stats: dict[str, float] | None = None
         if _shadow_observation_surface == "global" and canary_members and canary_nonmembers:
             _c_shadow_m = _mse_batch(shadow_model, canary_members)
             _c_shadow_n = _mse_batch(shadow_model, canary_nonmembers)
@@ -2414,6 +2433,19 @@ def run_fedmia_shadow(
                 shadow_canary_advantage = _mia_advantage(_c_labels, _c_scores)
                 shadow_canary_confusion = _mia_confusion_at_best_threshold(_c_labels, _c_scores)
 
+                _group_scores: dict[str, list[float]] = {}
+                for _s, _cal in zip(canary_members, _c_cal_m):
+                    _group_scores.setdefault(_s.get("_canary_group", "?"), []).append(_cal)
+                shadow_canary_debug_group_means = {
+                    g: round(float(np.mean(vals)), 6) for g, vals in sorted(_group_scores.items())
+                }
+                shadow_canary_debug_nonmember_stats = {
+                    "mean": round(float(np.mean(_c_cal_n)), 6),
+                    "std":  round(float(np.std(_c_cal_n)), 6),
+                    "min":  round(float(np.min(_c_cal_n)), 6),
+                    "max":  round(float(np.max(_c_cal_n)), 6),
+                }
+
         shadow_results[round_num] = {
             "shadow_auc_roc":               round(auc, 6),
             "shadow_member_score_mean":     round(float(np.nanmean(calibrated_members)), 6),
@@ -2427,6 +2459,8 @@ def run_fedmia_shadow(
             "shadow_canary_auc_roc":        shadow_canary_auc_roc,
             "shadow_canary_advantage":      shadow_canary_advantage,
             "shadow_canary_confusion":      shadow_canary_confusion,
+            "shadow_canary_debug_group_means":     shadow_canary_debug_group_means,
+            "shadow_canary_debug_nonmember_stats": shadow_canary_debug_nonmember_stats,
         }
 
     if roc_curve_dump_path is not None and _roc_curves_per_round:
