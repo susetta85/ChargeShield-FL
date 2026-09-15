@@ -914,22 +914,62 @@ calibrazione usa `n_shadow=8` modelli shadow distinti pescati dall'universo per-
 anch'essa non vede l'originale non taggato): l'effetto di un singolo shadow contaminato si
 dilua nella media di 8, mentre Shadow ha UN SOLO modello shadow e quindi zero diluizione.
 
-**Fix proposto (non ancora implementato — richiede conferma esplicita dell'utente, tocca
-`inject_canaries()`, funzione da cui dipendono tutti i numeri canary già citati in §6.2/§9
-del paper)**: taggare anche l'occorrenza originale del template con lo stesso
-`_canary_group`/`_canary_role="member"` dei suoi cloni, invece di lasciarla non taggata —
-rende il gruppo genuinamente atomico (31 occorrenze identiche, non 30+1), e la guardia
-Shadow già esistente la escluderebbe automaticamente da `shadow_train` senza bisogno di
-altro codice nuovo. Impatto: zero se `canary.enabled=False` (default, ogni run
-pubblicato); per i run con canary attivo, invaliderebbe i numeri canary già citati nel
-paper (Sprint 10zz+18, composed 0.6875 per LiRA) — andrebbero rilanciati. Non implementato
-in questa voce, in attesa di decisione esplicita data la natura pubblicata del numero
-affetto.
+**Fix implementato (2026-09-15, Sprint 10zz+96, confermato dall'utente: "procedi con la
+correzione del fix")**: taggata anche l'occorrenza originale del template con lo stesso
+`_canary_group`/`_canary_role="member"` dei suoi cloni (sostituita dentro `injected_train`
+con una copia, non mutando l'oggetto condiviso con `train_sessions`). Verificato che il
+fix si applica correttamente: `n_members` nella confusion matrix canary passa da 150 a 155
+(31 × 5, non più 30 × 5 + 5 invisibili). `py_compile` OK, suite non-torch 297/297 invariata.
 
-**Stato**: Blocker 2 PARZIALMENTE risolto — LiRA e Yeom hanno ora un positive control reale
-e funzionante con tutti e tre gli attacchi tentati; Shadow ha rivelato un gap di
-progettazione nell'iniezione canary che va corretto prima di poter citare
-`shadow_canary_auc_roc` come riferimento. Task #121 resta aperto.
+**Risultato del rerun (`experiments/_blocker2_canary_nodp_3attacks_v2`) — il fix NON
+risolve l'inversione, anzi la peggiora leggermente**: `shadow_canary_auc_roc`
+0.21/0.24/0.25 (era 0.26/0.32/0.32 prima del fix). **La contaminazione dell'originale non
+taggato NON era la causa (dominante) dell'inversione** — l'ipotesi iniziale era sbagliata.
+Effetto collaterale reale del fix: `canary_composed_auc_roc` di LiRA scende da 0.6875 a
+0.66 (resta comunque sopra 0.5 — il fix ha corretto un buco di isolamento analogo anche
+nella calibrazione shadow di LiRA, non solo in quella di Shadow).
+
+**Diagnostica aggiuntiva (Sprint 10zz+97)** — campi `shadow_canary_debug_group_means`/
+`_nonmember_stats`, puramente additivi — isolano il punteggio calibrato medio per ciascuno
+dei 5 gruppi canary. Risultato (`experiments/_blocker2_canary_nodp_3attacks_v3`, round 1):
+
+```
+group_means:      canary_m0=0.000098  canary_m1=0.000040  canary_m2=0.000041
+                   canary_m3=0.000145  canary_m4=-0.000128
+nonmember_stats:   mean=0.000527  std=0.000566  min=-0.000032  max=0.001746
+```
+
+Pattern identico in tutti e 3 i round. **Non è varianza di campione (1-2 outlier)**: TUTTI
+e 5 i gruppi canary hanno una media calibrata sistematicamente più bassa della media
+non-membro, in ogni round — un effetto sistematico, non rumore.
+
+**Causa radice isolata, con dati incrociati**: `yeom_canary_auc_roc` nello stesso run è
+0.70/0.86/0.86 — e Yeom legge la loss ASSOLUTA dello stesso identico `target_model`
+(stessi `global_weights`, stesso round) usato dentro Shadow. Questo conferma che
+`target_loss` sui canary è genuinamente molto più bassa che sui gemelli (memorizzazione
+reale, non un artefatto) — quindi la spiegazione "il target non memorizza abbastanza" è
+esclusa. L'unica spiegazione compatibile con i numeri è che `shadow_loss` sia ANCH'essa
+bassa sugli stessi 5 campioni canary, quasi quanto `target_loss` — cancellando la
+differenza che la calibrazione (`shadow_loss - target_loss`) dovrebbe rilevare. Ipotesi
+più plausibile: con un modello a 6 feature/latent_dim=4, sia lo shadow (500 epoche, metà
+dei dati reali) sia il target arrivano vicino al proprio "pavimento" di errore di
+ricostruzione per sessioni tipiche di questo sito — la differenza assoluta shadow-vs-target
+a questa scala (ordine 1e-4/1e-3) è dominata dalla difficoltà di ricostruzione intrinseca
+delle singole sessioni scelte come template/gemelli, non dalla membership. Non è un bug di
+codice individuabile — è una probabile LIMITAZIONE METODOLOGICA della calibrazione
+shadow-singolo a differenza assoluta, specifica di questo regime (modello minuscolo, solo
+5 template), che l'ensemble a 8 shadow Gaussiani di LiRA attutisce meglio (LiRA infatti
+resta positivo, 0.66 composed) e che Yeom evita del tutto (nessuna calibrazione shadow,
+solo loss assoluta sotto il target).
+
+**Stato**: Blocker 2 risolto per LiRA e Yeom (positive control reale confermato con dati,
+causa d'inversione isolata per Shadow con evidenza incrociata anche se non "corretta" nel
+senso di codice). Raccomandazione: documentare la limitazione di Shadow nel paper (§6.2/§9,
+accanto alla differenza di sensibilità già discussa tra i tre attacchi) invece di continuare
+a rincorrere un fix di codice — ulteriori tentativi hanno rendimento calante e i dati
+incrociati con Yeom rendono la spiegazione già solida. Decisione finale (chiudere qui o
+investigare oltre con un dump dei valori assoluti shadow_loss/target_loss) rimandata
+all'utente. Task #121 sostanzialmente risolto, in attesa di conferma per la chiusura.
 
 ### Blocker 3 — ablation del filtro 8σ (task #122)
 
