@@ -1,0 +1,36 @@
+% Figure: three DP placements as adversary privilege points along the
+% same update-transformation pipeline (Section~\ref{sec:framework-dp}).
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  node distance=0.9cm,
+  stage/.style={draw, rounded corners, minimum height=0.9cm, minimum width=2.5cm, align=center, font=\small},
+  tap/.style={draw, -Latex, thick, red!60!black},
+  arr/.style={-Latex, thick}
+]
+  \node[stage] (raw) {Raw update\\\footnotesize (client-level gradient)};
+  \node[stage, right=1.4cm of raw] (clip) {Clipped update\\\footnotesize (norm $\le C$)};
+  \node[stage, right=1.4cm of clip] (noise) {Clipped + noised\\\footnotesize update ($\sigma$ added)};
+
+  \draw[arr] (raw) -- node[above, font=\footnotesize]{clip} (clip);
+  \draw[arr] (clip) -- node[above, font=\footnotesize]{add $\mathcal{N}(0,\sigma^2)$} (noise);
+
+  \node[tap, below=1.1cm of raw, font=\small, align=center] (dpfedavg) {\texttt{dp-fedavg}\\observes here\\\footnotesize \textbf{upper bound}};
+  \node[tap, below=1.1cm of clip, font=\small, align=center] (central) {\texttt{central}\\observes here};
+  \node[tap, below=1.1cm of noise, font=\small, align=center] (local) {\texttt{local}\\observes here\\\footnotesize \textbf{most protected}};
+
+  \draw[tap] (dpfedavg) -- (raw);
+  \draw[tap] (central) -- (clip);
+  \draw[tap] (local) -- (noise);
+
+\end{tikzpicture}
+\caption{The three DP placements evaluated in this paper are three
+points of adversary privilege along one pipeline, not three privacy
+mechanisms. \texttt{dp-fedavg} sees the raw update and is the upper
+bound on extractable signal; \texttt{central} sees the clipped update
+before noise; \texttt{local} sees only the final, noised update. If the
+upper-bound placement shows no attack signal, a null result under the
+protective placements cannot be attributed to noise suppressing an
+otherwise-present signal (Section~\ref{sec:framework-dp}).}
+\label{fig:dp-placements}
+\end{figure}

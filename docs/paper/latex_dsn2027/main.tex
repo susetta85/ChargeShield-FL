@@ -1,0 +1,85 @@
+% ChargeShield-FL --- DSN 2027 submission
+% Skeleton pronto per Overleaf. Contiene per ora SOLO le sezioni Related
+% Work e Architecture/Framework (con pseudocodice e figure), piu' la
+% bibliografia completa, per richiesta esplicita dell'utente 2026-09-15.
+% Le altre sezioni (Introduction, Threat Model, Case Study, Results,
+% Validation, Discussion, Limitations) restano nello skeleton .docx
+% esistente (docs/paper/ChargeShield-FL_DSN2027_paper_skeleton.docx) e
+% vanno riportate qui separatamente quando saranno pronte -- vedi
+% README_OVERLEAF.md per la lista di label usate come forward-reference
+% da queste due sezioni verso sezioni non ancora presenti in questo file.
+%
+% Compilazione: pdflatex -> bibtex -> pdflatex -> pdflatex
+% Pacchetti richiesti: IEEEtran, algorithm, algorithmic, tikz, amsmath,
+% amssymb, booktabs. Verificato NON localmente compilabile in questo
+% sandbox (IEEEtran/algorithm/algorithmic non installati, nessun accesso
+% root per installarli) -- Overleaf ha tutti e quattro di default.
+
+\documentclass[conference]{IEEEtran}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+%\usepackage{algpseudocode}
+
+% Definizione personalizzata per il comando \Require e \Ensure se non riconosciuti
+%\algnewcommand\algorithmicrequire{\textbf{Require:}}
+%\algnewcommand\Require{\item[\algorithmicrequire]}
+%\algnewcommand\algorithmicensure{\textbf{Ensure:}}
+%\algnewcommand\Ensure{\item[\algorithmicensure]}
+
+\title{ChargeShield-FL: An Event-Driven ML Plane and Privacy Auditor
+for Measuring Differential-Privacy Effectiveness Against Membership
+Inference in Federated EV-Charging Systems}
+
+% \titlerunning{ChargeShield-FL: An Event-Driven ML Plane and Privacy Auditor for Measuring Differential-Privacy Effectiveness Against Membership Inference in Federated EV-Charging Systems for Measuring Differential-Privacy Effectiveness Against Membership Inference in Federated EV-Charging Systems}
+
+\begin{document} 
+
+\author{Assunta Imperatrice$^{1,2}$, Luigi Romano$^{2}$\\
+	\normalsize $^{1}$IMT Scuola Alti Studi, Lucca, Tuscany, Italy\\
+	\normalsize $^{2}$Università degli studi di Napoli Parthenope, Napoli, Campania, Italy\\
+	\normalsize assunta.imperatrice@imtlucca.it, luigi.romano@uniparthenope.it\\
+	
+}
+
+\maketitle
+
+\begin{abstract}
+Placeholder --- l'abstract esiste gia' (rivisto) nella bozza IT e nello
+skeleton .docx; non richiesto in questo giro di lavoro. Da riportare qui
+verbatim quando il resto del paper e' assemblato in questo progetto
+LaTeX.
+\end{abstract}
+
+% ---------------------------------------------------------------------
+% Sezioni non ancora portate in LaTeX in questo giro (restano nel .docx
+% esistente finche' non richieste esplicitamente):
+%   \section{Introduction}\label{sec:introduction}
+%   \section{Threat Model}\label{sec:threat-model}
+%   \section{Case Study and Experimental Setup}
+%   \section{Instrument Validation}\label{sec:validation}
+%   \section{Results}\label{sec:results}
+%     \subsection{...}\label{sec:results-surface-b}
+%     \subsection{Utility Cost}\label{sec:results-utility}
+%   \section{PES\_v1}
+%   \section{Limitations}\label{sec:limitations}
+%   \section{Discussion and Conclusion}\label{sec:discussion}
+% ---------------------------------------------------------------------
+
+\input{sections/related_work.tex}
+\input{sections/framework.tex}
+
+\input{figures/ml_plane_architecture.tex}
+\input{figures/dp_placements.tex}
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

@@ -1,0 +1,205 @@
+% ChargeShield-FL --- DSN 2027 --- Related Work
+% Struttura ripresa da ChargeShield-FL_paper_riscrittura_completa_IT.md, S2
+% (struttura invariata rispetto alla versione corrente, giudicata buona),
+% con S2.3 (auditing empirico della DP) spostata qui da Architecture per
+% richiesta esplicita della bozza, e tre nuove citazioni verificate via
+% web search il 2026-09-15 (FedMIA, ML-Leaks, Secure Aggregation).
+
+\section{Related Work}
+\label{sec:related-work}
+
+\subsection{Membership Inference}
+\label{sec:related-mia}
+
+Membership inference against machine learning models was introduced by
+Shokri~et~al.~\cite{shokri2017membership}, who trained shadow models to
+mimic a target classifier's behavior and used their outputs to train an
+attack model that distinguishes members of the training set from
+non-members. Yeom~et~al.~\cite{yeom2018privacy} showed that a much
+simpler loss-thresholding attack achieves comparable success whenever a
+model overfits, tying membership leakage directly to the
+generalization gap; our Yeom attack (\texttt{run\_yeom()},
+Section~\ref{sec:framework-attacks}) instantiates this construction
+unmodified. Salem~et~al.~\cite{salem2019mlleaks} relaxed Shokri's
+requirement of knowing the target architecture and training
+distribution, showing that a single, architecture-agnostic shadow
+model transfers across models and datasets; our Shadow attack
+(\texttt{run\_shadow()}) draws on this data/model-independence
+argument to justify a single calibrated shadow model per site rather
+than an ensemble matched to the target. Carlini~et~al.'s Likelihood
+Ratio Attack (LiRA)~\cite{carlini2022membership} reframed the problem
+as a per-example hypothesis test between two Gaussian loss
+distributions (in, out) and, crucially, argued that the
+average-case metrics reported by most prior work --- accuracy, AUC ---
+obscure an attack's true capability, which only shows up in the
+true-positive rate at low, operationally realistic false-positive
+rates. We adopt this argument directly: Section~\ref{sec:results}
+reports TPR at fixed FPR (0.1\%, 1\%, 5\%) alongside AUC for exactly
+this reason, and our LiRA implementation
+(Section~\ref{sec:framework-lira}) is a direct adaptation of Carlini's
+construction to the federated, cross-round setting.
+
+A methodologically important and, in our reading, still under-cited
+paper is Sablayrolles~et~al.~\cite{sablayrolles2019whitebox}, who
+showed that the Bayes-optimal membership inference strategy under a
+broad class of threat models is a function of the loss alone, and that
+white-box access to intermediate gradients or activations provides no
+asymptotic advantage over observing the loss when the adversary's
+distributional assumptions are correctly specified. This result
+motivates one of the three per-round scoring variants we implement in
+\texttt{run\_lira()} (Section~\ref{sec:framework-lira}) alongside the
+raw-loss and log-transformed scorers, and it is the reason we treat
+score-function choice, not access level, as the primary axis of attack
+strength in this paper.
+
+\paragraph{A naming disambiguation.}
+A recent and unrelated line of work publishes under the same name as a
+module in our own codebase. Zhu~et~al.'s
+FedMIA~\cite{zhu2025fedmia} is a membership inference attack that
+follows an ``all for one'' principle, aggregating signal from
+\emph{every} client across \emph{multiple communication rounds} to
+attack a specific target record. Our codebase contains a historical,
+never-activated class also named \texttt{FedMIA} (dating to an early
+development sprint, explicitly banner-marked as inactive in the source
+and never registered in the attack registry) and a distinct, opt-in
+diagnostic attack we call FedMIA-gradient
+(Section~\ref{sec:framework-attacks}), which reuses two of that
+class's numerical routines but implements a different, per-round,
+gradient-space reconstruction-error test. Neither of our two
+FedMIA-named artifacts is an implementation of, a comparison against,
+or a reuse of Zhu~et~al.'s method; the name collision is coincidental
+and predates our awareness of their publication. We flag this
+explicitly to avoid the double reading a reviewer could otherwise give
+our results.
+
+\subsection{Differential Privacy for Federated Learning}
+\label{sec:related-dpfl}
+
+The differential privacy framework itself is due to
+Dwork~et~al.~\cite{dwork2006calibrating}. Abadi~et~al.'s
+DP-SGD~\cite{abadi2016deep} made per-example gradient clipping and
+Gaussian noise addition practical at the scale of deep learning
+training, and McMahan~et~al. adapted the same mechanism to the
+federated, client-level setting first for language
+models~\cite{mcmahan2018learning} and, together with the foundational
+FedAvg algorithm~\cite{mcmahan2017communication}, established
+client-level DP-FedAvg as the standard baseline we compare against
+under our \texttt{dp-fedavg} placement (Section~\ref{sec:framework-dp}).
+Li~et~al.'s FedProx~\cite{li2020federated} generalizes FedAvg with a
+proximal term that reduces to plain FedAvg when its coefficient is
+zero, which is how our aggregator is configured for the results in
+this paper; we did not exercise heterogeneity-driven proximal
+regularization.
+
+A separate line of work asks whether the \emph{aggregation} step
+itself, rather than the model updates, can be protected
+cryptographically. Bonawitz~et~al.'s secure aggregation
+protocol~\cite{bonawitz2017practical} lets a server learn only the sum
+of client updates, never an individual client's contribution, using
+pairwise masking with dropout resilience. We deliberately do not
+assume secure aggregation anywhere in this paper: our threat model
+(Section~\ref{sec:threat-model}) grants the aggregator plaintext
+access to each client's update, which is what makes the client-level
+observation surface in Section~\ref{sec:results-surface-b} attackable
+in the first place. Secure aggregation and differential privacy are
+complementary, not substitutable, defenses --- the former hides
+\emph{who} contributed which update, the latter bounds \emph{how much}
+any single record's presence can move the aggregate --- and a
+deployment combining both is future work we do not evaluate here.
+
+\subsection{Empirical Auditing of Differential Privacy}
+\label{sec:related-auditing}
+
+A formal $(\varepsilon,\delta)$ guarantee bounds worst-case leakage
+over every possible adversary and every pair of neighboring datasets;
+it does not by itself say how much a specific, instantiated adversary
+extracts from a specific trained model. Closing that gap is the
+subject of a body of work on empirical DP auditing, and it is the
+literature our third ML Plane consumer
+(Section~\ref{sec:framework-attacks}) is positioned against, not the
+Privacy Auditor's in-line budget accounting
+(Section~\ref{sec:framework-auditor}) --- a distinction we found
+necessary to state explicitly after an earlier draft of this paper
+conflated the two (Section~\ref{sec:framework-auditor}).
+Jagielski~et~al.~\cite{jagielski2020auditing} and
+Nasr~et~al.~\cite{nasr2021adversary} developed adversary-instantiation
+techniques that turn a DP mechanism's theoretical bound into an
+empirical lower bound on $\varepsilon$ by constructing worst-case
+canary inputs and measuring how reliably an attacker distinguishes
+their inclusion. Steinke~et~al.~\cite{steinke2023privacy} showed that
+a useful empirical lower bound can be obtained from a \emph{single}
+training run rather than the many thousands classical auditing
+requires, by injecting multiple independent canaries and analyzing
+them jointly --- a result directly relevant to any future single-run
+canary campaign on this codebase. Maddock~et~al.'s
+CANIFE~\cite{maddock2023canife} adapts canary-based auditing
+specifically to the federated setting, addressing the practical
+difficulty that in cross-silo FL a canary must be crafted per client
+and per round rather than once for a centralized dataset; our own
+canary positive control (Section~\ref{sec:framework-canary}) is a
+direct, simplified descendant of this idea, restricted to verifying
+attack sensitivity rather than deriving a formal $\varepsilon$ lower
+bound.
+Jayaraman and Evans~\cite{jayaraman2019evaluating} is the paper whose
+framing we adopt for reading a null attack result against a DP
+mechanism at all: they show empirically that the $\varepsilon$ values
+DP-SGD implementations use in practice are far looser than the
+$\varepsilon$ at which membership inference actually degrades, so a
+null result at a \emph{practical} $\varepsilon$ is uninformative about
+whether DP caused it unless the same attack is also shown to fail
+without any DP at all. Section~\ref{sec:framework-dp}'s
+\texttt{dp-fedavg} upper-bound placement and
+Section~\ref{sec:results}'s no-DP baseline exist specifically to make
+that comparison available. Rahman~et~al.~\cite{rahman2018membership}
+is the closest prior empirical study to ours in spirit --- membership
+inference against differentially private deep learning models on
+real, non-benchmark data --- though restricted to the centralized
+setting; we return to their findings when discussing the practical
+$\varepsilon$--utility trade-off in Section~\ref{sec:discussion}.
+
+\subsection{Byzantine-Robust and Adjacent Federated Learning}
+\label{sec:related-byzantine}
+
+Blanchard~et~al.'s Krum~\cite{blanchard2017machine} and the broader
+literature on Byzantine-tolerant aggregation address a threat model
+orthogonal to the one this paper measures: a client that deviates from
+the protocol to corrupt the global model, versus a server that follows
+the protocol faithfully but observes passively. Our ByzantineDetector
+component (Section~\ref{sec:framework-byzantine}) draws on this
+literature for its Krum and cosine-similarity mechanisms, but --- as
+we state explicitly in Section~\ref{sec:framework-byzantine} after
+finding and correcting an earlier conflation of the two threat models
+in our own writing --- no integrity mechanism from this literature
+provides any confidentiality guarantee against the honest-but-curious
+aggregator this paper's results characterize, and no privacy metric in
+this paper detects Byzantine behavior. Bagdasaryan~et~al.'s backdoor
+attack~\cite{bagdasaryan2020backdoor} is a further example of a
+client-side threat in this same orthogonal category. Kairouz~et~al.'s
+survey~\cite{kairouz2021advances} and Truong~et~al.'s GDPR-oriented
+survey~\cite{truong2021privacy} both situate privacy and integrity as
+distinct concerns within the broader federated learning literature,
+consistent with how we separate them architecturally
+(Section~\ref{sec:framework}).
+
+\subsection{Relationship to Our Prior Work}
+\label{sec:related-prior}
+
+This paper extends our own prior work~\cite{imperatrice2026toward}, a
+QRS 2026 fast abstract that first proposed the ML Plane as an
+architectural response to the Purdue-model observability gap FL
+introduces (Section~\ref{sec:introduction}). That prior work proposed
+the substrate without a registered consumer: no in-line budget
+auditor, no integrity detector, and no offline attack suite were
+implemented or evaluated against it. The contribution of the present
+paper is to instrument that substrate with three independent
+consumers, deploy it against a real, multi-site EV charging dataset,
+and report what each consumer actually measures --- including, in
+Section~\ref{sec:validation}, a methodology for telling a genuine null
+membership-inference result apart from an insensitive one, which did
+not exist in any form in the prior abstract.
+
+\emph{Editorial note preserved from the existing bibliography:} DSN's
+double-blind anonymization rules require self-citation in the third
+person without omission (see CFP, Anonymization Rules); the wording
+above is written to satisfy that requirement and should not be altered
+to first person or removed prior to submission.

@@ -1,0 +1,53 @@
+% Figure: ML Plane with three consumers.
+% Standalone-compilable with the standalone document class for isolated
+% preview; \input{} directly from main.tex for the paper build (in that
+% case the \documentclass/\begin{document} lines below are ignored,
+% since main.tex already provides them -- see the wrapping convention
+% explained in figures/README inline comment at the end of this file).
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  node distance=1.1cm and 1.6cm,
+  box/.style={draw, rounded corners, minimum height=0.9cm, minimum width=2.6cm, align=center, font=\small},
+  hub/.style={draw, circle, minimum size=1.3cm, align=center, font=\small\bfseries},
+  consumer/.style={draw, rounded corners, minimum height=1.1cm, minimum width=3.1cm, align=center, font=\small},
+  arr/.style={-Latex, thick}
+]
+  % Purdue-level producers
+  \node[box] (local) {Local trainer\\\footnotesize Purdue L1 (raw update)};
+  \node[box, right=of local] (privatize) {Clip + DP noise\\\footnotesize Purdue L2 (privatized update)};
+  \node[box, right=of privatize] (aggregate) {FedAvg aggregator\\\footnotesize round aggregated};
+
+  % Hub
+  \node[hub, below=1.4cm of privatize] (hub) {ML Plane\\hub};
+
+  % Three consumers
+  \node[consumer, below left=1.6cm and -0.3cm of hub] (auditor) {Privacy Auditor\\\footnotesize in-line, budget telemetry\\\footnotesize \S3.2};
+  \node[consumer, below=1.9cm of hub] (byz) {ByzantineDetector\\\footnotesize in-line, integrity\\\footnotesize \S3.3};
+  \node[consumer, below right=1.6cm and -0.3cm of hub] (attacks) {Attack suite\\\footnotesize \emph{offline}, empirical auditing\\\footnotesize Yeom / Shadow / LiRA \quad \S3.4};
+
+  \draw[arr] (local) -- (hub);
+  \draw[arr] (privatize) -- (hub);
+  \draw[arr] (aggregate) -- (hub);
+
+  \draw[arr] (hub) -- (auditor);
+  \draw[arr] (hub) -- (byz);
+  \draw[arr, dashed] (hub) -- (attacks);
+
+  % Nota: \\ non deve mai comparire dentro l'argomento di \emph{...} in un
+  % nodo TikZ con align=center -- TikZ intercetta \\ per l'allineamento
+  % tabellare del testo del nodo e un \\ annidato in un altro comando causa
+  % "Undefined control sequence \pgfutil@next" (verificato isolando il bug
+  % in una compilazione di prova, 2026-09-15). Per questo qui \emph si
+  % applica riga per riga, con i \\ sempre al livello esterno.
+  \node[font=\footnotesize, below=0.05cm of attacks, align=center] {\emph{dashed = buffered to}\\\texttt{round\_data}, consumed\\\emph{after training ends}};
+
+\end{tikzpicture}
+\caption{The ML Plane publishes three Purdue-labeled event types per
+round to a central hub, which fans them out to three independent
+consumers. The Privacy Auditor and ByzantineDetector process events
+in-line, without altering the training loop; the attack suite buffers
+the same events and runs offline, after training completes
+(Section~\ref{sec:framework-attacks}).}
+\label{fig:mlplane}
+\end{figure}

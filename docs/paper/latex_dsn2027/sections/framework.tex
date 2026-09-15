@@ -1,0 +1,376 @@
+% ChargeShield-FL --- DSN 2027 --- Architecture / Framework
+
+\section{Architecture}
+\label{sec:framework}
+
+\begin{quote}
+\emph{A terminological clarification, stated once here because it is
+used without re-explanation throughout the rest of the paper.} We use
+\emph{auditing} for two distinct activities and keep them separate by
+name. \emph{Budget auditing} is the in-line activity of the Privacy
+Auditor (Section~\ref{sec:framework-auditor}): it accounts for what the
+DP mechanism \emph{promises}. \emph{Empirical privacy auditing} is the
+offline activity of the attack suite (Section~\ref{sec:framework-attacks}):
+it measures what an instantiated adversary actually \emph{extracts}.
+These are different components, running at different times, serving
+different roles; neither substitutes for the other.
+\end{quote}
+
+\subsection{The ML Plane}
+\label{sec:framework-mlplane}
+
+The ML Plane is an event-driven observability substrate for FL
+training. Each component that participates in a training round --- the
+local trainer, the gradient/DP handler, the FedAvg aggregator ---
+exposes a common \texttt{emit\_event()}/\texttt{subscribe()} interface;
+a central hub connects publishers to subscribers; a collector
+assembles, for every round, both the raw and the privatized update,
+without the training loop itself knowing that anything is listening.
+Algorithm~\ref{alg:mlplane-dispatch} gives the dispatch loop.
+
+Three event types exist, and they are also the three observation
+points used in the experiments of Section~\ref{sec:results}: \emph{local
+update produced}, \emph{privatized update}, \emph{aggregated round}.
+Every event carries the Purdue level at which the artifact was
+produced --- level 1 for the raw local-training update, level 2 for
+the clipped-and-noised update that reaches the supervisory level. This
+label is not decorative: it determines which artifact a given consumer
+is entitled to see, and it is what makes expressible the difference
+between a deployment where the aggregator observes the clean value and
+one where it never does.
+
+Nothing at this layer is specific to the EV domain or to any
+particular attack. Figure~\ref{fig:mlplane} shows the three consumers
+introduced in Sections~\ref{sec:framework-auditor}--\ref{sec:framework-attacks}
+attached to the same event stream.
+
+\begin{algorithm}[t]
+\caption{ML Plane event dispatch (per training round)}
+\label{alg:mlplane-dispatch}
+\begin{algorithmic}[1]
+\REQUIRE round index $t$, set of participating clients $C$
+\STATE $U_{\text{raw}} \gets \{\}$, $U_{\text{priv}} \gets \{\}$
+\FOR{each client $c \in C$}
+  \STATE $u_c \gets \textsc{LocalTrain}(c, t)$ \textit{Purdue level 1}
+  \STATE \textsc{Emit}(\textsc{LocalUpdateProduced}, $u_c$, level=1)
+  \STATE $\hat{u}_c \gets \textsc{ClipAndPrivatize}(u_c)$ \textit{Purdue level 2}
+  \STATE \textsc{Emit}(\textsc{PrivatizedUpdateReady}, $\hat{u}_c$, level=2)
+  \STATE $U_{\text{raw}} \gets U_{\text{raw}} \cup \{u_c\}$; \quad $U_{\text{priv}} \gets U_{\text{priv}} \cup \{\hat{u}_c\}$
+\ENDFOR
+\STATE $g_t \gets \textsc{FedAvgAggregate}(U_{\text{priv}})$
+\STATE \textsc{Emit}(\textsc{RoundAggregated}, $g_t$, $U_{\text{raw}}$, $U_{\text{priv}}$)
+\STATE \textit{Every subscriber below receives every emitted event; none blocks or mutates the training loop.}
+\STATE \textbf{subscribers:} PrivacyAuditor.\textsc{OnEvent}($\cdot$) \COMMENT{\S\ref{sec:framework-auditor}, in-line}
+\STATE \hphantom{\textbf{subscribers:}} ByzantineDetector.\textsc{OnEvent}{$\cdot$} \COMMENT{\S\ref{sec:framework-byzantine}, in-line}
+\STATE \hphantom{\textbf{subscribers:}} RoundDataCollector.\textsc{OnEvent}{$\cdot$} \COMMENT{\S\ref{sec:framework-attacks}, buffers only; attacks run later, offline}
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{First Consumer --- the Privacy Auditor (in-line telemetry)}
+\label{sec:framework-auditor}
+
+The Privacy Auditor is an always-on, in-line consumer subscribed to ML
+Plane events. Given any node's update as a flat dictionary of numeric
+weights, it does exactly three things: it computes a sensitivity proxy
+based on the update's norm, it tracks cumulative $\varepsilon/\delta$
+budget consumption per node across rounds, and it raises alerts when
+configured thresholds are crossed (gradient explosion, budget near
+exhaustion or exhausted).
+
+\textbf{It has no notion of membership and no notion of attack.} It
+never evaluates whether a specific session belongs to a node's training
+set, never computes a membership score, and never runs any of the
+attacks in Section~\ref{sec:framework-attacks}. It is privacy
+\emph{telemetry}, not a privacy \emph{measurement}: it answers ``is
+this node behaving within its declared parameters?'', not ``how much
+information is actually leaving?''
+
+We state two qualifications explicitly.
+
+\emph{The budget score is not formal DP accounting.} Per-round
+$\varepsilon$ is computed as
+$(\text{observed sensitivity}/\texttt{max\_grad\_norm}) \times
+\varepsilon_{\text{budget}}$, where observed sensitivity is scaled
+relative to the round's peer median (Algorithm~\ref{alg:round-epsilon}).
+It is therefore \textbf{data-dependent}, whereas formal DP accounting
+is data-independent by construction, and it can exceed the nominal
+per-round budget when a client sits above the median: in our exported
+artifacts one client reports $\varepsilon = 1.070$ against a budget of
+$1.0$ at the first round. This is an internal risk score calibrated
+for alert thresholds, not an accountant, and we disclose it both here
+and in the \texttt{epsilon\_accounting\_note} field of every exported
+JSON report, because a reader who opens only the artifact cannot
+otherwise infer it.
+
+\emph{The Auditor has never been validated against a true positive.}
+Across the full experimental campaign it has raised no alert, because
+there has never been anything to flag. A monitor that has never seen
+the event it is meant to detect has not been evaluated as a monitor.
+The most direct way to close this gap is to point the Auditor at a run
+where membership leakage is known and deliberately induced --- i.e.,
+at the canary positive-control runs described in
+Section~\ref{sec:framework-canary} --- and check whether its
+sensitivity proxy moves. We flag one dependency before that check can
+be treated as conclusive: a tagging bug affecting the non-member side
+of canary injection (an untagged original session could land inside a
+shadow model's training set while its tagged clone was held out, or
+vice versa, defeating the anti-contamination guard the tagging exists
+to enforce) was found and fixed on 2026-09-15, after every canary run
+reported in an earlier draft of this paper had already completed;
+those runs should be read as indicative of the Auditor-validation
+methodology, not as its result, pending a rerun against the fixed
+injection code. Overhead --- wall-clock time spent per round inside the
+Auditor's own processing, separate from training time --- is
+instrumented (a single always-on timer per round, chosen over a
+two-run A/B comparison because cross-run training-time variance would
+dominate an expected sub-millisecond signal) but not yet reported here
+pending a run under realistic DP configuration.
+
+\subsection{Second Consumer --- ByzantineDetector (in-line integrity)}
+\label{sec:framework-byzantine}
+
+ByzantineDetector (Krum~\cite{blanchard2017machine},
+cosine-similarity filtering, CUSUM, gradient-explosion detection)
+protects training convergence against Byzantine or poisoning clients.
+It is the ML Plane's second in-line consumer, and it operates on a
+threat domain orthogonal to the Auditor's: client-side integrity
+(Scenario~2, Section~\ref{sec:threat-model}) versus server-side
+confidentiality (Scenario~1, Section~\ref{sec:threat-model}).
+
+We state explicitly, having found and corrected an earlier conflation
+of our own on this point: \textbf{no integrity mechanism provides any
+privacy guarantee} against the honest-but-curious aggregator this
+paper's results characterize, and no privacy measure detects Byzantine
+behavior. The two domains are separated in the architecture and remain
+separated throughout our argument.
+
+As of this submission, ByzantineDetector's mechanisms are implemented
+and unit-tested, but have not been exercised end-to-end against an
+active Byzantine client on real training data.
+
+\emph{An observation worth reporting if that experiment is run.} A
+preliminary numerical simulation, independent of the production
+ByzantineDetector code, suggests that DP noise saturates the detector:
+with $\sigma = 4.84$ (corresponding to $\varepsilon = 1.0$ under our
+noise calibration, Section~\ref{sec:framework-dp}) applied to two
+simulated \emph{honest} updates of dimension matching our
+570-parameter model ($w \sim \mathcal{N}(0, 0.1)$ per weight before
+noise), mean cosine similarity between the two updates collapses from
+$\approx 0.9999$ in a noise-free control to $\approx -0.0024$ after
+noise, with $100\%$ of 200 simulated honest pairs falling below
+ByzantineDetector's default $0.3$ similarity threshold. If confirmed on
+real trained weights, this is a concrete privacy/integrity tension:
+noise calibrated for confidentiality renders integrity monitoring on
+the same channel inoperative, independent of DP placement
+(Section~\ref{sec:framework-dp}). This would be a directly actionable
+finding for deployment design.
+
+\subsection{Third Consumer --- the Attack Suite (offline, empirical auditing)}
+\label{sec:framework-attacks}
+
+A $(\varepsilon,\delta)$ guarantee bounds worst-case leakage over every
+possible adversary and every neighboring dataset; it does not say what
+a concrete adversary extracts from one specific, already-trained
+model. Measuring the latter quantity requires instantiating the
+adversary. That is the role of the attack suite.
+
+The attacks --- Yeom, Shadow, LiRA, in \texttt{src/plugins/attacks/},
+dispatched through \texttt{ATTACK\_REGISTRY} --- consume the same
+\texttt{round\_data} collected by the ML Plane, but run
+\textbf{offline, after training completes}, as a separate process. In
+the single-process simulation, \texttt{run\_experiments.py} finishes
+training and then iterates the registry. In the NVFlare deployment,
+\texttt{ChargeShieldAggregator} exports a round-data dump at every
+round and \texttt{run\_nvflare\_mia.py} loads it and invokes the same,
+unmodified attack functions. In neither path does attack code run
+inside the server process. Section~\ref{sec:framework-offline-equiv}
+justifies this as a design choice on equivalence grounds, not
+implementation convenience.
+
+A fourth, opt-in diagnostic attack, FedMIA-gradient, reuses two
+numerical routines (\texttt{calibrate\_from\_vectors()},
+\texttt{reconstruction\_error()}) from a historical, never-activated
+\texttt{FedMIA} class in this codebase, but implements a distinct
+gradient-space reconstruction-error test; it is not validated to the
+same standard as the other three attacks and is reported only as a
+diagnostic (Section~\ref{sec:limitations}). See
+Section~\ref{sec:related-mia} for why neither artifact should be read
+as an implementation of Zhu~et~al.'s unrelated, identically-named
+method~\cite{zhu2025fedmia}.
+
+\subsubsection{Canary Positive Control}
+\label{sec:framework-canary}
+
+To validate that a null attack result reflects the absence of leakage
+rather than an insensitive instrument, we inject synthetic canary
+sessions --- near-duplicate templates repeated with high multiplicity
+--- into a client's training set and verify that the attack suite
+\emph{can} detect them when a true membership signal is deliberately
+introduced. Algorithm~\ref{alg:inject-canaries} gives the injection
+procedure, including the tagging discipline required on both the
+member and non-member side: each canary template's original,
+untagged occurrence must be replaced in place by a tagged copy before
+any duplicate is added, on \emph{both} sides of the split, so that
+downstream shadow-model training (which must never train on a sample
+whose exact duplicate it is later asked to score) can identify and
+exclude every copy of a template consistently. An asymmetric version of
+this bug --- present on the member side only, then independently found
+and fixed on the non-member side as well on 2026-09-15 --- is the
+subject of the caveat in Section~\ref{sec:framework-auditor}.
+
+\subsection{Three DP Placements as Adversary Privilege Points}
+\label{sec:framework-dp}
+
+The three DP placements we evaluate --- \texttt{dp-fedavg},
+\texttt{central}, \texttt{local} --- are not three privacy mechanisms.
+They are three points of adversary privilege along the same update
+transformation pipeline (Figure~\ref{fig:dp-placements}):
+\texttt{dp-fedavg} observes the \emph{raw} update, \texttt{central}
+observes it \emph{after clipping but before noise}, \texttt{local}
+observes only the \emph{final, clipped-and-noised} value.
+\texttt{dp-fedavg} is therefore the \textbf{upper bound} on what is
+extractable from this channel. If even the most privileged view shows
+no signal, a null result under the protective placements cannot be
+attributed to noise suppressing a signal that was otherwise present ---
+the raw view already did not contain one.
+
+Two qualifications carry over from this placement design. First, our
+clipping and noise operate at \textbf{client-level} granularity (one
+update per client per round), while the attacks in
+Section~\ref{sec:framework-attacks} probe \textbf{record-level}
+membership (one session); the two granularities are not the same
+privacy unit, and a client-level guarantee does not by itself bound
+record-level leakage when a client holds many records, as is the case
+here (each site holds thousands of sessions). Second, $\varepsilon$
+here is read as an experimental noise parameter in the presence of 50
+local epochs per round, not as a claim about the DP guarantee that
+would hold under a single global epoch; the two are numerically
+different questions and we do not conflate them.
+
+Noise is calibrated per weight of the 570-parameter autoencoder as
+$\sigma = C \cdot \sqrt{2 \ln(1.25/\delta)} / \varepsilon$, with
+$C = 1.0$ (the clipping norm) and $\delta = 10^{-5}$, giving
+$\sigma = 4.84$ at $\varepsilon = 1.0$ and $\sigma = 48.4$ at
+$\varepsilon = 0.1$ (Section~\ref{sec:results-utility}).
+
+\subsection{LiRA: Adaptations to This Setting}
+\label{sec:framework-lira}
+
+Our LiRA implementation follows four declared deviations from
+Carlini~et~al.'s original construction~\cite{carlini2022membership},
+made necessary by the federated, cross-round setting: per-round shadow
+retraining from that round's global weights rather than a single
+offline shadow population; $n_{\text{shadow}} = 16$ rather than the
+hundreds used in the centralized, single-shot setting, a scale
+constrained by wall-clock cost per round; three interchangeable
+per-sample scorers (raw MSE, log-transformed MSE, and the
+Sablayrolles~et~al.\ score~\cite{sablayrolles2019whitebox}); and a
+cross-round composed score that accumulates evidence forward rather
+than scoring each round independently. We measured, rather than
+assumed, the Gaussian-loss assumption underlying the parametric variant:
+a Jarque--Bera normality test on raw per-sample loss rejects
+Gaussianity at essentially every round (details in
+Section~\ref{sec:validation}), motivating the log-transformed variant
+as an explicit, declared alternative rather than a silent substitute;
+the empirically measured skip rate under the $8\sigma$ exclusion filter
+across the full campaign is $0.0000\%$.
+
+\subsubsection{The Shared Variance Floor}
+\label{sec:framework-variance-floor}
+
+One deviation is substantial enough to state as its own result rather
+than a footnote. When the in- and out-distribution variances are
+equal, $\sigma_{\text{in}} = \sigma_{\text{out}} = \sigma$, the two
+$-\log\sigma$ normalization terms in the Gaussian log-likelihood ratio
+cancel, and the score collapses algebraically to a strictly monotone
+\emph{linear} function of the raw loss with a decision threshold at
+the midpoint of the two class means:
+\begin{equation}
+\text{LLR} \;=\; \frac{(\mu_{\text{in}} - \mu_{\text{out}})\,\bigl(2\cdot\text{loss} - \mu_{\text{in}} - \mu_{\text{out}}\bigr)}{2\sigma^2},
+\qquad \text{threshold at } \text{loss} = \frac{\mu_{\text{in}}+\mu_{\text{out}}}{2}.
+\label{eq:variance-floor}
+\end{equation}
+Algorithm~\ref{alg:lira-score} shows where this collapse occurs inside
+per-round scoring. We verified Equation~\ref{eq:variance-floor} by
+independent hand derivation from the Gaussian log-likelihood ratio; it
+matches our implementation exactly. In the campaign, the variance floor
+is active --- i.e., $\sigma_{\text{in}}$ and $\sigma_{\text{out}}$ are
+clamped to the same floor value --- on $95$--$99\%$ of samples under
+\texttt{central} and on $68\%$ elsewhere, meaning per-example variance
+calibration, the one property that formally distinguishes LiRA from a
+Yeom-style loss threshold, is in practice inactive for most of the
+campaign. We report this as a declared deviation
+(Section~\ref{sec:limitations}) rather than treat LiRA's results as
+evidence of the calibrated construction's specific behavior.
+
+\subsubsection{Cold-Start Ablation}
+\label{sec:framework-coldstart}
+
+The null result also holds when shadow models are trained from random
+initialization (Carlini~et~al.'s original construction) rather than
+warm-started from the current global weights, our default. A
+collateral observation: under cold-start,
+\texttt{matched\_formula\_auc} (Section~\ref{sec:validation}) rises to
+$0.49$--$0.51$, compared to $0.34$--$0.44$ under warm-start, while the
+variance-floor hit rate rises to nearly $100\%$. These two variables
+interact and should be read together, not independently.
+
+\begin{algorithm}[t]
+\caption{Canary injection with member/non-member tagging (both sides required)}
+\label{alg:inject-canaries}
+\begin{algorithmic}[1]
+\REQUIRE member templates $T_m$, non-member (holdout) templates $T_n$, duplicate count $d$
+\ENSURE tagged injected training set $I_{\text{train}}$, tagged injected holdout set $I_{\text{holdout}}$
+\FOR{$j \gets 1$ to $|T_m|$}
+  \STATE $\text{template} \gets T_m[j]$; \quad $\text{group} \gets$ \texttt{"canary\_m"} $\Vert\, j$
+  \STATE \textbf{find} the occurrence $s$ in $I_{\text{train}}$ with $s \text{ is } \text{template}$ (identity, not equality)
+  \STATE replace it in place: $s \gets \text{template} \cup \{\texttt{\_canary\_group}: \text{group},\ \texttt{\_canary\_role}: \texttt{"member"}\}$
+  \FOR{$k \gets 1$ to $d$}
+    \STATE clone $\gets \text{template} \cup \{\texttt{\_canary\_group}: \text{group},\ \texttt{\_canary\_role}: \texttt{"member"}\}$
+    \STATE append clone to $I_{\text{train}}$
+  \ENDFOR
+\ENDFOR
+\STATE \textit{Non-member side --- mirrors the member side exactly. Sprint 10zz+108 (2026-09-15) found this branch previously appended only the tagged clone and left the original \texttt{template} occurrence untagged inside $I_{\text{holdout}}$, reproducing the same shadow-contamination risk this whole procedure exists to prevent: an untagged twin of a template could land IN a shadow model's training set while its tagged clone was OUT, or vice versa.}
+\FOR{$j \gets 1$ to $|T_n|$}
+  \STATE $\text{template} \gets T_n[j]$; \quad $\text{group} \gets$ \texttt{"canary\_n"} $\Vert\, j$
+  \STATE \textbf{find} the occurrence $s$ in $I_{\text{holdout}}$ with $s \text{ is } \text{template}$ (identity, not equality)
+  \STATE replace it in place: $s \gets \text{template} \cup \{\texttt{\_canary\_group}: \text{group},\ \texttt{\_canary\_role}: \texttt{"nonmember"}\}$
+  \STATE clone $\gets \text{template} \cup \{\texttt{\_canary\_group}: \text{group},\ \texttt{\_canary\_role}: \texttt{"nonmember"}\}$
+  \STATE append clone to $I_{\text{holdout}}$
+\ENDFOR
+\STATE \RETURN $I_{\text{train}}, I_{\text{holdout}}$
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[t]
+\caption{LiRA per-round scoring with variance-floor collapse}
+\label{alg:lira-score}
+\begin{algorithmic}[1]
+\REQUIRE target loss $\ell$, shadow-model in/out losses $\{\ell^{\text{in}}_i\}_{i=1}^{n_{\text{shadow}}}$, $\{\ell^{\text{out}}_i\}_{i=1}^{n_{\text{shadow}}}$, variance floor $\sigma^2_{\min}$
+\STATE $\mu_{\text{in}}, \sigma^2_{\text{in}} \gets \textsc{Mean}(\ell^{\text{in}}), \textsc{Var}(\ell^{\text{in}})$
+\STATE $\mu_{\text{out}}, \sigma^2_{\text{out}} \gets \textsc{Mean}(\ell^{\text{out}}), \textsc{Var}(\ell^{\text{out}})$
+\STATE $\sigma^2_{\text{in}} \gets \max(\sigma^2_{\text{in}}, \sigma^2_{\min})$; \quad $\sigma^2_{\text{out}} \gets \max(\sigma^2_{\text{out}}, \sigma^2_{\min})$
+\IF{$\sigma^2_{\text{in}} = \sigma^2_{\text{out}}$} 
+  \STATE \textbf{score} $\gets \dfrac{(\mu_{\text{in}}-\mu_{\text{out}})(2\ell-\mu_{\text{in}}-\mu_{\text{out}})}{2\sigma_{\text{in}}^2}$ \textit{(linear in $\ell$; threshold at $(\mu_{\text{in}}+\mu_{\text{out}})/2$)}
+\ELSE
+  \STATE \textbf{score} $\gets \log\dfrac{\mathcal{N}(\ell;\ \mu_{\text{in}}, \sigma^2_{\text{in}})}{\mathcal{N}(\ell;\ \mu_{\text{out}}, \sigma^2_{\text{out}})}$ \COMMENT{full likelihood ratio, per-example variance calibration active}
+\ENDIF
+\STATE \RETURN \textbf{score}
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[t]
+\caption{Privacy Auditor per-round budget score (not formal DP accounting)}
+\label{alg:round-epsilon}
+\begin{algorithmic}[1]
+\REQUIRE client update $u_c$, peer updates $\{u_{c'}\}_{c' \in C}$ for round $t$, \texttt{max\_grad\_norm}, $\varepsilon_{\text{budget}}$
+\STATE $m_t \gets \textsc{Median}(\{\lVert u_{c'} \rVert\}_{c' \in C})$ \COMMENT{peer-relative normalization}
+\STATE $\hat{s}_c \gets \lVert u_c \rVert \,/\, m_t$ \COMMENT{sensitivity proxy, data-dependent}
+\STATE $\varepsilon_c \gets (\hat{s}_c \,/\, \texttt{max\_grad\_norm}) \times \varepsilon_{\text{budget}}$
+\IF{$\varepsilon_c > \varepsilon_{\text{budget}}$} 
+  \STATE \textsc{RaiseAlert}(\textsc{BudgetExceeded}, $c$, $\varepsilon_c$)
+\ENDIF
+\STATE \textsc{record} $\varepsilon_c$ in \texttt{epsilon\_accounting\_note}-annotated report for client $c$, round $t$
+\STATE \RETURN $\varepsilon_c$
+\end{algorithmic}
+\end{algorithm}
