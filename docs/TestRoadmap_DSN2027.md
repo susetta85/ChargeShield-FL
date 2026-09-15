@@ -880,6 +880,57 @@ equivalenti in sensibilità nemmeno di fronte a un leakage iniettato aggressivam
 riportare esplicitamente. Il bilanciamento membri/non-membri, i "gemelli veri" e l'estensione
 a 5 seed restano lavoro separato, non ancora iniziato.
 
+**Risultato reale (2026-09-15, eseguito dall'utente sulla propria macchina)** —
+`experiments/_blocker2_canary_nodp_3attacks/experiment_20260915_101915.json`, 1 seed (42),
+no-DP, office1, 3 round. Esito **misto, non il caso "tutti e tre si staccano" previsto sopra**:
+
+- **LiRA**: `canary_auc_roc` per round 0.6375/0.6625/0.5875, `canary_composed_auc_roc`
+  0.6875 — riproduce quasi esattamente il risultato già documentato in Sprint 10zz+18
+  (stesso composed 0.6875), coerente e stabile.
+- **Yeom**: `yeom_canary_auc_roc` per round 0.70/0.86/0.86 — segnale FORTE, più alto di
+  LiRA. Il positive control regge anche per un attacco che vede solo `global_weights`
+  aggregati, non l'update del singolo client.
+- **Shadow**: `shadow_canary_auc_roc` per round 0.26/0.32/0.32 — **sotto 0.5, cioè invertito
+  rispetto all'atteso** (advantage quasi nullo: 0.0/0.1/0.1). Non rumore statistico da
+  campione piccolo (n_member=150, n_nonmember=20, stesso ordine di grandezza di LiRA/Yeom
+  che invece si staccano nettamente).
+
+**Diagnosi (verificata leggendo il codice, non solo ipotizzata)**: `inject_canaries()`
+(riga ~609) sceglie `n_templates` sessioni REALI già presenti in `site_train_sessions`
+come template, poi **aggiunge** `n_duplicates` cloni taggati (`_canary_role="member"`)
+SENZA rimuovere o taggare l'occorrenza originale — l'originale resta nel pool come sessione
+membro ordinaria, indistinguibile da qualunque altra. La guardia anti-contaminazione di
+Shadow (Sprint 10zz+93, sposta le sessioni con `_canary_role=="member"` da `shadow_train` a
+`eval_members`) non la vede, perché l'originale non porta il tag. Se quell'occorrenza
+originale finisce per caso in `shadow_train` (50% di probabilità), lo shadow model si
+allena direttamente sullo stesso identico vettore di feature dei 30 duplicati canary — con
+1000 epoche su un autoencoder piccolo, può arrivare a una loss bassa quanto o più bassa di
+quella del target model (che ha comunque 30 copie a rinforzare il segnale, ma su un pool di
+training più grande), producendo uno score calibrato (`shadow_loss - target_loss`) vicino a
+zero o negativo per quel gruppo — invertendo l'AUC se questo capita per un numero
+sufficiente dei 5 template. LiRA non mostra lo stesso collasso probabilmente perché la sua
+calibrazione usa `n_shadow=8` modelli shadow distinti pescati dall'universo per-cluster
+(`_sample_preserving_canary_groups`, che tratta i gruppi TAGGATI come atomici — ma
+anch'essa non vede l'originale non taggato): l'effetto di un singolo shadow contaminato si
+dilua nella media di 8, mentre Shadow ha UN SOLO modello shadow e quindi zero diluizione.
+
+**Fix proposto (non ancora implementato — richiede conferma esplicita dell'utente, tocca
+`inject_canaries()`, funzione da cui dipendono tutti i numeri canary già citati in §6.2/§9
+del paper)**: taggare anche l'occorrenza originale del template con lo stesso
+`_canary_group`/`_canary_role="member"` dei suoi cloni, invece di lasciarla non taggata —
+rende il gruppo genuinamente atomico (31 occorrenze identiche, non 30+1), e la guardia
+Shadow già esistente la escluderebbe automaticamente da `shadow_train` senza bisogno di
+altro codice nuovo. Impatto: zero se `canary.enabled=False` (default, ogni run
+pubblicato); per i run con canary attivo, invaliderebbe i numeri canary già citati nel
+paper (Sprint 10zz+18, composed 0.6875 per LiRA) — andrebbero rilanciati. Non implementato
+in questa voce, in attesa di decisione esplicita data la natura pubblicata del numero
+affetto.
+
+**Stato**: Blocker 2 PARZIALMENTE risolto — LiRA e Yeom hanno ora un positive control reale
+e funzionante con tutti e tre gli attacchi tentati; Shadow ha rivelato un gap di
+progettazione nell'iniezione canary che va corretto prima di poter citare
+`shadow_canary_auc_roc` come riferimento. Task #121 resta aperto.
+
 ### Blocker 3 — ablation del filtro 8σ (task #122)
 
 **Domanda.** `_UNCALIBRATED_Z_THRESHOLD=8.0` esclude campioni troppo lontani da entrambe le
