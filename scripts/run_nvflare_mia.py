@@ -173,6 +173,18 @@ def _inject_canaries_for_site(
     injected_train = list(site_train)
     for i, template in enumerate(member_templates):
         group = f"canary_m{i}"
+
+        # Fix (2026-09-15, Sprint 10zz+105) — stessa correzione applicata a
+        # _inject_canary_members() in chargeshield_executor.py e a
+        # inject_canaries() in run_experiments.py (Sprint 10zz+96): questa
+        # ricostruzione DEVE restare bit-per-bit equivalente all'iniezione
+        # live del client, incluso questo fix, altrimenti i gruppi canary
+        # ricostruiti qui non corrisponderebbero a quelli realmente iniettati.
+        for idx, s in enumerate(injected_train):
+            if s is template:
+                injected_train[idx] = dict(template, _canary_group=group, _canary_role="member")
+                break
+
         for _ in range(n_duplicates):
             clone = dict(template)
             clone["_canary_group"] = group

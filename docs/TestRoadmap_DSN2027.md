@@ -1333,6 +1333,88 @@ investirci, dato lo stato già presente di altri esperimenti in coda (Scotland, 
 
 ---
 
+### NVFlare: coverage mancante e comandi pronti (2026-09-15, Sprint 10zz+105)
+
+Stato di copertura NVFlare verificato via `find experiments -maxdepth 1 -iname "*nvflare*"` (2026-09-15):
+
+- `central`: seed 123/456/789/1234 a ε=1.0 (manca seed42); seed 123/42/456/789 a ε=0.5 (manca seed1234). **Nessun seed a ε=0.1.**
+- `local`: seed 42/123/456/789/1234 **solo** a ε=1.0. **Zero directory a ε=0.5/0.1** — richiesta esplicita dell'utente di colmare questo buco.
+- `dp-fedavg`: un solo tentativo incompleto (`nvflare-stepb-dpfedavg-eps1`), già escluso dalle statistiche altrove nel repo perché mai completato.
+- Canary positive control e ChargePlace Scotland: **zero run NVFlare** esistono (`nvflare-canary-*`/`nvflare-*scotland*` non trovati) — finora presenti solo come config/codice.
+
+Prima di qualunque run canary su NVFlare era necessario verificare che il fix Sprint 10zz+96 (tagging del
+`template` canary non taggato, che in simulazione invertiva lo score Shadow) fosse stato portato anche lato
+NVFlare. **Non lo era**: `chargeshield_executor.py::_inject_canary_members()` e la sua controparte offline in
+`scripts/run_nvflare_mia.py` avevano lo stesso bug, mai esercitato perché nessun canary run NVFlare era mai stato
+lanciato. Fix applicato a entrambi (stesso approccio: tag per identità `if s is template` prima del loop dei
+`n_duplicates` cloni), verificato `py_compile`, suite non-torch 297/297 invariata.
+
+`scripts/set_nvflare_seed.py` è stato esteso (in modo opt-in, retrocompatibile) con supporto a canary e
+ChargePlace Scotland — prima gestiva solo `--dp-mode/--seed/--epsilon` e ripuliva sempre quelle chiavi.
+
+Nessuna collisione trovata fra il nuovo codice e la famiglia di naming `fed*`/FedMIA (`run_fedmia`,
+`run_fedmia_shadow`, `run_fedmia_gradient`, `class FedMIA*`) — verificato via grep mirato prima di scrivere
+qualunque funzione nuova, come richiesto esplicitamente dall'utente.
+
+**Comandi pronti** (ciascuno seguito dal passo manuale invariato: `bash /workspace/startup/fl_admin.sh` poi
+`submit_job /workspace/jobs/chargeshield_poc`, eseguito dall'utente in console admin NVFlare):
+
+1. **`local`, ε=0.5 e ε=0.1, 5 seed (buco mai colmato)**:
+   ```
+   for eps in 0.5 0.1; do
+     for seed in 42 123 456 789 1234; do
+       python3 scripts/set_nvflare_seed.py --dp-mode local --seed $seed --epsilon $eps
+       # poi submit_job manuale, attendere fine round, ripetere per il prossimo seed
+     done
+   done
+   ```
+   10 run totali.
+
+2. **`dp-fedavg`, ε=1.0/0.5/0.1, 5 seed (a completamento dell'unico tentativo incompleto)**:
+   ```
+   for eps in 1.0 0.5 0.1; do
+     for seed in 42 123 456 789 1234; do
+       python3 scripts/set_nvflare_seed.py --dp-mode dp-fedavg --seed $seed --epsilon $eps
+     done
+   done
+   ```
+   15 run totali.
+
+3. **Canary positive control, office1** (ora sicuro: fix tagging applicato a entrambi i lati). NVFlare non ha un
+   vero `--no-dp` (vedi nota sotto) — per avvicinarsi al regime "leakage visibile" dei run canary di simulazione
+   si usa un ε molto grande, sapendo che il clipping resta comunque attivo lato server:
+   ```
+   python3 scripts/set_nvflare_seed.py --dp-mode central --seed 42 --epsilon 1000.0 \
+       --canary-enabled --canary-site office1 --canary-n-templates 5 --canary-n-duplicates 30
+   ```
+   Dopo il run, rianalisi offline con `scripts/run_nvflare_mia.py` puntato allo snapshot
+   `config_fed_client_seed42_central_eps1000.0_canary.json`.
+
+4. **ChargePlace Scotland** (config singolo sito Glasgow City già preparato in
+   `config/experiment_canary_positive_control_chargeplace_scotland.yaml` per la simulazione; per NVFlare si usa lo
+   stesso adapter via il nuovo flag):
+   ```
+   python3 scripts/set_nvflare_seed.py --dp-mode central --seed 42 --epsilon 1.0 \
+       --dataset-adapter chargeplace_scotland \
+       --scotland-metadata-dir datasets/chargeplace_scotland/metadata \
+       --scotland-session-files datasets/chargeplace_scotland/sessions_2019.json \
+       --scotland-site-mapping caltech=Glasgow_City
+   ```
+   (Adattare `--scotland-session-files`/`--scotland-site-mapping` ai file/local authority realmente usati nel
+   run di simulazione Scotland già completato, per restare comparabili.)
+
+**Nota `--no-dp`, in simulazione vs. NVFlare (chiarimento richiesto esplicitamente dall'utente):**
+in simulazione (`run_experiments.py`, righe ~975-1082), `--no-dp` è un vero bypass: `private_update = update`,
+zero clipping e zero rumore, `gm.privatize()`/`gm.clip_only()` non vengono proprio chiamati. In NVFlare **non
+esiste** un `--no-dp`: lo schema di `config_fed_client.json`/`config_fed_server.json` accetta solo
+`dp_mode ∈ {central, local, dp-fedavg}`, e anche con `dp_mode="dp-fedavg"` il server applica comunque
+clip+rumore reali via `ChargeShieldAggregator`'s `self._gm.privatize(...)`. L'unico modo per avvicinarsi a un
+regime "quasi no-DP" in NVFlare è un ε enorme (rumore trascurabile), ma il **clipping resta sempre attivo** —
+un'asimmetria metodologica reale fra i due ambienti, non solo terminologica, di cui va tenuto conto in qualunque
+confronto diretto fra i risultati canary di simulazione e quelli NVFlare.
+
+---
+
 ## Dipendenze tra i test
 
 ```

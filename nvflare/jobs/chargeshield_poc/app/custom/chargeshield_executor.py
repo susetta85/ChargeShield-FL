@@ -412,6 +412,31 @@ def _inject_canary_members(
     injected = list(train_sessions)
     for i, template in enumerate(member_templates):
         group = f"canary_m{i}"
+
+        # Fix (2026-09-15, Sprint 10zz+105 — stesso bug e stessa correzione di
+        # inject_canaries() in scripts/run_experiments.py, Sprint 10zz+96,
+        # applicato qui perché mai portato lato NVFLARE finché il canary non
+        # è mai stato lanciato davvero su questo deployment). Senza questo
+        # fix, `template` resta nel pool SENZA tag — la stessa sessione reale
+        # di cui sotto vengono aggiunti n_duplicates cloni taggati. La
+        # rianalisi offline (run_lira()/run_fedmia_shadow(), chiamate da
+        # scripts/run_nvflare_mia.py) sposta le sessioni _canary_role=="member"
+        # fuori dal pool shadow PRIMA di addestrare lo shadow model — ma quella
+        # guardia non vede l'originale, perché non porta il tag. Se
+        # l'originale finisce per caso nel pool shadow, lo shadow si allena
+        # direttamente sullo stesso vettore di feature dei duplicati canary,
+        # invertendo lo score calibrato per quel gruppo (visto per la prima
+        # volta in simulazione: shadow_canary_auc_roc 0.26-0.32, sotto 0.5).
+        # Fix: sostituire l'occorrenza originale dentro injected con una COPIA
+        # taggata (stesso _canary_group/_canary_role dei cloni), non mutare
+        # l'oggetto condiviso con train_sessions. Il gruppo diventa così
+        # genuinamente atomico: n_duplicates + 1 occorrenze, tutte taggate.
+        # Zero impatto se canary è disattivato (default, ogni job esistente).
+        for idx, s in enumerate(injected):
+            if s is template:
+                injected[idx] = dict(template, _canary_group=group, _canary_role="member")
+                break
+
         for _ in range(n_duplicates):
             clone = dict(template)
             clone["_canary_group"] = group
