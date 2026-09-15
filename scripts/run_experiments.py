@@ -2416,6 +2416,8 @@ def run_fedmia_shadow(
         # nessun impatto su shadow_canary_auc_roc/advantage/confusion sopra.
         shadow_canary_debug_group_means: dict[str, float] | None = None
         shadow_canary_debug_nonmember_stats: dict[str, float] | None = None
+        shadow_canary_debug_group_raw: dict[str, dict[str, float]] | None = None
+        shadow_canary_debug_nonmember_raw: dict[str, float] | None = None
         if _shadow_observation_surface == "global" and canary_members and canary_nonmembers:
             _c_shadow_m = _mse_batch(shadow_model, canary_members)
             _c_shadow_n = _mse_batch(shadow_model, canary_nonmembers)
@@ -2446,6 +2448,45 @@ def run_fedmia_shadow(
                     "max":  round(float(np.max(_c_cal_n)), 6),
                 }
 
+                # Sprint 10zz+99 (2026-09-15) — ultimo dump richiesto
+                # dall'utente prima di chiudere la diagnosi: i campi sopra
+                # mostrano solo la DIFFERENZA calibrata (shadow_loss -
+                # target_loss), che esclude la varianza di campione ma non
+                # dice se il "pavimento" ipotizzato in
+                # docs/TestRoadmap_DSN2027.md (sia shadow che target vicini al
+                # proprio errore minimo per sessioni tipiche di questo sito,
+                # rendendo la differenza assoluta dominata dalla difficoltà
+                # intrinseca del campione) sia reale — serve il valore
+                # ASSOLUTO di shadow_loss e target_loss separatamente, non solo
+                # la loro differenza. Se l'ipotesi regge: target_mean sarà
+                # molto più basso della loss "tipica" (conferma memorizzazione,
+                # coerente con yeom_canary_auc_roc alto) E shadow_mean sarà
+                # QUASI ALTRETTANTO basso (non "tipico") sugli stessi 5
+                # campioni — a differenza dei non-membri, dove ci si aspetta
+                # shadow_mean e target_mean più simili tra loro E più alti in
+                # assoluto. Puramente additivo, nessun impatto sui campi
+                # esistenti.
+                _group_raw: dict[str, dict[str, float]] = {}
+                for _s, _sh, _tg in zip(canary_members, _c_shadow_m, _c_target_m):
+                    _grp = _s.get("_canary_group", "?")
+                    _acc = _group_raw.setdefault(_grp, {"shadow": [], "target": []})
+                    _acc["shadow"].append(_sh)
+                    _acc["target"].append(_tg)
+                shadow_canary_debug_group_raw = {
+                    g: {
+                        "shadow_mean": round(float(np.mean(v["shadow"])), 6),
+                        "target_mean": round(float(np.mean(v["target"])), 6),
+                        "n": len(v["shadow"]),
+                    }
+                    for g, v in sorted(_group_raw.items())
+                }
+                shadow_canary_debug_nonmember_raw = {
+                    "shadow_mean": round(float(np.mean(_c_shadow_n)), 6),
+                    "shadow_std":  round(float(np.std(_c_shadow_n)), 6),
+                    "target_mean": round(float(np.mean(_c_target_n)), 6),
+                    "target_std":  round(float(np.std(_c_target_n)), 6),
+                }
+
         shadow_results[round_num] = {
             "shadow_auc_roc":               round(auc, 6),
             "shadow_member_score_mean":     round(float(np.nanmean(calibrated_members)), 6),
@@ -2461,6 +2502,8 @@ def run_fedmia_shadow(
             "shadow_canary_confusion":      shadow_canary_confusion,
             "shadow_canary_debug_group_means":     shadow_canary_debug_group_means,
             "shadow_canary_debug_nonmember_stats": shadow_canary_debug_nonmember_stats,
+            "shadow_canary_debug_group_raw":       shadow_canary_debug_group_raw,
+            "shadow_canary_debug_nonmember_raw":   shadow_canary_debug_nonmember_raw,
         }
 
     if roc_curve_dump_path is not None and _roc_curves_per_round:
