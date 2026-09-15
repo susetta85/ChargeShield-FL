@@ -193,8 +193,24 @@ def _inject_canaries_for_site(
 
     injected_holdout = list(site_holdout)
     for j, template in enumerate(nonmember_templates):
+        group = f"canary_n{j}"
+
+        # Fix (2026-09-15, Sprint 10zz+108) — stesso bug del lato membro sopra
+        # (Sprint 10zz+96/105), mai portato al lato non-membro qui né in
+        # inject_canaries() di run_experiments.py (corretto nello stesso
+        # giro, vedi lì): `template` restava in injected_holdout senza tag,
+        # invisibile a _sample_preserving_canary_groups()/alle guardie
+        # anti-contaminazione dello shadow, mentre il suo unico clone (qui
+        # non ci sono duplicati) portava il tag — stessa classe di
+        # contaminazione shadow, lato non-membro. Fix identico: sostituire
+        # l'occorrenza originale con una copia taggata.
+        for idx, s in enumerate(injected_holdout):
+            if s is template:
+                injected_holdout[idx] = dict(template, _canary_group=group, _canary_role="nonmember")
+                break
+
         clone = dict(template)
-        clone["_canary_group"] = f"canary_n{j}"
+        clone["_canary_group"] = group
         clone["_canary_role"] = "nonmember"
         injected_holdout.append(clone)
 

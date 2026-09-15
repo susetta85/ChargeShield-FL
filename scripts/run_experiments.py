@@ -672,12 +672,35 @@ def inject_canaries(
             injected_train.append(clone)
 
     for j, template in enumerate(nonmember_templates):
-        clone = dict(template)
+        group = f"canary_n{j}"
         # Prefisso "canary_n" (non "canary_m") — deliberatamente NON
         # accoppiato 1:1 ai gruppi membro sopra: canary_auc_roc in run_lira()
         # aggrega tutti i membri taggati contro tutti i non-membri taggati,
         # non richiede corrispondenza di gruppo per indice.
-        clone["_canary_group"] = f"canary_n{j}"
+
+        # Fix (2026-09-15, Sprint 10zz+108 — stesso bug e stessa correzione
+        # del lato membro sopra, Sprint 10zz+96, mai portato qui: trovato da
+        # una review indipendente richiesta esplicitamente dall'utente prima
+        # di rilanciare qualunque campagna canary). Fino a questo fix,
+        # `template` restava in injected_holdout SENZA tag — la stessa
+        # sessione reale di cui sotto viene aggiunto UN SOLO clone taggato
+        # (qui non ci sono duplicati, n_nonmember_templates è indipendente da
+        # n_duplicates). _sample_preserving_canary_groups() tratta le
+        # sessioni non taggate come unità indipendenti, quindi l'originale
+        # non taggato e il suo clone taggato potevano finire l'uno IN e
+        # l'altro OUT per lo stesso shadow model — stessa classe di
+        # contaminazione già diagnosticata e corretta lato membro (shadow che
+        # si allena sullo stesso vettore di feature del gemello canary
+        # "out"), qui sul lato non-membro. Fix identico: sostituire
+        # l'occorrenza originale in injected_holdout con una copia taggata
+        # invece di mutare l'oggetto condiviso con holdout_sessions.
+        for idx, s in enumerate(injected_holdout):
+            if s is template:
+                injected_holdout[idx] = dict(template, _canary_group=group, _canary_role="nonmember")
+                break
+
+        clone = dict(template)
+        clone["_canary_group"] = group
         clone["_canary_role"]  = "nonmember"
         injected_holdout.append(clone)
 

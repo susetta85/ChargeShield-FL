@@ -836,7 +836,10 @@ via `scripts/compare_floor_mode.py` — solo quel confronto risponde davvero all
 assomiglia un AUC quando il leakage C'È — altrimenti non possiamo escludere che l'attacco
 sia insensibile. Il canary positive control (office1, Sprint 10vv-10zz+18) risponde a
 questo, ma con un solo seed, gemelli sbilanciati (120+ membri vs 19-20 non-membri per
-costruzione — mai bilanciati) e solo su office1 (Caltech è invertito 0.37-0.42, JPL è al
+costruzione — mai bilanciati) e solo su office1 (Caltech: 0.4328/0.4383/0.3503 nella replica
+diretta a 5 template, 0.37-0.42 nella replica alta densità a 84 template — ENTRAMBE
+pre-fix rispetto al bug di tagging lato non-membro appena trovato e corretto, Sprint
+10zz+108, quindi da rileggere come indicative non definitive finché non c'è un rerun; JPL è al
 caso 0.47-0.49, §6.2). È abbastanza per servire da "regime di riferimento" citabile nel
 paper con lo stesso rigore statistico della campagna principale (5 seed, bootstrap CI)?
 
@@ -1165,8 +1168,8 @@ di sito — da riportare esplicitamente, non da assumere. **ATTENZIONE TEMPI**: 
 duplicati aggiuntivi su un pool di 25123 sessioni — tempo atteso comparabile o lievemente
 superiore alla replica high-density già eseguita (2520 record).
 
-**Correzione minore trovata durante questa verifica (non ancora propagata al resto del
-documento)**: la cifra "Caltech è invertito 0.37-0.42" citata altrove in questo file e nel
+**Correzione minore trovata durante questa verifica — ✅ propagata (2026-09-15, Sprint
+10zz+108)**: la cifra "Caltech è invertito 0.37-0.42" citata altrove in questo file e nel
 paper proviene dal run ad alta densità (84 template), non dalla replica diretta a 5 template
 (che ha dato invece 0.4328/0.4383/0.3503) — entrambe sotto il caso, la conclusione
 qualitativa non cambia, ma la citazione andrebbe resa precisa (quale run, quali numeri) la
@@ -1489,6 +1492,22 @@ pubblicato con quei numeri.
    scrivere la sottosezione descrivendo il meccanismo del controllo e il finding preliminare ESPLICITAMENTE
    qualificato come provvisorio (come suggerito dall'utente: l'esistenza del controllo e cosa ha trovato conta
    più del numero finale), poi aggiornare con la cifra definitiva quando task #144 gira.
+
+**Addendum (2026-09-15, Sprint 10zz+108)** — l'utente ha fornito una riscrittura completa e indipendente del
+paper (`ChargeShield-FL_paper_riscrittura_completa_IT.md`, non nel repository — file caricato in chat) che
+converge quasi esattamente su questa stessa lista di 5 punti aperti, con testo già pronto per §3.2 (Privacy
+Auditor), §5.4 (equivalenza offline/online, causalità/confinamento/fedeltà — stesso argomento già in §3.3 del
+docx attuale), §10.1 (finestra operativa ε_utility/ε_privacy). Verificato punto per punto contro codice e dati
+reali (vedi risposta in chat per il dettaglio): la matematica del "floor di varianza condiviso → LiRA degenera a
+un test di soglia lineare sulla loss" (§3.6 della riscrittura) è stata riverificata algebricamente ed è corretta;
+la claim numerica sulla cosine-similarity fra update onesti che crolla sotto rumore σ=4.84 (§3.3/RQ6) è stata
+riverificata con una simulazione numerica indipendente (100% di 200 coppie sotto soglia 0.3, media ≈0, coerente
+con quanto scritto); la claim su ChargePlace Scotland (`user_id` sempre None) è confermata nel codice
+dell'adapter. Durante questa verifica è stato trovato il bug reale sopra (Sprint 10zz+108, lato non-membro del
+canary) — non menzionato nella riscrittura fornita, quindi va aggiunto come ulteriore `[VERIFICA]` quando si
+integra quel testo. La riscrittura NON è stata ancora fusa nel docx (`docs/paper/*.docx`) — è un lavoro di
+sostituzione sezione-per-sezione troppo esteso per farlo alla cieca in un turno; l'utente ha la mappatura
+sezione-per-sezione in chat per decidere l'ordine di fusione.
 
 Nessuna di queste quattro voci aperte è stata scritta nel docx in questo giro — richiedono o un run che non
 esiste ancora (3, 5) o una sessione di scrittura dedicata più lunga (2, 4) che l'utente non ha ancora richiesto
