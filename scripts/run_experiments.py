@@ -4140,6 +4140,7 @@ def run_lira(
         _diag_uncalibrated_skipped = 0
         _diag_scored_total = 0
 
+        _diag_mu_in_clamped = 0
         for _client_idx, update in enumerate(client_updates):
             if update is None or not update.weights:
                 continue
@@ -4360,6 +4361,8 @@ def run_lira(
                     # punteggio effettivo del pool.
                     if is_member:
                         _cf_mu_in = μ_out + (_cluster_mu_in_fb - _cluster_mu_out_fb)
+                        if _cf_mu_in <= 0.0:   # stesso clamp del ramo reale (Sprint 10zz+111)
+                            _cf_mu_in = max(μ_out * 0.01, 1e-12)
                         _cf_sigma_in = max(_cluster_sigma_in_fb, _cluster_sigma_symmetric_floor)
                         _cf_log_p_in = (
                             -0.5 * ((target_loss - _cf_mu_in) / _cf_sigma_in) ** 2
@@ -4402,7 +4405,30 @@ def run_lira(
                     # tipico vantaggio IN), non un valore assoluto scollegato
                     # dalla propria scala. Se questo campione HA una
                     # calibrazione IN reale (ramo sopra) non viene toccato.
+
+                    # Fix 2026-09-15 (Sprint 10zz+111, task #161 — bug reale
+                    # osservato nei dump del run `_canary_pairedsplit_nodp_swap`:
+                    # `mu_in=-0.000103(FALLBACK)`, `-0.000162`, `-0.000149`).
+                    # μ_in e' una media di loss QUADRATICHE e non puo' essere
+                    # negativa. L'ancoraggio relativo
+                    # μ_out + (_cluster_mu_in_fb - _cluster_mu_out_fb) va sotto
+                    # zero ogni volta che il delta di cluster e' negativo e
+                    # supera in modulo il μ_out del campione — cioe' proprio sui
+                    # campioni con loss piu' bassa, che sono quelli che LiRA
+                    # dovrebbe classificare come membri. Una gaussiana centrata
+                    # su un valore impossibile sposta sistematicamente lo score
+                    # di quei campioni, in una direzione che dipende dal segno
+                    # del delta e non dall'appartenenza. Clamp a un valore
+                    # positivo piccolo: il floor e' relativo a μ_out cosi' da non
+                    # introdurre una costante arbitraria estranea alla scala del
+                    # cluster, con un pavimento assoluto per il caso μ_out=0.
+                    # Contatore diagnostico esposto come
+                    # `lira_debug_mu_in_fallback_clamp_rate` per quantificare
+                    # quanto spesso il problema si presentava.
                     μ_in = μ_out + (_cluster_mu_in_fb - _cluster_mu_out_fb)
+                    if μ_in <= 0.0:
+                        _diag_mu_in_clamped += 1
+                        μ_in = max(μ_out * 0.01, 1e-12)
                     # fix 2026-08-15: anche il fallback diretto deve rispettare
                     # il floor simmetrico, altrimenti un client con troppo
                     # pochi in_losses (<2) tornerebbe silenziosamente al vecchio
@@ -4442,6 +4468,8 @@ def run_lira(
                 # eseguito per config/run esistenti.
                 if _lira_member_scoring == "matched_formula" and _mu_in_is_real:
                     _mf_mu_in = μ_out + (_cluster_mu_in_fb - _cluster_mu_out_fb)
+                    if _mf_mu_in <= 0.0:   # stesso clamp del ramo reale (Sprint 10zz+111)
+                        _mf_mu_in = max(μ_out * 0.01, 1e-12)
                     _mf_sigma_in = max(_cluster_sigma_in_fb, _cluster_sigma_symmetric_floor)
                     log_p_in = (
                         -0.5 * ((target_loss - _mf_mu_in) / _mf_sigma_in) ** 2
@@ -4869,6 +4897,12 @@ def run_lira(
         if _diag_scored_total > 0:
             _diag_fields["lira_debug_uncalibrated_skip_rate"] = round(
                 _diag_uncalibrated_skipped / _diag_scored_total, 4
+            )
+            # Sprint 10zz+111: quota di campioni il cui μ_in di fallback sarebbe
+            # stato negativo (impossibile per una media di loss quadratiche) e
+            # che il clamp ha riportato a un valore positivo.
+            _diag_fields["lira_debug_mu_in_fallback_clamp_rate"] = round(
+                _diag_mu_in_clamped / _diag_scored_total, 4
             )
             _diag_fields["lira_debug_uncalibrated_skipped_n"] = _diag_uncalibrated_skipped
         # DIAGNOSTICA 2026-08-21 (test mirato, vedi inizializzazione di

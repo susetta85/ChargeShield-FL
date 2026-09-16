@@ -431,6 +431,17 @@ differenze vanno rese esplicite prima della submission:
 
 ## 6. Canary positive control (AUC su record iniettati)
 
+> **Aggiornamento 2026-09-15 (Sprint 10zz+109).** Il protocollo, il
+> confondente membership/difficolta' di ricostruzione che lo invalidava, i
+> due parametri nuovi (`nonmember_source`, `swap_assignment`) e i baseline a
+> inizializzazione casuale sono documentati per esteso in
+> `docs/CanaryPositiveControl.md`. In sintesi: i due lati escono ora da un
+> pool unico con assegnazione casuale; l'AUC va letta come differenza
+> rispetto al baseline a init (0.5285 base, 0.4810 swap su office1 seed 42,
+> non 0.5), e il controllo di scambio e' obbligatorio prima di citare
+> qualunque valore. I numeri canary raccolti prima di questo sprint sono
+> invalidati.
+
 **Dove**: `inject_canaries()` + campi `canary_auc_roc`/`canary_composed_auc_roc`/
 `canary_raw_mse_auc_roc` in `run_lira()` (Sprint 10vv-10yy).
 

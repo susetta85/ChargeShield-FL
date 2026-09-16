@@ -22,12 +22,11 @@ canary:
   n_templates: 5
   n_duplicates: 30
   n_nonmember_templates: 20
-  nonmember_source: paired_split
-  swap_assignment: true
 output:
   experiments_dir: experiments
 lira:
   n_shadow: 8
+  shadow_init: cold
 byzantine_attack:
   enabled: false
   attack_type: gradient_scaling

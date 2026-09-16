@@ -28,6 +28,7 @@ output:
   experiments_dir: experiments
 lira:
   n_shadow: 8
+  shadow_init: cold
 byzantine_attack:
   enabled: false
   attack_type: gradient_scaling
