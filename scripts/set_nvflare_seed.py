@@ -91,7 +91,17 @@ def main():
         "--scotland-site-mapping",
         nargs="*",
         default=None,
-        help="Coppie site=local_authority, es. caltech=Glasgow_City",
+        help=(
+            "Coppie site=local_authority. Il valore deve corrispondere "
+            "ESATTAMENTE al campo local_authority dei metadati "
+            "(CPID_and_local_authority.xlsx), che contiene spazi e non "
+            "underscore: usare le virgolette, es. \"caltech=Glasgow City\". "
+            "L'esempio precedente in questo help (caltech=Glasgow_City) era "
+            "sbagliato: _parse_site_mapping() non converte gli underscore, "
+            "quindi 'Glasgow_City' non corrisponde a nessuna delle 32 "
+            "council area e il filtro restituisce zero sessioni in silenzio "
+            "(corretto 2026-09-16, Sprint 10zz+114)."
+        ),
     )
     args = p.parse_args()
 
