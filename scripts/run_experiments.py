@@ -4045,6 +4045,12 @@ def run_lira(
         # invece che ricostruibile solo a mano.
         round_canary_member_groups:    set[str] = set()
         round_canary_nonmember_groups: set[str] = set()
+        # Gruppi distinti del pool RAW (Sprint 10zz+119, 2026-09-16). Separati
+        # dai due sopra perche' dal fix di questo sprint il pool raw NON e' piu'
+        # filtrato da `insufficient_calibration`, quindi i due denominatori
+        # possono differire e vanno riportati distinti.
+        round_canary_member_raw_groups:    set[str] = set()
+        round_canary_nonmember_raw_groups: set[str] = set()
         # Diagnostico raw-loss canary (Sprint 10ww) — target_loss grezzo,
         # a monte della calibrazione shadow μ/σ, stesso principio di
         # _diag_raw_loss_members/nonmembers ma ristretto ai canary.
@@ -4323,6 +4329,37 @@ def run_lira(
                 # classi: un non-membro campionato come IN da uno shadow
                 # finisce correttamente in in_losses, esattamente come un
                 # membro nella stessa situazione.
+                # ------------------------------------------------------------
+                # Raccolta raw-loss dei canary — DEVE stare qui (Sprint
+                # 10zz+119, 2026-09-16). Bug reale trovato confrontando la
+                # cella a 32 shadow con quella a 8: stesso modello target
+                # (traiettoria di loss identica), raw AUC media 0.6475 contro
+                # 0.6926. Causa: gli append erano piu' in basso nel loop, DOPO
+                # il `continue` di `insufficient_calibration`, quindi un canary
+                # scartato dal filtro di calibrazione LiRA spariva anche dalla
+                # metrica raw. Con n_shadow=8 il filtro toglieva 4 record (2
+                # template non-membro) su s42: 20x18=360 coppie invece di
+                # 20x20=400. La metrica raw risultava percio' indipendente
+                # dagli shadow nel PUNTEGGIO ma non nel POOL DI VALUTAZIONE —
+                # esattamente il contrario di quanto dichiarato nei commenti
+                # dei config, in docs/CanaryPositiveControl.md e nel paper.
+                # Effetto sui numeri: i baseline a init casuale girano senza
+                # shadow, quindi su 400 coppie piene, mentre i run post-training
+                # su 360-400: il Delta non era appaiato e risultava gonfiato
+                # (s42: +0.165 riportato contro +0.120 reale).
+                #
+                # Il guard cross-cluster sopra resta PRIMA di questa raccolta,
+                # ed e' corretto che sia cosi': valutare un membro contro il
+                # modello di un altro client produce una loss priva di
+                # significato, non un dato filtrato arbitrariamente.
+                if id(sample) in _sample_canary_group:
+                    if is_member:
+                        round_canary_member_raw_loss.append(target_loss)
+                        round_canary_member_raw_groups.add(_sample_canary_group[id(sample)])
+                    else:
+                        round_canary_nonmember_raw_loss.append(target_loss)
+                        round_canary_nonmember_raw_groups.add(_sample_canary_group[id(sample)])
+
                 _sample_id = id(sample)
                 in_losses:  list[float] = []
                 out_losses: list[float] = []
@@ -4634,24 +4671,19 @@ def run_lira(
                 # round_nonmember_scores sopra — stesso lira_score già
                 # calcolato, nessuna formula diversa. No-op se sample non è
                 # taggato (id(sample) assente da _sample_canary_group).
+                # NOTA (Sprint 10zz+119): qui restano SOLO gli score LiRA e i
+                # gruppi distinti del pool LiRA. La raccolta raw-loss e' stata
+                # spostata piu' in alto, prima del filtro
+                # `insufficient_calibration` — vedi il commento esteso li'.
+                # Non reintrodurre gli append raw in questo blocco: li' e' dopo
+                # il `continue`, e il pool raw tornerebbe a dipendere dagli
+                # shadow.
                 if id(sample) in _sample_canary_group:
                     if is_member:
                         round_canary_member_scores.append(lira_score)
-                        # Diagnostico raw-loss (Sprint 10ww, 2026-08-31):
-                        # stesso principio di _diag_raw_loss_members/
-                        # nonmembers sopra ("a monte di qualunque
-                        # calibrazione shadow μ/σ"), applicato ai soli
-                        # canary — per distinguere "il modello target
-                        # davvero memorizza i canary ma la calibrazione
-                        # shadow annulla il segnale" (raw-loss AUC alto,
-                        # canary_auc_roc piatto — shadow contaminati dagli
-                        # stessi duplicati) da "il modello non memorizza
-                        # nemmeno i canary" (entrambi piatti).
-                        round_canary_member_raw_loss.append(target_loss)
                         round_canary_member_groups.add(_sample_canary_group[id(sample)])
                     else:
                         round_canary_nonmember_scores.append(lira_score)
-                        round_canary_nonmember_raw_loss.append(target_loss)
                         round_canary_nonmember_groups.add(_sample_canary_group[id(sample)])
 
                 if composed_output is not None:
@@ -4854,6 +4886,9 @@ def run_lira(
                 f"{len(round_canary_nonmember_groups)} = "
                 f"{len(round_canary_member_groups) * len(round_canary_nonmember_groups)} "
                 f"coppie reali) — positive control "
+                f"| RAW {len(round_canary_member_raw_groups)}x"
+                f"{len(round_canary_nonmember_raw_groups)} = "
+                f"{len(round_canary_member_raw_groups) * len(round_canary_nonmember_raw_groups)} coppie "
                 f"| raw_loss_auc={canary_raw_mse_auc_roc} "
                 f"(mean_loss_member={round(float(np.mean(round_canary_member_raw_loss)), 8) if round_canary_member_raw_loss else 'N/A'}, "
                 f"mean_loss_nonmember={round(float(np.mean(round_canary_nonmember_raw_loss)), 8) if round_canary_nonmember_raw_loss else 'N/A'})"
@@ -5024,6 +5059,14 @@ def run_lira(
             # o test di significativita' sul canary.
             "canary_n_member_distinct":    len(round_canary_member_groups),
             "canary_n_nonmember_distinct": len(round_canary_nonmember_groups),
+            # Denominatore del pool RAW (Sprint 10zz+119). Dal fix di questo
+            # sprint puo' essere PIU' GRANDE dei due sopra: il pool raw non e'
+            # filtrato da `insufficient_calibration`, quello LiRA si'. E' il
+            # numero da citare accanto a canary_raw_mse_auc_roc, ed e' anche
+            # quello confrontabile con la baseline a init casuale, che gira
+            # senza shadow e quindi su tutti i template.
+            "canary_raw_n_member_distinct":    len(round_canary_member_raw_groups),
+            "canary_raw_n_nonmember_distinct": len(round_canary_nonmember_raw_groups),
             # Diagnostico raw-loss (Sprint 10ww) — immune a un'eventuale
             # contaminazione degli shadow dai duplicati canary, vedi sopra.
             "canary_raw_mse_auc_roc":     canary_raw_mse_auc_roc,
