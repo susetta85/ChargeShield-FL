@@ -1,0 +1,83 @@
+# ABLATION B --- floor_mode symmetric -> independent (2026-09-16, Sprint 10zz+118)
+#
+# DOMANDA: la degenerazione e' causata dal floor SIMMETRICO, o dal numero di
+# shadow? Il floor simmetrico (run_experiments.py:4256) impone a sigma_in e
+# sigma_out lo stesso valore, max(_cluster_sigma_in_fb, _cluster_sigma_out_fb),
+# che e' una costante di cluster/round. floor_mode=independent lo azzera e
+# lascia a ciascun lato il proprio floor.
+#
+# ATTENZIONE: restano attivi gli altri tre floor nel max() --- std empirica,
+# max(mu*0.05, 1e-4) e il fallback di cluster --- quindi questa ablation da
+# sola potrebbe non bastare. Serve proprio a distinguere le due cause.
+#
+# CONTESTO STORICO: il floor simmetrico fu aggiunto il 2026-08-15 per correggere
+# una patologia reale (un lato dominava il rapporto /sigma^2 e ribaltava il
+# segno) e quel fix invalido' l'intera campagna precedente. Questa e' una
+# ablation diagnostica, NON una proposta di rimuoverlo.
+#
+# Cella di confronto: experiments/_canary_balanced_s42 (floor_mode=symmetric).
+#
+experiment:
+  name: chargeshield_canary_balanced_indepfloor
+  fl_rounds: 3
+  seed: 42
+  epsilon: 1.0
+  delta: 1.0e-5
+  max_grad_norm: 1.0
+
+sites:
+  office1:
+    - datasets/acn/office1/acndata_sessions_2019.json
+    - datasets/acn/office1/acndata_sessions_2020.json
+    - datasets/acn/office1/acndata_sessions_2021.json
+
+ml:
+  input_dim: 7
+  lr: 0.001
+  epochs: 1000
+  batch_size: 32
+  proximal_mu: 0.01
+  hidden_dims: [32, 16]
+  latent_dim: 8
+  feature_names:
+    - total_energy_kwh
+    - max_power_kw
+    - kwh_requested
+    - minutes_available
+    - hour_of_day
+    - duration_hours
+    - start_time_epoch
+
+canary:
+  enabled: true
+  site: office1
+  nonmember_source: paired_split
+  swap_assignment: false      # braccio A
+  n_templates: 20             # == n_nonmember_templates: condizione dello scambio
+  n_duplicates: 30
+  n_nonmember_templates: 20
+
+output:
+  experiments_dir: experiments
+
+lira:
+  n_shadow: 8
+  floor_mode: independent
+  # shadow_init: cold (aggiunto 2026-09-16, dopo lo smoke test s42).
+  # OMESSO per errore nella prima stesura di questi config: i config
+  # _canary_maxmemo{,_swap} da cui questo design deriva lo impostano a
+  # "cold", mentre il default del codice e' "warm" (run_experiments.py:3250,
+  # _warm_start attivo dal round 2). Lo smoke test s42 ha quindi girato con
+  # gli shadow warm-start mentre la campagna a 5 seed di riferimento girava
+  # cold: una variabile non controllata fra le due campagne, che tocca la
+  # calibrazione shadow e quindi canary_auc_roc (NON canary_raw_mse_auc_roc,
+  # che e' calcolata sulla loss del modello target e non vede gli shadow).
+  # Vedi anche Blocker 1 / Sprint 10zz+91: warm e cold non sono equivalenti
+  # in questo regime.
+  shadow_init: cold
+
+byzantine_attack:
+  enabled: false
+  attack_type: gradient_scaling
+  byzantine_node: synthetic_1
+  scale_factor: 10
