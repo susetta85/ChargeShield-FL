@@ -1,0 +1,48 @@
+experiment:
+  name: chargeshield_canary_maxmemo
+  fl_rounds: 3
+  seed: 42
+  epsilon: 1.0
+  delta: 1.0e-05
+  max_grad_norm: 1.0
+sites:
+  office1:
+  - datasets/acn/office1/acndata_sessions_2019.json
+  - datasets/acn/office1/acndata_sessions_2020.json
+  - datasets/acn/office1/acndata_sessions_2021.json
+ml:
+  input_dim: 7
+  lr: 0.001
+  epochs: 1000
+  batch_size: 32
+  proximal_mu: 0.01
+  hidden_dims:
+  - 32
+  - 16
+  latent_dim: 8
+  feature_names:
+  - total_energy_kwh
+  - max_power_kw
+  - kwh_requested
+  - minutes_available
+  - hour_of_day
+  - duration_hours
+  - start_time_epoch
+output:
+  experiments_dir: experiments
+lira:
+  n_shadow: 8
+  shadow_init: cold
+byzantine_attack:
+  enabled: false
+  attack_type: gradient_scaling
+  byzantine_node: synthetic_1
+  scale_factor: 10
+canary:
+  enabled: true
+  site: office1
+  n_templates: 5
+  n_duplicates: 30
+  n_nonmember_templates: 20
+  nonmember_source: paired_split
+  swap_assignment: false

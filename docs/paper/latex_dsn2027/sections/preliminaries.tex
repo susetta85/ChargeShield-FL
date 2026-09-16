@@ -1,0 +1,199 @@
+% ChargeShield-FL --- DSN 2027 --- Preliminaries
+% Sezione aggiunta 2026-09-16 (Sprint 10zz+113) su richiesta esplicita
+% dell'utente: "quando spieghiamo il DP dovremmo dare anche le definizioni
+% (idem per gli attacchi)" + "questa cosa dovremmo farla anche per i tre
+% tipi di posizionamento del DP" + "dovremmo spiegare bene anche gli
+% esperimenti fatti con no-DP".
+
+\section{Preliminaries}
+\label{sec:prelim}
+
+\subsection{Differential Privacy}
+\label{sec:prelim-dp}
+
+Differential privacy~\cite{dwork2006calibrating,dwork2006ourdata,dwork2014algorithmic}
+offers a guarantee for computations over aggregate datasets built on the
+principle that, observing the output of a computation, one should not be
+able to infer the presence or absence of any particular record in the
+input. Formally, for two adjacent datasets $D$ and $D'$ differing in a
+single record, the outcome of a differentially private mechanism on $D$
+and on $D'$ should be near-indistinguishable.
+
+\begin{definition}[$(\varepsilon,\delta)$-differential privacy]
+\label{def:dp}
+A randomised computation $\mathcal{A}$ satisfies
+$(\varepsilon, \delta)$-differential privacy if, for any two adjacent
+datasets $D$ and $D'$ and any subset $O \subseteq \mathrm{Range}(\mathcal{A})$,
+\begin{equation}
+\Pr[\mathcal{A}(D) \in O] \;\le\; e^{\varepsilon}\,\Pr[\mathcal{A}(D') \in O] \;+\; \delta .
+\label{eq:dp}
+\end{equation}
+\end{definition}
+
+The parameter $\varepsilon$ controls the trade-off between the accuracy of
+the mechanism and the amount of information it releases, and is commonly
+called its \emph{privacy budget}: a lower $\varepsilon$ means less leakage
+and a stronger guarantee. The additive term $\delta$, introduced by
+Dwork et al.~\cite{dwork2006ourdata}, admits the possibility that pure
+differential privacy is violated with probability $\delta$, conventionally
+chosen well below $1/|D|$. Our configuration uses $\delta = 10^{-5}$
+against a client training set of $|D| \approx 1{,}344$ sessions, so
+$\delta \ll 1/|D| \approx 7.4 \times 10^{-4}$ holds with margin.
+
+\paragraph{What a record is here.} Definition~\ref{def:dp} is stated over
+an adjacency relation, and the guarantee means nothing until that relation
+is fixed. In our system clipping and noise are applied \textbf{once per
+round to a client's aggregated update}, so the adjacency our mechanism
+implements is \textbf{client-level}: $D$ and $D'$ differ by one
+participating client. The attacks in Section~\ref{sec:prelim-mia}, by
+contrast, probe \textbf{record-level} membership --- whether one charging
+session was in training. These are different privacy units, and a
+client-level guarantee does not by itself bound record-level leakage when
+each client holds thousands of records, as it does here. We therefore
+never read our $\varepsilon$ as a record-level bound on the quantity our
+attacks measure; the relationship between the two is the empirical
+question this paper studies, not an assumption it makes.
+
+\subsection{Composition and Privacy Accounting}
+\label{sec:prelim-accounting}
+
+A single $(\varepsilon,\delta)$ guarantee does not describe a training run
+of $T$ federated rounds, because each round releases a further
+observation. Tracking the cumulative privacy loss across a sequence of
+such releases is the task McSherry introduced as \emph{privacy
+accounting}~\cite{mcsherry2009pinq}, and a composition theorem is what
+bounds how the guarantee degrades under it.
+
+We report three cumulative quantities per run. \emph{Basic composition}
+gives $\varepsilon_{\text{tot}} = T \varepsilon$ and
+$\delta_{\text{tot}} = T \delta$. \emph{Advanced
+composition}~\cite[Thm.~3.20]{dwork2014algorithmic} gives, for any
+$\delta' > 0$, a $(\varepsilon', T\delta + \delta')$ guarantee with
+\begin{equation}
+\varepsilon' = \varepsilon \sqrt{2T \ln(1/\delta')} \;+\; T\,\varepsilon\,(e^{\varepsilon} - 1),
+\label{eq:advcomp}
+\end{equation}
+and we set $\delta' = \delta$. We then report
+$\varepsilon_{\text{best}} = \min(\varepsilon_{\text{tot}}, \varepsilon')$.
+
+Two points deserve emphasis, because both are easy to misread. First,
+advanced composition is \textbf{not uniformly tighter}: its leading term
+grows as $\sqrt{T}$ rather than $T$, which is an improvement only for
+large $T$ and small $\varepsilon$. At our operating point
+($\varepsilon = 1.0$, $\delta = 10^{-5}$, $T = 3$)
+Equation~\ref{eq:advcomp} yields $\varepsilon' \approx 13.47$ against
+$\varepsilon_{\text{tot}} = 3.0$, so the basic bound is the one that
+holds and $\varepsilon_{\text{best}} = 3.0$. We report the looser number
+alongside it rather than silently dropping it.
+
+Second, and more consequential: we perform composition accounting, but we
+do \textbf{not} implement a privacy accountant in the
+moments-accountant/R\'enyi sense~\cite{abadi2016deep}, and we do not
+\emph{enforce} a budget. Nothing in our system halts training when a
+cumulative budget is reached --- unlike PINQ~\cite{mcsherry2009pinq},
+which refuses queries once the budget is exhausted. Our Privacy Auditor
+(Section~\ref{sec:framework-auditor}) maintains a per-client running
+$\varepsilon$ and raises alerts, but that quantity is a sensitivity-scaled
+operational heuristic for anomaly detection, not formal accounting, and it
+is deliberately not the figure we report.
+
+The deepest caveat is about the per-round quantity being composed. We clip
+and add noise once per round to a client-level update, with $50$ local
+epochs inside the round and no per-sample gradient clipping. This is not
+DP-SGD, so the per-round $(\varepsilon,\delta)$ is a configuration label
+calibrating the noise scale rather than a verified per-round guarantee.
+Composing a label yields a composed label. We state this explicitly
+because the alternative --- reporting $\varepsilon_{\text{best}} = 3.0$
+without it --- would claim a formal guarantee our mechanism does not
+establish.
+
+\subsection{Three DP Placements as Observation Points}
+\label{sec:prelim-placements}
+
+Let $g_c^{(t)}$ be the raw update produced by client $c$ in round $t$.
+The privatisation pipeline applies, in order, clipping to $L_2$ norm $C$
+and additive Gaussian noise:
+\begin{equation}
+g \;\xrightarrow{\;\text{clip}\;}\; \bar{g} = g \cdot \min\!\left(1, \tfrac{C}{\lVert g \rVert_2}\right)
+\;\xrightarrow{\;\text{noise}\;}\; \tilde{g} = \bar{g} + \mathcal{N}(0, \sigma^2 I).
+\label{eq:pipeline}
+\end{equation}
+
+Our three configurations --- \texttt{dp-fedavg}, \texttt{central},
+\texttt{local} --- are \textbf{not three privacy mechanisms}. The
+mechanism is the same Gaussian mechanism in all three. What differs is
+\emph{where along Equation~\ref{eq:pipeline} the adversary is assumed to
+observe}: \texttt{dp-fedavg} observes $g$, \texttt{central} observes
+$\bar{g}$, and \texttt{local} observes $\tilde{g}$. They are three points
+of adversary privilege on one pipeline, ordered by how much
+transformation has already been applied.
+
+This ordering is what makes the design informative.
+\texttt{dp-fedavg} is the \textbf{upper bound} on what any adversary can
+extract from this channel, because it sees the update before any
+protective transformation. If the most privileged view yields no
+membership signal, then a null result under the two protective placements
+cannot be attributed to noise having suppressed a signal that was
+otherwise present: there was none to suppress. Reporting the three as if
+they were competing mechanisms would lose exactly this argument.
+
+\subsection{Membership Inference Attacks}
+\label{sec:prelim-mia}
+
+A membership inference attack asks, for a target record $x$ and a model
+$f$ trained on an unknown dataset $D$, whether $x \in D$. We follow the
+standard formulation~\cite{shokri2017membership,yeom2018privacy}: the
+adversary computes a score $s(x, f)$ intended to be stochastically larger
+for members than for non-members, and membership is decided by
+thresholding $s$. We report AUC-ROC, which is threshold-free and equals
+$\Pr[s(x_{\text{mem}}) > s(x_{\text{non}})]$ over independently drawn
+member/non-member pairs; $0.5$ is chance.
+
+Our target is an \textbf{unsupervised} autoencoder, so the per-record
+signal is the reconstruction loss
+$\ell(x, f) = \lVert f(x) - x \rVert_2^2 / d$ rather than a classification
+loss. We instantiate three scores:
+
+\begin{itemize}
+\item \textbf{Yeom}~\cite{yeom2018privacy}: $s = -\ell(x,f)$. A member is
+predicted when the loss is low. It requires no auxiliary training and
+uses no calibration.
+
+\item \textbf{Shadow}~\cite{shokri2017membership,salem2019mlleaks}: a
+shadow model $f_s$ is trained on a disjoint split, and its loss
+distribution supplies the threshold applied to $\ell(x,f)$. This
+calibrates \emph{globally} --- one reference distribution for all records.
+
+\item \textbf{LiRA}~\cite{carlini2022membership}: calibrates
+\emph{per-record}. For each $x$, $N$ shadow models are partitioned into
+those trained with $x$ (IN) and without it (OUT), giving Gaussian fits
+$\mathcal{N}(\mu_{\text{in}}, \sigma_{\text{in}}^2)$ and
+$\mathcal{N}(\mu_{\text{out}}, \sigma_{\text{out}}^2)$; the score is the
+log-likelihood ratio
+$s = \log p(\ell \mid \text{IN}) - \log p(\ell \mid \text{OUT})$.
+\end{itemize}
+
+Yeom and Shadow observe the aggregated global model, so a positive result
+places a record in \emph{some} client's training data. LiRA observes the
+per-client update, so a positive result attributes membership to a
+specific operator, but requires aggregator privilege. These are two
+independent observation surfaces rather than a hierarchy, and we treat
+them as such throughout.
+
+\subsection{The no-DP Arm}
+\label{sec:prelim-nodp}
+
+Every configuration is also run with the noise disabled ($\sigma = 0$),
+and this arm does more work than a baseline label suggests. A near-chance
+AUC under DP is ambiguous on its own: it is consistent both with DP having
+suppressed a real signal and with no extractable signal having been
+present. The no-DP arm resolves that ambiguity in one direction. If the
+attack is at chance \emph{without} any noise, on the raw update, then a
+null result with noise is not evidence that DP worked --- there was
+nothing to protect against in the first place, and any claim of protective
+effect would be unfalsifiable. Conversely, a measurable no-DP signal is
+what makes a subsequent drop under DP interpretable as mitigation.
+
+The no-DP arm is therefore a precondition for reading the DP arms at all,
+not a control we report for completeness, and we present it first in
+Section~\ref{sec:results} for that reason.

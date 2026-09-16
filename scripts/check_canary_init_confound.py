@@ -59,10 +59,21 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True)
     ap.add_argument("--n-init", type=int, default=20)
+    # --seed (2026-09-16, Sprint 10zz+113): PRIMA questo script leggeva il
+    # seed SOLO dalla config, quindi un loop "for s in 42 123 456 ...; do
+    # check_canary_init_confound.py --config X; run_experiments.py --seed $s"
+    # produceva la STESSA baseline (quella di config.experiment.seed) per
+    # tutti i seed, mentre i run veri usavano seed diversi — le baseline non
+    # descrivevano i canary dei run con cui venivano confrontate. Ora il
+    # flag esiste e ha la precedenza sulla config, come --seed in
+    # run_experiments.py.
+    ap.add_argument("--seed", type=int, default=None)
     args = ap.parse_args()
 
     cfg = load_config(Path(args.config), {})
     seed = cfg.get("experiment", {}).get("seed", cfg.get("seed", 42))
+    if args.seed is not None:
+        seed = args.seed
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -78,6 +89,15 @@ def main():
             seed=seed,
         )
     else:
+        # random.shuffle PRIMA del taglio (2026-09-16, Sprint 10zz+113):
+        # deve replicare ESATTAMENTE lo split del run vero
+        # (run_experiments.py:6877 fa random.shuffle(sessions) e poi taglia
+        # all'80%). Senza lo shuffle questo script faceva uno split
+        # POSIZIONALE, quindi site_train_sessions era un insieme diverso e
+        # rng.sample() dentro inject_canaries() estraeva TEMPLATE DIVERSI da
+        # quelli del run: la baseline misurava la difficolta' intrinseca di
+        # canary che non erano quelli sotto test.
+        random.shuffle(sessions)
         cut = max(1, int(len(sessions) * 0.8))
         train, holdout = sessions[:cut], sessions[cut:]
 

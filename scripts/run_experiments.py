@@ -652,10 +652,24 @@ def inject_canaries(
     # stessa procedura, quindi la difficolta' intrinseca e' bilanciata in
     # aspettazione e si media via su piu' seed.
     #
-    # canary_cfg["swap_assignment"] (default False) inverte i due gruppi.
-    # Eseguire lo stesso seed con swap=False e swap=True e' il controllo
-    # decisivo: se l'AUC resta sopra 0.5 in entrambi i versi il segnale e'
-    # appartenenza, se si ribalta sotto 0.5 e' difficolta' intrinseca.
+    # canary_cfg["swap_assignment"] (default False) scambia i due gruppi.
+    # Eseguire lo stesso seed con swap=False e swap=True e' inteso come
+    # controllo negativo: se l'AUC resta sopra 0.5 in entrambi i versi il
+    # segnale e' appartenenza, se si ribalta sotto 0.5 e' difficolta'
+    # intrinseca.
+    #
+    # ATTENZIONE (2026-09-16, Sprint 10zz+113) — questo controllo e' valido
+    # SOLO se n_templates == n_nonmember_templates. Con dimensioni diverse
+    # (es. 5 e 20, la configurazione storica) non c'e' alcuno scambio di
+    # ruoli: swap=False prende member=drawn[:5] e swap=True prende
+    # member=drawn[20:25], cioe' due insiemi di membri DISGIUNTI, mentre
+    # 15 dei 25 template restano non-membri in entrambi i bracci. I due run
+    # sono quindi due esperimenti su record diversi, non lo stesso
+    # esperimento a ruoli invertiti, e un esito discordante fra i due NON
+    # dimostra che il segnale sia difficolta' intrinseca. Il commento
+    # precedente ("il controllo decisivo") era falso per quel caso ed e'
+    # stato corretto qui. La guardia sotto avvisa quando la condizione non
+    # e' soddisfatta.
     #
     # canary_cfg["nonmember_source"]:
     #   "paired_split" (default) — comportamento corretto descritto sopra
@@ -664,6 +678,25 @@ def inject_canaries(
     # ------------------------------------------------------------------
     nonmember_source = str(canary_cfg.get("nonmember_source", "paired_split"))
     swap_assignment  = bool(canary_cfg.get("swap_assignment", False))
+
+    # Guardia (2026-09-16, Sprint 10zz+113): swap_assignment ha senso come
+    # controllo negativo SOLO a gruppi bilanciati — vedi il commento esteso
+    # sopra. Non solleviamo un'eccezione (spezzerebbe i config storici che
+    # hanno gia' prodotto risultati citati nel README) ma l'avviso deve
+    # comparire nel log del run, non solo nella documentazione, perche' e'
+    # esattamente il punto su cui l'interpretazione del risultato si rompe.
+    if swap_assignment and n_templates != n_nonmember_templates:
+        logger.warning(
+            "[CANARY] swap_assignment=True con n_templates=%d != "
+            "n_nonmember_templates=%d: NON e' uno scambio di ruoli. I due "
+            "bracci useranno insiemi di membri DISGIUNTI e condivideranno "
+            "%d template non-membro, quindi un esito discordante fra "
+            "swap=False e swap=True NON dimostra difficolta' intrinseca. "
+            "Per un controllo negativo valido servono gruppi di pari "
+            "dimensione (n_templates == n_nonmember_templates).",
+            n_templates, n_nonmember_templates,
+            max(0, n_nonmember_templates - n_templates),
+        )
 
     if nonmember_source == "paired_split":
         n_needed = n_templates + n_nonmember_templates
@@ -3998,6 +4031,20 @@ def run_lira(
         # per ogni run esistente/pubblicato senza canary iniettati.
         round_canary_member_scores:    list[float] = []
         round_canary_nonmember_scores: list[float] = []
+        # Gruppi canary DISTINTI effettivamente entrati nell'AUC (2026-09-16,
+        # Sprint 10zz+113). Motivo: i conteggi di record sopra sovrastimano
+        # di molto la potenza statistica della metrica. Ogni gruppo membro e'
+        # un template replicato n_duplicates+1 volte con feature IDENTICHE,
+        # quindi loss identica e — poiche' _sample_preserving_canary_groups()
+        # tiene il gruppo atomico fra gli shadow — lira_score identico; ogni
+        # gruppo non-membro compare 2 volte. L'AUC su 155x40 record coincide
+        # numericamente con quella su 5x20 valori distinti, ma la sua
+        # varianza e' quella del secondo numero: riportare solo i record
+        # implica un errore standard ~sqrt(31*2)≈7.9 volte piu' stretto del
+        # vero. Questi campi rendono il denominatore reale leggibile dal JSON
+        # invece che ricostruibile solo a mano.
+        round_canary_member_groups:    set[str] = set()
+        round_canary_nonmember_groups: set[str] = set()
         # Diagnostico raw-loss canary (Sprint 10ww) — target_loss grezzo,
         # a monte della calibrazione shadow μ/σ, stesso principio di
         # _diag_raw_loss_members/nonmembers ma ristretto ai canary.
@@ -4601,9 +4648,11 @@ def run_lira(
                         # stessi duplicati) da "il modello non memorizza
                         # nemmeno i canary" (entrambi piatti).
                         round_canary_member_raw_loss.append(target_loss)
+                        round_canary_member_groups.add(_sample_canary_group[id(sample)])
                     else:
                         round_canary_nonmember_scores.append(lira_score)
                         round_canary_nonmember_raw_loss.append(target_loss)
+                        round_canary_nonmember_groups.add(_sample_canary_group[id(sample)])
 
                 if composed_output is not None:
                     _sid = id(sample)
@@ -4800,7 +4849,11 @@ def run_lira(
             logger.info(
                 f"Round {round_num} — [CANARY] AUC: {canary_auc_roc:.4f} "
                 f"(n_member={len(round_canary_member_scores)}, "
-                f"n_nonmember={len(round_canary_nonmember_scores)}) — positive control "
+                f"n_nonmember={len(round_canary_nonmember_scores)}; "
+                f"DISTINTI {len(round_canary_member_groups)}x"
+                f"{len(round_canary_nonmember_groups)} = "
+                f"{len(round_canary_member_groups) * len(round_canary_nonmember_groups)} "
+                f"coppie reali) — positive control "
                 f"| raw_loss_auc={canary_raw_mse_auc_roc} "
                 f"(mean_loss_member={round(float(np.mean(round_canary_member_raw_loss)), 8) if round_canary_member_raw_loss else 'N/A'}, "
                 f"mean_loss_nonmember={round(float(np.mean(round_canary_nonmember_raw_loss)), 8) if round_canary_nonmember_raw_loss else 'N/A'})"
@@ -4965,6 +5018,12 @@ def run_lira(
             "canary_auc_roc":             canary_auc_roc,
             "canary_n_member":            len(round_canary_member_scores),
             "canary_n_nonmember":         len(round_canary_nonmember_scores),
+            # Denominatore REALE dell'AUC canary (Sprint 10zz+113) — vedi il
+            # commento su round_canary_member_groups. Usare QUESTI, non i due
+            # conteggi di record sopra, per qualunque intervallo di confidenza
+            # o test di significativita' sul canary.
+            "canary_n_member_distinct":    len(round_canary_member_groups),
+            "canary_n_nonmember_distinct": len(round_canary_nonmember_groups),
             # Diagnostico raw-loss (Sprint 10ww) — immune a un'eventuale
             # contaminazione degli shadow dai duplicati canary, vedi sopra.
             "canary_raw_mse_auc_roc":     canary_raw_mse_auc_roc,
@@ -6341,6 +6400,19 @@ def save_results(
             "dp_mode":    cfg["experiment"].get("dp_mode", "dp-fedavg"),
             # seed: necessario per multi-seed aggregation (mean±std) — fix M1
             "seed":       cfg["experiment"].get("seed", 42),
+            # canary (2026-09-16, Sprint 10zz+113): provenance-bug trovato
+            # confrontando i JSON di _canary_maxmemo e _canary_maxmemo_swap —
+            # erano INDISTINGUIBILI fra loro dal solo file di output, perché
+            # il blocco cfg["canary"] (enabled/site/n_templates/n_duplicates/
+            # n_nonmember_templates/nonmember_source/swap_assignment) non
+            # veniva salvato da nessuna parte. Due run con iniezione canary
+            # diversa producevano lo stesso `config`, quindi l'unico modo di
+            # sapere quale fosse quale era il nome della sweep-dir o la
+            # memoria di chi aveva lanciato il comando — esattamente la
+            # classe di bug che "epochs"/"hidden_dims" sopra hanno già chiuso
+            # due volte. None quando i canary non sono abilitati (ogni run
+            # pubblicato non-canary), quindi nessun cambiamento per quelli.
+            "canary":     (cfg.get("canary") if cfg.get("canary", {}).get("enabled") else None),
             # epsilon_cumulative_naive (2026-07-22, review indipendente pre-push):
             # PRIMA di questo fix, solo l'epsilon NOMINALE per-round veniva
             # esportato — mai il budget cumulativo reale su tutti i round.

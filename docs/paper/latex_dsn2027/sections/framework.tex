@@ -218,6 +218,45 @@ this bug --- present on the member side only, then independently found
 and fixed on the non-member side as well on 2026-09-15 --- is the
 subject of the caveat in Section~\ref{sec:framework-auditor}.
 
+Two properties of this design bound what the control can establish, and
+we state them explicitly because the nominal sample size overstates
+both. First, \textbf{effective sample size}. With $|T_m|$ member
+templates each repeated $M+1$ times and $|T_n|$ non-member templates
+each present twice, every copy of a template carries an identical
+feature vector, hence an identical reconstruction loss and --- because
+the group is held atomic across shadow splits, as required to prevent
+the contamination described above --- an identical calibrated score.
+The AUC computed over the $(M{+}1)|T_m| \times 2|T_n|$ nominal pairs is
+therefore numerically \emph{equal} to the AUC over the
+$|T_m| \times |T_n|$ \emph{distinct} pairs, but its sampling variance
+is that of the smaller quantity. In our configuration
+($|T_m| = 5$, $M = 30$, $|T_n| = 20$) a nominal $n = 155 \times 36$
+corresponds to at most $5 \times 20$ independent comparisons: a
+confidence interval or significance test computed on the nominal $n$ is
+narrower than the data support by a factor of $\sqrt{62} \approx 7.9$.
+We therefore read canary AUC as a \emph{direction} indicator and never
+as a precise effect size, and we attach no $p$-values to it. The
+signature is visible in the raw outputs: every canary AUC we obtain is
+an exact multiple of $1/(|T_m|\,|T_n^{\text{eff}}|)$, never of the
+nominal reciprocal.
+
+Second, \textbf{a role-exchange control requires balanced groups}.
+Re-running one seed with the member and non-member roles exchanged is
+the decisive check that a canary AUC above $0.5$ reflects membership
+rather than the intrinsic reconstruction difficulty of whichever
+templates the draw happened to select. That exchange is well defined
+only when $|T_m| = |T_n|$. With $|T_m| \neq |T_n|$ the two arms draw
+\emph{disjoint} member groups from the same pool while sharing most of
+the non-member pool --- a second experiment on different records, not a
+role exchange --- and its outcome carries no negative-control force. A
+companion check measuring the same AUC at random initialisation, before
+any training, isolates the intrinsic-difficulty component; it must
+reproduce the training run's split procedure exactly, including the
+shuffle that precedes the train/hold-out cut, or it characterises a
+different set of templates than the one under test. We report both
+controls, and the conditions under which each is valid, rather than
+reporting the canary AUC alone.
+
 \subsection{Three DP Placements as Adversary Privilege Points}
 \label{sec:framework-dp}
 
