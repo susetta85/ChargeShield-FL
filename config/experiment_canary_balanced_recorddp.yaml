@@ -1,0 +1,96 @@
+# ChargeShield-FL — Canary bilanciato + DP a livello di RECORD (2026-09-16, Sprint 10zz+116)
+#
+# DOMANDA: il clipping per-esempio (DP-SGD vero) sopprime il segnale canary
+# che il braccio no-DP dimostra esistere? E' il braccio mancante del paper,
+# e la risposta che serve alla prima obiezione prevedibile di un revisore:
+# "avete usato DP client-level, ovviamente non protegge i record".
+#
+# PERCHE' QUI E NON SUI DATI NATURALI: sui dati naturali non c'e' nulla da
+# sopprimere (nessun leakage nemmeno senza DP), quindi la domanda sarebbe
+# vuota. Il regime canary e' l'unico in cui il leakage e' dimostrato
+# presente e quindi la soppressione e' misurabile.
+#
+# CONFRONTO: identico a config/experiment_canary_balanced.yaml (stesso seed,
+# stessi 20+20 template, stessa amplificazione, stesso modello) tranne il
+# blocco ml.record_dp. Il confronto e' quindi diretto: stesso esperimento
+# con e senza clipping per-record.
+#
+# LIMITE DA DICHIARARE NEL PAPER: non c'e' un accountant RDP/moments, quindi
+# noise_multiplier NON si traduce in un (eps, delta) riportabile. Questo
+# braccio misura l'EFFETTO del meccanismo sul segnale, non fornisce una
+# garanzia formale. Servirebbe Opacus/dp-accounting per quello.
+#
+# TEMPO: il clipping per-esempio usa microbatch da 1, quindi batch_size=32
+# significa 32 backward invece di 1 per passo. Attesi ~2-3 ore per run
+# contro i ~10 minuti del braccio senza record-DP. Per un primo controllo
+# rapido si puo' abbassare ml.epochs (1000 -> 100), ricordando che cambia
+# una seconda variabile e che il confronto va allora fatto contro un
+# braccio no-record-DP con le stesse epoche.
+#
+experiment:
+  name: chargeshield_canary_balanced_recorddp
+  fl_rounds: 3
+  seed: 42
+  epsilon: 1.0
+  delta: 1.0e-5
+  max_grad_norm: 1.0
+
+sites:
+  office1:
+    - datasets/acn/office1/acndata_sessions_2019.json
+    - datasets/acn/office1/acndata_sessions_2020.json
+    - datasets/acn/office1/acndata_sessions_2021.json
+
+ml:
+  input_dim: 7
+  lr: 0.001
+  epochs: 1000
+  batch_size: 32
+  record_dp:
+    enabled: true
+    max_grad_norm: 1.0      # C: norma massima del gradiente PER ESEMPIO
+    noise_multiplier: 1.0   # std del rumore sulla somma clippata = questo x C
+  proximal_mu: 0.01
+  hidden_dims: [32, 16]
+  latent_dim: 8
+  feature_names:
+    - total_energy_kwh
+    - max_power_kw
+    - kwh_requested
+    - minutes_available
+    - hour_of_day
+    - duration_hours
+    - start_time_epoch
+
+canary:
+  enabled: true
+  site: office1
+  nonmember_source: paired_split
+  swap_assignment: false      # braccio A
+  n_templates: 20             # == n_nonmember_templates: condizione dello scambio
+  n_duplicates: 30
+  n_nonmember_templates: 20
+
+output:
+  experiments_dir: experiments
+
+lira:
+  n_shadow: 8
+  # shadow_init: cold (aggiunto 2026-09-16, dopo lo smoke test s42).
+  # OMESSO per errore nella prima stesura di questi config: i config
+  # _canary_maxmemo{,_swap} da cui questo design deriva lo impostano a
+  # "cold", mentre il default del codice e' "warm" (run_experiments.py:3250,
+  # _warm_start attivo dal round 2). Lo smoke test s42 ha quindi girato con
+  # gli shadow warm-start mentre la campagna a 5 seed di riferimento girava
+  # cold: una variabile non controllata fra le due campagne, che tocca la
+  # calibrazione shadow e quindi canary_auc_roc (NON canary_raw_mse_auc_roc,
+  # che e' calcolata sulla loss del modello target e non vede gli shadow).
+  # Vedi anche Blocker 1 / Sprint 10zz+91: warm e cold non sono equivalenti
+  # in questo regime.
+  shadow_init: cold
+
+byzantine_attack:
+  enabled: false
+  attack_type: gradient_scaling
+  byzantine_node: synthetic_1
+  scale_factor: 10

@@ -75,6 +75,43 @@ class AutoencoderTrainer(AbstractMLModel):
 
         # FedProx: 0.0 = FedAvg puro. Usare .get() con default — "or" ignorerebbe 0.0 intenzionale.
         self.proximal_mu: float = config.get("proximal_mu", 0.0)
+
+        # ── DP a livello di RECORD (2026-09-16, Sprint 10zz+116) ──────────────
+        # Opt-in via cfg["ml"]["record_dp"]. Assente o enabled=False (ogni
+        # config esistente) => comportamento invariato bit-per-bit: train_step()
+        # resta quello di prima e questo blocco e' inerte.
+        #
+        # PERCHE' ESISTE: il meccanismo DP principale di questo progetto clippa
+        # e rumorizza UNA VOLTA PER ROUND l'update aggregato del client, cioe'
+        # implementa un'adiacenza CLIENT-level (vedi §Preliminaries del paper).
+        # Gli attacchi invece sondano l'appartenenza di un RECORD. Quel
+        # disallineamento e' una domanda aperta del paper, non un'assunzione, e
+        # per rispondervi serve il braccio mancante: DP-SGD vero, con clipping
+        # del gradiente PER ESEMPIO a ogni passo locale. Non e' un'analisi piu'
+        # fine del meccanismo esistente, e' un meccanismo diverso.
+        #
+        # PARAMETRI (parametrizzazione standard DP-SGD, Abadi et al. 2016):
+        #   max_grad_norm C  : ogni gradiente per-esempio e' clippato a ||g||<=C
+        #   noise_multiplier : std del rumore gaussiano aggiunto alla SOMMA dei
+        #                      gradienti clippati = noise_multiplier * C
+        # Il gradiente del batch e' poi (somma_clippata + rumore) / batch_size.
+        #
+        # LIMITE DA DICHIARARE: qui NON c'e' un accountant RDP/moments. Questo
+        # blocco implementa il MECCANISMO, non la contabilita' del budget: il
+        # (eps, delta) risultante andrebbe calcolato con un accountant vero
+        # (Opacus/dp-accounting) e non e' derivabile dai due parametri sopra
+        # senza amplificazione da sottocampionamento. Vale quindi come braccio
+        # sperimentale ("il clipping per-record sopprime il segnale canary?"),
+        # non come claim di garanzia formale.
+        _rdp = config.get("record_dp") or {}
+        self.record_dp_enabled: bool = bool(_rdp.get("enabled", False))
+        self.record_dp_max_grad_norm: float = float(_rdp.get("max_grad_norm", 1.0))
+        self.record_dp_noise_multiplier: float = float(_rdp.get("noise_multiplier", 0.0))
+        if self.record_dp_enabled and self.record_dp_max_grad_norm <= 0.0:
+            raise ValueError(
+                "config['ml']['record_dp']['max_grad_norm'] deve essere > 0 "
+                f"(ricevuto {self.record_dp_max_grad_norm})"
+            )
         self._global_weights: list[Any] | None = None
 
         # Seed per DataLoader shuffle deterministico (riproducibilità DSN 2027)
@@ -154,6 +191,9 @@ class AutoencoderTrainer(AbstractMLModel):
         Se proximal_mu > 0, aggiunge termine prossimale FedProx:
             loss += (mu/2) * ||w - w_global||²
         """
+        if self.record_dp_enabled:
+            return self._train_step_record_dp(data)
+
         self.model.train()
         batch = data.to(self.device)
         self.optimizer.zero_grad()
@@ -169,6 +209,79 @@ class AutoencoderTrainer(AbstractMLModel):
         loss.backward()
         self.optimizer.step()
         return float(loss.item())
+
+    def _train_step_record_dp(self, data: Any) -> float:
+        """
+        Passo DP-SGD con clipping del gradiente PER ESEMPIO (Abadi et al. 2016).
+
+        Differenza sostanziale rispetto a train_step(): li' il gradiente viene
+        calcolato sulla media del batch e il clipping/rumore DP avviene altrove,
+        una volta per round sull'update aggregato del client (adiacenza
+        client-level). Qui ogni esempio contribuisce un gradiente clippato
+        individualmente a norma <= C, e il rumore e' aggiunto alla somma dei
+        gradienti clippati: l'influenza di un singolo record sull'update e'
+        quindi limitata per costruzione a ogni passo, che e' la condizione
+        perche' l'adiacenza sia RECORD-level.
+
+        Implementazione: microbatch da 1. Piu' lenta di vmap/functorch di un
+        fattore ~batch_size in numero di backward, ma esplicita e verificabile
+        riga per riga --- scelta deliberata su un modello da <2k parametri,
+        dove il costo assoluto resta modesto e la correttezza conta piu' della
+        velocita'.
+
+        FedProx: il termine prossimale (mu/2)||w - w_global||^2 NON entra nei
+        gradienti per-esempio ed e' escluso dal clipping. Non dipende dai dati,
+        quindi non ha sensibilita' per-record: clipparlo sarebbe concettualmente
+        sbagliato, e includerlo in ogni microbatch lo moltiplicherebbe per
+        batch_size. Viene percio' aggiunto una sola volta, al gradiente medio
+        gia' rumorizzato, dove il suo effetto e' identico a quello che ha in
+        train_step().
+        """
+        self.model.train()
+        batch = data.to(self.device)
+        n = batch.shape[0]
+        if n == 0:
+            return 0.0
+
+        params = [p for p in self.model.parameters() if p.requires_grad]
+        somma = [torch.zeros_like(p) for p in params]
+        loss_totale = 0.0
+        C = self.record_dp_max_grad_norm
+
+        for i in range(n):
+            self.optimizer.zero_grad(set_to_none=True)
+            x = batch[i : i + 1]
+            loss_i = self.criterion(self.model(x), x)
+            loss_i.backward()
+            loss_totale += float(loss_i.item())
+
+            # norma L2 del gradiente di QUESTO esempio, su tutti i parametri
+            norma = torch.sqrt(
+                sum((p.grad.detach() ** 2).sum() for p in params if p.grad is not None)
+            )
+            scala = min(1.0, C / float(norma.item() + 1e-12))
+            for acc, p in zip(somma, params):
+                if p.grad is not None:
+                    acc.add_(p.grad.detach() * scala)
+
+        # Rumore gaussiano sulla SOMMA dei gradienti clippati, std = sigma * C
+        # (parametrizzazione standard DP-SGD), poi media sul lotto.
+        sigma = self.record_dp_noise_multiplier
+        self.optimizer.zero_grad(set_to_none=True)
+        for acc, p in zip(somma, params):
+            g = acc
+            if sigma > 0.0:
+                g = g + torch.normal(mean=0.0, std=sigma * C, size=g.shape, device=g.device)
+            g = g / float(n)
+            # Termine prossimale FedProx, aggiunto DOPO il rumore: vedi docstring.
+            if self.proximal_mu > 0.0 and self._global_weights is not None:
+                idx = params.index(p)
+                if idx < len(self._global_weights):
+                    g = g + self.proximal_mu * (p.detach() - self._global_weights[idx])
+            p.grad = g
+
+        self.optimizer.step()
+        return loss_totale / n
 
     def emit_event(self, event: MLPlaneEvent) -> None:
         """Propaga l'evento a tutti i listener registrati."""
