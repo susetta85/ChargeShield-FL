@@ -107,6 +107,18 @@ output:
 
 lira:
   n_shadow: 8
+  # shadow_init: cold (aggiunto 2026-09-16, dopo lo smoke test s42).
+  # OMESSO per errore nella prima stesura di questi config: i config
+  # _canary_maxmemo{,_swap} da cui questo design deriva lo impostano a
+  # "cold", mentre il default del codice e' "warm" (run_experiments.py:3250,
+  # _warm_start attivo dal round 2). Lo smoke test s42 ha quindi girato con
+  # gli shadow warm-start mentre la campagna a 5 seed di riferimento girava
+  # cold: una variabile non controllata fra le due campagne, che tocca la
+  # calibrazione shadow e quindi canary_auc_roc (NON canary_raw_mse_auc_roc,
+  # che e' calcolata sulla loss del modello target e non vede gli shadow).
+  # Vedi anche Blocker 1 / Sprint 10zz+91: warm e cold non sono equivalenti
+  # in questo regime.
+  shadow_init: cold
 
 byzantine_attack:
   enabled: false
