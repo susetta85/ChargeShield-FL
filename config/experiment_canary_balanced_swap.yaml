@@ -1,0 +1,120 @@
+# ChargeShield-FL — Canary a GRUPPI BILANCIATI, braccio B / SWAP (2026-09-16, Sprint 10zz+114)
+#
+# Identico a config/experiment_canary_balanced.yaml tranne swap_assignment.
+# Va lanciato con lo STESSO seed del braccio A: stesso seed -> stesso `drawn`,
+# quindi i due gruppi di 20 template si scambiano ESATTAMENTE il ruolo.
+# Tutte le motivazioni di design sono nel file del braccio A, non duplicate qui.
+#
+# SCOPO: rendere possibile un controllo negativo VERO per il canary positive
+# control. Il difetto B del Sprint 10zz+111: con n_templates=5 e
+# n_nonmember_templates=20, `swap_assignment` NON scambia i ruoli. Il codice
+# (run_experiments.py, ramo paired_split) fa:
+#     drawn = rng.sample(site_train_sessions, n_templates + n_nonmember_templates)
+#     rng.shuffle(drawn)
+#     swap=False -> member = drawn[:n_t],  nonmember = drawn[n_t:]
+#     swap=True  -> nonmember = drawn[:n_nm], member = drawn[n_nm:]
+# Con 5 e 20 i due bracci pescano insiemi di membri DISGIUNTI (drawn[:5] vs
+# drawn[20:25]) e condividono 15 template non-membro su 20: sono due
+# esperimenti su record diversi, non lo stesso esperimento a ruoli invertiti,
+# e un esito discordante non dimostra nulla sulla difficoltà intrinseca.
+#
+# Con n_templates == n_nonmember_templates == k la stessa formula diventa un
+# vero scambio, senza alcuna modifica al codice:
+#     drawn ha 2k elementi (stesso seed -> stesso drawn nei due bracci)
+#     braccio A: member = drawn[:k],  nonmember = drawn[k:2k]
+#     braccio B: member = drawn[k:2k], nonmember = drawn[:k]
+# Gli stessi due gruppi si scambiano esattamente il ruolo. Questo file è il
+# braccio A; experiment_canary_balanced_swap.yaml è il braccio B, identico
+# tranne swap_assignment: true.
+#
+# SCELTA DI k = 20 (non 5). Il denominatore reale dell'AUC canary è
+# n_templates × n_nonmember_templates coppie DISTINTE, non i conteggi di
+# record (Sprint 10zz+111, difetto A: i 31 duplicati di un template hanno
+# feature identiche, quindi loss e score identici). Le configurazioni
+# precedenti davano 5×20 = 100 coppie; qui 20×20 = 400, con errore standard
+# dell'AUC che passa da ~0.19 a ~0.10 per un'AUC intorno a 0.75. Con k=5
+# bilanciato sarebbero state 25 coppie: controllo negativo valido ma cieco.
+#
+# n_duplicates RESTA 30 — la stessa amplificazione per record che in
+# _canary_maxmemo ha prodotto memorizzazione misurabile (Delta sulla loss
+# grezza fino a +0.61 rispetto alla baseline a init casuale, Sprint
+# 10zz+113). Non abbassarla per contenere la densità: significherebbe
+# cambiare due variabili insieme e non poter attribuire un eventuale nullo.
+#
+# CONSEGUENZA DA DICHIARARE NEL PAPER: la densità dei canary sale. Con
+# office1 (1344 sessioni di training) il braccio A inietta 20 originali
+# ri-taggati + 20×30 = 600 duplicati e rimuove 20 sessioni (i template
+# non-membro passano nell'holdout), quindi training = 1344 + 600 - 20 = 1924
+# e i record canary membro sono 620/1924 ≈ 32%, contro il ~10% dei config
+# precedenti. Questa densità NON confonde il controllo negativo — è identica
+# nei due bracci per costruzione — ma cambia la magnitudine assoluta ed è una
+# variabile non isolata qui, da riportare esplicitamente.
+#
+# Modello: stessa configurazione ad alta capacità di _canary_maxmemo
+# (7 feature incl. start_time_epoch, hidden_dims=(32,16), latent_dim=8,
+# 1000 epoche), cioè l'unico regime in cui la memorizzazione è dimostrata
+# inducibile. Usare il modello "realistico" a 570 parametri rischierebbe un
+# nullo per la ragione sbagliata (vedi experiments/_canary_pairedsplit_nodp,
+# raw AUC 0.43-0.58: nessuna memorizzazione, architettura storica).
+#
+# LETTURA DEL RISULTATO — confronto omogeneo obbligatorio. La baseline di
+# check_canary_init_confound.py è un AUC su loss a pesi casuali, quindi va
+# confrontata con canary_raw_mse_auc_roc e MAI con canary_auc_roc (LiRA):
+# sarebbe di nuovo il mismatch di metrica del Sprint 10zz+110. Il test è sul
+# Delta rispetto alla baseline DEL PROPRIO braccio:
+#   Delta_A > 0 E Delta_B > 0  -> il segnale è appartenenza (controllo superato)
+#   uno dei due <= 0           -> difficoltà intrinseca dei template sorteggiati
+# Entrambi i bracci vanno lanciati con lo STESSO seed: è ciò che garantisce
+# che `drawn` sia identico e che lo scambio sia esatto.
+
+experiment:
+  name: chargeshield_canary_balanced_swap
+  fl_rounds: 3
+  seed: 42
+  epsilon: 1.0
+  delta: 1.0e-5
+  max_grad_norm: 1.0
+
+sites:
+  office1:
+    - datasets/acn/office1/acndata_sessions_2019.json
+    - datasets/acn/office1/acndata_sessions_2020.json
+    - datasets/acn/office1/acndata_sessions_2021.json
+
+ml:
+  input_dim: 7
+  lr: 0.001
+  epochs: 1000
+  batch_size: 32
+  proximal_mu: 0.01
+  hidden_dims: [32, 16]
+  latent_dim: 8
+  feature_names:
+    - total_energy_kwh
+    - max_power_kw
+    - kwh_requested
+    - minutes_available
+    - hour_of_day
+    - duration_hours
+    - start_time_epoch
+
+canary:
+  enabled: true
+  site: office1
+  nonmember_source: paired_split
+  swap_assignment: true       # braccio B — ruoli scambiati rispetto ad A
+  n_templates: 20             # == n_nonmember_templates: condizione dello scambio
+  n_duplicates: 30
+  n_nonmember_templates: 20
+
+output:
+  experiments_dir: experiments
+
+lira:
+  n_shadow: 8
+
+byzantine_attack:
+  enabled: false
+  attack_type: gradient_scaling
+  byzantine_node: synthetic_1
+  scale_factor: 10
