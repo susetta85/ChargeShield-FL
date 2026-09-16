@@ -1,0 +1,115 @@
+% ChargeShield-FL --- DSN 2027 --- Threat Model
+% Portata in LaTeX 2026-09-16 (Sprint 10zz+117) dallo skeleton .docx.
+% I cinque scenari sono ripresi dal .docx (struttura e contenuto invariati:
+% erano gia' corretti e onesti, incluse le non-coperture dichiarate).
+%
+% AGGIUNTA rispetto al .docx: la sottosezione Where the Adversary Observes
+% (sec:threat-observation) piu' la figura fig:adversary-points. Motivo, su
+% richiesta esplicita dell'utente: i tre posizionamenti DP erano spiegati
+% solo come meccanica nei Preliminaries (DOVE lungo la pipeline), mai come
+% CHI ha quel privilegio in un deployment reale. Senza quel passaggio i tre
+% bracci sembrano uno sweep di configurazione invece che un argomento di
+% sicurezza.
+%
+% PUNTO DI ONESTA' introdotto qui e non presente nel .docx: dp-fedavg come
+% punto di osservazione e' STRETTAMENTE PIU' FORTE dello Scenario 1. Sotto
+% dp-fedavg e local l'update grezzo non lascia mai il client non
+% privatizzato, quindi nessun aggregatore honest-but-curious lo vede mai.
+% Dichiararlo rafforza l'argomento (un nullo sotto un avversario piu'
+% privilegiato del nostro threat model limita anche gli altri due) ed evita
+% un'obiezione facile.
+
+\section{Threat Model}
+\label{sec:threat-model}
+
+We formalise five scenarios along a Purdue-model-inspired hierarchy of
+attacker capability. The results in this paper concern Scenario~1
+exclusively. Every other scenario is either handled by a different consumer
+of the same ML Plane substrate and validated independently (Scenario~2), or
+genuinely out of scope (Scenarios~3--4), reported as such rather than
+silently assumed away.
+
+\subsection{Scenario 1 --- Honest-but-Curious Aggregator (evaluated)}
+\label{sec:threat-s1}
+
+The server/aggregator follows the FL protocol faithfully --- it never
+deviates and never sends malformed global weights --- but may passively
+record and analyse every update it legitimately receives. Clients are honest
+by construction. This is the only scenario our Yeom, Shadow and LiRA results
+characterise.
+
+\subsection{Where the Adversary Observes}
+\label{sec:threat-observation}
+
+Scenario~1 fixes the adversary's \emph{behaviour} but not its \emph{vantage
+point}, and in a federated deployment those are separate questions. The
+update a client produces passes through a privatisation pipeline
+(Equation~\ref{eq:pipeline}) before it is aggregated, and how much of that
+pipeline has already been applied when the adversary reads the update
+determines what is left to extract. Figure~\ref{fig:adversary-points} makes
+the three positions explicit.
+
+\textbf{A3 --- noised update ($\tilde{g}$).} The adversary sees the update
+after clipping and after noise. This is what an honest-but-curious
+aggregator receives under a local-DP deployment, and equally what a network
+observer would see on the wire. It is the least privileged position and the
+one that matches the deployment most operators have in mind when they
+say that they use DP.
+
+\textbf{A2 --- clipped update ($\bar{g}$).} The adversary sees the update
+after clipping but \emph{before} noise. This is not a hypothetical: under a
+central-DP deployment the aggregator adds the noise itself, so it
+legitimately receives the pre-noise value. A2 is therefore still Scenario~1
+--- an aggregator that follows the protocol exactly and merely looks at what
+the protocol hands it.
+
+\textbf{A1 --- raw update ($g$).} The adversary sees the update before any
+protective transformation. Under our deployments the raw update never leaves
+the client unprivatised, so no honest-but-curious aggregator ever holds it;
+A1 models an adversary \textbf{strictly stronger than Scenario~1}, such as
+an insider or a compromised process on the charging-station controller
+itself, operating inside the client boundary.
+
+We state that asymmetry rather than smoothing it over, because it is what
+makes the design informative. A1 upper-bounds what \emph{any} adversary can
+extract from this channel: it observes the quantity from which A2 and A3 are
+derived by information-destroying transformations. Consequently, if A1
+yields no membership signal, a null at A2 or A3 cannot be credited to the
+noise having suppressed a signal that was otherwise present --- there was
+none to suppress. Reporting the three as competing mechanisms, rather than
+as ordered privileges, would discard exactly this argument.
+
+\subsection{Scenario 2 (a different consumer) and Scenarios 3--4 (out of scope)}
+\label{sec:threat-s2}
+
+Scenario~2, a malicious FL client, is not simply out of scope. The ML Plane
+substrate has two consumers with orthogonal threat models over the same
+observability layer: the Privacy Auditor (confidentiality, Scenario~1, the
+subject of this paper's results) and ByzantineDetector (integrity,
+Scenario~2). Scenario~2 belongs to that other consumer, is validated
+separately from the privacy claims here, and is not conflated with
+Scenario~1 in our results. As of this submission, ByzantineDetector's
+Krum, cosine-similarity and CUSUM mechanisms are implemented and unit-tested
+but have not been exercised end-to-end against an active Byzantine client on
+real FL training data --- a gap we disclose rather than imply coverage we
+have not measured.
+
+Scenario~3 (compromised network gateway) and Scenario~4 (external passive
+eavesdropper, defeated by transport-layer security) remain genuinely out of
+scope: neither is an ML Plane consumer, and both are conventional
+network-security concerns orthogonal to Scenarios~1 and~2 alike.
+
+\subsection{Scenario 5 --- Adaptive Attacker (discussion only)}
+\label{sec:threat-s5}
+
+We discuss, without evaluating, two open questions: an attack tailored to
+this exact autoencoder/FedProx/ACN-Data setup rather than the
+literature-standard Yeom/Shadow/LiRA (S5a), and evasion of the Privacy
+Auditor's own scoring (S5b). We explicitly reject a resolution we considered
+during development --- that ByzantineDetector's stability controls would
+catch an adaptive privacy attacker --- because Scenario~1 defines clients as
+honest by construction: any attacker that deviates from protocol to evade
+the Auditor is, by definition, Scenario~2. We therefore state a dual-defence
+architecture with two orthogonal domains, integrity via ByzantineDetector
+(Scenario~2) and privacy via the Auditor and DP (Scenario~1), rather than
+claim that either component covers both.

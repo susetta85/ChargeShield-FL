@@ -1,0 +1,57 @@
+% ChargeShield-FL --- DSN 2027 --- Figura: i tre punti di osservazione
+% dell'avversario (2026-09-16, Sprint 10zz+117).
+%
+% NOTA TIKZ: ogni \\ deve restare al livello ESTERNO del testo del nodo. Un
+% \\ annidato dentro l'argomento di un altro comando (es. \emph{a\\b}) rompe
+% il layout di align con "Undefined control sequence \pgfutil@next" --- bug
+% reale trovato e corretto nel Sprint 10zz+109 su ml_plane_architecture.tex.
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  font=\small,
+  stage/.style={draw, rounded corners, minimum height=0.85cm,
+                minimum width=2.1cm, align=center, font=\footnotesize},
+  zone/.style={draw, dashed, rounded corners, inner sep=0.25cm},
+  adv/.style={draw, circle, minimum size=0.62cm, thick,
+              red!65!black, font=\small\bfseries},
+  arr/.style={-Latex, thick}
+]
+
+  \node[stage] (raw)   {local update\\$g$};
+  \node[stage, right=1.25cm of raw]  (clip)  {clipped\\$\bar{g}$};
+  \node[stage, right=1.25cm of clip] (noise) {noised\\$\tilde{g}$};
+  \node[stage, right=1.25cm of noise, minimum width=1.7cm] (agg) {aggregator\\FedAvg};
+
+  \draw[arr] (raw)   -- node[above, font=\scriptsize]{clip} (clip);
+  \draw[arr] (clip)  -- node[above, font=\scriptsize]{$+\,\mathcal{N}$} (noise);
+  \draw[arr] (noise) -- node[above, font=\scriptsize]{send} (agg);
+
+  % zona che non lascia mai il client
+  \begin{scope}[on background layer]
+    \node[zone, fit=(raw)(clip), label={[font=\scriptsize\itshape]below:client side}] {};
+  \end{scope}
+
+  \node[adv, above=0.65cm of raw]   (a1) {A1};
+  \node[adv, above=0.65cm of clip]  (a2) {A2};
+  \node[adv, above=0.65cm of noise] (a3) {A3};
+  \draw[arr, red!65!black] (a1) -- (raw);
+  \draw[arr, red!65!black] (a2) -- (clip);
+  \draw[arr, red!65!black] (a3) -- (noise);
+
+  \node[font=\scriptsize, align=center, below=0.9cm of raw]   {\texttt{dp-fedavg}\\upper bound\\\emph{beyond} S1};
+  \node[font=\scriptsize, align=center, below=0.9cm of clip]  {\texttt{central}\\S1 aggregator};
+  \node[font=\scriptsize, align=center, below=0.9cm of noise] {\texttt{local}\\S1 aggregator\\or eavesdropper};
+
+\end{tikzpicture}
+\caption{The three observation points are three adversary privileges on one
+privatisation pipeline, not three privacy mechanisms. \textbf{A3} sees only
+the clipped-and-noised update: an honest-but-curious aggregator, or a network
+observer, under a local-DP deployment. \textbf{A2} sees the update after
+clipping but before noise, which is what an aggregator legitimately receives
+when the noise is added centrally --- still Scenario~1. \textbf{A1} sees the
+raw update, which under our deployments never leaves the client
+unprivatised; it therefore models an adversary \emph{strictly stronger} than
+Scenario~1, and we evaluate it precisely because a null there bounds the
+other two (\S\ref{sec:threat-observation}).}
+\label{fig:adversary-points}
+\end{figure}
