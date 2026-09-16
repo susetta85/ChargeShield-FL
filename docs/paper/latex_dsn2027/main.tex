@@ -75,7 +75,7 @@ Inference in Federated EV-Charging Systems}
 \begin{abstract}
 Federated learning is increasingly proposed for critical infrastructure,
 but whether differential privacy applied to the FL communication channel
-prevents membership-inference leakage remains an open question. We present
+prevents membership-inference leakage remains an open question (or but if membership-inference information leakage, even while applying mechanisms like differential privacy on the communication channel, remains an open question) . We present
 ChargeShield-FL, an event-driven ML Plane with privacy and integrity
 telemetry, evaluated on real EV-charging data (ACN-Data, three sites) in
 simulation and in a multi-container NVFLARE deployment. We probe two
@@ -107,6 +107,7 @@ the auditor, not the null alone, is the transferable contribution.
 %   \section{Discussion and Conclusion}\label{sec:discussion}
 % ---------------------------------------------------------------------
 
+\input{sections/introduction.tex}
 \input{sections/preliminaries.tex}
 \input{sections/related_work.tex}
 \input{sections/framework.tex}

@@ -1,0 +1,131 @@
+% ChargeShield-FL --- DSN 2027 --- Introduction
+% Portata in LaTeX 2026-09-16 (Sprint 10zz+115) dallo skeleton .docx, con
+% tre correzioni sostanziali rispetto a quella versione:
+%
+% (1) Il .docx diceva che il sanity-check a cinque assi "rules out an
+%     insensitive attack harness". Lo Sprint 10oo dichiarava esplicitamente
+%     quel claim NON dimostrato, ed e' ora superato dal canary positive
+%     control, che da' la risposta vera e piu' sfumata: lo strumento e'
+%     sensibile sulla superficie raw-loss, la variante shadow-calibrata no.
+% (2) Il .docx descriveva il Privacy Auditor come "real-time
+%     membership-inference-risk auditor". Sprint 10zz+104 ha corretto questa
+%     attribuzione: l'Auditor fa budget accounting e telemetria, NON leakage
+%     detection, e non fa enforcement. Descrizione allineata.
+% (3) Aggiunte le research question esplicite, che mancavano sia nel .docx
+%     sia in LaTeX (quelle in docs/CaseStudies.md sono superate: chiedevano
+%     "a quale epsilon l'attacco diventa indistinguibile dal caso", domanda
+%     la cui premessa i risultati hanno smentito).
+
+\section{Introduction}
+\label{sec:introduction}
+
+Federated learning (FL) is increasingly proposed as the privacy-preserving
+path for training shared models over critical infrastructure --- smart
+grids, EV charging networks, industrial control systems --- where
+centralising raw operational data is both a regulatory liability and a
+security risk. Whether FL delivers on that promise in realistic,
+production-style deployments is an empirical question that the literature
+answers piecemeal: one attack per paper, one dataset per paper, rarely a
+production FL framework, rarely an industrial dataset.
+
+The gap we address is narrower and, we argue, more consequential. Differential
+privacy in FL is normally applied at \textbf{client-level}: clipping and noise
+are attached to the update a client sends, because that update is the only
+object crossing the communication channel. The attacks practitioners actually
+fear, however, are \textbf{record-level}: they ask whether one particular
+charging session was in someone's training set. A client-level
+$(\varepsilon,\delta)$ guarantee does not bound record-level leakage when a
+client holds thousands of records, and the size of that gap in practice is not
+something theory settles. It has to be measured.
+
+\subsection{Research Questions}
+\label{sec:introduction-rq}
+
+\begin{itemize}
+\item[\textbf{RQ1}] \textbf{The mismatch.} When differential privacy is
+calibrated at client level, how much protection does an individual record
+actually receive against membership inference?
+
+\item[\textbf{RQ2}] \textbf{The instrument.} When an attack reports no
+leakage, is that a property of the system under test or of the attack? A
+null privacy result is only informative if the measuring instrument is
+independently known to be sensitive.
+
+\item[\textbf{RQ3}] \textbf{The privilege.} How far does the answer depend
+on where along the privatisation pipeline the adversary is assumed to
+observe --- the raw update, the clipped update, or the noised one?
+\end{itemize}
+
+RQ2 is not methodological housekeeping. Most reported FL privacy nulls are
+published without a positive control, which leaves them indistinguishable
+from an attack that simply does not work; making that distinction
+measurable is the part of this work we expect to transfer beyond EV
+charging.
+
+\subsection{Approach and Findings}
+
+We present ChargeShield-FL, built around two domain-agnostic components: the
+\emph{ML Plane}, an event-driven observability substrate that any FL training
+loop can wire into without coupling the training code to whatever monitors it,
+and the \emph{Privacy Auditor}, a config-driven consumer of those events that
+tracks per-client privacy-budget consumption and raises operational alerts.
+The Auditor is deliberately telemetry, not enforcement, and not a leakage
+detector: it reports what the configured budget implies, while the question of
+what actually leaks is answered by attacks, offline, in
+Section~\ref{sec:framework-attacks}. Using real EV charging data (ACN-Data;
+Caltech, JPL, Office~1) --- not synthetic data standing in for a deployment
+--- we run three attacks across two independent observation surfaces, in
+simulation and on a genuine multi-container NVFLARE/Containerlab federation.
+
+On natural data we find no detectable membership signal in any configuration,
+\emph{including with no DP at all}, and the null holds on all three scorers,
+not only the shadow-calibrated one. Addressing RQ2, we then validate the
+instrument instead of assuming it: injecting deliberately memorised canaries
+recovers a large, reproducible signal on the raw-loss surface, which
+establishes that the pipeline detects record-level memorisation when
+memorisation exists. The same experiment shows that the per-record Gaussian
+calibration of LiRA degenerates in this regime --- its variance estimates
+collapse onto their floor --- so the scorer most often treated as the
+strongest is, here, the least reliable.
+
+Finally, we characterise \emph{why} the null arises, which turns a negative
+result into a positive statement about when FL privacy audits can be expected
+to find anything. The null is not explained by dataset size, and not by the
+model being unable to memorise: it is a property of the representation. In our
+six-feature session space, the median distance from a held-out session to its
+nearest training session is $0.0146$, against $0.0149$ between training
+sessions themselves --- a ratio of $0.98$. An adversary given the most
+favourable purely geometric signal, the distance from the training set, would
+achieve AUC $0.4935$. Members and non-members are mutually indistinguishable
+\emph{before any model is trained}, which upper-bounds every attack
+independently of the model, of DP, and of $\varepsilon$. Adding a
+near-unique timestamp feature does not change this, because uniqueness is
+symmetric across the two groups and therefore creates no asymmetry an attacker
+can exploit.
+
+\subsection{Contributions}
+
+\begin{itemize}
+\item The \emph{ML Plane} (Section~\ref{sec:framework-mlplane}): a
+domain-agnostic, event-driven observability substrate for FL training that
+decouples training code from the components observing it.
+
+\item The \emph{Privacy Auditor} (Section~\ref{sec:framework-auditor}): a
+config-driven budget-accounting and alerting consumer operating on any
+node's update as a flat numeric dictionary, independent of domain and of
+any specific attack.
+
+\item An \emph{instrument-validation protocol} for FL privacy audits
+(Section~\ref{sec:framework-canary}): a canary positive control with
+per-seed random-initialisation baselines and a balanced role-exchange
+negative control, together with the conditions under which each is valid
+and the effective sample size each actually carries.
+
+\item An empirical case study on real, multi-site EV charging data and a
+containerised NVFLARE deployment, reporting a null that is accompanied by
+the evidence needed to interpret it (Section~\ref{sec:results}).
+
+\item A \emph{representation-level explanation} of the null, measured rather
+than conjectured, that predicts when similar audits will and will not find
+signal.
+\end{itemize}

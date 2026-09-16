@@ -52,7 +52,7 @@ client-level guarantee does not by itself bound record-level leakage when
 each client holds thousands of records, as it does here. We therefore
 never read our $\varepsilon$ as a record-level bound on the quantity our
 attacks measure; the relationship between the two is the empirical
-question this paper studies, not an assumption it makes.
+question this paper studies, not an assumption it makes. (In other words: We do not rely on theory to claim that “the system is 100\% secure for every individual charging session simply because we use DP.” Differential Privacy here protects the client-level dataset. Understanding how much effective protection extends to an individual charging session is precisely the empirical question this paper aims to answer through real-world attacks.)
 
 \subsection{Composition and Privacy Accounting}
 \label{sec:prelim-accounting}
