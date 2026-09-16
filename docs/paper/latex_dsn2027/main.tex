@@ -53,11 +53,43 @@ Inference in Federated EV-Charging Systems}
 
 \maketitle
 
+% ABSTRACT riscritto 2026-09-16 (Sprint 10zz+114). Sostituisce sia il
+% placeholder sia la versione nello skeleton .docx. Motivo: quella versione
+% affermava che il sanity-check a cinque assi "rules out an insensitive
+% attack harness" --- un claim che lo Sprint 10oo dichiarava esplicitamente
+% NON dimostrato ("il sanity-check dimostra che l'overfitting e' difficile
+% da INDURRE, non che la metodologia d'attacco sappia rilevare membership
+% in generale") e che e' ora superato dall'evidenza reale del canary
+% positive control. Inoltre il numero-titolo del vecchio abstract era
+% calcolato con LiRA, la stessa metrica che la sezione 5.6 mostra degenerare in
+% questo regime: qui si dichiara esplicitamente che il nullo regge anche su
+% Yeom e Shadow, che non usano calibrazione per-record.
+%
+% FRASE PROVVISORIA: quella sul canary descrive i run a gruppi SBILANCIATI
+% (n_templates=5, n_nonmember_templates=20) con baseline per-seed. Il
+% controllo negativo a gruppi bilanciati (config/experiment_canary_balanced
+% .yaml e _swap) non e' ancora stato eseguito, quindi NON si afferma qui che
+% il segnale sia appartenenza e non difficolta' intrinseca dei template
+% sorteggiati. Quando quei run tornano con entrambi i Delta positivi,
+% aggiungere una proposizione in tal senso.
 \begin{abstract}
-Placeholder --- l'abstract esiste gia' (rivisto) nella bozza IT e nello
-skeleton .docx; non richiesto in questo giro di lavoro. Da riportare qui
-verbatim quando il resto del paper e' assemblato in questo progetto
-LaTeX.
+Federated learning is increasingly proposed for critical infrastructure,
+but whether differential privacy applied to the FL communication channel
+prevents membership-inference leakage remains an open question. We present
+ChargeShield-FL, an event-driven ML Plane with privacy and integrity
+telemetry, evaluated on real EV-charging data (ACN-Data, three sites) in
+simulation and in a multi-container NVFLARE deployment. We probe two
+independent observation surfaces --- the aggregated global model (Yeom,
+Shadow) and per-client updates (LiRA) --- at three points of adversary
+privilege along the privatisation pipeline. On natural data no
+configuration yields a detectable membership signal, including without DP,
+and the null holds on all three scorers (composed LiRA AUC
+$0.4975$--$0.5024$; ten configurations, five seeds each). We then validate
+the instrument rather than assume it: a canary positive control with
+per-seed random-initialisation baselines recovers injected memorization on
+the raw-loss surface (mean $\Delta = +0.30$, four of five seeds at
+$10$--$21\sigma$), while the shadow-calibrated score does not. Validating
+the auditor, not the null alone, is the transferable contribution.
 \end{abstract}
 
 % ---------------------------------------------------------------------
