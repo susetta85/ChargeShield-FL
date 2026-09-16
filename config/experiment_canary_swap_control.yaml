@@ -1,0 +1,21 @@
+# Controllo di scambio per il positive control canary.
+# Identico a experiment_canary_positive_control.yaml tranne swap_assignment.
+#
+# Uso: eseguire ENTRAMBI con lo stesso seed e confrontare canary_auc_roc.
+#
+#   swap=False -> AUC > 0.5  e  swap=True -> AUC > 0.5   => appartenenza
+#   swap=False -> AUC > 0.5  e  swap=True -> AUC < 0.5   => difficolta' intrinseca
+#
+# Il secondo caso significa che il gruppo assegnato a "membro" era
+# semplicemente piu' facile da ricostruire, e il controllo positivo non e'
+# valido nemmeno col pool unificato: serve alzare n_templates o mediare su
+# piu' seed.
+
+canary:
+  enabled: true
+  site: office1
+  n_templates: 5
+  n_duplicates: 30
+  n_nonmember_templates: 20
+  nonmember_source: paired_split   # pool unico, assegnazione casuale
+  swap_assignment: true            # <-- unica differenza dal run base

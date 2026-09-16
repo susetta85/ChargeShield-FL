@@ -618,17 +618,97 @@ def inject_canaries(
     site_train_sessions   = [s for s in train_sessions   if _resolved_site_name(s) == site]
     site_holdout_sessions = [s for s in holdout_sessions if _resolved_site_name(s) == site]
 
-    if len(site_train_sessions) < n_templates or len(site_holdout_sessions) < n_nonmember_templates:
-        logger.warning(
-            f"[CANARY] site={site} non ha abbastanza sessioni per {n_templates} "
-            f"template membro / {n_nonmember_templates} gemelli non-membro "
-            f"(train={len(site_train_sessions)}, holdout={len(site_holdout_sessions)}) "
-            "— canary NON iniettati, run prosegue come se cfg['canary']['enabled'] fosse False."
-        )
-        return train_sessions, holdout_sessions
+    # ------------------------------------------------------------------
+    # Fix 2026-09-15 (Sprint 10zz+109, task #160 — confondente
+    # membership/difficolta' di ricostruzione, diagnosticato su
+    # _d1_canary_realdp/experiment_20260915_155515.json da una review
+    # esterna). Fino a questo fix i due lati del controllo positivo
+    # venivano estratti da POOL DIVERSI: i template membro da
+    # site_train_sessions, i gemelli non-membro da site_holdout_sessions.
+    # Nessuna procedura garantiva che i due gruppi fossero equiparabili
+    # per difficolta' intrinseca di ricostruzione, e nei dati reali non
+    # lo erano: shadow_canary_debug_group_raw riporta, sotto modelli
+    # shadow PULITI (mai rumorizzati), una loss media di ~0.00014 per i
+    # cinque template membro contro ~0.00097 per i venti non-membri, un
+    # fattore ~7x. Qualunque attacco che soglia sulla loss separa i due
+    # gruppi a prescindere dall'appartenenza, quindi canary_auc_roc
+    # misurava membership CONFUSA con difficolta' della sessione.
+    #
+    # NOTA su una soluzione scartata: usare come gemelli copie ESATTE dei
+    # template membro tenute fuori dal training non funziona. A parita' di
+    # vettore di feature il modello produce la stessa ricostruzione e
+    # quindi la stessa loss per entrambi i lati, e l'AUC vale 0.5 per
+    # costruzione qualunque sia la memorizzazione. Il controllo positivo
+    # diventerebbe incapace di rilevare alcunche'.
+    #
+    # Correzione adottata (disegno standard in letteratura canary): un
+    # POOL UNICO e una ASSEGNAZIONE CASUALE. Si estraggono
+    # n_templates + n_nonmember_templates sessioni dal training set del
+    # sito con un'unica chiamata a rng.sample(), le si mescola, e si
+    # assegna la prima parte al gruppo membro (duplicato, resta in train)
+    # e la seconda al gruppo non-membro (RIMOSSO da train e spostato in
+    # holdout, cosi' che sia genuinamente non-membro). I due gruppi sono
+    # ora campioni scambiabili della stessa distribuzione, estratti dalla
+    # stessa procedura, quindi la difficolta' intrinseca e' bilanciata in
+    # aspettazione e si media via su piu' seed.
+    #
+    # canary_cfg["swap_assignment"] (default False) inverte i due gruppi.
+    # Eseguire lo stesso seed con swap=False e swap=True e' il controllo
+    # decisivo: se l'AUC resta sopra 0.5 in entrambi i versi il segnale e'
+    # appartenenza, se si ribalta sotto 0.5 e' difficolta' intrinseca.
+    #
+    # canary_cfg["nonmember_source"]:
+    #   "paired_split" (default) — comportamento corretto descritto sopra
+    #   "holdout"                — comportamento precedente, conservato
+    #                              solo per riprodurre i run storici
+    # ------------------------------------------------------------------
+    nonmember_source = str(canary_cfg.get("nonmember_source", "paired_split"))
+    swap_assignment  = bool(canary_cfg.get("swap_assignment", False))
 
-    member_templates    = rng.sample(site_train_sessions, n_templates)
-    nonmember_templates = rng.sample(site_holdout_sessions, n_nonmember_templates)
+    if nonmember_source == "paired_split":
+        n_needed = n_templates + n_nonmember_templates
+        if len(site_train_sessions) < n_needed:
+            logger.warning(
+                f"[CANARY] site={site} non ha abbastanza sessioni di training per "
+                f"{n_templates} template membro + {n_nonmember_templates} gemelli "
+                f"non-membro estratti dallo stesso pool (train={len(site_train_sessions)}, "
+                f"servono {n_needed}) — canary NON iniettati, run prosegue come se "
+                "cfg['canary']['enabled'] fosse False."
+            )
+            return train_sessions, holdout_sessions
+
+        drawn = rng.sample(site_train_sessions, n_needed)
+        rng.shuffle(drawn)
+        if swap_assignment:
+            nonmember_templates = drawn[:n_nonmember_templates]
+            member_templates    = drawn[n_nonmember_templates:]
+        else:
+            member_templates    = drawn[:n_templates]
+            nonmember_templates = drawn[n_templates:]
+
+        logger.info(
+            f"[CANARY] pool unificato: {n_needed} template estratti da "
+            f"site_train_sessions({site}), assegnazione casuale "
+            f"{len(member_templates)} membro / {len(nonmember_templates)} non-membro"
+            + (" [SWAP ATTIVO]" if swap_assignment else "")
+        )
+    else:
+        if len(site_train_sessions) < n_templates or len(site_holdout_sessions) < n_nonmember_templates:
+            logger.warning(
+                f"[CANARY] site={site} non ha abbastanza sessioni per {n_templates} "
+                f"template membro / {n_nonmember_templates} gemelli non-membro "
+                f"(train={len(site_train_sessions)}, holdout={len(site_holdout_sessions)}) "
+                "— canary NON iniettati, run prosegue come se cfg['canary']['enabled'] fosse False."
+            )
+            return train_sessions, holdout_sessions
+
+        logger.warning(
+            "[CANARY] nonmember_source='holdout' — modalita' LEGACY, i due lati del "
+            "controllo positivo escono da pool diversi e membership resta confusa con "
+            "difficolta' di ricostruzione. Usare solo per riprodurre run storici."
+        )
+        member_templates    = rng.sample(site_train_sessions, n_templates)
+        nonmember_templates = rng.sample(site_holdout_sessions, n_nonmember_templates)
 
     injected_train   = list(train_sessions)
     injected_holdout = list(holdout_sessions)
@@ -694,10 +774,24 @@ def inject_canaries(
         # "out"), qui sul lato non-membro. Fix identico: sostituire
         # l'occorrenza originale in injected_holdout con una copia taggata
         # invece di mutare l'oggetto condiviso con holdout_sessions.
-        for idx, s in enumerate(injected_holdout):
-            if s is template:
-                injected_holdout[idx] = dict(template, _canary_group=group, _canary_role="nonmember")
-                break
+        # Sotto nonmember_source="paired_split" il template e' stato estratto
+        # da site_train_sessions, quindi vive in injected_train e NON in
+        # injected_holdout: va RIMOSSO dal training (altrimenti non sarebbe
+        # un non-membro) e aggiunto all'holdout come copia taggata. Sotto
+        # "holdout" (legacy) vive gia' in injected_holdout e si applica la
+        # sostituzione in loco di sempre.
+        tagged_nm = dict(template, _canary_group=group, _canary_role="nonmember")
+        if nonmember_source == "paired_split":
+            for idx, s in enumerate(injected_train):
+                if s is template:
+                    del injected_train[idx]
+                    break
+            injected_holdout.append(tagged_nm)
+        else:
+            for idx, s in enumerate(injected_holdout):
+                if s is template:
+                    injected_holdout[idx] = tagged_nm
+                    break
 
         clone = dict(template)
         clone["_canary_group"] = group
