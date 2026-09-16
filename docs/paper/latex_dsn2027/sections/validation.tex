@@ -1,0 +1,160 @@
+% ChargeShield-FL --- DSN 2027 --- Instrument Validation
+% Nuova sezione, 2026-09-16 (Sprint 10zz+118). Risolve le forward-reference
+% \ref{sec:validation} gia' presenti in framework.tex (righe 312, 352) e in
+% related_work.tex, che finora rendevano "??".
+%
+% NUMERI: tutti verificati leggendo experiments/_canary_balanced{,_swap}_s*
+% e logs/baselines_balanced.log, non i log incollati in chat. Vedi
+% docs/CanaryPositiveControl.md sezioni 5 e 6 per le tabelle complete.
+%
+% TRE COSE DA NON RIMETTERE, corrette il 2026-09-16 (vedi Sprint 10zz+118):
+%  (a) i numeri LiRA NON sono 0.663/0.729: sono 0.6506/0.6961, e c'e' un
+%      round sotto 0.5 (braccio B, seed 42, round 3 = 0.4556). Il "30 su 30"
+%      vale SOLO per la loss grezza.
+%  (b) la somma esatta a 1.0000 dei baseline e' un'IDENTITA' ALGEBRICA, non
+%      un risultato. Presentarla come prova che il disegno funziona e' una
+%      tautologia che un revisore demolisce. Va usata come controllo di
+%      correttezza dello scambio, che e' cio' che dimostra davvero.
+%  (c) la significativita' NON va calcolata contro la std dei baseline
+%      (0.008-0.016): quella misura la dispersione a campione fissato e
+%      sovrastima di ~8x. Hanley-McNeil su 20 vs 20 item distinti da'
+%      SE ~ 0.08. Il test corretto e' appaiato sui cinque seed: t = 11.25.
+
+\section{Instrument Validation}
+\label{sec:validation}
+
+A null membership-inference result is uninformative unless the attack
+pipeline is independently known to detect membership when membership is
+detectable. We therefore validate the instrument rather than assume it,
+using an injected-canary positive control paired with a role-exchange
+negative control. This section reports both, together with the conditions
+under which each is valid --- conditions that, as we show, an earlier
+version of our own design failed to meet.
+
+\subsection{Protocol}
+\label{sec:validation-protocol}
+
+We select $k$ charging sessions from a client's training pool as
+\emph{member templates} and replicate each $m$ times inside that client's
+training set, and $k$ further sessions as \emph{non-member templates},
+which are moved to the held-out set. Memorisation is thereby forced on a
+known, labelled subset, and the attack's ability to recover it is measured
+on exactly the surface used for the natural-data results. We use
+$k = 20$, $m = 30$ on Office~1 without DP, at the high-capacity operating
+point (seven features, hidden dimensions $(32,16)$, latent dimension $8$,
+$1000$ local epochs), over three federated rounds and five seeds.
+
+Two properties of this construction determine what the resulting AUC
+means, and both were initially mis-specified in our own implementation.
+
+\paragraph{Effective sample size.} The $m$ replicas of a template are
+feature-identical, hence receive identical reconstruction loss and
+identical score. The denominator of the canary AUC is therefore
+$k \times k$ \emph{distinct pairs}, not the record counts. Reporting the
+record counts overstates the precision by $\sqrt{m}$. We report the
+distinct-pair count per seed, which is $360$--$400$ here rather than a
+uniform $400$, because template collisions occasionally reduce it.
+
+\paragraph{Validity of the exchange.} The negative control re-runs the
+identical configuration with the member and non-member roles exchanged.
+For this to be an exchange rather than a different experiment, the two
+arms must operate on the same two groups. Our sampling procedure draws
+$k_{\text{mem}} + k_{\text{non}}$ sessions and partitions them by offset,
+so the exchange is exact \emph{only} when
+$k_{\text{mem}} = k_{\text{non}}$. Our earlier configuration used
+$k_{\text{mem}} = 5$ and $k_{\text{non}} = 20$, under which the two arms
+drew \emph{disjoint} member sets and shared only part of the non-member
+set: a discordant outcome would have demonstrated nothing. We record this
+because the failure mode is silent --- the code runs, the numbers look
+plausible, and nothing in the output indicates that the control is not a
+control.
+
+\subsection{Random-Initialisation Baselines}
+\label{sec:validation-baselines}
+
+Because the drawn templates differ in intrinsic reconstruction difficulty,
+the relevant quantity is not the post-training AUC but its increase over
+the AUC the same canaries achieve against an \emph{untrained} network,
+measured per arm and per seed over $20$ initialisations. These baselines
+are far from $0.5$ --- they range from $0.3451$ to $0.5829$ --- which is
+precisely why an absolute AUC would be uninterpretable.
+
+The two arms' baselines sum to $1.0000$ on every seed, with identical
+standard deviations within each pair. We stress what this does and does
+not establish. It is an algebraic identity:
+$\mathrm{AUC}_B = 1 - \mathrm{AUC}_A$ holds for \emph{any} score function
+whenever the labels on two fixed groups are exchanged and the scores are
+unchanged. It is therefore not evidence about intrinsic difficulty, and we
+do not present it as such. Its value is as a correctness check on the
+exchange itself: it confirms that the two arms operate on the same two
+groups with roles swapped, which is exactly the property the unbalanced
+configuration of Section~\ref{sec:validation-protocol} lacked.
+
+One consequence follows. Since the baselines sum to one,
+$\Delta_A + \Delta_B$ equals the post-training sum minus one, so testing
+the deltas and testing whether the two arms' AUCs sum to more than one are
+the same test. The baselines add the per-arm decomposition, not
+statistical power.
+
+\subsection{Result}
+\label{sec:validation-result}
+
+On the raw-loss surface the control passes without ambiguity. Mean AUC is
+$0.7570$ in the base arm and $0.7164$ in the exchanged arm; all $30$
+round-level values exceed $0.5$, with minimum $0.6132$; and all five
+per-seed sums exceed one ($1.386$, $1.634$, $1.444$, $1.444$, $1.459$).
+All ten deltas over the matched baseline are positive, with overall mean
+$+0.2367$.
+
+The direction of the effect under exchange is what carries the argument. A
+signal driven by intrinsic difficulty is \emph{antisymmetric}: the group
+favoured in one arm is disfavoured in the other, and the two AUCs sum to
+one. A signal driven by membership is \emph{symmetric}: whichever group is
+trained on moves up. We observe the symmetric pattern on all five
+independent assignments.
+
+\paragraph{Statistical treatment.} The per-arm deltas must not be assessed
+against the dispersion of the baselines (standard deviations $0.008$ to
+$0.016$), which measures variability across re-initialisations with the
+template sample held fixed. The dominant uncertainty is which templates
+were drawn: for a single AUC with $20$ versus $20$ distinct items, the
+Hanley--McNeil standard error is approximately $0.08$, so individual
+deltas as small as $+0.030$ lie within noise. We therefore average the two
+arms within each seed --- which also cancels the ceiling effect visible in
+the data, where a low baseline leaves the base arm more room to rise than
+the exchanged arm --- and test across the five independent seeds. The mean
+delta is $+0.2367$ with standard deviation $0.0471$, giving $t = 11.25$ on
+four degrees of freedom ($p < 0.001$); a distribution-free sign test gives
+$5/5$ ($p = 0.031$).
+
+\subsection{What the Control Reveals About LiRA}
+\label{sec:validation-lira}
+
+The shadow-calibrated scorer does not track the surface on which
+memorisation is demonstrably present. Its mean canary AUC is $0.6506$ and
+$0.6961$ in the two arms, and unlike the raw-loss surface it falls below
+$0.5$ in one round. This is consistent with the degeneracy we report in
+Section~\ref{sec:framework-attacks}: with the shadow budget a federated
+adversary can afford, the per-record variance estimates collapse onto
+their floor in $97$--$99$\% of records, at which point the per-record
+calibration cancels from the ranking and the scorer is strictly noisier
+than the uncalibrated loss it was meant to improve on.
+
+An unplanned replication makes the point independently. The full campaign
+was executed twice under identical configurations and seeds. The raw-loss
+AUC is bit-identical across both executions in all ten cells; the
+shadow-calibrated AUC is not, differing by up to $0.034$ on one seed. The
+target model is deterministic under seeding; the calibration built on top
+of it is not. We report the second execution throughout.
+
+\subsection{Scope}
+\label{sec:validation-scope}
+
+This control establishes that the pipeline detects record-level
+memorisation on the raw-loss surface when memorisation is induced at
+$3.3\times$ capacity with a near-identifying timestamp feature and
+$30$-fold record duplication. It does not establish sensitivity at
+arbitrarily small effect sizes, and the natural-data regime is not this
+regime. What it licenses is the reading of our null: the absence of signal
+in Section~\ref{sec:results} is a property of the system under test rather
+than an untested property of the attack.

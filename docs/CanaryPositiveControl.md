@@ -1,10 +1,10 @@
 # Canary Positive Control — protocollo, confondente, baseline
 
-Stato: 2026-09-15, Sprint 10zz+109.
+Stato: 2026-09-16, Sprint 10zz+118. **Controllo superato** — vedi §6.
 Riferimenti codice: `inject_canaries()` e `_sample_preserving_canary_groups()`
 in `scripts/run_experiments.py`; `scripts/check_canary_init_confound.py`.
-Riferimenti paper: §6.2 (positive control), §6.3 (simmetria dello scoring),
-§9 (limitazioni).
+Riferimenti paper: `sections/validation.tex` (Instrument Validation), §9
+(limitazioni).
 
 ---
 
@@ -91,18 +91,55 @@ default: 155 record membro e 40 non-membro.
 
 ---
 
-## 4. Il controllo di scambio
+## 4. Il controllo di scambio a gruppi bilanciati
 
-Eseguire lo stesso seed due volte, con `swap_assignment` a `false` e a `true`,
-è il controllo decisivo sul confondente residuo.
+### 4.1 Perché la versione sbilanciata non era un controllo
 
-- AUC sopra il proprio baseline in **entrambi** i versi → appartenenza.
-- AUC sopra in un verso e sotto nell'altro → resta difficoltà intrinseca non
-  bilanciata: alzare `n_templates`.
+Fino allo Sprint 10zz+111 il controllo girava con `n_templates=5` e
+`n_nonmember_templates=20`. Il codice (`run_experiments.py`, ramo
+`paired_split`) fa:
 
-Config di riferimento: `config/experiment_canary_positive_control.yaml` e
-`config/experiment_canary_swap_control.yaml`, che differiscono solo per
-`swap_assignment` (e per `nonmember_source` reso esplicito).
+```
+drawn = rng.sample(site_train_sessions, n_templates + n_nonmember_templates)
+rng.shuffle(drawn)
+swap=False -> member = drawn[:n_t],   nonmember = drawn[n_t:]
+swap=True  -> nonmember = drawn[:n_nm], member = drawn[n_nm:]
+```
+
+Con 5 e 20, i membri del braccio base sono `drawn[:5]` e i membri del braccio
+swap sono `drawn[20:25]`: **insiemi disgiunti**. I due bracci erano due
+esperimenti su record diversi, non lo stesso esperimento a ruoli invertiti. Un
+esito discordante non dimostrava nulla.
+
+### 4.2 La condizione che rende lo scambio un vero scambio
+
+Con `n_templates == n_nonmember_templates == k` la stessa formula diventa uno
+scambio esatto, senza modifiche al codice:
+
+```
+drawn ha 2k elementi (stesso seed -> stesso drawn nei due bracci)
+braccio A: member = drawn[:k],   nonmember = drawn[k:2k]
+braccio B: member = drawn[k:2k], nonmember = drawn[:k]
+```
+
+Config di riferimento: `config/experiment_canary_balanced.yaml` (braccio A) e
+`config/experiment_canary_balanced_swap.yaml` (braccio B), identici tranne
+`swap_assignment`. `k = 20` (non 5) perché il denominatore reale dell'AUC sono
+le **coppie distinte**, non i record: i 30 duplicati di un template hanno
+feature identiche, quindi loss e score identici (difetto A, §2). I due bracci
+vanno lanciati con lo **stesso seed**: è ciò che garantisce che `drawn` sia
+identico.
+
+### 4.3 Criterio di lettura
+
+- Δ sopra il proprio baseline in **entrambi** i versi → appartenenza.
+- Δ sopra in un verso e sotto nell'altro → difficoltà intrinseca dei template
+  sorteggiati.
+
+Il confronto deve essere omogeneo: il baseline di
+`check_canary_init_confound.py` è un'AUC su loss a pesi casuali, quindi va
+confrontato con `canary_raw_mse_auc_roc` e **mai** con `canary_auc_roc`
+(LiRA) — sarebbe il mismatch di metrica dello Sprint 10zz+110.
 
 ---
 
@@ -114,37 +151,145 @@ modello **mai addestrato**, replicando l'intera catena del runner
 `compute_feature_stats` → `normalize_sessions`) e mediando su 20
 inizializzazioni.
 
-**Misure post-fix, office1, seed 42, `n_templates=5`:**
+**Misure a gruppi bilanciati, office1, `k=20`** (`logs/baselines_balanced.log`,
+20 inizializzazioni per cella):
 
-| config | loss membri | loss non-membri | rapporto | AUC a init |
-|---|---|---|---|---|
-| base | 0.164551 | 0.157967 | 0.96× | **0.5285** (std 0.0124) |
-| swap | 0.152828 | 0.160897 | 1.05× | **0.4810** (std 0.0164) |
+| seed | AUC init braccio A | AUC init braccio B | somma |
+|---|---|---|---|
+| 42 | 0.5274 (std 0.0085) | 0.4726 (std 0.0085) | 1.0000 |
+| 123 | 0.3451 (std 0.0128) | 0.6549 (std 0.0128) | 1.0000 |
+| 456 | 0.5829 (std 0.0078) | 0.4171 (std 0.0078) | 1.0000 |
+| 789 | 0.3755 (std 0.0121) | 0.6245 (std 0.0121) | 1.0000 |
+| 1234 | 0.3874 (std 0.0159) | 0.6126 (std 0.0159) | 1.0000 |
 
-Il rapporto fra le loss è passato da ~7× a ~1×: il confondente sistematico è
-chiuso.
+**I baseline non sono 0.5 e vanno usati come riferimento.** Con `k=20` il
+sorteggio produce offset anche grandi (0.345–0.583): non è un confondente
+sistematico, è quali template sono capitati da che parte.
 
-**I due baseline non sono 0.5 e vanno usati come riferimento.** L'offset
-residuo (±0.03, quasi simmetrico attorno a 0.5) è combinatorio: con
-`n_templates=5` il lato membro ha 155 record ma **5 valori distinti**, quindi
-l'AUC è quantizzata a passi grossi e conserva uno sbilanciamento a seconda di
-quali template il sorteggio ha assegnato. La quasi-simmetria fra i due valori
-è la firma attesa di un residuo combinatorio e non di un confondente: un
-confondente sistematico spingerebbe entrambi nella stessa direzione.
+### 5.1 Cosa dimostra la somma esatta a 1.0000 — e cosa non dimostra
 
-**Criterio di lettura dei run.** Non l'AUC assoluta, ma la differenza
-`AUC_post_training − AUC_a_init`, calcolata separatamente per base e swap. Δ
-positivi e di entità simile nei due versi indicano appartenenza.
+⚠ **Non è un risultato sperimentale: è un'identità algebrica.**
+$\mathrm{AUC}_B = 1 - \mathrm{AUC}_A$ vale **sempre**, per qualunque funzione
+di score, ogni volta che si scambiano le etichette sugli stessi due gruppi
+lasciando i punteggi invariati. Le `std` identiche dentro ogni coppia dicono
+la stessa cosa: ogni singola inizializzazione produce $A$ e $1-A$.
 
-**Riduzione della quantizzazione.** Portare `n_templates` a 10 raddoppia i
-punti distinti sul lato membro lasciando l'amplificazione per record
-sostanzialmente invariata (30/1644 ≈ 1.8% contro 30/1494 ≈ 2.0%). Consigliato
-se i Δ misurati risultano dello stesso ordine della `std` dei baseline
-(0.012–0.016).
+Il suo valore è quindi **di controllo di correttezza, non di evidenza**:
+conferma che i due bracci operano sugli stessi due gruppi a ruoli invertiti —
+esattamente ciò che la configurazione sbilanciata (§4.1) non garantiva.
+Presentarla come prova che il disegno «rileva la difficoltà intrinseca» è una
+tautologia e va evitato nel paper.
+
+**Corollario.** Poiché i baseline sommano esattamente a 1, vale
+$\Delta_A + \Delta_B = \mathrm{somma}_{post} - 1$: il test sui Δ e il test
+«somma post > 1» sono **lo stesso test**. I baseline non aggiungono potenza
+statistica; aggiungono la scomposizione per braccio e il controllo di
+correttezza.
+
+### 5.2 Come NON misurare la significatività
+
+La `std` dei baseline (0.008–0.016) misura la dispersione su 20
+re-inizializzazioni **con il campione di template fissato**. Non è
+l'incertezza che conta. L'incertezza dominante è il campionamento di *quali*
+20+20 template sono stati sorteggiati, e con questi numeri è grande:
+Hanley–McNeil dà **SE ≈ 0.077–0.087** per una singola AUC con 20 vs 20 item
+distinti. Confrontare un Δ con la std dei baseline sovrastima la
+significatività di circa un fattore 8.
+
+Il test corretto è appaiato sui seed: vedi §6.3.
 
 ---
 
-## 6. Densità aggregata contro amplificazione per record
+## 6. Risultato: campagna bilanciata a 5 seed (2026-09-16)
+
+`k=20`, `n_duplicates=30`, office1, no-DP, 3 round, `shadow_init: cold`,
+modello ad alta capacità (7 feature incl. `start_time_epoch`,
+hidden `(32,16)`, latent 8, 1000 epoche). Dati letti da
+`experiments/_canary_balanced{,_swap}_s{42,123,456,789,1234}/`.
+
+### 6.1 Loss grezza (`canary_raw_mse_auc_roc`), medie sui 3 round
+
+| seed | braccio A | braccio B | somma | baseline A | baseline B | Δ_A | Δ_B |
+|---|---|---|---|---|---|---|---|
+| 42 | 0.6926 | 0.6935 | 1.3861 | 0.5274 | 0.4726 | +0.165 | +0.221 |
+| 123 | 0.8009 | 0.8333 | 1.6342 | 0.3451 | 0.6549 | +0.456 | +0.178 |
+| 456 | 0.6947 | 0.7491 | 1.4439 | 0.5829 | 0.4171 | +0.112 | +0.332 |
+| 789 | 0.7900 | 0.6542 | 1.4442 | 0.3755 | 0.6245 | +0.414 | +0.030 |
+| 1234 | 0.8070 | 0.6518 | 1.4588 | 0.3874 | 0.6126 | +0.420 | +0.039 |
+| **media** | **0.7570** | **0.7164** | **1.4734** | | | **+0.314** | **+0.160** |
+
+**30 round su 30 sopra 0.5, minimo 0.6132. Dieci Δ su dieci positivi.**
+Tutte e cinque le somme sono sopra 1: il segnale è simmetrico allo scambio dei
+gruppi, quindi è appartenenza. Se fosse difficoltà intrinseca sarebbe
+antisimmetrico e le somme starebbero a 1.
+
+Effetto soffitto visibile e atteso: dove il baseline parte basso (s123, s789,
+s1234) il Δ del braccio A è grande e quello di B piccolo. Mediando le due
+direzioni dentro il seed il problema si annulla — è la ragione per cui il
+disegno appaiato è quello giusto.
+
+### 6.2 LiRA (`canary_auc_roc`), medie sui 3 round
+
+| | braccio A | braccio B |
+|---|---|---|
+| media | **0.6506** | **0.6961** |
+| minimo per run | 0.5950 | 0.5981 |
+
+⚠ A livello di **singolo round** il LiRA scende sotto 0.5 una volta (braccio B,
+seed 42, round 3: 0.4556). Quindi «30 round su 30 sopra 0.5» vale per la loss
+grezza, **non** per il LiRA, dove sono 29 su 30. Le due metriche vanno
+riportate distinte.
+
+### 6.3 Statistica corretta
+
+Δ medio per seed (media dei due bracci, che annulla il soffitto):
+0.1931, 0.3171, 0.2219, 0.2221, 0.2294.
+
+| | |
+|---|---|
+| media | **+0.2367** |
+| sd | 0.0471 |
+| errore standard | 0.0210 |
+| **t (df=4)** | **11.25** → p < 0.001 |
+| test dei segni | 5/5 → p = 0.031 |
+
+Riportare questo, non il confronto con la std dei baseline (§5.2).
+
+### 6.4 Due campagne su disco, e la non-riproducibilità del LiRA
+
+Ogni cartella contiene **due** JSON (s42 ne ha tre): una tornata 12:19–14:45 e
+una 15:00–16:56, stesso config e stesso seed. **La tornata di riferimento è la
+seconda** (timestamp più recente); i numeri qui sopra vengono da lì.
+
+Il confronto fra le due è però un risultato a sé:
+
+- `canary_raw_mse_auc_roc` è **identica bit a bit** in tutte e dieci le celle;
+- `canary_auc_roc` (LiRA) **cambia** su s42: 0.6157→0.6491 nel braccio A,
+  0.6324→0.5981 nel braccio B.
+
+Il modello target è deterministico sotto seed; la calibrazione shadow di LiRA
+non lo è. È una prova indipendente della degenerazione documentata in §8 e va
+citata nel paper.
+
+### 6.5 Coppie distinte effettive
+
+`canary_n_member_distinct × canary_n_nonmember_distinct` non è sempre 20×20:
+
+| seed | coppie distinte |
+|---|---|
+| 42 | 20×18 = 360 |
+| 123 | 20×19 = 380 |
+| 456 | 19×20 = 380 |
+| 789 | 20×20 = 400 |
+| 1234 | 19×20 = 380 |
+
+I baseline sono invece calcolati su 400 coppie piene. Differenza piccola, ma
+la colonna va riportata per seed nella tabella del paper: è la dimensione
+campionaria effettiva, cioè proprio il difetto A che questo disegno corregge.
+
+---
+
+## 7. Densità aggregata contro amplificazione per record
 
 La diagnosi storica di scale-dependence fra office1 e caltech/jpl
 (TestRoadmap riga 2, «duplicati ~11% a office1 vs ~0.5% a caltech/jpl»)
@@ -167,7 +312,7 @@ Config corretta:
 
 ---
 
-## 7. Problema aperto: scala target/shadow sotto DP
+## 8. Problema aperto: scala target/shadow sotto DP
 
 Nel run con DP reale (`_d1_canary_realdp`, ε=1.0, dp-fedavg) il target è
 rumorizzato e le shadow no. Le due popolazioni vivono su scale diverse di due
@@ -203,35 +348,75 @@ calcolo canary i round in cui il modello è degradato oltre una soglia.
 
 ---
 
-## 8. Cosa è invalidato
+## 9. Cosa è invalidato
 
 I numeri canary raccolti prima dello Sprint 10zz+109 vanno rilanciati:
 
 - Sprint 10zz+18, LiRA composed 0.6875
 - Sprint 10zz+95, Blocker 2 a tre attacchi
-- `_d1_canary_realdp`, per il motivo separato del §7
-- le repliche caltech e jpl, per il motivo del §6
+- `_d1_canary_realdp`, per il motivo separato del §8
+- le repliche caltech e jpl, per il motivo del §7
+
+Va inoltre considerato **superato** ogni run a gruppi sbilanciati
+(`n_templates != n_nonmember_templates`), incluse le coppie
+`_canary_maxmemo{,_swap}` e `_canary_pairedsplit_nodp{,_swap}`: il loro
+braccio di scambio non è un controllo negativo (§4.1). I dati restano sul
+disco perché il braccio base resta un positive control valido, ma la coppia
+non va citata come evidenza di appartenenza. L'evidenza è la campagna
+bilanciata del §6.
 
 ---
 
-## 9. Procedura di riferimento
+## 10. Procedura di riferimento
+
+La campagna completa è cinque seed × due bracci, più i dieci baseline. I due
+bracci di uno stesso seed **devono** usare lo stesso `--seed`.
 
 ```bash
-# baseline a init, per entrambe le config
-python3 scripts/check_canary_init_confound.py \
-    --config config/experiment_canary_positive_control.yaml
-python3 scripts/check_canary_init_confound.py \
-    --config config/experiment_canary_swap_control.yaml
+cd ~/Documents/ChargeShield-FL
 
-# run base e run di scambio, senza DP
-python3 scripts/run_experiments.py \
-    --config config/experiment_canary_positive_control.yaml \
-    --no-dp --sweep-dir experiments/_canary_pairedsplit_nodp
-python3 scripts/run_experiments.py \
-    --config config/experiment_canary_swap_control.yaml \
-    --no-dp --sweep-dir experiments/_canary_pairedsplit_nodp_swap
+for s in 42 123 456 789 1234; do
+  # baseline a inizializzazione casuale (20 init), entrambi i bracci
+  python3 scripts/check_canary_init_confound.py \
+      --config config/experiment_canary_balanced.yaml      --seed $s
+  python3 scripts/check_canary_init_confound.py \
+      --config config/experiment_canary_balanced_swap.yaml --seed $s
+
+  # braccio A e braccio B, senza DP
+  caffeinate -ims python3 scripts/run_experiments.py \
+      --config config/experiment_canary_balanced.yaml --no-dp --seed $s \
+      --sweep-dir experiments/_canary_balanced_s$s
+  caffeinate -ims python3 scripts/run_experiments.py \
+      --config config/experiment_canary_balanced_swap.yaml --no-dp --seed $s \
+      --sweep-dir experiments/_canary_balanced_swap_s$s
+done 2>&1 | tee logs/canary_balanced_campaign.log
 ```
 
-Verificare nei log la riga `[CANARY] pool unificato:` e, nel secondo run,
-`[SWAP ATTIVO]`. Se compare il warning sulla modalità legacy, la config sta
-passando `nonmember_source: holdout`.
+Il `tee` sull'intero loop è deliberato: nella campagna del 2026-09-16
+l'output di `check_canary_init_confound.py` finiva a schermo e i baseline
+sono dovuti essere rifatti.
+
+Verifiche nei log:
+
+- `[CANARY] pool unificato:` presente in entrambi i bracci;
+- `[SWAP ATTIVO]` solo nel braccio B;
+- `DISTINTI 20x20 = 400 coppie reali` (o 360/380, vedi §6.5) — se compare un
+  numero molto più grande, la config sta contando i duplicati e il
+  denominatore dell'AUC è gonfiato;
+- nessun warning `n_templates != n_nonmember_templates`, che segnalerebbe un
+  ritorno alla configurazione non bilanciata del §4.1.
+
+Lettura dei risultati:
+
+```bash
+python3 - <<'EOF'
+import json, glob, statistics as st
+for arm,lab in [("","A"),("_swap","B")]:
+    for s in (42,123,456,789,1234):
+        fs=sorted(glob.glob(f"experiments/_canary_balanced{arm}_s{s}/experiment_*.json"))
+        pr=json.load(open(fs[-1]))["per_round"]      # [-1] = tornata piu' recente
+        r=[pr[k]["mia"]["canary_raw_mse_auc_roc"] for k in sorted(pr,key=int)]
+        l=[pr[k]["mia"]["canary_auc_roc"]          for k in sorted(pr,key=int)]
+        print(f"{lab} s{s:<5d} raw={st.mean(r):.4f}  lira={st.mean(l):.4f}")
+EOF
+```

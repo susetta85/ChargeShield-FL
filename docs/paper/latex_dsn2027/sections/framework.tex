@@ -325,8 +325,18 @@ cancel, and the score collapses algebraically to a strictly monotone
 \emph{linear} function of the raw loss with a decision threshold at
 the midpoint of the two class means:
 \begin{equation}
-\text{LLR} \;=\; \frac{(\mu_{\text{in}} - \mu_{\text{out}})\,\bigl(2\cdot\text{loss} - \mu_{\text{in}} - \mu_{\text{out}}\bigr)}{2\sigma^2},
-\qquad \text{threshold at } \text{loss} = \frac{\mu_{\text{in}}+\mu_{\text{out}}}{2}.
+\begin{aligned}
+\text{LLR}
+&=
+\frac{(\mu_{\text{in}}-\mu_{\text{out}})
+\bigl(2\cdot\text{loss}-\mu_{\text{in}}-\mu_{\text{out}}\bigr)}
+{2\sigma^2},
+\\
+\text{threshold:}\quad
+\text{loss}
+&=
+\frac{\mu_{\text{in}}+\mu_{\text{out}}}{2}.
+\end{aligned}
 \label{eq:variance-floor}
 \end{equation}
 Algorithm~\ref{alg:lira-score} shows where this collapse occurs inside

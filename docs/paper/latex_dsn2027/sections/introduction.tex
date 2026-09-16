@@ -89,19 +89,24 @@ collapse onto their floor --- so the scorer most often treated as the
 strongest is, here, the least reliable.
 
 Finally, we characterise \emph{why} the null arises, which turns a negative
-result into a positive statement about when FL privacy audits can be expected
-to find anything. The null is not explained by dataset size, and not by the
-model being unable to memorise: it is a property of the representation. In our
-six-feature session space, the median distance from a held-out session to its
-nearest training session is $0.0146$, against $0.0149$ between training
-sessions themselves --- a ratio of $0.98$. An adversary given the most
-favourable purely geometric signal, the distance from the training set, would
-achieve AUC $0.4935$. Members and non-members are mutually indistinguishable
-\emph{before any model is trained}, which upper-bounds every attack
-independently of the model, of DP, and of $\varepsilon$. Adding a
-near-unique timestamp feature does not change this, because uniqueness is
-symmetric across the two groups and therefore creates no asymmetry an attacker
-can exploit.
+result into a statement about when FL privacy audits can be expected to find
+anything. The null is explained neither by dataset size nor by the model being
+unable to memorise --- our canary experiments show it memorises readily once a
+record carries enough weight in the loss. It is a property of the
+\emph{representation}. Describing a charging session by six aggregate features
+confines the dataset to a narrow manifold: the median distance from a session
+to its nearest neighbour in the normalised feature cube is $0.0149$, against
+$0.1378$ for i.i.d.\ samples of the same size and dimension --- the data are
+roughly nine times more tightly packed than unstructured data would be. Every
+held-out session therefore has a near-twin in training, and a model that fits
+the twin also fits the held-out session, so no loss gap opens for an attack to
+exploit. Adding a near-unique timestamp feature does not change the
+conclusion: it makes the space sparser (median distance $0.0347$) but does so
+symmetrically for members and non-members alike, leaving the measured attack
+surface unchanged. We report this as a measured \emph{mechanism} rather than a
+bound: the nearest-neighbour statistic is symmetric between training and
+hold-out for any i.i.d.\ split, so it accounts for the null we observe without
+by itself precluding an attack that exploits some other structure.
 
 \subsection{Contributions}
 

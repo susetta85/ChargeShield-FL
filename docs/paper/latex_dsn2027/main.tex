@@ -65,13 +65,22 @@ Inference in Federated EV-Charging Systems}
 % questo regime: qui si dichiara esplicitamente che il nullo regge anche su
 % Yeom e Shadow, che non usano calibrazione per-record.
 %
-% FRASE PROVVISORIA: quella sul canary descrive i run a gruppi SBILANCIATI
-% (n_templates=5, n_nonmember_templates=20) con baseline per-seed. Il
-% controllo negativo a gruppi bilanciati (config/experiment_canary_balanced
-% .yaml e _swap) non e' ancora stato eseguito, quindi NON si afferma qui che
-% il segnale sia appartenenza e non difficolta' intrinseca dei template
-% sorteggiati. Quando quei run tornano con entrambi i Delta positivi,
-% aggiungere una proposizione in tal senso.
+% AGGIORNATO 2026-09-16 (Sprint 10zz+118): il controllo negativo a gruppi
+% bilanciati e' stato eseguito e PASSA, quindi la frase sul canary ora
+% afferma la simmetria sotto scambio dei ruoli, che e' cio' che distingue
+% appartenenza da difficolta' intrinseca dei template sorteggiati.
+%
+% DUE NUMERI CAMBIATI, non ritoccarli all'indietro:
+%  - Delta +0.30 -> +0.24. Il primo era la media dei soli bracci base a
+%    gruppi sbilanciati; +0.2367 e' la media sui dieci bracci bilanciati.
+%  - "four of five seeds at 10-21 sigma" RIMOSSO. Quella sigma era la std
+%    dei baseline (0.008-0.016), che misura la dispersione su 20
+%    re-inizializzazioni A CAMPIONE DI TEMPLATE FISSATO e sovrastima la
+%    significativita' di circa 8x: l'incertezza dominante e' quali 20+20
+%    template sono stati sorteggiati, e Hanley-McNeil su 20 vs 20 item
+%    distinti da' SE ~ 0.08. Sostituito dal test appaiato sui cinque seed
+%    (t = 11.25, df = 4), che e' il test corretto e passa comunque.
+% Vedi sections/validation.tex e docs/CanaryPositiveControl.md sez. 5.2.
 \begin{abstract}
 Federated learning is increasingly proposed for critical infrastructure,
 but whether differential privacy applied to the FL communication channel
@@ -85,11 +94,15 @@ privilege along the privatisation pipeline. On natural data no
 configuration yields a detectable membership signal, including without DP,
 and the null holds on all three scorers (composed LiRA AUC
 $0.4975$--$0.5024$; ten configurations, five seeds each). We then validate
-the instrument rather than assume it: a canary positive control with
-per-seed random-initialisation baselines recovers injected memorization on
-the raw-loss surface (mean $\Delta = +0.30$, four of five seeds at
-$10$--$21\sigma$), while the shadow-calibrated score does not. Validating
-the auditor, not the null alone, is the transferable contribution.
+the instrument rather than assume it: an injected-canary positive control,
+paired with a balanced role-exchange negative control, recovers the
+injected memorization on the raw-loss surface and does so \emph{symmetrically}
+under exchange of the member and non-member roles --- the signature of
+membership rather than of intrinsic template difficulty (mean
+$\Delta = +0.24$ over matched random-initialisation baselines; $t = 11.25$,
+$p < 0.001$, paired across five seeds), while the shadow-calibrated score
+does not. Validating the auditor, not the null alone, is the transferable
+contribution.
 \end{abstract}
 
 % ---------------------------------------------------------------------
@@ -98,7 +111,7 @@ the auditor, not the null alone, is the transferable contribution.
 %   \section{Introduction}\label{sec:introduction}
 %   \section{Threat Model}\label{sec:threat-model}
 %   \section{Case Study and Experimental Setup}
-%   \section{Instrument Validation}\label{sec:validation}
+%   (Instrument Validation: FATTA, vedi sections/validation.tex)
 %   \section{Results}\label{sec:results}
 %     \subsection{...}\label{sec:results-surface-b}
 %     \subsection{Utility Cost}\label{sec:results-utility}
@@ -112,6 +125,7 @@ the auditor, not the null alone, is the transferable contribution.
 \input{sections/threat_model.tex}
 \input{sections/related_work.tex}
 \input{sections/framework.tex}
+\input{sections/validation.tex}
 
 \input{figures/ml_plane_architecture.tex}
 \input{figures/dp_placements.tex}
