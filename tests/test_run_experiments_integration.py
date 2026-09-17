@@ -1,7 +1,7 @@
 # tests/test_run_experiments_integration.py
 """
 Integration tests for the core experiment pipeline in scripts/run_experiments.py:
-run_fl_rounds(), run_fedmia(), run_lira(), run_ids().
+run_fl_rounds(), run_yeom(), run_lira(), run_ids().
 
 These tests use small synthetic session data (no real ACN-Data files, no network
 access) with tiny epoch/round/shadow counts so the full FL + attack pipeline runs
@@ -271,22 +271,22 @@ class TestRunFLRounds:
             assert rd.get("updates"), f"round {round_num}: updates mancanti"
 
 
-# ── run_fedmia() (Yeom 2018, global model) ──────────────────────────────────────
+# ── run_yeom() (Yeom 2018, global model) ──────────────────────────────────────
 
 class TestRunFedMIA:
     def test_auc_in_valid_range(self, tiny_cfg, train_sessions, holdout_sessions):
         cfg = copy.deepcopy(tiny_cfg)
         fl_results = run_exp.run_fl_rounds(cfg, train_sessions, no_dp=True)
-        mia_results = run_exp.run_fedmia(cfg, train_sessions, holdout_sessions, fl_results)
+        mia_results = run_exp.run_yeom(cfg, train_sessions, holdout_sessions, fl_results)
 
-        assert mia_results, "run_fedmia non ha prodotto risultati per nessun round"
+        assert mia_results, "run_yeom non ha prodotto risultati per nessun round"
         for round_num, rd in mia_results.items():
             auc = rd["auc_roc"]
             assert 0.0 <= auc <= 1.0, f"round {round_num}: AUC {auc} fuori [0,1]"
 
     def test_members_and_non_members_must_differ(self, tiny_cfg, train_sessions, holdout_sessions):
         """members e non_members devono restare pool disgiunti — la docstring di
-        run_fedmia() è esplicita: usare lo stesso pool per entrambi invalida l'AUC."""
+        run_yeom() è esplicita: usare lo stesso pool per entrambi invalida l'AUC."""
         train_ids = {s["session_id"] for s in train_sessions}
         holdout_ids = {s["session_id"] for s in holdout_sessions}
         assert train_ids.isdisjoint(holdout_ids)

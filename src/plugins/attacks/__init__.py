@@ -27,7 +27,7 @@ from plugins.attacks.shadow import ShadowAttack
 from plugins.attacks.yeom import YeomAttack
 
 #: nome → classe (non istanza: ogni chiamata a main() ne crea una nuova,
-#: coerente con run_fedmia()/run_fedmia_shadow()/run_lira() che erano già
+#: coerente con run_yeom()/run_shadow()/run_lira() che erano già
 #: funzioni stateless — nessuna delle tre classi qui tiene stato fra round).
 ATTACK_REGISTRY: dict[str, type[BaseAttack]] = {
     YeomAttack.name: YeomAttack,

@@ -12,8 +12,8 @@ mai chiamato dalla pipeline reale, senza classe base né registro (vedi la
 correzione 2026-07-24 in docs/DSN2027_Positioning.md e docs/DeveloperGuide.md
 per la storia completa di questo gap).
 
-Vincolo di design — "non toccare la logica già validata": Yeom (`run_fedmia`),
-Shadow (`run_fedmia_shadow`) e LiRA (`run_lira`), tutti in
+Vincolo di design — "non toccare la logica già validata": Yeom (`run_yeom`),
+Shadow (`run_shadow`) e LiRA (`run_lira`), tutti in
 `scripts/run_experiments.py`, hanno ciascuno diversi round di fix empirici
 documentati nelle rispettive docstring (LiRA in particolare: 5 round di fix
 trovati SOLO eseguendo davvero il codice — vedi la sua docstring). Riscriverli
@@ -56,7 +56,7 @@ class BaseAttack(ABC):
     ) -> dict[int, dict[str, Any]]:
         """Esegue l'attacco e ritorna {round_num: {..metriche per round..}}.
 
-        Contratto: stesso schema di ritorno di run_fedmia()/run_fedmia_shadow()/
+        Contratto: stesso schema di ritorno di run_yeom()/run_shadow()/
         run_lira() in scripts/run_experiments.py — un dict indicizzato per
         round, ciascuno con almeno un campo AUC-ROC (nome del campo specifico
         per attacco, es. "auc_roc"/"shadow_auc_roc"/"lira_auc_roc" — non

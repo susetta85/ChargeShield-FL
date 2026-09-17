@@ -9,7 +9,7 @@ descrivevano questo meccanismo come già esistente quando non lo era).
 Questi test coprono SOLO il livello di interfaccia/registro (BaseAttack,
 ATTACK_REGISTRY, le tre classi wrapper) — non torch-dipendente, quindi
 eseguibile davvero in questo sandbox, a differenza delle funzioni che
-ciascuna classe richiama (run_fedmia/run_fedmia_shadow/run_lira in
+ciascuna classe richiama (run_yeom/run_shadow/run_lira in
 scripts/run_experiments.py, che importa torch a livello di modulo — vedi
 tests/test_run_experiments_integration.py per quelle, non eseguibili qui).
 Non testano quindi che YeomAttack/ShadowAttack/LiRAAttack.run() produca i
@@ -90,7 +90,7 @@ class TestAttackRegistry:
         su una macchina CON torch installato, non solo in questo sandbox):
         la versione precedente invocava davvero instance.run(...) e si
         aspettava un ModuleNotFoundError("torch") dall'import lazy dentro
-        run_fedmia()/run_lira() — assunzione valida SOLO in un ambiente senza
+        run_yeom()/run_lira() — assunzione valida SOLO in un ambiente senza
         torch (questo sandbox). Su una macchina con torch installato (l'uso
         normale/reale del progetto) l'import lazy riesce, l'esecuzione
         prosegue nel corpo della funzione e fallisce invece con un

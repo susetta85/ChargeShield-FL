@@ -14,7 +14,7 @@ di 'zoomare' esattamente sulla regione critica in cui si consuma la
 violazione reale della privacy" — da qui asse FPR e asse TPR entrambi in
 scala log (stessa convenzione della Figure 3 del paper LiRA originale).
 
-Input: uno o più file JSON scritti da run_fedmia()/run_fedmia_shadow()/
+Input: uno o più file JSON scritti da run_yeom()/run_shadow()/
 run_lira() con --roc-curve-dump-dir (vedi _full_roc_curve() e
 _write_roc_curve_dump() in scripts/run_experiments.py) — non calcola nulla
 da zero, plotta solo le curve già salvate.
@@ -62,7 +62,7 @@ def load_roc_dump(path: str) -> dict[str, Any]:
         raise ValueError(
             f"{path}: non sembra un dump di curve ROC valido (manca "
             f"'attack' o 'per_round') — atteso un file scritto da "
-            f"run_fedmia()/run_fedmia_shadow()/run_lira() con "
+            f"run_yeom()/run_shadow()/run_lira() con "
             f"--roc-curve-dump-dir."
         )
     return dump

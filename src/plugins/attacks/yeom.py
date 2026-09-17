@@ -3,10 +3,10 @@
 YeomAttack — wrapper BaseAttack sottile su run_yeom() (Yeom et al. 2018,
 loss-based MIA), in scripts/run_experiments.py.
 
-Rinominato da run_fedmia() a run_yeom() (Sprint 10zz+107, 2026-09-15,
+Rinominato da run_yeom() a run_yeom() (Sprint 10zz+107, 2026-09-15,
 richiesto esplicitamente dall'utente prima di scrivere il paper): "fedmia"
 nel nome era un residuo storico, fuorviante ora che run_fedmia_gradient()
-(un attacco DIVERSO) esiste nello stesso file — un alias run_fedmia=run_yeom
+(un attacco DIVERSO) esiste nello stesso file — un alias run_yeom=run_yeom
 resta in run_experiments.py solo per compatibilità con codice non toccato.
 
 Import lazy di run_yeom dentro run() (non a livello di modulo): questo file

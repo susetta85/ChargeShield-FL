@@ -18,7 +18,7 @@ ml:
   record_dp:
     enabled: true
     max_grad_norm: 1.0
-    noise_multiplier: 1.0
+    noise_multiplier: 5.0
   proximal_mu: 0.01
   hidden_dims:
   - 32

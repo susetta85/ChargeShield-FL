@@ -1,5 +1,5 @@
 experiment:
-  name: chargeshield_canary_balanced_recorddp
+  name: chargeshield_canary_balanced
   fl_rounds: 3
   seed: 42
   epsilon: 1.0
@@ -15,10 +15,6 @@ ml:
   lr: 0.001
   epochs: 1000
   batch_size: 32
-  record_dp:
-    enabled: true
-    max_grad_norm: 1.0
-    noise_multiplier: 1.0
   proximal_mu: 0.01
   hidden_dims:
   - 32
@@ -37,7 +33,7 @@ canary:
   enabled: true
   site: office1
   nonmember_source: paired_split
-  swap_assignment: false
+  swap_assignment: true
   n_templates: 20
   n_duplicates: 30
   n_nonmember_templates: 20

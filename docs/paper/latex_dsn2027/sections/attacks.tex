@@ -1,0 +1,161 @@
+\section{Attack Suite and What Makes an Attack Strong}
+\label{sec:attacks}
+
+The threat model of \S\ref{sec:threat-model} defines an adversary; this
+section instantiates it. We describe the attacks we run, the scoring functions
+they apply, the metric we read them by, and --- because it governs all three
+--- what we take attack strength to consist of.
+
+\subsection{What makes an attack strong}
+\label{sec:attacks-strength}
+
+The privacy literature routinely ranks attacks by adversary access level.
+Under \emph{black-box} access the attacker observes only model outputs; under
+\emph{white-box} access it observes weights, gradients and internal
+activations. The intuition is that the latter is more dangerous because it
+sees more, and from that intuition follows a widespread defensive strategy:
+reduce what the adversary can observe, hide the gradients, encrypt the
+updates.
+
+Our apparatus rests on a different premise, and our results support it.
+\emph{When a sample's loss is observable, attack strength is determined not by
+access level but by the quality of the scoring function.}
+
+Loss occupies a special position. A membership attack must answer a binary
+question: was this sample in the training set? Anything that helps answer it
+must surface in some measurable quantity, and for a model trained to minimise
+a loss function that quantity is the loss itself. A sample the model trained
+on is a sample whose loss the optimiser pushed down; an unseen sample is not.
+Memorisation, by construction, is visible in the loss, because minimising the
+loss is what training does.
+
+Sablayrolles et al.~\cite{sablayrolles2019whitebox} turn this into a formal
+result. Assuming the adversary knows the loss distributions for in-training
+and out-of-training samples, there exists a transformation of the loss that is
+\emph{Bayes-optimal}: it extracts all available membership information. Not
+part of it --- all of it. No further observation, whether per-layer gradients,
+intermediate activations or the optimiser trajectory, can take the attacker
+past that bound.
+
+White-box access retains a role, but an indirect one. The adversary does not
+truly know the two distributions; it estimates them, typically by training
+shadow models. Privileged access can improve that estimate, and thus move the
+attacker closer to the bound --- but through better calibration, not because
+gradients carry membership signal that the loss does not.
+
+Two consequences follow, and the second is a design recommendation.
+
+For our measurement, we concentrate experimental effort on evaluator quality
+rather than on multiplying access levels: three loss transformations
+(\S\ref{sec:attacks-scorers}), per-example shadow calibration, and explicit
+checks that scoring treats both classes under the same formula
+(\S\ref{sec:validation}). Our data confirm the choice. LiRA is the most
+privileged attack we run, observing an individual client's update before
+aggregation, yet when its calibration degenerates it fails to beat a plain
+threshold test on raw loss.
+
+For defence designers, hiding gradients does not protect if the loss remains
+observable. A defence that reduces adversary visibility without reducing the
+separability of the two loss distributions shifts the cost of the attack
+rather than its feasibility: it makes estimation more laborious, not the
+conclusion less reachable. This is false assurance, and it must be
+distinguished from defences that act on separability --- differential privacy
+among them --- which reduce the signal rather than obscure it.
+
+\subsection{Two observation surfaces, three attacks}
+\label{sec:attacks-surfaces}
+
+The attacks we run do not all operate on the same artefact, and the
+distinction bounds what each can conclude.
+
+Yeom et al.'s loss threshold~\cite{yeom2018privacy} and a calibrated
+shadow-model attack~\cite{shokri2017membership} both observe the
+\emph{aggregated global model}, available to any participant. A positive
+detection concludes that a session was a training member somewhere in the
+federation, never at which client.
+
+LiRA~\cite{carlini2022membership} observes an \emph{individual client's per-round
+update} as submitted for aggregation. It therefore requires aggregator
+privilege, and a positive detection attributes membership to a specific
+operator.
+
+These are not three points on one scale of strength. They are two independent
+surfaces testing two different claims, and we report them separately. LiRA is
+our primary attack because it matches the aggregator's real privilege under
+our threat model, not because it subsumes the other two.
+
+\subsection{Three scoring functions}
+\label{sec:attacks-scorers}
+
+Every attack we run derives its judgement from the same observable quantity,
+the target model's reconstruction error on the sample. They differ in the
+transformation applied before deciding, and we implement the three the
+literature distinguishes.
+
+\textbf{Raw loss.} The untransformed mean squared error. The assumption is
+that a sample seen in training is reconstructed better. The limitation is
+known and dominant: a sample's loss depends chiefly on how intrinsically
+difficult that sample is, not on whether it was trained on. An atypical record
+has high loss regardless, which confounds membership with difficulty.
+
+\textbf{Log-transformed loss.} The natural logarithm of the loss. Its purpose
+is variance stabilisation. Raw loss distributions are strongly right-skewed,
+with a long tail of large errors, whereas LiRA assumes shadow losses are
+approximately Gaussian. The assumption is not cosmetic: LiRA estimates a mean
+and a variance per sample, and on a skewed distribution those estimates
+describe nothing. On our data the violation is measured and severe --- a
+Jarque--Bera test on raw losses returns values six orders of magnitude above
+the rejection threshold, and the log transformation reduces the departure from
+normality by four to five orders.
+
+\textbf{Bayes-optimal score.} The transformation derived by Sablayrolles et
+al.~\cite{sablayrolles2019whitebox}, theoretically the best possible mapping
+for this hypothesis test. It is the upper bound of
+\S\ref{sec:attacks-strength} made concrete: no further manipulation of the
+loss, and no access to internal gradients, improves on it.
+
+Implementing all three is not redundancy. It is how we separate the effect of
+calibration from the effect of signal: if the three agree, the limit lies in
+the data; if they diverge, the limit lies in the transformation, and we know
+which one.
+
+\subsection{Why AUC is not enough}
+\label{sec:attacks-metrics}
+
+A membership attack produces, for each sample, a score ranking candidates from
+most to least likely member. AUC-ROC measures that ranking as a whole: the
+probability that a randomly chosen member outranks a randomly chosen
+non-member. An AUC of $0.5$ is random ordering, $1.0$ perfect separation.
+
+This question corresponds to no real adversary. Carlini et
+al.~\cite{carlini2022membership} argue the point: an attacker need not classify
+every sample correctly and does not care about average accuracy. What the
+attacker wants is to identify \emph{some} members with confidence. An
+adversary who, across ten thousand sessions, states with near certainty that
+fifty were in a given operator's training set has breached fifty people's
+privacy; guessing at random on the remaining 9,950 neither helps nor hurts
+that claim.
+
+AUC averages exactly this away. It integrates over every threshold, weighting
+equally the high-false-positive regime --- where the attacker accuses half the
+dataset to catch half of it, which is not an attack --- and the
+low-false-positive regime, where the attacker accuses few samples and is
+right. An attack can therefore identify one per cent of members with certainty
+while showing an AUC barely distinguishable from $0.5$, because that one per
+cent contributes almost nothing to the integral.
+
+We therefore report true-positive rate at fixed low false-positive rates
+($0.1\%$, $1\%$, $5\%$) and treat it as primary for LiRA. The question it asks
+is the operative one: \emph{if the attacker accepts being wrong at most once in
+a hundred, how many members can be identified?} It measures the tail of the
+score distribution, which is where harm concentrates.
+
+Two points we keep explicit. The chance level for this metric is
+$\mathrm{TPR} = \mathrm{FPR}$, not $0.5$: an attacker guessing at random and
+accusing $1\%$ of samples catches $1\%$ of members. And the two metrics can
+diverge --- the region where they diverge is precisely where the attack is
+dangerous --- so reporting both is not redundancy.
+
+We nonetheless retain AUC, for two practical reasons: it is the metric against
+which the empirical literature compares, and the equivalence test supporting
+our null result is formulated on it.

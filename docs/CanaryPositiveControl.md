@@ -209,16 +209,21 @@ hidden `(32,16)`, latent 8, 1000 epoche). Dati letti da
 
 ### 6.1 Loss grezza (`canary_raw_mse_auc_roc`), medie sui 3 round
 
+⚠ Numeri della campagna **post-fix Sprint 10zz+119** (il pool raw non è più
+filtrato dalla calibrazione LiRA — vedi §6.6). I valori pre-fix erano
+gonfiati di ~0.01–0.05 per cella.
+
 | seed | braccio A | braccio B | somma | baseline A | baseline B | Δ_A | Δ_B |
 |---|---|---|---|---|---|---|---|
-| 42 | 0.6926 | 0.6935 | 1.3861 | 0.5274 | 0.4726 | +0.165 | +0.221 |
-| 123 | 0.8009 | 0.8333 | 1.6342 | 0.3451 | 0.6549 | +0.456 | +0.178 |
-| 456 | 0.6947 | 0.7491 | 1.4439 | 0.5829 | 0.4171 | +0.112 | +0.332 |
+| 42 | 0.6475 | 0.6842 | 1.3317 | 0.5274 | 0.4726 | +0.120 | +0.212 |
+| 123 | 0.8033 | 0.8183 | 1.6217 | 0.3451 | 0.6549 | +0.458 | +0.163 |
+| 456 | 0.6842 | 0.7600 | 1.4442 | 0.5829 | 0.4171 | +0.101 | +0.343 |
 | 789 | 0.7900 | 0.6542 | 1.4442 | 0.3755 | 0.6245 | +0.414 | +0.030 |
-| 1234 | 0.8070 | 0.6518 | 1.4588 | 0.3874 | 0.6126 | +0.420 | +0.039 |
-| **media** | **0.7570** | **0.7164** | **1.4734** | | | **+0.314** | **+0.160** |
+| 1234 | 0.7983 | 0.6592 | 1.4575 | 0.3874 | 0.6126 | +0.411 | +0.047 |
+| **media** | **0.7447** | **0.7152** | **1.4599** | | | **+0.301** | **+0.159** |
 
-**30 round su 30 sopra 0.5, minimo 0.6132. Dieci Δ su dieci positivi.**
+**30 round su 30 sopra 0.5, minimo 0.6125. Dieci Δ su dieci positivi.**
+Tutte le celle su **20×20 = 400 coppie distinte**, identiche ai baseline.
 Tutte e cinque le somme sono sopra 1: il segnale è simmetrico allo scambio dei
 gruppi, quindi è appartenenza. Se fosse difficoltà intrinseca sarebbe
 antisimmetrico e le somme starebbero a 1.
@@ -243,14 +248,14 @@ riportate distinte.
 ### 6.3 Statistica corretta
 
 Δ medio per seed (media dei due bracci, che annulla il soffitto):
-0.1931, 0.3171, 0.2219, 0.2221, 0.2294.
+0.1658, 0.3108, 0.2221, 0.2221, 0.2287.
 
 | | |
 |---|---|
-| media | **+0.2367** |
-| sd | 0.0471 |
-| errore standard | 0.0210 |
-| **t (df=4)** | **11.25** → p < 0.001 |
+| media | **+0.2299** |
+| sd | 0.0519 |
+| errore standard | 0.0232 |
+| **t (df=4)** | **9.90** → p < 0.001 |
 | test dei segni | 5/5 → p = 0.031 |
 
 Riportare questo, non il confronto con la std dei baseline (§5.2).
@@ -271,11 +276,19 @@ Il modello target è deterministico sotto seed; la calibrazione shadow di LiRA
 non lo è. È una prova indipendente della degenerazione documentata in §8 e va
 citata nel paper.
 
-### 6.5 Coppie distinte effettive
+### 6.5 Due denominatori, non uno
 
-`canary_n_member_distinct × canary_n_nonmember_distinct` non è sempre 20×20:
+Dal Sprint 10zz+119 il JSON riporta **due** coppie di conteggi, perché i due
+pool non coincidono:
 
-| seed | coppie distinte |
+| campo | pool | valore |
+|---|---|---|
+| `canary_raw_n_{member,nonmember}_distinct` | raw | **20×20 = 400 in tutte e 30 le celle** |
+| `canary_n_{member,nonmember}_distinct` | LiRA | 18–20 per lato |
+
+Il pool LiRA per seed (identico nei due bracci):
+
+| seed | coppie LiRA |
 |---|---|
 | 42 | 20×18 = 360 |
 | 123 | 20×19 = 380 |
@@ -283,9 +296,39 @@ citata nel paper.
 | 789 | 20×20 = 400 |
 | 1234 | 19×20 = 380 |
 
-I baseline sono invece calcolati su 400 coppie piene. Differenza piccola, ma
-la colonna va riportata per seed nella tabella del paper: è la dimensione
-campionaria effettiva, cioè proprio il difetto A che questo disegno corregge.
+**La causa non è una collisione fra template sorteggiati** — era la
+spiegazione data prima del Sprint 10zz+119 ed è sbagliata. È il filtro
+`insufficient_calibration` di LiRA (`run_experiments.py`, ramo
+`len(out_losses) < 2`), che scarta i record per cui non ci sono abbastanza
+shadow OUT. Nel log compare come
+`[CANARY DIAG] ... {'insufficient_calibration': N}`, e N varia molto:
+4 su s42, 31 su s1234 e sul suo swap.
+
+Nel paper la colonna va riportata per seed **con questa didascalia**: è
+quanti campioni la calibrazione shadow ha lasciato passare, non una
+proprietà dei template. Ed è essa stessa un risultato — vedi §6.6.
+
+### 6.6 Il filtro contaminava la metrica raw (fix Sprint 10zz+119)
+
+Difetto trovato confrontando la cella a 32 shadow con quella a 8 su s42:
+**stesso modello target** (traiettoria di loss identica
+`0.000814 / 0.000433 / 0.000429`), ma `canary_raw_mse_auc_roc` media 0.6475
+contro 0.6926.
+
+Causa: gli append a `round_canary_{member,nonmember}_raw_loss` stavano
+**dopo** il `continue` di `insufficient_calibration`. Un canary scartato dal
+filtro di calibrazione LiRA spariva quindi anche dalla metrica raw. La loss
+grezza era indipendente dagli shadow nel **punteggio** ma non nel **pool di
+valutazione**.
+
+Effetto: i baseline girano senza shadow, quindi sempre su 400 coppie, mentre
+i run post-training su 360–400. Il Δ non era appaiato ed era gonfiato. Dopo
+il fix, Δ medio **+0.2299** contro il +0.2367 riportato prima, con t che
+passa da 11.25 a **9.90**: la conclusione non cambia, la magnitudine sì.
+
+Il guard `cross_cluster_guard` resta invece **prima** della raccolta raw, ed
+è corretto: valutare un membro contro il modello di un altro client produce
+una loss priva di significato, non un dato filtrato arbitrariamente.
 
 ---
 
@@ -345,6 +388,41 @@ quel run **non sono citabili**. L'unico punto potenzialmente valido è il round
 
 Opzioni non ancora valutate: rumorizzare anche le shadow, oppure escludere dal
 calcolo canary i round in cui il modello è degradato oltre una soglia.
+
+### 8.1 Perché σ sta al floor — ipotesi falsificata e diagnosi corretta
+
+L'ipotesi di lavoro era: `floor_hit` sta al 97–99% perché con `n_shadow=8` e
+inclusione al 50% ogni record ha ~4 shadow IN e ~4 OUT, troppo pochi per una
+deviazione standard. **Due ablation l'hanno falsificata** (s42, no-DP,
+`experiments/_canary_balanced_{nshadow32,indepfloor}_s42`):
+
+| cella | floor_hit σ_in | canary LiRA medio |
+|---|---|---|
+| 8 shadow, floor simmetrico (rif.) | 0.977 | 0.6491 |
+| **32 shadow**, floor simmetrico | **1.000** | **0.7358** |
+| 8 shadow, floor **indipendente** | 0.977 | 0.6370 |
+
+Con 32 shadow il floor viene colpito **più** spesso, non meno. Il floor
+indipendente non sposta nulla: σ_in ≠ σ_out ma restano entrambi costanti, e
+lo score acquista solo una costante per round (−0.113, −0.213, **+0.323** in
+r3, dove il segno si inverte).
+
+La diagnosi corretta è un **errore di scala**, e si legge dai dump: in r1 le
+loss vanno da `0.000023` a `0.001221`, mentre il floor σ vale `0.0130`. *Il
+floor è dieci volte più largo dell'intero intervallo dei dati che dovrebbe
+descrivere.* La causa è in `run_experiments.py`, costruzione di
+`global_in_stats_per_cluster`: mette in pool le MSE **di tutti i record e di
+tutti gli shadow**, quindi misura la varianza *fra record* della
+distribuzione di loss, non la varianza *fra shadow* di un singolo record —
+che è quella che LiRA richiede. Le due differiscono di ordini di grandezza e
+nessun numero di shadow colma il divario. Da qui `log_p_in` e `log_p_out`
+uguali alla quarta cifra e score ~1e-4.
+
+**Ma il canary LiRA migliora comunque a 32 shadow** (0.6491 → 0.7358,
+composto 0.8625). Con σ inchiodato in entrambi i casi, il guadagno non può
+venire dalla varianza: viene dai μ e dai template recuperati (§6.5). Il
+claim da portare nel paper è quindi *la calibrazione degenera per un errore
+di scala nel floor*, non *per mancanza di shadow*.
 
 ---
 

@@ -4,10 +4,10 @@ ShadowAttack — wrapper BaseAttack sottile su run_shadow() (calibrated
 shadow-model MIA, ispirato a Carlini et al. 2022), in
 scripts/run_experiments.py. Vedi yeom.py per la spiegazione dell'import lazy.
 
-Rinominato da run_fedmia_shadow() a run_shadow() (Sprint 10zz+107,
+Rinominato da run_shadow() a run_shadow() (Sprint 10zz+107,
 2026-09-15) — stesso motivo di yeom.py: "fedmia" nel nome era fuorviante,
 non solo storico, ora che run_fedmia_gradient() è un attacco diverso nello
-stesso file. Alias run_fedmia_shadow=run_shadow resta in run_experiments.py
+stesso file. Alias run_shadow=run_shadow resta in run_experiments.py
 solo per compatibilità con codice non toccato.
 """
 

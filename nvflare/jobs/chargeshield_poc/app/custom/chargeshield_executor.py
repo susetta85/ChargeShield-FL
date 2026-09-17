@@ -419,7 +419,7 @@ def _inject_canary_members(
         # è mai stato lanciato davvero su questo deployment). Senza questo
         # fix, `template` resta nel pool SENZA tag — la stessa sessione reale
         # di cui sotto vengono aggiunti n_duplicates cloni taggati. La
-        # rianalisi offline (run_lira()/run_fedmia_shadow(), chiamate da
+        # rianalisi offline (run_lira()/run_shadow(), chiamate da
         # scripts/run_nvflare_mia.py) sposta le sessioni _canary_role=="member"
         # fuori dal pool shadow PRIMA di addestrare lo shadow model — ma quella
         # guardia non vede l'originale, perché non porta il tag. Se

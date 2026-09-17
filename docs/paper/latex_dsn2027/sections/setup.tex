@@ -1,0 +1,168 @@
+\section{Case Study and Experimental Setup}
+\label{sec:setup}
+
+\subsection{The domain as a testbed, not as the scope}
+\label{sec:setup-domain}
+
+ChargeShield-FL is not an EV-charging system: it is an audit infrastructure
+for federated training in OT environments, and charging is the scenario we
+instrument it on. The choice is not arbitrary, because this domain satisfies
+four conditions rarely found together.
+
+A \emph{public dataset of real sessions} exists at useful scale, drawn from
+genuinely distinct operational sites and carrying user identifiers, which makes
+record-level membership a meaningful notion rather than a convention. The
+operators are \emph{genuine commercial silos} rather than a synthetic partition
+of one dataset, so cross-silo is a property of the data and not of the
+experimental design. The infrastructure \emph{sits in a levelled environment}
+under the Purdue model, which is what makes the observability gap of
+\S\ref{sec:introduction} expressible at all. And session records are
+\emph{simultaneously commercially sensitive and personal}, so the privacy
+question is not hypothetical.
+
+What is domain-specific in the implementation is a dataset adapter and a choice
+of features. The ML Plane, the Privacy Auditor and the attack suite operate on
+tensors and metadata and contain no notion of charging, vehicles or energy. We
+exercise that independence with a second adapter for a structurally different
+charging dataset, and report it as a property of the design rather than as an
+experimental result, since one replication does not establish generality.
+
+\subsection{Data}
+\label{sec:setup-data}
+
+We use ACN-Data~\cite{lee2019acndata} across its three real sites: Caltech
+(54~EVSE, 31{,}404 sessions), JPL (50~EVSE, 33{,}629) and Office~1 (8~EVSE,
+1{,}680), for 66{,}713 sessions in total.
+
+\subsection{Why an autoencoder}
+\label{sec:setup-model}
+
+The detector is an autoencoder flagging a session whose reconstruction error
+exceeds a threshold. Three reasons motivate this, and the third bears on
+whether privacy can be measured at all.
+
+\emph{Unsupervised out of necessity.} In a real OT setting attacks are rare,
+heterogeneous and unlabelled: no operator holds enough annotated incidents to
+train a classifier, which is the very reason federated learning is proposed
+here. A model that learns normality and flags departures from it is the only
+family applicable without shared labels.
+
+\emph{Compatible with the deployment constraint.} The nodes running local
+training are station controllers, not accelerators. A few-hundred-parameter
+model is what that placement admits.
+
+\emph{Directly auditable.} Reconstruction error is a per-record scalar, and it
+is exactly the quantity loss-based membership attacks threshold on
+(\S\ref{sec:attacks-strength}). An autoencoder is therefore auditable without
+adaptation: no notion of confidence and no softmax output are required, and the
+same quantity serves as the detector's anomaly score and the adversary's attack
+score. That coincidence removes one degree of freedom between what the system
+computes and what the attacker observes.
+
+The model is deliberately conventional. We measure privacy risk on a detector
+representative of what an operator would actually deploy, not on an
+architecture chosen to make the measurement interesting; a novel architecture
+would say less to anyone deciding on a deployment. Nothing in the framework
+depends on this choice --- swapping the model requires an adapter, not a change
+to the audit infrastructure.
+
+\subsection{Training regime}
+\label{sec:setup-training}
+
+Autoencoder $6 \rightarrow 16 \rightarrow 8 \rightarrow 4 \rightarrow 8
+\rightarrow 16 \rightarrow 6$, 570 parameters, over six continuous session
+features: delivered energy, mean power, requested energy, declared
+availability window, connection hour and duration. Adam, learning rate
+$10^{-3}$, batch size 32, FedAvg with a proximal term.
+
+\emph{Splits and pools.} Each client partitions its sessions into a local
+training set and a held-out set. \emph{Members} are sessions in a client's
+local training set; \emph{non-members} are held-out sessions from the same
+site, never seen by any client. The evaluation pool is balanced by construction
+and sampled once before the round loop, so every round scores the same samples.
+
+\emph{Deliberately induced overfitting.} The local-epoch count is not a neutral
+choice. It was set to induce local overfitting --- that is, to \emph{create}
+the membership signal the experiment was then meant to measure --- and was
+documented as such in this project's configuration from the outset. We state it
+because it strengthens rather than weakens a null result: we actively tried to
+produce the signal.
+
+\emph{Repetitions.} Five independent seeds (42, 123, 456, 789, 1234). Each
+re-initialises weights, the train/holdout split, shuffle order and every
+downstream stochastic draw, so the runs are genuinely independent repetitions
+rather than repeated readings of one run.
+
+\subsection{What we do not measure: detection accuracy}
+\label{sec:setup-notmeasured}
+
+We do not report the model's detection accuracy, and the reason lies in the
+data: ACN-Data carries no intrusion labels, and the field provided for them is
+null across all 66{,}713 sessions. To our knowledge no public EV-charging
+dataset supplies them.
+
+This is the same scarcity that motivates federated learning in this domain. If
+each operator held enough annotated incidents it would train a detector alone
+and collaboration would be unnecessary; it is precisely because labels are
+absent that an unsupervised model is trained jointly, and it is that
+collaboration which raises the privacy question we study.
+
+We therefore evaluate the detector for the one property our question requires
+--- what its training reveals about the data that produced it --- and not for
+its ability to detect attacks. We considered and rejected injecting synthetic
+anomalies: that would measure the detector against the generator producing
+them, and would not transfer. The model is representative in architecture,
+scale and training regime of what an operator would deploy, while its
+operational effectiveness remains outside this work's scope.
+
+\subsection{The privacy unit does not match the subject}
+\label{sec:setup-privacyunit}
+
+Differential privacy bounds the influence of a data unit fixed by the chosen
+neighbouring relation~\cite{dwork2006calibrating}. In our two mechanisms that
+unit is the individual record, under per-example clipping, or a client's entire
+contribution, under delta clipping. Neither coincides with the unit a person
+would recognise as their own, and on ACN-Data the gap is measurable rather than
+hypothetical.
+
+A user identifier is present in 48{,}404 of 66{,}713 sessions, with markedly
+uneven coverage across sites: $94\%$ at Caltech, $52\%$ at JPL, $35\%$ at
+Office~1. Among identified sessions, 1{,}028 distinct users contribute a median
+of \textbf{14 sessions each}, and 87 of them --- \textbf{$8.5\%$} --- charge at
+more than one site, accounting for 7{,}618 sessions.
+
+Two distinct gaps follow. Record granularity does not protect a person, because
+14 records compose: budget spent on each accumulates, and the
+individual-level guarantee is correspondingly weaker than the nominal
+per-record one. Client granularity does not protect them either, because for
+$8.5\%$ of users the contribution crosses organisational boundaries, and no
+operator can clip data it does not hold.
+
+\emph{A case observable within our own positive control.} Of the forty
+templates drawn for the balanced control, five carry a user identifier, and
+three belong to the same person: one session assigned to the member group and
+two to the non-member group, all recorded at the same connection point over
+five months. A record-level attack answers correctly the question it poses ---
+was this session in the training set? --- yet for that driver a negative answer
+on two records coexists with an affirmative one on a third. None of the three
+answers tells the person what they would want to know, namely whether their
+charging activity entered the model; the answer to that is yes. We report this
+as an illustration rather than a statistic: with five identified templates out
+of forty it is anecdotal by construction, and the measurement remains the
+dataset-wide one above.
+
+\emph{Why we do not evaluate subject-level DP.} The natural remedy bounds each
+subject's aggregate contribution, which requires grouping gradients by person
+rather than by record and raises sensitivity to the maximum number of sessions
+per user. Beyond the implementation cost, evaluation on this data would be
+partial: at $35\%$ coverage in Office~1, where the positive control is run, the
+subject unit is undefined for most sessions. We report it as future work
+motivated by a measurement, not as a neglected option.
+
+\subsection{Realisation}
+\label{sec:setup-realisation}
+
+A single-process simulation and a five-container NVFLARE/Containerlab
+deployment (server, caltech, jpl, office1, fl-admin), with the same unmodified
+attack and analysis code run against both. The main results come from the
+simulation; the containerised deployment is supplementary validation.

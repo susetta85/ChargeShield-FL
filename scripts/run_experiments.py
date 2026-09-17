@@ -58,6 +58,48 @@ logger = logging.getLogger("run_experiment")
 
 # ── Architettura modello (capacità configurabile, Sprint 10jj 2026-08-28) ───────
 
+def _auditor_telemetry(reports: dict) -> dict:
+    """
+    Telemetria del Privacy Auditor per un round (Sprint 10zz+119).
+
+    reports: node_id -> AuditReport (src/core/base_auditor.py), prodotto dal
+    subscriber a ogni round. Prima di questo sprint veniva consumato da
+    ids.analyze_round() e poi scartato: nel JSON restava solo l'overhead.
+
+    NOTA INTERPRETATIVA, da riportare nel paper. privacy_score ed epsilon qui
+    sono un PROXY calcolato dalla norma degli aggiornamenti, non una misura del
+    rischio di appartenenza e non una contabilita' DP formale (epsilon per
+    round e' scalato sulla mediana dei peer, quindi dipende dai dati, mentre la
+    contabilita' DP e' data-independent per costruzione). Servono a verificare
+    che un nodo resti dentro i parametri dichiarati, non a stimare quanta
+    informazione esce. La distinzione e' il motivo per cui questo lavoro
+    instanzia avversari invece di leggere il budget.
+    """
+    if not reports:
+        return None
+    per_node = {}
+    for node_id, r in reports.items():
+        per_node[node_id] = {
+            "privacy_score":    getattr(r, "privacy_score", None),
+            "epsilon":          getattr(r, "epsilon", None),
+            "threats_detected": list(getattr(r, "threats_detected", []) or []),
+            "metadata":         dict(getattr(r, "metadata", {}) or {}),
+        }
+    scores = [v["privacy_score"] for v in per_node.values() if v["privacy_score"] is not None]
+    eps    = [v["epsilon"]       for v in per_node.values() if v["epsilon"]       is not None]
+    return {
+        "per_node":            per_node,
+        "n_nodes":             len(per_node),
+        "privacy_score_min":   min(scores) if scores else None,
+        "privacy_score_mean":  (sum(scores) / len(scores)) if scores else None,
+        "epsilon_round_max":   max(eps) if eps else None,
+        "epsilon_round_mean":  (sum(eps) / len(eps)) if eps else None,
+        "n_threats":           sum(len(v["threats_detected"]) for v in per_node.values()),
+        "note": ("privacy_score/epsilon sono un proxy data-dependent dalla norma "
+                 "degli update, NON una misura di rischio di membership ne' una "
+                 "contabilita' DP formale."),
+    }
+
 def _record_dp_fields(cfg: dict, n_sessions: int | None = None) -> dict:
     """
     Campi record-DP per il JSON risultato (Sprint 10zz+117).
@@ -185,7 +227,7 @@ def load_config(config_path: Path | None, overrides: dict) -> dict:
     if overrides.get("epochs") is not None:
         # Override cfg["ml"]["epochs"] (default 50) — usato sia per il training
         # locale reale dei client (run_fl_rounds()) sia come base della formula
-        # shadow_epochs in run_lira()/run_fedmia_shadow() (min(epochs*rounds, 500)
+        # shadow_epochs in run_lira()/run_shadow() (min(epochs*rounds, 500)
         # / min(epochs*max(rounds//4,5), 300)), quindi alzarlo alza anche il
         # training degli shadow, non solo del modello target — coerente col resto
         # della pipeline, nessun trattamento speciale necessario qui.
@@ -658,7 +700,7 @@ def inject_canaries(
     dentro `injected_train` con una copia taggata (`_canary_group`/
     `_canary_role="member"`, stessi valori dei suoi cloni) invece di restare
     una sessione membro ordinaria indistinguibile. Prima del fix, quella
-    sessione poteva finire nel `shadow_train` di `run_fedmia_shadow()` (la
+    sessione poteva finire nel `shadow_train` di `run_shadow()` (la
     guardia anti-contaminazione di Sprint 10zz+93 la cerca per tag, non per
     contenuto) e nell'universo shadow non filtrato di `run_lira()` (la
     stessa classe di contaminazione già corretta per i cloni TAGGATI in
@@ -838,7 +880,7 @@ def inject_canaries(
         # sotto 0.5, non spiegabile da campione piccolo). Fino a questo fix,
         # `template` restava nel pool SENZA tag — la stessa identica sessione
         # reale di cui sotto vengono inseriti n_duplicates cloni taggati.
-        # `run_fedmia_shadow()` sposta le sessioni `_canary_role=="member"` da
+        # `run_shadow()` sposta le sessioni `_canary_role=="member"` da
         # shadow_train a eval_members PRIMA di addestrare lo shadow model
         # (Sprint 10zz+93) — ma quella guardia non vedeva l'originale, perché
         # non portava il tag. Se l'originale finiva per caso in shadow_train
@@ -1118,7 +1160,7 @@ def run_fl_rounds(
     # Inizializza trainer per ogni cluster
     #
     # LIMITE NOTO, NON RISOLTO (osservazione review indipendente round 4,
-    # 2026-07-24): a differenza di run_lira()/run_fedmia_shadow() (che
+    # 2026-07-24): a differenza di run_lira()/run_shadow() (che
     # chiamano torch.manual_seed() esplicitamente subito prima di ogni
     # Autoencoder(...)), i 3 trainer reali qui sotto vengono costruiti uno
     # dopo l'altro senza un manual_seed() dedicato per ciascuno — l'init dei
@@ -2123,7 +2165,7 @@ def run_yeom(
         # attacchi (task #53): _tpr_at_fixed_fpr() restituisce SEMPRE le
         # stesse chiavi generiche ("tpr_at_fpr_0.001" ecc.), identiche a
         # quelle già usate da run_lira() (bare, da prima di task #53) e da
-        # run_fedmia_shadow() (introdotte insieme a queste, stesso bug).
+        # run_shadow() (introdotte insieme a queste, stesso bug).
         # run_registered_attacks() fonde yeom→shadow→lira nello STESSO dict
         # per round con .update() — l'ultimo scrittore vince. Senza prefisso,
         # il TPR@low-FPR di Yeom calcolato qui viene silenziosamente
@@ -2213,18 +2255,18 @@ def run_yeom(
 
 
 # Alias di compatibilità (Sprint 10zz+107, 2026-09-15, richiesto esplicitamente
-# dall'utente prima di scrivere il paper: "run_fedmia" era il nome storico
+# dall'utente prima di scrivere il paper: "run_yeom" era il nome storico
 # dell'attacco Yeom 2018 — da quando FedMIA-gradient (run_fedmia_gradient()
 # sotto, un attacco DIVERSO) è stato aggiunto, "fedmia" nel nome di QUESTA
 # funzione è fuorviante, non solo storico: un lettore del codice affianco al
 # paper (che chiama questo attacco "Yeom" ovunque) troverebbe due funzioni
 # "fedmia" per due attacchi diversi. Il nome canonico è ora run_yeom(); questo
 # alias resta SOLO per non rompere test/chiamate esterne esistenti (es.
-# tests/test_run_experiments_integration.py, che chiama run_fedmia()
+# tests/test_run_experiments_integration.py, che chiama run_yeom()
 # direttamente e non può essere eseguito in questo sandbox — niente torch —
 # quindi non lo si tocca senza necessità). Nessun nuovo codice deve usare
 # questo alias: usare run_yeom().
-run_fedmia = run_yeom
+run_yeom = run_yeom
 
 
 # ── Shadow Model MIA Attack ────────────────────────────────────────────────────
@@ -2282,7 +2324,7 @@ def run_shadow(
             "n_eval_members": int,
             "n_non_members": int,
             # Sprint 10zz+28 (2026-09-03, task #53) — stesso motivo di
-            # run_fedmia(), vedi lì: non retroattivo sui JSON storici.
+            # run_yeom(), vedi lì: non retroattivo sui JSON storici.
             # Prefisso "shadow_" dal Sprint 10zz+34 (task #59, fix collisione
             # di chiavi con Yeom/LiRA nel merge di run_registered_attacks()).
             "shadow_tpr_at_fpr_0.001"/"...0.01"/"...0.05": float | None,
@@ -2340,7 +2382,7 @@ def run_shadow(
     # confronta shadow_model contro un UNICO target_model per round, costruito
     # da round_data["global_weights"]; "client" confronta invece contro un
     # target_model per-client costruito da round_data["updates"]/["raw_updates"]
-    # (stessa selezione dp_mode-aware di run_lira()/run_fedmia(), Strada B),
+    # (stessa selezione dp_mode-aware di run_lira()/run_yeom(), Strada B),
     # valutando ogni sito solo sui propri eval_members. Il shadow_model di
     # calibrazione resta UNICO e globale in entrambe le modalità: è il
     # riferimento "non ha mai visto questi dati", non dipende dal FL round,
@@ -2467,13 +2509,13 @@ def run_shadow(
 
     # ── Step 4: per ogni round FL, calcola score calibrato ─────────────────────
     shadow_results: dict[int, dict[str, Any]] = {}
-    # Sprint 10zz+29 (2026-09-03, task #54) — vedi run_fedmia() sopra.
+    # Sprint 10zz+29 (2026-09-03, task #54) — vedi run_yeom() sopra.
     _roc_curves_per_round: dict[int, dict[str, list[float]]] = {}
 
     for round_num, round_data in sorted(fl_results.items()):
         # Sprint 10zz+94 — "client" costruisce N target model (uno per client
         # sottomittente nel round, da round_data["updates"]/["raw_updates"],
-        # stessa selezione dp_mode-aware di run_lira()/run_fedmia(), Strada B)
+        # stessa selezione dp_mode-aware di run_lira()/run_yeom(), Strada B)
         # invece di UN target model da round_data["global_weights"]. Ogni
         # client-model valuta SOLO i propri eval_members (via
         # _eval_members_by_site_shadow) contro i propri shadow scores
@@ -2604,13 +2646,13 @@ def run_shadow(
         )
 
         # Sprint 10zz+28 (2026-09-03, task #53) — stesso motivo/pattern di
-        # run_fedmia() sopra e run_lira() sotto: TPR@low-FPR/Advantage/
+        # run_yeom() sopra e run_lira() sotto: TPR@low-FPR/Advantage/
         # Confusion sulle stesse coppie label/score già usate per `auc`,
         # cosi' un confronto Yeom/Shadow/LiRA non deve appoggiarsi solo su
         # auc_roc (fallacia delle medie di Carlini applicata al confronto
         # TRA attacchi, non solo dentro un attacco). Non retroattivo.
         # Fix 2026-09-03 (task #59, Sprint 10zz+34) — vedi commento gemello
-        # in run_fedmia() sopra: stesso bug di collisione chiavi
+        # in run_yeom() sopra: stesso bug di collisione chiavi
         # "tpr_at_fpr_*" con LiRA nel merge di run_registered_attacks(),
         # stessa correzione (prefisso "shadow_", coerente con
         # shadow_advantage/shadow_confusion già prefissati qui sotto).
@@ -2625,18 +2667,18 @@ def run_shadow(
                 _roc_curves_per_round[round_num] = _curve
 
         # Canary positive control (Sprint 10zz+93, 2026-09-15) — vedi
-        # run_fedmia() sopra per motivazione/pattern identico (Blocker 2).
+        # run_yeom() sopra per motivazione/pattern identico (Blocker 2).
         # canary_members è sempre un sottoinsieme di eval_members (mai di
         # shadow_train, vedi guardia nello split sopra). Ricalcolato qui sul
         # pool canary completo (non sul sotto-campione bilanciato
         # shadow_scores_members/target_scores_members) per non dipendere
         # dalla varianza di quel bilanciamento casuale. Chiavi prefissate
         # "shadow_" per lo stesso motivo di yeom_canary_auc_roc in
-        # run_fedmia() — evitare la collisione con il canary_auc_roc (bare)
+        # run_yeom() — evitare la collisione con il canary_auc_roc (bare)
         # già pubblicato da LiRA nel merge yeom→shadow→lira.
         #
         # Sprint 10zz+94 — limitato a observation_surface=="global", stesso
-        # motivo del canary block gemello in run_fedmia(): in modalità
+        # motivo del canary block gemello in run_yeom(): in modalità
         # "client" `target_model` è solo l'ultimo client-model costruito nel
         # round, non rappresentativo di tutti i siti a cui i canary
         # appartengono. Semplificazione dichiarata, vedi TestRoadmap_DSN2027.md.
@@ -2765,12 +2807,6 @@ def run_shadow(
         })
 
     return shadow_results
-
-
-# Alias di compatibilità (Sprint 10zz+107) — stesso motivo di run_fedmia sopra:
-# nome storico "run_fedmia_shadow" per l'attacco Shadow, non toccato nel
-# codice esistente (test/wrapper), nome canonico ora run_shadow().
-run_fedmia_shadow = run_shadow
 
 
 # ── LiRA Attack (Carlini et al. 2022) ──────────────────────────────────────────
@@ -3110,7 +3146,7 @@ def run_lira(
         la tesi centrale del paper va rivalutata sui numeri reali che ne
         usciranno, non assunta.
 
-    Why this differs from run_fedmia / run_fedmia_shadow:
+    Why this differs from run_yeom / run_shadow:
         Both previous attacks use the GLOBAL aggregated model, which is itself a
         cross-cluster blend — so a cross-cluster, one-shot shadow ensemble is the
         correct reference for those two (no mismatch there; these fixes only
@@ -3800,7 +3836,7 @@ def run_lira(
 
         # Observation surface "global" (Sprint 10zz+94) — costruisce UN SOLO modello
         # condiviso per questo round da round_data["global_weights"], esattamente
-        # come fanno run_fedmia()/run_fedmia_shadow(). Costruito una volta sola qui
+        # come fanno run_yeom()/run_shadow(). Costruito una volta sola qui
         # fuori dal loop per-client sotto; se "client" (default), resta None e non è
         # usato — zero costo/impatto per ogni run/config esistente.
         _lira_global_model = None
@@ -5931,7 +5967,7 @@ def run_centralized_control(
     centralizzato — un risultato positivo e citabile, non solo un controllo
     negativo.
 
-    Valutazione: stessa metrica loss-based di Yeom/run_fedmia() (MSE di
+    Valutazione: stessa metrica loss-based di Yeom/run_yeom() (MSE di
     ricostruzione per-campione, score=-MSE, membri=train_sessions vs
     non-membri=holdout_sessions, stesso _mia_feature_names(cfg)) — comparabile
     DIRETTAMENTE con mean_auc_roc del run federato sullo stesso esperimento
@@ -5985,7 +6021,7 @@ def run_centralized_control(
                 recon  = model(batch)
                 errors = torch.mean((recon - batch) ** 2, dim=1)
                 # Score = -errore: basso errore → membro → score alto (stessa
-                # convenzione di run_fedmia()/_score_batch()).
+                # convenzione di run_yeom()/_score_batch()).
                 scores.extend(-e.item() for e in errors)
         return scores
 
@@ -6065,7 +6101,7 @@ def run_registered_attacks(
     questa funzione né i suoi due call site.
 
     Comportamento preservato IDENTICO alla versione pre-refactor (chiamate
-    dirette a run_fedmia()/run_fedmia_shadow()/run_lira()): stesso ordine di
+    dirette a run_yeom()/run_shadow()/run_lira()): stesso ordine di
     esecuzione (yeom, shadow, lira), stessa policy in caso di eccezione
     (logga e continua con gli altri, non solleva — un attacco fallito non
     deve impedire il salvataggio degli altri risultati), stessa logica di
@@ -6171,7 +6207,14 @@ def run_ids(
         paper (motiva secure aggregation o central DP come alternative più
         IDS-compatibili quando serve sia privacy sia intrusion detection).
     """
-    config_path = str(PROJECT_ROOT / "config" / "auditor.yaml")
+    # Sprint 10zz+120: sovrascrivibile via CHARGESHIELD_AUDITOR_CONFIG per
+    # provare configurazioni dell'Auditor (es. total_rounds_budget allineato
+    # ai round reali) senza toccare il default usato da tutti gli altri run.
+    import os
+    config_path = os.environ.get(
+        "CHARGESHIELD_AUDITOR_CONFIG",
+        str(PROJECT_ROOT / "config" / "auditor.yaml"),
+    )
     max_grad_norm = cfg["experiment"]["max_grad_norm"]
 
     # byzantine_tolerance/krum_threshold (2026-07-22, 3 siti reali + sweep IDS n=5):
@@ -6267,8 +6310,39 @@ def run_ids(
     #   → GRADIENT_EXPLOSION falsi in OGNI round della baseline no-DP.
     #   Con float("inf") il check è disabilitato: sensato perché senza DP non c'è sigma di rumore
     #   su cui basare la soglia; il Byzantine check rimane affidato a Krum.
-    _auditor_epsilon    = 1000.0       if no_dp else cfg["experiment"]["epsilon"]
-    _explosion_thresh   = float("inf") if no_dp else None   # None → formula Gaussian 3-sigma
+    # Sprint 10zz+120: il ramo binario qui sopra presuppone che no_dp implichi
+    # "nessun rumore", il che non vale piu' da quando esiste la DP a livello di
+    # record: --no-dp disattiva il meccanismo client-level ma NON record_dp, che
+    # applica rumore gaussiano per esempio. Prima di questo fix una cella
+    # record-DP finiva nel ramo float("inf") e l'Auditor girava con il controllo
+    # di esplosione disabilitato e un budget dimensionato per 1000 round su 3
+    # effettivi (budget_ratio ~0.3%), quindi non poteva segnalare nulla in
+    # nessuna condizione. Verificato su _audit_ref_s42 / _audit_rdp_s42:
+    # telemetria identica a sei cifre nelle due celle, sensitivity saturata a
+    # 1.0, explosion_threshold = Infinity in entrambe.
+    _rdp_cfg = (cfg.get("ml", {}) or {}).get("record_dp") or {}
+    _rdp_on  = bool(_rdp_cfg.get("enabled"))
+
+    if _rdp_on:
+        # Rumore per-esempio: la soglia va calibrata sul clipping PER RECORD e
+        # sul sigma effettivamente applicato, non sul sigma client-level (che
+        # con --no-dp non esiste). Stessa forma della formula Gaussian 3-sigma
+        # del ramo client-level, con C e sigma del meccanismo giusto.
+        _rdp_C     = float(_rdp_cfg.get("max_grad_norm", 1.0))
+        _rdp_sigma = float(_rdp_cfg.get("noise_multiplier", 0.0))
+        _auditor_epsilon  = 1000.0 if no_dp else cfg["experiment"]["epsilon"]
+        _explosion_thresh = _rdp_C + 3.0 * _rdp_sigma * _rdp_C
+    elif no_dp:
+        _auditor_epsilon  = 1000.0
+        _explosion_thresh = float("inf")
+    else:
+        _auditor_epsilon  = cfg["experiment"]["epsilon"]
+        _explosion_thresh = None   # None → formula Gaussian 3-sigma client-level
+
+    logger.info(
+        "[AUDITOR] epsilon=%s explosion_threshold=%s (record_dp=%s, no_dp=%s)",
+        _auditor_epsilon, _explosion_thresh, _rdp_on, no_dp,
+    )
     auditor = PrivacyAuditor(
         config_path=config_path,
         epsilon=_auditor_epsilon,
@@ -6351,6 +6425,9 @@ def run_ids(
             ids_results[round_num] = {
                 "alerts": [], "byzantine_detected": False, "drift_detected": False,
                 "auditor_overhead_seconds": _auditor_overhead,
+                # Sprint 10zz+119: telemetria Auditor. Vedi _auditor_telemetry()
+                # per la nota sul fatto che privacy_score/epsilon sono un proxy.
+                "auditor": _auditor_telemetry(reports),
             }
             continue
 
@@ -6374,6 +6451,9 @@ def run_ids(
             "drift_detected":       False,
             "low_similarity_nodes": analysis.low_similarity_nodes if analysis else [],
             "auditor_overhead_seconds": _auditor_overhead,
+            # Sprint 10zz+119: telemetria Auditor. Vedi _auditor_telemetry()
+            # per la nota sul fatto che privacy_score/epsilon sono un proxy.
+            "auditor": _auditor_telemetry(reports),
         }
 
     return ids_results

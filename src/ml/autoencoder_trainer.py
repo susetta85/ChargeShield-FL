@@ -137,7 +137,25 @@ class AutoencoderTrainer(AbstractMLModel):
         if hidden_dims is not None:
             hidden_dims = tuple(hidden_dims)
 
-        self.model     = Autoencoder(input_dim=input_dim, latent_dim=latent_dim, hidden_dims=hidden_dims)
+        # norm (Sprint 10zz+113): "group" e' obbligatorio con record_dp
+        # (microbatch da 1 + sensibilita' per-record non garantita da BatchNorm,
+        # vedi src/core/autoencoder.py). Se record_dp e' attivo e la config non
+        # lo specifica, forziamo "group" ed emettiamo un warning: e' preferibile
+        # a un crash a meta' del primo round o, peggio, a una garanzia DP
+        # silenziosamente invalida.
+        _norm = str(config.get("norm", "batch"))
+        if self.record_dp_enabled and _norm != "group":
+            logger.warning(
+                "[RECORD-DP] norm=%r incompatibile con il clipping per-esempio: "
+                "forzato a 'group'. BatchNorm richiede batch>1 e non limita la "
+                "sensibilita' per-record. Dichiarare norm: group in config per "
+                "rendere la scelta esplicita.", _norm
+            )
+            _norm = "group"
+        self.norm: str = _norm
+
+        self.model     = Autoencoder(input_dim=input_dim, latent_dim=latent_dim,
+                                     hidden_dims=hidden_dims, norm=_norm)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
         self.criterion = torch.nn.MSELoss()
 
@@ -268,14 +286,22 @@ class AutoencoderTrainer(AbstractMLModel):
         # (parametrizzazione standard DP-SGD), poi media sul lotto.
         sigma = self.record_dp_noise_multiplier
         self.optimizer.zero_grad(set_to_none=True)
-        for acc, p in zip(somma, params):
+        # enumerate (Sprint 10zz+114): params.index(p) e' errato su tensori —
+        # list.index() confronta con ==, e su un Tensor == e' un confronto
+        # ELEMENTO PER ELEMENTO, non un test di identita'. Con parametri di
+        # forma diversa il broadcasting fallisce ("The size of tensor a (7)
+        # must match the size of tensor b (32)"). Il bug si manifestava solo
+        # dal round 2, quando self._global_weights smette di essere None e il
+        # termine prossimale FedProx diventa attivo. Era anche O(n) per
+        # parametro per microbatch. zip itera params nell'ordine giusto,
+        # quindi enumerate da' l'indice corretto a costo zero.
+        for idx, (acc, p) in enumerate(zip(somma, params)):
             g = acc
             if sigma > 0.0:
                 g = g + torch.normal(mean=0.0, std=sigma * C, size=g.shape, device=g.device)
             g = g / float(n)
             # Termine prossimale FedProx, aggiunto DOPO il rumore: vedi docstring.
             if self.proximal_mu > 0.0 and self._global_weights is not None:
-                idx = params.index(p)
                 if idx < len(self._global_weights):
                     g = g + self.proximal_mu * (p.detach() - self._global_weights[idx])
             p.grad = g
@@ -284,7 +310,6 @@ class AutoencoderTrainer(AbstractMLModel):
         return loss_totale / n
 
     def emit_event(self, event: MLPlaneEvent) -> None:
-        """Propaga l'evento a tutti i listener registrati."""
         for listener in self._listeners:
             listener.on_ml_event(event)
 

@@ -17,7 +17,7 @@
 #   single-process (mean_loss, n_participants, updates, raw_updates,
 #   raw_global_weights, global_weights — un dict per round).
 #
-#   run_lira()/run_ids()/run_fedmia()/run_fedmia_shadow()/save_results() sono
+#   run_lira()/run_ids()/run_yeom()/run_shadow()/save_results() sono
 #   già scritte per consumare esattamente quella struttura — e sono già state
 #   validate empiricamente su nodp-sweep1/dp-sweep1 (5 round di fix per LiRA,
 #   vedi la sua docstring). Riscriverle per girare "dal vivo" dentro
@@ -340,7 +340,7 @@ def load_client_sessions(
     train/hold-out — un dataset e un ordinamento DIVERSI da quelli che
     chargeshield_executor.py::_setup() usa davvero (SOLO il file indicato
     da "dataset_path" in config_fed_client.json, MAI shuffled, split
-    contiguo per indice — vedi quella funzione). run_lira()/run_fedmia()
+    contiguo per indice — vedi quella funzione). run_lira()/run_yeom()
     ricostruiscono l'appartenenza ai cluster assumendo che train_sessions
     sia nello STESSO ordine/split usato dai client reali (stesso principio
     di run_fl_rounds() nella simulazione) — con un dataset/ordine diverso,
@@ -776,7 +776,7 @@ def main() -> None:
         logger.error(f"run_ids() fallita: {exc}", exc_info=True)
 
     # ── Yeom + Shadow + LiRA — tramite il registro pluggable ────────────────
-    # Fix 2026-07-24: questo blocco chiamava run_fedmia()/run_fedmia_shadow()/
+    # Fix 2026-07-24: questo blocco chiamava run_yeom()/run_shadow()/
     # run_lira() direttamente, duplicando (quasi identica) la stessa logica di
     # dispatch/merge/error-handling di scripts/run_experiments.py::main().
     # Ora entrambi i punti chiamano run_registered_attacks() (definita in

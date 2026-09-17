@@ -78,6 +78,7 @@ class Encoder(nn.Module):
         input_dim: int = INPUT_DIM,
         latent_dim: int = 4,
         hidden_dims: tuple[int, int] | None = None,
+        norm: str = "batch",
     ):
         """
         Args:
@@ -88,14 +89,39 @@ class Encoder(nn.Module):
         """
         super().__init__()
         h1, h2 = hidden_dims if hidden_dims is not None else (16, 8)
+
+        # norm (Sprint 10zz+113): scelta del layer di normalizzazione.
+        #   "batch" (default) — nn.BatchNorm1d, comportamento storico,
+        #       byte-per-byte identico a tutte le celle gia' pubblicate.
+        #   "group"  — nn.GroupNorm(1, dim), equivalente a LayerNorm su 2-D.
+        #       OBBLIGATORIO con DP a livello di record, per due ragioni:
+        #       (a) Tecnica: il clipping per-esempio richiede microbatch di
+        #           dimensione 1, e BatchNorm1d in training solleva
+        #           "Expected more than 1 value per channel" perche' non puo'
+        #           stimare una varianza su un solo campione.
+        #       (b) Di privacy, ed e' quella che conta: BatchNorm calcola
+        #           media e varianza SUL BATCH, quindi l'output di un campione
+        #           dipende dagli altri campioni. La sensibilita' del singolo
+        #           record non e' piu' limitata dal clipping del suo gradiente
+        #           e la garanzia DP per-record decade comunque. Opacus rifiuta
+        #           per questo i modelli con BatchNorm. GroupNorm normalizza
+        #           entro il singolo campione e non crea dipendenza fra campioni.
+        # NOTA: cambiare norm cambia i parametri del modello, quindi una cella
+        # "group" NON e' confrontabile con una cella "batch": il confronto
+        # record-DP richiede un riferimento no-DP anch'esso in modalita' "group".
+        if norm not in ("batch", "group"):
+            raise ValueError(f"norm non valido: {norm!r} (atteso 'batch' o 'group')")
+        _Norm = (lambda d: nn.BatchNorm1d(d)) if norm == "batch" \
+                else (lambda d: nn.GroupNorm(1, d))
+
         self.network = nn.Sequential(
             # Layer 1: input_dim → h1
             nn.Linear(input_dim, h1),
-            nn.BatchNorm1d(h1),
+            _Norm(h1),
             nn.ReLU(),
             # Layer 2: h1 → h2
             nn.Linear(h1, h2),
-            nn.BatchNorm1d(h2),
+            _Norm(h2),
             nn.ReLU(),
             # Layer 3: h2 → latent_dim (spazio latente — no ReLU: preserva segno)
             nn.Linear(h2, latent_dim),
@@ -195,6 +221,7 @@ class Autoencoder(nn.Module):
         latent_dim: int = 4,
         threshold: float = 0.1,
         hidden_dims: tuple[int, int] | None = None,
+        norm: str = "batch",
     ):
         """
         Args:
@@ -212,7 +239,7 @@ class Autoencoder(nn.Module):
         """
         super().__init__()
         decoder_hidden_dims = (hidden_dims[1], hidden_dims[0]) if hidden_dims is not None else None
-        self.encoder = Encoder(input_dim, latent_dim, hidden_dims=hidden_dims)
+        self.encoder = Encoder(input_dim, latent_dim, hidden_dims=hidden_dims, norm=norm)
         self.decoder = Decoder(latent_dim, input_dim, hidden_dims=decoder_hidden_dims)
 
         # Soglia di anomalia: MSE > threshold → anomalia

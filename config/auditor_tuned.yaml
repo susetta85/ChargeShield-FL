@@ -1,0 +1,14 @@
+auditor:
+  enabled: true
+  dp:
+    mechanism: Gaussian
+    epsilon: 1.0
+    delta: 1.0e-05
+    max_grad_norm: 1.0
+    total_rounds_budget: 3
+  attacks:
+  - Yeom
+  - Shadow
+  - LiRA
+  - FedMIA
+  alert_threshold: 0.7

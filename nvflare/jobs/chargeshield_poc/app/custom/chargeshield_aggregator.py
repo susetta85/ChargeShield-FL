@@ -89,7 +89,7 @@ Cosa fa in più da FASE 5 (2026-07-22, notte) — raw-update extraction per LiRA
       updates, raw_updates, raw_global_weights, global_weights — vedi
       run_fl_rounds() per il contratto esatto). Un nuovo script separato,
       scripts/run_nvflare_mia.py, carica questo dump e chiama run_lira()/
-      run_ids()/run_fedmia()/save_results() SENZA MODIFICARLI — zero rischio
+      run_ids()/run_yeom()/save_results() SENZA MODIFICARLI — zero rischio
       di introdurre bug nuovi nella logica di attacco già validata.
     - _fl_results_history[round_num] viene costruito in aggregate() con:
         "raw_updates":        received_updates (i GradientUpdate così come
