@@ -58,6 +58,78 @@ logger = logging.getLogger("run_experiment")
 
 # ── Architettura modello (capacità configurabile, Sprint 10jj 2026-08-28) ───────
 
+def _record_dp_fields(cfg: dict, n_sessions: int | None = None) -> dict:
+    """
+    Campi record-DP per il JSON risultato (Sprint 10zz+117).
+
+    Senza questi, una cella con DP per-record e' indistinguibile da una
+    no-DP: il campo "epsilon" del JSON e' il budget CLIENT-level e non si
+    applica al meccanismo per-record, che ha un budget suo calcolato via
+    accountant RDP (a sigma=1.0, 1000 epoche, 3 round vale ~88, non 1.0).
+
+    epsilon_record_dp resta None se l'accountant non e' installato o se
+    n_sessions non e' noto: in quel caso si ricalcola a posteriori dal JSON,
+    perche' record_dp/epochs/fl_rounds/batch_size sono comunque salvati.
+    """
+    ml = cfg.get("ml", {}) if isinstance(cfg.get("ml"), dict) else cfg
+    rdp_cfg = ml.get("record_dp") or {}
+    out = {
+        "record_dp": rdp_cfg or None,
+        "norm": ml.get("norm", "batch"),
+        "batch_size": ml.get("batch_size"),
+        "n_train_sessions": n_sessions,
+        "epsilon_record_dp": None,
+        "record_dp_accounting_note": None,
+    }
+    if not rdp_cfg.get("enabled"):
+        out["record_dp_accounting_note"] = (
+            "record-DP disattivo: il campo 'epsilon' si riferisce al "
+            "meccanismo client-level (weight perturbation)."
+        )
+        return out
+
+    sigma = float(rdp_cfg.get("noise_multiplier", 0.0))
+    batch = int(ml.get("batch_size", 32) or 32)
+    epochs = int(ml.get("epochs", 1) or 1)
+    rounds = int(cfg.get("fl_rounds", 1) or 1)
+    delta = float(cfg.get("delta", 1e-5) or 1e-5)
+
+    if not n_sessions or sigma <= 0.0:
+        out["record_dp_accounting_note"] = (
+            "record-DP attivo ma epsilon non calcolato "
+            f"(n_sessions={n_sessions}, sigma={sigma}). "
+            "ATTENZIONE: il campo 'epsilon' NON si applica a questa cella."
+        )
+        return out
+
+    try:
+        from dp_accounting import dp_event, rdp as _rdp
+        steps = (n_sessions // batch) * epochs * rounds
+        acc = _rdp.RdpAccountant()
+        acc.compose(
+            dp_event.PoissonSampledDpEvent(
+                batch / n_sessions, dp_event.GaussianDpEvent(sigma)),
+            steps,
+        )
+        out["epsilon_record_dp"] = float(acc.get_epsilon(target_delta=delta))
+        out["record_dp_accounting_note"] = (
+            f"epsilon_record_dp = {out['epsilon_record_dp']:.4g} "
+            f"(RDP accountant, Poisson subsampling q={batch/n_sessions:.5f}, "
+            f"{steps} passi, sigma={sigma}, delta={delta}). "
+            "Questo, NON il campo 'epsilon', e' il budget di questa cella."
+        )
+    except ImportError:
+        out["record_dp_accounting_note"] = (
+            "record-DP attivo; 'dp-accounting' non installato, epsilon da "
+            "calcolare a posteriori. Il campo 'epsilon' NON si applica."
+        )
+    except Exception as exc:  # pragma: no cover
+        out["record_dp_accounting_note"] = (
+            f"record-DP attivo; accountant fallito ({exc}). "
+            "Il campo 'epsilon' NON si applica."
+        )
+    return out
+
 def _autoencoder_arch_kwargs(cfg: dict) -> dict[str, Any]:
     """
     Estrae hidden_dims/latent_dim opzionali da cfg['ml'] per istanziare
@@ -80,6 +152,17 @@ def _autoencoder_arch_kwargs(cfg: dict) -> dict[str, Any]:
     return {
         "hidden_dims": tuple(hidden_dims) if hidden_dims is not None else None,
         "latent_dim": ml_cfg.get("latent_dim", 4),
+        # norm (Sprint 10zz+115): parametro ARCHITETTURALE a tutti gli effetti,
+        # e quindi di competenza di questa funzione. BatchNorm1d contribuisce
+        # 4 tensori per layer allo state_dict (weight, bias, running_mean,
+        # running_var, + num_batches_tracked), GroupNorm solo 2: con
+        # hidden_dims=(32,16) sono 22 voci contro 16. Se il target gira in
+        # "group" (obbligatorio con record_dp, vedi src/core/autoencoder.py) e
+        # i modelli ricostruiti qui nascono in "batch", ogni attacco salta con
+        # "global_weights ha 16 elementi, state_dict ne richiede 22" e il run
+        # non produce alcuna misura. E' esattamente la classe di mismatch che
+        # questa funzione esiste per prevenire.
+        "norm": str(ml_cfg.get("norm", "batch")),
     }
 
 
@@ -6490,6 +6573,11 @@ def save_results(
             "epsilon_cumulative_advanced": _epsilon_advanced,
             "delta_cumulative_advanced":   _delta_advanced,
             "epsilon_cumulative_best_known": _epsilon_best_known,
+            # Sprint 10zz+117: record_dp/norm/epsilon_record_dp. Senza questi un
+            # JSON record-DP e' indistinguibile da uno no-DP, e il campo
+            # 'epsilon' qui sopra (client-level) viene letto come budget della
+            # cella, che e' falso: a sigma=1.0 il budget reale vale ~88, non 1.0.
+            **_record_dp_fields(cfg),
         },
         "summary": {
             # Yeom 2018 — loss-based MIA sul modello globale (baseline debole)
