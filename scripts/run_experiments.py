@@ -6388,6 +6388,10 @@ def save_results(
     fl_results: dict[int, dict[str, Any]] | None = None,
     sweep_dir: Path | None = None,
     extra_summary: dict[str, Any] | None = None,
+    # Sprint 10zz+118: serve a _record_dp_fields() per chiamare
+    # l'accountant RDP. Opzionale: senza, epsilon_record_dp resta
+    # None e la nota nel JSON lo dichiara.
+    n_train_sessions: int | None = None,
 ) -> Path:
     """
     Salva risultati in experiments/ (o sweep_dir) con timestamp.
@@ -6577,7 +6581,7 @@ def save_results(
             # JSON record-DP e' indistinguibile da uno no-DP, e il campo
             # 'epsilon' qui sopra (client-level) viene letto come budget della
             # cella, che e' falso: a sigma=1.0 il budget reale vale ~88, non 1.0.
-            **_record_dp_fields(cfg),
+            **_record_dp_fields(cfg, n_train_sessions),
         },
         "summary": {
             # Yeom 2018 — loss-based MIA sul modello globale (baseline debole)
@@ -7251,6 +7255,7 @@ def main() -> None:
     save_results(
         cfg, mia_results, ids_results, fl_results,
         sweep_dir=sweep_dir, extra_summary=_extra_summary,
+        n_train_sessions=len(train_sessions),
     )
 
     logger.info("=" * 60)
