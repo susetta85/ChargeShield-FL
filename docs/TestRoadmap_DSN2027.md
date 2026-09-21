@@ -1,5 +1,105 @@
 # Test Roadmap — DSN 2027 (creato 2026-08-27)
 
+## Prossimi esperimenti — 2026-09-21 (dopo il risultato worst-case)
+
+Ordine di priorita' derivato da `risultati/Matrice_sintesi.xlsx` e da
+`docs/VulnerabilitaPerRecord.md`. I primi due sono la condizione perche' il
+segnale worst-case trovato senza DP diventi una risposta a RQ1.
+
+### E-A — sweep di epsilon nella zona del ginocchio (PRIORITA' ALTA)
+
+**Domanda.** Esiste un epsilon in cui la DP e' attiva E il modello funziona
+ancora? Senza una cella cosi', "nessun segnale sotto DP" non distingue
+"la DP protegge" da "il modello non impara, quindi non espone".
+
+**Perche' proprio 2-16.** La loss finale e' 2.6x il riferimento a eps=16,
+4.6x a eps=8, ma 128x a eps=1: il ginocchio sta in mezzo, e li' abbiamo due
+soli punti, entrambi a un seed solo e marcati diagnostici.
+
+**Risultato atteso.** Una curva costo-privacy con almeno un punto in cui il
+costo e' accettabile. Se il costo resta oltre 50x a ogni epsilon fino a 16,
+la conclusione da scrivere e' che in questo regime la DP client-level non ha
+un punto operativo utile, il che e' comunque un risultato.
+
+```bash
+caffeinate -ims bash -c '
+set -e
+for e in 2 4 8 16; do
+  for s in 42 123 456 789 1234; do
+    python3 scripts/run_experiments.py \
+      --config config/experiment_rq1_eps$e.yaml --rounds 10 --seed $s \
+      --sweep-dir experiments/rq1-eps$e \
+      --per-sample-dump experiments/rq1-eps$e/per_sample_seed$s.json
+  done
+done' 2>&1 | tee logs/rq1_eps_sweep.log
+```
+
+Il `--per-sample-dump` non e' opzionale: senza, su queste celle l'analisi
+worst-case non si puo' fare, ed e' proprio li' che diventa informativa.
+
+### E-B — record-level DP in regime naturale (PRIORITA' ALTA)
+
+**Domanda.** Il confronto client-level contro record-level, che e' il cuore
+di RQ1 perche' il meccanismo protegge il client mentre l'attacco misura il
+record.
+
+**Stato.** Non esiste. Le 10 run record-DP presenti sono TUTTE in regime
+canary, tutte con noise_multiplier=5.0, su 3 seed (42/123/456).
+
+```bash
+caffeinate -ims bash -c '
+set -e
+for nm in 0.5 1 2; do
+  for s in 42 123 456 789 1234; do
+    python3 scripts/run_experiments.py \
+      --config config/experiment_rq1_recorddp_nm$nm.yaml --rounds 10 --seed $s \
+      --sweep-dir experiments/rq1-recorddp-nm$nm \
+      --per-sample-dump experiments/rq1-recorddp-nm$nm/per_sample_seed$s.json
+  done
+done' 2>&1 | tee logs/rq1_recorddp.log
+```
+
+Piu' lento del client-level: record_dp implementa DP-SGD vero con clipping
+per-esempio (microbatch da 1). noise_multiplier NON e' epsilon; l'epsilon
+corrispondente finisce nel JSON come `epsilon_record_dp`.
+
+### E-C — worst-case su tutte le celle nuove (analisi, nessun training)
+
+```bash
+python3 scripts/worst_case_livello_di_caso.py \
+  --gruppo "no-DP=experiments/nodp-sweep2" \
+  $(for e in 2 4 8 16; do echo --gruppo "eps$e=experiments/rq1-eps$e"; done) \
+  $(for nm in 0.5 1 2; do echo --gruppo "recordDP_nm$nm=experiments/rq1-recorddp-nm$nm"; done) \
+  --permutazioni 200 --output risultati/worst_case/livello_di_caso.json
+python3 scripts/genera_matrici_faseA.py
+```
+
+### E-D — RQ2, riferimento IID (PRIORITA' MEDIA)
+
+Config appaiati gia' pronti, identici tranne `partition.strategy`:
+
+```bash
+for strat in per_site iid; do
+  for s in 42 123 456 789 1234; do
+    python3 scripts/run_experiments.py \
+      --config config/experiment_rq2_$strat.yaml --rounds 10 --seed $s \
+      --sweep-dir experiments/rq2-$strat
+  done
+done 2>&1 | tee logs/rq2_partizione.log
+```
+
+### E-E — RQ3, braccio mu=0 (PRIORITA' ALTA, ma dipende da E-A)
+
+Da eseguire DOPO E-A, riusando la configurazione che E-A avra' indicato come
+punto operativo: la guida (Fase D) chiede di riutilizzare split, candidati,
+checkpoint e condizioni DP della Fase B. Serve un config con
+`ml.proximal_mu: 0.0` appaiato a quello a 0.01. Nota: il campo vive in
+`cfg["ml"]`, non in `cfg["experiment"]` — impostarlo nel posto sbagliato
+verrebbe ignorato in silenzio.
+
+---
+
+
 Stato di tutti i test necessari prima della submission: cosa va ripetuto per validare i risultati
 post-fix (README Sprint 10x–10dd), cosa è nuovo e necessario per rispondere ai punti sollevati
 dalla revisione esterna del 2026-08-27, e cosa è opzionale/stretch entro la deadline abstract

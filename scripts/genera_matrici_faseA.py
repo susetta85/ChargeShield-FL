@@ -694,6 +694,83 @@ def scrivi_worst_case():
     return ws.max_row - 1
 
 
+
+def scrivi_glossario():
+    """Glossario delle metriche che compaiono nelle matrici.
+
+    Esiste perche' due numeri di queste tabelle NON si leggono da soli:
+    lo z della vulnerabilita' per record, e il limite teorico della DP.
+    Chi apre il foglio senza il contesto rischia di leggerli al contrario.
+    """
+    p = os.path.join(USCITA, "Matrice_sintesi.xlsx")
+    wb = openpyxl.load_workbook(p)
+    ws = wb.create_sheet("Glossario_metriche")
+    ws.append(["termine", "definizione", "come si legge", "dove compare",
+               "documento di riferimento"])
+    voci = [
+        ("z (vulnerabilita' per record)",
+         "Quante deviazioni standard il numero di record segnalati dista dalla media "
+         "dei conteggi ottenuti permutando i percentili DENTRO ogni seed. La "
+         "permutazione conserva la distribuzione dei punteggi di ogni seed e "
+         "distrugge solo la corrispondenza FRA seed, che e' cio' che il criterio "
+         "misura. Formula: z = (osservati - media permutata) / dev.std. permutata.",
+         "z ~ 0 -> il conteggio e' quello che il caso produce, nessuna vulnerabilita' "
+         "rilevabile con questo criterio. z > 3 -> eccesso reale: esiste un "
+         "sottoinsieme di record sistematicamente nel decile alto su seed "
+         "indipendenti. Lo z dice quanto e' improbabile il caso, NON quanto grave "
+         "sia l'esposizione: per quella si guardano l'eccesso assoluto e la %.",
+         "foglio Worst_case_per_record", "docs/VulnerabilitaPerRecord.md sez. 3"),
+        ("record segnalati",
+         "Sessioni reali che sono membro in almeno 2 seed, con percentile medio del "
+         "punteggio d'attacco >= 90 e percentile minimo >= 75. Le soglie sono "
+         "dichiarate in anticipo e non ottimizzate sui risultati.",
+         "Da confrontare SEMPRE con 'attesi per caso'. Il conteggio da solo non e' "
+         "un risultato: con migliaia di sessioni e soglia al 90 percentile un certo "
+         "numero di coincidenze e' garantito.",
+         "foglio Worst_case_per_record", "docs/VulnerabilitaPerRecord.md sez. 2"),
+        ("AUC max teorica",
+         "Tetto che la garanzia (eps,delta)-DP pone sull'AUC di QUALUNQUE attacco: "
+         "0.5 + Adv/2 con Adv = (e^eps - 1 + 2delta)/(e^eps + 1) (Humphries et al.). "
+         "Calcolata sull'eps CUMULATIVO T*eps, non su quello per round, perche' deve "
+         "coprire il transcript che l'avversario osserva davvero.",
+         "A eps_tot = 10 vale 0.99996: il bound e' VACUO, non esclude quasi nulla. "
+         "Dire 'siamo sotto il limite teorico' e' vero e privo di contenuto. Va usato "
+         "al contrario: la distanza fra permesso e misurato quantifica quanto la "
+         "garanzia formale sia lasca rispetto al comportamento reale.",
+         "foglio Utility_privacy_limite", "docs/LimiteTeoricoDP.md"),
+        ("x rispetto a no-DP",
+         "Rapporto fra la loss finale sull'holdout naturale della cella e quella "
+         "della cella senza DP. E' la misura di costo.",
+         "Oltre 50x significa utility distrutta. In quelle celle un nullo di privacy "
+         "NON distingue 'la DP protegge' da 'il modello non impara, quindi non "
+         "memorizza e non espone'. Le due spiegazioni non sono separabili.",
+         "foglio Utility_privacy_limite", "docs/LimiteTeoricoDP.md sez. 3"),
+        ("A0 / A1 / A2 / A3",
+         "Punti di osservazione dell'avversario sulla stessa pipeline di "
+         "privatizzazione. A0 = nessuna DP. A1 = update grezzo g (dp-fedavg). "
+         "A2 = update clippato (central). A3 = update clippato e rumorizzato (local).",
+         "Sono ORDINATI per informazione: A2 e A3 si ottengono da A1 con "
+         "trasformazioni che distruggono informazione. Chi osserva A1 puo' calcolarsi "
+         "A2 e A3; il contrario e' impossibile. Quindi un nullo ad A1 limita anche "
+         "gli altri due: non c'era segnale da sopprimere.",
+         "registro run, colonna superficie dell'attacco",
+         "docs/paper/latex_dsn2027/sections/threat_model.tex"),
+        ("stato di validita'",
+         "I cinque stati previsti dalla guida: verificata, completata da verificare, "
+         "invalidata, incompleta, pianificata.",
+         "'completata da verificare' e' lo stato di default e NON significa "
+         "sospetta: significa che la tracciabilita' completa richiesta dalla Fase A "
+         "non e' ricostruibile, perche' commit e hash degli split non erano "
+         "registrati prima del 2026-09-21.",
+         "registro run", "ChargeShield_FL_spina_dorsale_consolidata.md riga 150"),
+    ]
+    for v in voci:
+        ws.append(list(v))
+    stile(ws, [26, 76, 76, 30, 34], 150)
+    wb.save(p)
+    return len(voci)
+
+
 def main():
     os.makedirs(USCITA, exist_ok=True)
     righe = leggi_run()
@@ -703,12 +780,14 @@ def main():
     n4 = scrivi_costo_per_sito()
     n5 = scrivi_utility_privacy()
     n6 = scrivi_worst_case()
+    n7 = scrivi_glossario()
     print(f"registro run   : {n1} righe -> {p1}")
     print(f"confrontabilita: {n2} righe -> {p2}")
     print(f"sintesi        : {n3} righe -> {p3}")
     print(f"costo per sito : {n4} righe (foglio in Matrice_sintesi)")
     print(f"utility/privacy: {n5} righe (foglio in Matrice_sintesi)")
     print(f"worst-case     : {n6} righe (foglio in Matrice_sintesi)")
+    print(f"glossario      : {n7} voci (foglio in Matrice_sintesi)")
     stati = defaultdict(int)
     for r in righe:
         stati[r["stato"]] += 1

@@ -1,6 +1,17 @@
 # Canary Positive Control — protocollo, confondente, baseline
 
-Stato: 2026-09-16, Sprint 10zz+118. **Controllo superato** — vedi §6.
+Stato: 2026-09-21, Sprint 10zz+121. **Controllo superato** — vedi §6.
+
+> **Nota di collegamento (2026-09-21).** Questo documento riguarda la
+> validazione dello STRUMENTO in regime canary indotto. Il primo segnale di
+> membership su dati NATURALI e' un risultato distinto ed e' in
+> `docs/VulnerabilitaPerRecord.md`: senza DP, 412 record risultano
+> sistematicamente esposti contro 290 attesi per caso (z = 7.56), mentre
+> l'AUC aggregata nella stessa cella vale 0.5096. I due risultati non vanno
+> mescolati: la guida (Fase C) vieta esplicitamente di usare il canary per
+> certificare il null naturale, e simmetricamente il segnale naturale non ha
+> bisogno del canary per reggersi.
+
 Riferimenti codice: `inject_canaries()` e `_sample_preserving_canary_groups()`
 in `scripts/run_experiments.py`; `scripts/check_canary_init_confound.py`.
 Riferimenti paper: `sections/validation.tex` (Instrument Validation), §9

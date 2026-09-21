@@ -1,5 +1,21 @@
 # Reference metriche — DSN 2027
 
+## Metriche aggiunte il 2026-09-21
+
+| metrica | che cosa misura | documento |
+|---|---|---|
+| **z (vulnerabilita' per record)** | Quante deviazioni standard il numero di record segnalati dista dal livello di caso, ottenuto permutando i percentili dentro ogni seed. z~0 = il conteggio e' quello del caso; z>3 = eccesso reale. Dice quanto e' improbabile il caso, NON quanto grave sia l'esposizione. | `docs/VulnerabilitaPerRecord.md` sez. 3 |
+| **record segnalati** | Sessioni membro in >=2 seed con percentile medio >=90 e minimo >=75. Da leggere SEMPRE accanto agli attesi per caso. | `docs/VulnerabilitaPerRecord.md` sez. 2 |
+| **AUC max teorica** | Tetto che (eps,delta)-DP pone su qualunque attacco, calcolato sull'eps CUMULATIVO T*eps. Ai nostri valori e' vacuo (0.99996 a eps_tot=10): va usato per misurare quanto la garanzia sia lasca, non come conferma di sicurezza. | `docs/LimiteTeoricoDP.md` |
+
+Perche' stanno qui e non solo nei documenti dedicati: sono le due quantita'
+delle matrici che NON si leggono da sole e che, lette al contrario, portano a
+conclusioni sbagliate in direzioni opposte — lo z sottostimando un segnale
+reale, il bound teorico dichiarando una sicurezza che non c'e'.
+
+---
+
+
 Status: **documento vivo, verificato leggendo il codice reale (non a memoria), 2026-09-02.**
 Per ogni metrica: dove è implementata, in quali lavori è usata/da cui deriva, perché la usiamo,
 formula esatta. Le citazioni sono limitate a quelle già verificate (full-text o abstract-confirmed)
