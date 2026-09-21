@@ -28,6 +28,13 @@
 \newtheorem{definition}{Definition}
 \usepackage{hyperref}
 
+\usepackage{comment}
+\setlength{\marginparwidth}{2cm}
+\usepackage{todonotes}
+\newcommand{\Proffy}[2][]{\todo[color=red!50, , inline, #1]{\textbf{Proffy:} #2}}
+\newcommand{\Susy}[2][]{\todo[color=green!50, , inline, #1]{\textbf{Susy:} #2}}
+
+
 %\usepackage{algpseudocode}
 
 % Definizione personalizzata per il comando \Require e \Ensure se non riconosciuti
@@ -36,9 +43,7 @@
 %\algnewcommand\algorithmicensure{\textbf{Ensure:}}
 %\algnewcommand\Ensure{\item[\algorithmicensure]}
 
-\title{ChargeShield-FL: An Event-Driven ML Plane and Privacy Auditor
-for Measuring Differential-Privacy Effectiveness Against Membership
-Inference in Federated EV-Charging Systems}
+\title{CChargeShield-FL: An Event-Driven Framework for Empirical Privacy Auditing in FL-Enabled OT Systems}
 
 % \titlerunning{ChargeShield-FL: An Event-Driven ML Plane and Privacy Auditor for Measuring Differential-Privacy Effectiveness Against Membership Inference in Federated EV-Charging Systems for Measuring Differential-Privacy Effectiveness Against Membership Inference in Federated EV-Charging Systems}
 

@@ -53,7 +53,7 @@ Fonti dei dati citati:
 >
 > Riportiamo questo caso come illustrazione e non come statistica: con cinque
 > template identificati su quaranta è per costruzione aneddotico, e la misura
-> resta quella sull'intero dataset riportata sopra.
+> resta quella sull'intero dataset riportata sopra.ChargeShield-FL, un framework per la valutazione e l’auditing della privacy in sistemi FL
 >
 > **Perché non valutiamo la DP a livello di soggetto.** Il rimedio naturale
 > sarebbe limitare il contributo aggregato di ciascun soggetto, il che richiede

@@ -14,13 +14,13 @@
         "auditor_config_path": "config/auditor.yaml",
         "min_clients": 3,
         "max_grad_norm": 1.0,
-        "epsilon": 0.5,
+        "epsilon": 0.1,
         "delta": 1e-05,
         "byzantine_tolerance": 0,
         "cosine_threshold": 0.3,
         "krum_threshold": 3.5,
-        "dp_mode": "central",
-        "seed": 789,
+        "dp_mode": "dp-fedavg",
+        "seed": 1234,
         "results_export_path": "experiments/nvflare_ids_audit_results.json",
         "fl_results_export_path": "experiments/nvflare_fl_results.pkl"
       }

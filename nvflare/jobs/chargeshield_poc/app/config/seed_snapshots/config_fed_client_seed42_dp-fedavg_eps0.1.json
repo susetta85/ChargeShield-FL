@@ -15,7 +15,7 @@
           "epochs": 50,
           "batch_size": 32,
           "proximal_mu": 0.01,
-          "seed": 1234,
+          "seed": 42,
           "dataset_path": "datasets/acn",
           "dp_mode": "dp-fedavg",
           "epsilon": 0.1,
