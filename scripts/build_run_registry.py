@@ -32,7 +32,12 @@ def rq_di(cfg, sweep):
     if cfg.get("proximal_mu") is not None:
         rq.append("RQ3?")
     # canary: metodologia, non RQ
-    if "canary" in sweep.lower() or cfg.get("canary", {}).get("enabled"):
+    # NOTA: `cfg.get("canary", {})` NON basta. Dallo Sprint 10zz+113 il blocco
+    # canary viene salvato nel JSON anche quando i canary sono disabilitati, e
+    # in quel caso vale esattamente `null` -> in Python `None`. Il default di
+    # .get() scatta solo se la CHIAVE manca, non se il valore e' None, quindi
+    # si finisce a chiamare .get() su None. Serve `or {}`.
+    if "canary" in sweep.lower() or (cfg.get("canary") or {}).get("enabled"):
         rq.append("CTRL")
     return "+".join(rq) if rq else "?"
 
