@@ -83,6 +83,29 @@ def main():
         "l'executor live inietta solo i member, mai i nonmember).",
     )
 
+    # Record-level DP (2026-09-21). Opt-in: senza --record-dp nulla cambia.
+    # Serve a rendere eseguibile su NVFLARE il confronto client-level contro
+    # record-level, che e' il cuore della RQ1 — il meccanismo protegge il
+    # CLIENT, gli attacchi misurano il RECORD — e che finora esisteva solo in
+    # simulazione, perche' ne' l'Executor ne' config_fed_client.json avevano
+    # il blocco.
+    p.add_argument(
+        "--record-dp", action="store_true",
+        help="Attiva il clipping del gradiente PER ESEMPIO (DP-SGD, Abadi et "
+             "al. 2016) dentro il training locale, al posto del solo clipping "
+             "per-client. Molto piu' lento: microbatch da 1.",
+    )
+    p.add_argument(
+        "--record-dp-noise-multiplier", type=float, default=1.0,
+        help="Moltiplicatore di rumore per il record-DP. NON e' epsilon: "
+             "l'epsilon corrispondente va calcolato a posteriori. Non "
+             "confonderlo con --epsilon, che riguarda il DP client-level.",
+    )
+    p.add_argument(
+        "--record-dp-max-grad-norm", type=float, default=1.0,
+        help="Norma di clipping per-esempio del record-DP.",
+    )
+
     # ChargePlace Scotland (task #37). Default invariato = adapter 'acn'.
     p.add_argument("--dataset-adapter", choices=VALID_ADAPTERS, default="acn")
     p.add_argument("--scotland-metadata-dir", default=None)
@@ -133,6 +156,20 @@ def main():
     client_args["seed"] = args.seed
     client_args["dp_mode"] = args.dp_mode
     client_args["epsilon"] = args.epsilon
+
+    # Record-level DP (2026-09-21). Scritto SEMPRE, anche disattivato, cosi'
+    # il config e' auto-descrittivo: un JSON senza la chiave e uno con
+    # enabled=false dicono la stessa cosa, ma solo il secondo lo dice
+    # esplicitamente, e la Fase A ha mostrato quanto costi non registrare le
+    # scelte. norm='group' e' obbligatorio con il clipping per-esempio
+    # (BatchNorm richiede batch>1 e non limita la sensibilita' per-record):
+    # lo impostiamo qui invece di lasciarlo forzare con un warning a runtime.
+    client_args["record_dp"] = {
+        "enabled": bool(args.record_dp),
+        "max_grad_norm": args.record_dp_max_grad_norm,
+        "noise_multiplier": args.record_dp_noise_multiplier if args.record_dp else 0.0,
+    }
+    client_args["norm"] = "group" if args.record_dp else "batch"
 
     if args.canary_enabled:
         canary_cfg: dict[str, Any] = {
@@ -191,6 +228,12 @@ def main():
         suffix += "_canary"
     if args.dataset_adapter == "chargeplace_scotland":
         suffix += "_scotland"
+    # Suffisso record-DP (2026-09-21), stessa motivazione dei due sopra: senza,
+    # uno snapshot record-DP sovrascriverebbe in silenzio quello client-level
+    # con lo stesso seed/dp_mode/epsilon, che e' proprio la coppia che il
+    # confronto RQ1 deve tenere distinta.
+    if args.record_dp:
+        suffix += f"_recorddp-nm{args.record_dp_noise_multiplier:g}"
     snapshot_path = (
         SNAPSHOT_DIR
         / f"config_fed_client_seed{args.seed}_{args.dp_mode}_eps{args.epsilon}{suffix}.json"

@@ -531,6 +531,8 @@ class ChargeShieldExecutor(Executor):
         epsilon: float = 1.0,
         delta: float = 1.0e-5,
         max_grad_norm: float = 1.0,
+        record_dp: dict[str, Any] | None = None,
+        norm: str | None = None,
     ):
         super().__init__()
         self._cluster_id = cluster_id
@@ -545,6 +547,50 @@ class ChargeShieldExecutor(Executor):
             "proximal_mu": proximal_mu,
             "seed": seed,
         }
+
+        # ── record-level DP (2026-09-21) ────────────────────────────────────
+        # PERCHE' ESISTE. Fino a oggi il record-level DP era eseguibile SOLO in
+        # simulazione: ne' questo Executor ne' config_fed_client.json avevano il
+        # blocco, quindi il confronto client-level contro record-level — che e'
+        # il cuore della RQ1, perche' il meccanismo protegge il CLIENT mentre
+        # gli attacchi misurano il RECORD — non era riproducibile sul
+        # deployment reale.
+        #
+        # COME FUNZIONA. AutoencoderTrainer legge config["record_dp"] (vedi
+        # src/ml/autoencoder_trainer.py righe 106-113) e, se enabled, usa
+        # _train_step_record_dp(): clipping del gradiente PER ESEMPIO con
+        # microbatch da 1 e rumore gaussiano sulla somma dei gradienti clippati
+        # (DP-SGD, Abadi et al. 2016). E' il meccanismo giusto per l'adiacenza
+        # record-level, ed e' molto piu' lento del clipping per-client.
+        #
+        # DUE AVVERTENZE, entrambe verificate nel codice della simulazione.
+        # (1) norm DEVE essere "group": BatchNorm richiede batch>1 e non limita
+        #     la sensibilita' per-record, quindi con microbatch da 1 la garanzia
+        #     sarebbe silenziosamente invalida. Il trainer lo forza emettendo un
+        #     warning; qui lo rendiamo esplicito passandolo, cosi' la scelta e'
+        #     visibile nel config invece che nascosta in un warning di runtime.
+        # (2) noise_multiplier NON e' epsilon. L'epsilon corrispondente va
+        #     calcolato a posteriori ed e' riportato come epsilon_record_dp nei
+        #     risultati della simulazione. NON confonderlo con il campo
+        #     `epsilon` qui sopra, che appartiene al DP client-level.
+        #
+        # INTERAZIONE CON dp_mode. I due meccanismi sono INDIPENDENTI e possono
+        # essere attivi insieme: record_dp agisce dentro il training locale,
+        # dp_mode agisce sull'update che lascia il client. Attivarli entrambi
+        # significa comporre due garanzie su adiacenze diverse, cosa che questo
+        # progetto non ha ancora analizzato: per il confronto RQ1 se ne attiva
+        # UNO alla volta.
+        _rdp = record_dp or {}
+        self._record_dp_enabled = bool(_rdp.get("enabled", False))
+        if self._record_dp_enabled:
+            self._trainer_cfg["record_dp"] = {
+                "enabled": True,
+                "max_grad_norm": float(_rdp.get("max_grad_norm", 1.0)),
+                "noise_multiplier": float(_rdp.get("noise_multiplier", 0.0)),
+            }
+            self._trainer_cfg["norm"] = norm or "group"
+        elif norm:
+            self._trainer_cfg["norm"] = norm
         self._dataset_path = dataset_path
         self._train_task_name = train_task_name
 
