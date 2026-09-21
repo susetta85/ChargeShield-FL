@@ -1,0 +1,58 @@
+{
+  "parametri": {
+    "permutazioni": 200,
+    "soglia": 90.0,
+    "pavimento": 75.0,
+    "min_seed": 2
+  },
+  "gruppi": {
+    "no-DP": {
+      "cartella": "experiments/nodp-sweep2",
+      "n_seed": 5,
+      "sessioni_multi_seed": 17561,
+      "osservati": 412,
+      "attesi_per_caso": 289.95,
+      "sd_nulla": 16.15,
+      "z": 7.559,
+      "eccesso_assoluto": 122.0,
+      "percentuale_osservata": 2.346,
+      "percentuale_attesa": 1.651
+    },
+    "dp-fedavg_eps1": {
+      "cartella": "experiments/dp-sweep4",
+      "n_seed": 5,
+      "sessioni_multi_seed": 17561,
+      "osservati": 290,
+      "attesi_per_caso": 289.75,
+      "sd_nulla": 15.88,
+      "z": 0.016,
+      "eccesso_assoluto": 0.2,
+      "percentuale_osservata": 1.651,
+      "percentuale_attesa": 1.65
+    },
+    "central_eps1": {
+      "cartella": "experiments/central-sweep5",
+      "n_seed": 5,
+      "sessioni_multi_seed": 17561,
+      "osservati": 299,
+      "attesi_per_caso": 289.9,
+      "sd_nulla": 14.74,
+      "z": 0.617,
+      "eccesso_assoluto": 9.1,
+      "percentuale_osservata": 1.703,
+      "percentuale_attesa": 1.651
+    },
+    "local_eps1": {
+      "cartella": "experiments/local-sweep3",
+      "n_seed": 5,
+      "sessioni_multi_seed": 17561,
+      "osservati": 291,
+      "attesi_per_caso": 289.79,
+      "sd_nulla": 17.34,
+      "z": 0.07,
+      "eccesso_assoluto": 1.2,
+      "percentuale_osservata": 1.657,
+      "percentuale_attesa": 1.65
+    }
+  }
+}

@@ -575,6 +575,125 @@ def scrivi_costo_per_sito():
     return len(righe)
 
 
+
+def scrivi_utility_privacy():
+    """Griglia utility x privacy x limite teorico (2026-09-21).
+
+    Tre cose in un foglio solo, perche' vanno lette insieme:
+      - il COSTO (loss finale sull'holdout, rapporto rispetto al no-DP)
+      - la PRIVACY misurata (Yeom, Shadow, LiRA, LiRA composto, TPR@1%FPR)
+      - il LIMITE TEORICO che la garanzia (eps,delta) permetterebbe
+    Il limite usa l'epsilon CUMULATIVO su T round (composizione base,
+    eps_tot = T*eps), non l'epsilon per round: e' quello che copre il
+    transcript che l'avversario osserva davvero.
+    """
+    import math
+    p = os.path.join(USCITA, "Matrice_sintesi.xlsx")
+    wb = openpyxl.load_workbook(p)
+    ws = wb.create_sheet("Utility_privacy_limite")
+    ws.append(["cella", "n run", "loss finale", "x rispetto a no-DP",
+               "Yeom", "Shadow", "LiRA", "LiRA composto", "TPR@1%FPR",
+               "eps per round", "eps_tot (T=10, base)",
+               "Adv max teorica", "AUC max teorica", "lettura"])
+    celle = defaultdict(list)
+    for f in sorted(glob.glob(os.path.join(RADICE, "experiments", "*", "experiment_*.json"))):
+        sw = os.path.basename(os.path.dirname(f))
+        j = json.load(open(f)); c = j.get("config") or {}
+        if (c.get("canary") or {}).get("enabled") or "canary" in sw.lower():
+            continue
+        if c.get("record_dp"):
+            continue
+        pr = j.get("per_round") or {}; su = j.get("summary") or {}
+        if not pr:
+            continue
+        ult = max(pr, key=int)
+        loss = [pr[r].get("fl", {}).get("mean_loss") for r in sorted(pr, key=int)]
+        loss = [x for x in loss if x is not None]
+        k = ("no-DP", None) if c.get("no_dp") else (c.get("dp_mode"), c.get("epsilon"))
+        celle[k].append((loss[-1] if loss else None, su.get("mean_auc_roc"),
+                         su.get("mean_shadow_auc_roc"), su.get("mean_lira_auc_roc"),
+                         pr[ult].get("mia", {}).get("composed_lira_auc_roc"),
+                         pr[ult].get("mia", {}).get("composed_tpr_at_fpr_0.01")))
+
+    def med(v, i):
+        x = [t[i] for t in v if t[i] is not None]
+        return sum(x) / len(x) if x else None
+
+    base = med(celle.get(("no-DP", None), []), 0)
+    for k in sorted(celle, key=lambda t: (str(t[0]), -(t[1] or 0))):
+        v = celle[k]
+        lf = med(v, 0)
+        eps = k[1]
+        if eps:
+            et = 10 * eps
+            adv = (math.exp(et) - 1) / (math.exp(et) + 1)
+            teo = [eps, et, round(adv, 6), round(0.5 + adv / 2, 6)]
+            lettura = ("bound VACUO: a questo eps cumulativo la garanzia permette "
+                       "un attacco quasi perfetto, quindi 'siamo sotto il limite' "
+                       "non e' informativo")
+        else:
+            teo = [None, None, None, None]
+            lettura = "riferimento senza DP: nessuna garanzia da confrontare"
+        rap = round(lf / base, 1) if (lf and base) else None
+        if rap and rap > 50:
+            lettura = ("UTILITY DISTRUTTA (loss oltre 50x il riferimento): un nullo "
+                       "di privacy qui non distingue 'DP protegge' da 'il modello "
+                       "non impara, quindi non memorizza'. " + lettura)
+        ws.append([f"{k[0]}" + (f" eps={eps}" if eps else ""), len(v),
+                   round(lf, 6) if lf else None, rap,
+                   round(med(v, 1) or 0, 4), round(med(v, 2) or 0, 4),
+                   round(med(v, 3) or 0, 4), round(med(v, 4) or 0, 4),
+                   round(med(v, 5) or 0, 4), *teo, lettura])
+    stile(ws, [22, 7, 13, 16, 9, 9, 9, 13, 11, 13, 18, 15, 16, 70], 80)
+    for r in range(2, ws.max_row + 1):
+        rap = ws.cell(r, 4).value
+        if rap and rap > 50:
+            ws.cell(r, 4).fill = ROSSO
+        elif rap:
+            ws.cell(r, 4).fill = GIALLO
+    wb.save(p)
+    return ws.max_row - 1
+
+
+def scrivi_worst_case():
+    """Vulnerabilita' per record: osservato contro livello di caso."""
+    fjson = os.path.join(USCITA, "worst_case", "livello_di_caso.json")
+    if not os.path.exists(fjson):
+        return 0
+    d = json.load(open(fjson))
+    p = os.path.join(USCITA, "Matrice_sintesi.xlsx")
+    wb = openpyxl.load_workbook(p)
+    ws = wb.create_sheet("Worst_case_per_record")
+    ws.append(["gruppo", "n seed", "sessioni multi-seed", "record segnalati",
+               "attesi per caso", "sd", "z", "% osservata", "% attesa", "lettura"])
+    for et, r in d["gruppi"].items():
+        z = r.get("z")
+        if z is not None and z > 3:
+            let = ("ECCESSO REALE: esiste un sottoinsieme di record sistematicamente "
+                   "nel decile alto su seed indipendenti. Invisibile nell'AUC "
+                   "aggregata, che in questa cella e' ~0.51.")
+        else:
+            let = ("indistinguibile dal caso. ATTENZIONE: in questa cella l'utility "
+                   "e' distrutta (loss oltre 100x), quindi l'assenza di eccesso NON "
+                   "prova che la DP protegga: un modello che non impara non espone.")
+        ws.append([et, r["n_seed"], r["sessioni_multi_seed"], r["osservati"],
+                   r["attesi_per_caso"], r["sd_nulla"], z,
+                   r["percentuale_osservata"], r["percentuale_attesa"], let])
+    stile(ws, [22, 8, 20, 16, 16, 8, 9, 13, 12, 80], 76)
+    for r in range(2, ws.max_row + 1):
+        z = ws.cell(r, 7).value
+        ws.cell(r, 7).fill = ROSSO if (z and z > 3) else VERDE
+    par = d.get("parametri", {})
+    ws.append([])
+    ws.append([f"criterio: membro in >= {par.get('min_seed')} seed, percentile medio >= "
+               f"{par.get('soglia')}, percentile minimo >= {par.get('pavimento')}; "
+               f"livello di caso da {par.get('permutazioni')} permutazioni dei percentili "
+               f"DENTRO ogni seed (conserva la distribuzione marginale, distrugge solo "
+               f"la corrispondenza fra seed)"])
+    wb.save(p)
+    return ws.max_row - 1
+
+
 def main():
     os.makedirs(USCITA, exist_ok=True)
     righe = leggi_run()
@@ -582,10 +701,14 @@ def main():
     p2, n2 = scrivi_confronti(righe)
     p3, n3 = scrivi_sintesi(righe)
     n4 = scrivi_costo_per_sito()
+    n5 = scrivi_utility_privacy()
+    n6 = scrivi_worst_case()
     print(f"registro run   : {n1} righe -> {p1}")
     print(f"confrontabilita: {n2} righe -> {p2}")
     print(f"sintesi        : {n3} righe -> {p3}")
     print(f"costo per sito : {n4} righe (foglio in Matrice_sintesi)")
+    print(f"utility/privacy: {n5} righe (foglio in Matrice_sintesi)")
+    print(f"worst-case     : {n6} righe (foglio in Matrice_sintesi)")
     stati = defaultdict(int)
     for r in righe:
         stati[r["stato"]] += 1

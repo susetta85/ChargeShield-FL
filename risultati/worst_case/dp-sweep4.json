@@ -1,0 +1,3199 @@
+{
+  "n_seeds": 5,
+  "seed_files": [
+    "experiments/dp-sweep4/per_sample_seed123.json",
+    "experiments/dp-sweep4/per_sample_seed1234.json",
+    "experiments/dp-sweep4/per_sample_seed42.json",
+    "experiments/dp-sweep4/per_sample_seed456.json",
+    "experiments/dp-sweep4/per_sample_seed789.json"
+  ],
+  "threshold_percentile": 90.0,
+  "floor_percentile": 75.0,
+  "min_seeds": 2,
+  "n_sessions_seen_as_member": 44799,
+  "n_sessions_multi_seed": 17561,
+  "n_flagged_worst_case_vulnerable": 288,
+  "flagged": [
+    {
+      "session_id": "2_39_78_365_2018-09-03 01:21:28.791450",
+      "percentiles": [
+        99.92316341829086,
+        99.20721193492766
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 99.56518767660926,
+      "min_percentile": 99.20721193492766,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_92_436_2019-12-04 18:09:30.784619",
+      "percentiles": [
+        99.05352725091836,
+        99.63829228981596
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 99.34590977036717,
+      "min_percentile": 99.05352725091836,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_129_17_2018-10-19 02:56:18.205335",
+      "percentiles": [
+        99.65704647676162,
+        98.97481070545018
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 99.3159285911059,
+      "min_percentile": 98.97481070545018,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_362_2018-08-28 23:33:47.544968",
+      "percentiles": [
+        99.69827586206897,
+        98.71991903441038
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 99.20909744823967,
+      "min_percentile": 98.71991903441038,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_128_18_2018-06-22 16:25:12.695211",
+      "percentiles": [
+        99.06105926009221,
+        99.3421299246542
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 99.2015945923732,
+      "min_percentile": 99.06105926009221,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_129_17_2018-08-11 04:45:22.381781",
+      "percentiles": [
+        99.80697151424287,
+        98.25143371190825
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 99.02920261307557,
+      "min_percentile": 98.25143371190825,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_379_2018-09-20 23:52:33.614362",
+      "percentiles": [
+        99.74325337331334,
+        98.16890321613315
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 98.95607829472324,
+      "min_percentile": 98.16890321613315,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_124_22_2018-07-26 04:28:28.393070",
+      "percentiles": [
+        98.46502736337057,
+        99.34590299122873
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 98.90546517729965,
+      "min_percentile": 98.46502736337057,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_131_30_2018-08-01 20:15:56.582922",
+      "percentiles": [
+        98.02646375290502,
+        99.54455148629906
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 98.78550761960204,
+      "min_percentile": 98.02646375290502,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_131_30_2018-09-30 21:37:34.296493",
+      "percentiles": [
+        97.71159757103231,
+        99.75447934627783
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 98.73303845865507,
+      "min_percentile": 97.71159757103231,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_381_2019-02-11 16:10:27.364603",
+      "percentiles": [
+        97.82421289355322,
+        99.51831165423398
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 98.6712622738936,
+      "min_percentile": 97.82421289355322,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_129_17_2020-02-20 03:07:48.487996",
+      "percentiles": [
+        98.30384586550716,
+        98.96731389159608
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 98.63557987855162,
+      "min_percentile": 98.30384586550716,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_139_28_2021-08-11 22:43:35.545120",
+      "percentiles": [
+        98.65619611665042,
+        98.57753289103789
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 98.61686450384416,
+      "min_percentile": 98.57753289103789,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_179_787_2021-06-09 23:56:46.222107",
+      "percentiles": [
+        97.63680659670165,
+        99.5857855081156
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 98.61129605240862,
+      "min_percentile": 97.63680659670165,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_90_26_2020-02-14 17:32:43.621886",
+      "percentiles": [
+        97.96648924207211,
+        99.0497788439913
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 98.5081340430317,
+      "min_percentile": 97.96648924207211,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_83_386_2019-02-03 18:46:09.169753",
+      "percentiles": [
+        97.39673138915961,
+        99.60079466226854
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 98.49876302571408,
+      "min_percentile": 97.39673138915961,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_138_29_2019-09-19 00:57:24.526476",
+      "percentiles": [
+        98.16154422788605,
+        98.72366744133743
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 98.44260583461174,
+      "min_percentile": 98.16154422788605,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_125_21_2018-04-25 15:30:31.466431",
+      "percentiles": [
+        98.18028485757121,
+        98.58867188964277
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 98.38447837360698,
+      "min_percentile": 98.18028485757121,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_138_29_2019-07-20 00:25:49.913970",
+      "percentiles": [
+        97.5166804108254,
+        98.87735212534673
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 98.19701626808606,
+      "min_percentile": 97.5166804108254,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_91_441_2018-07-25 17:09:54.291200",
+      "percentiles": [
+        98.7424094759727,
+        97.64403793530008
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 98.1932237056364,
+      "min_percentile": 97.64403793530008,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_128_18_2019-01-23 17:10:51.639623",
+      "percentiles": [
+        97.16079460269864,
+        99.12099857560537
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 98.140896589152,
+      "min_percentile": 97.16079460269864,
+      "is_canary": false
+    },
+    {
+      "session_id": "19_102_260_1634_2020-01-08 20:18:21.467277",
+      "percentiles": [
+        98.10157421289355,
+        97.87269932901
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 97.98713677095178,
+      "min_percentile": 97.87269932901,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_807_2021-01-13 20:04:27.251070",
+      "percentiles": [
+        97.59539695629357,
+        98.26267851118858
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 97.92903773374107,
+      "min_percentile": 97.59539695629357,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_95_27_2018-12-10 21:38:04.364779",
+      "percentiles": [
+        97.91775995202039,
+        97.7715720818652
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 97.8446660169428,
+      "min_percentile": 97.7715720818652,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_130_31_2018-06-27 03:18:16.727885",
+      "percentiles": [
+        98.67118974435864,
+        96.93567733713172
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 97.80343354074517,
+      "min_percentile": 96.93567733713172,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_95_27_2020-03-03 20:59:57.468559",
+      "percentiles": [
+        96.37341629807332,
+        99.22217640664243
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 97.79779635235788,
+      "min_percentile": 96.37341629807332,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_382_2018-06-13 05:30:57.172929",
+      "percentiles": [
+        98.7424094759727,
+        96.45574839749597
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 97.59907893673434,
+      "min_percentile": 96.45574839749597,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_179_809_2019-10-14 14:18:55.751064",
+      "percentiles": [
+        96.25749625187406,
+        98.73870834738933
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 97.4981022996317,
+      "min_percentile": 96.25749625187406,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_88_24_2018-05-15 16:03:17.372530",
+      "percentiles": [
+        98.44265367316342,
+        96.49336531973911
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 97.46800949645126,
+      "min_percentile": 96.49336531973911,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_178_823_2018-10-20 12:43:55.580174",
+      "percentiles": [
+        97.50937031484258,
+        97.41182203231006
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 97.46059617357632,
+      "min_percentile": 97.41182203231006,
+      "is_canary": false
+    },
+    {
+      "session_id": "19_102_260_1638_2019-08-09 15:56:02.253511",
+      "percentiles": [
+        95.9910787915136,
+        98.86614940589978
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 97.42861409870669,
+      "min_percentile": 95.9910787915136,
+      "is_canary": false
+    },
+    {
+      "session_id": "19_102_260_1635_2019-11-04 20:20:42.588226",
+      "percentiles": [
+        96.7372563718141,
+        98.09393507759202
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 97.41559572470305,
+      "min_percentile": 96.7372563718141,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_92_442_2018-05-25 22:34:18.776459",
+      "percentiles": [
+        99.08733133433283,
+        95.72869030661968
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 97.40801082047625,
+      "min_percentile": 95.72869030661968,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_193_829_2018-10-24 13:42:22.817019",
+      "percentiles": [
+        98.71626686656671,
+        96.06229852312767
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 97.3892826948472,
+      "min_percentile": 96.06229852312767,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_138_29_2019-05-17 15:43:23.089190",
+      "percentiles": [
+        99.12849538945947,
+        95.58608539191063
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 97.35729039068505,
+      "min_percentile": 95.58608539191063,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_125_21_2018-09-28 02:04:53.660166",
+      "percentiles": [
+        99.60457271364318,
+        95.10270634980134
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 97.35363953172225,
+      "min_percentile": 95.10270634980134,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_193_820_2019-05-01 12:59:21.715109",
+      "percentiles": [
+        97.17578710644678,
+        97.52052175868661
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 97.3481544325667,
+      "min_percentile": 97.17578710644678,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_129_17_2021-07-15 20:23:07.141947",
+      "percentiles": [
+        96.53459779593673,
+        98.04513251115193
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 97.28986515354433,
+      "min_percentile": 96.53459779593673,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_179_809_2018-09-27 19:15:03.656630",
+      "percentiles": [
+        96.77473763118441,
+        97.5879905543686
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 97.1813640927765,
+      "min_percentile": 96.77473763118441,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_379_2018-08-20 16:45:25.279172",
+      "percentiles": [
+        98.96364317841079,
+        95.28280670190037
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 97.12322494015558,
+      "min_percentile": 95.28280670190037,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_129_17_2018-11-04 03:56:16.817298",
+      "percentiles": [
+        97.40817091454272,
+        96.82322512932004
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 97.11569802193138,
+      "min_percentile": 96.82322512932004,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_376_2018-08-16 02:25:31.215222",
+      "percentiles": [
+        94.3719779601934,
+        99.62701952993216
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 96.99949874506278,
+      "min_percentile": 94.3719779601934,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_193_816_2021-03-09 15:28:12.970513",
+      "percentiles": [
+        96.52335257515556,
+        97.28063270737285
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 96.9019926412642,
+      "min_percentile": 96.52335257515556,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_127_19_2018-06-19 15:02:07.416050",
+      "percentiles": [
+        98.59632683658171,
+        95.18891970912362
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 96.89262327285266,
+      "min_percentile": 95.18891970912362,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_363_2018-11-04 21:01:06.546320",
+      "percentiles": [
+        95.21515855761301,
+        98.49126621185997
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 96.85321238473648,
+      "min_percentile": 95.21515855761301,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_179_787_2021-07-08 19:47:18.469194",
+      "percentiles": [
+        96.50848982345666,
+        97.1754695055666
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 96.84197966451163,
+      "min_percentile": 96.50848982345666,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_139_28_2018-07-19 01:48:18.985469",
+      "percentiles": [
+        93.93320338855986,
+        99.71699527700727
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 96.82509933278357,
+      "min_percentile": 93.93320338855986,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_95_27_2018-08-19 02:55:42.682130",
+      "percentiles": [
+        94.04610194902548,
+        99.58205262763326
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 96.81407728832937,
+      "min_percentile": 94.04610194902548,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_179_787_2019-10-28 23:04:56.974914",
+      "percentiles": [
+        97.78290040856103,
+        95.70978745736028
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 96.74634393296066,
+      "min_percentile": 95.70978745736028,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_88_24_2019-09-10 21:08:29.774713",
+      "percentiles": [
+        97.78281730264638,
+        95.54143708534802
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 96.66212719399721,
+      "min_percentile": 95.54143708534802,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_138_29_2021-07-06 17:33:33.107759",
+      "percentiles": [
+        97.38548616837843,
+        95.80381573522246
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 96.59465095180045,
+      "min_percentile": 95.80381573522246,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_129_563_2018-10-18 16:33:46.156267",
+      "percentiles": [
+        96.9771364317841,
+        96.19349276557463
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 96.58531459867936,
+      "min_percentile": 96.19349276557463,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_364_2018-08-22 16:37:50.598509",
+      "percentiles": [
+        96.45213284354149,
+        96.67716181266164
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 96.56464732810156,
+      "min_percentile": 96.45213284354149,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_179_794_2021-06-17 20:36:05.371665",
+      "percentiles": [
+        93.20652173913044,
+        99.75822775320489
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 96.48237474616766,
+      "min_percentile": 93.20652173913044,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_138_29_2018-05-18 00:12:04.910369",
+      "percentiles": [
+        94.8444527736132,
+        98.04145738061324
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 96.44295507711323,
+      "min_percentile": 94.8444527736132,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_127_19_2018-09-14 22:51:54.161808",
+      "percentiles": [
+        98.74615788289977,
+        94.09063647949621
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 96.41839718119799,
+      "min_percentile": 94.09063647949621,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_808_2021-05-12 22:17:52.743492",
+      "percentiles": [
+        96.182390644327,
+        96.53821644112907
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 96.36030354272803,
+      "min_percentile": 96.182390644327,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_88_24_2019-04-24 19:33:45.666332",
+      "percentiles": [
+        95.26388784766475,
+        97.45305296300461
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 96.35847040533469,
+      "min_percentile": 95.26388784766475,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_139_28_2018-08-17 03:36:29.372341",
+      "percentiles": [
+        98.06784107946027,
+        94.60041982157583
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 96.33413045051805,
+      "min_percentile": 94.60041982157583,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_178_828_2018-11-27 01:14:12.632293",
+      "percentiles": [
+        99.66829085457272,
+        92.92113351825475
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 96.29471218641373,
+      "min_percentile": 92.92113351825475,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_91_441_2018-08-22 06:06:10.020863",
+      "percentiles": [
+        94.38718140929535,
+        98.0789414498838
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 96.23306142958958,
+      "min_percentile": 94.38718140929535,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_792_2019-10-14 14:51:11.284325",
+      "percentiles": [
+        95.6428035982009,
+        96.45588125046855
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 96.04934242433472,
+      "min_percentile": 95.6428035982009,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_362_2019-02-12 19:11:15.589059",
+      "percentiles": [
+        96.93192893020466,
+        95.13251115192863
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 96.03222004106664,
+      "min_percentile": 95.13251115192863,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_126_20_2018-05-18 17:50:10.256691",
+      "percentiles": [
+        96.55734632683658,
+        99.10225654097009,
+        92.3735802376579
+      ],
+      "n_seeds": 3,
+      "mean_percentile": 96.01106103515485,
+      "min_percentile": 92.3735802376579,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_130_31_2018-10-04 02:54:41.569492",
+      "percentiles": [
+        94.53294849688882,
+        97.32915995051917
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 95.931054223704,
+      "min_percentile": 94.53294849688882,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_178_828_2020-06-19 13:26:56.016829",
+      "percentiles": [
+        95.4516491754123,
+        96.38854529779977
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 95.92009723660604,
+      "min_percentile": 95.4516491754123,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_92_436_2021-07-26 02:02:28.363412",
+      "percentiles": [
+        99.82944748481896,
+        91.93905090336607
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 95.88424919409252,
+      "min_percentile": 91.93905090336607,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_789_2018-10-03 12:49:27.004595",
+      "percentiles": [
+        96.38868065967017,
+        95.34992690332496
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 95.86930378149756,
+      "min_percentile": 95.34992690332496,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_379_2019-02-05 15:49:11.688133",
+      "percentiles": [
+        95.03523502511433,
+        96.59069610525921
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 95.81296556518677,
+      "min_percentile": 95.03523502511433,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_360_2018-08-16 03:07:55.828637",
+      "percentiles": [
+        95.27888147537297,
+        96.26832102560257
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 95.77360125048777,
+      "min_percentile": 95.27888147537297,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_88_24_2018-11-10 19:13:20.796819",
+      "percentiles": [
+        92.79797601199401,
+        98.47246691906886
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 95.63522146553143,
+      "min_percentile": 92.79797601199401,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_95_27_2019-01-23 17:55:40.436415",
+      "percentiles": [
+        94.7653497263663,
+        96.39202309105222
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 95.57868640870926,
+      "min_percentile": 94.7653497263663,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_139_28_2021-06-15 13:47:12.078723",
+      "percentiles": [
+        96.70714794407587,
+        94.34906473741425
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 95.52810634074507,
+      "min_percentile": 94.34906473741425,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_363_2018-07-30 16:29:11.897051",
+      "percentiles": [
+        93.42391304347827,
+        99.46585201289452,
+        93.6443378190951
+      ],
+      "n_seeds": 3,
+      "mean_percentile": 95.51136762515596,
+      "min_percentile": 93.42391304347827,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_179_800_2018-09-27 14:33:52.911599",
+      "percentiles": [
+        99.5108328960192,
+        96.67341354623487,
+        90.33811897889568
+      ],
+      "n_seeds": 3,
+      "mean_percentile": 95.50745514038324,
+      "min_percentile": 90.33811897889568,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_123_23_2019-04-03 16:36:29.659416",
+      "percentiles": [
+        95.75867756203614,
+        95.25282057048615
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 95.50574906626115,
+      "min_percentile": 95.25282057048615,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_128_18_2019-06-23 18:29:49.799992",
+      "percentiles": [
+        97.21305944973386,
+        93.77553697942048
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 95.49429821457717,
+      "min_percentile": 93.77553697942048,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_194_818_2019-03-06 00:09:51.332803",
+      "percentiles": [
+        93.0863225758087,
+        97.70776324174382
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 95.39704290877626,
+      "min_percentile": 93.0863225758087,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_193_829_2019-07-31 23:11:04.596833",
+      "percentiles": [
+        90.97263868065967,
+        99.78820706976047
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 95.38042287521007,
+      "min_percentile": 90.97263868065967,
+      "is_canary": false
+    },
+    {
+      "session_id": "19_102_260_1633_2019-12-19 22:46:47.664941",
+      "percentiles": [
+        99.68701975336407,
+        90.9866176856468
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 95.33681871950543,
+      "min_percentile": 90.9866176856468,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_127_19_2018-09-25 03:35:51.988602",
+      "percentiles": [
+        98.71991903441038,
+        91.81879521685347
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 95.26935712563193,
+      "min_percentile": 91.81879521685347,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_194_818_2021-03-09 13:41:22.400763",
+      "percentiles": [
+        96.98463268365818,
+        93.52486974774168
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 95.25475121569993,
+      "min_percentile": 93.52486974774168,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_131_30_2018-06-01 02:15:57.505198",
+      "percentiles": [
+        97.9852312767074,
+        98.31134267936127,
+        89.37928707972563
+      ],
+      "n_seeds": 3,
+      "mean_percentile": 95.22528701193143,
+      "min_percentile": 89.37928707972563,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_88_438_2018-06-04 16:35:35.491224",
+      "percentiles": [
+        93.83199640152935,
+        96.58319901038348
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 95.20759770595642,
+      "min_percentile": 93.83199640152935,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_380_2018-08-10 08:42:16.637453",
+      "percentiles": [
+        96.7070245145813,
+        93.69354173694666
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 95.20028312576397,
+      "min_percentile": 93.69354173694666,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_178_823_2019-03-25 12:52:05.947939",
+      "percentiles": [
+        94.28180523277607,
+        96.11117358221823
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 95.19648940749715,
+      "min_percentile": 94.28180523277607,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_139_28_2019-10-19 19:16:49.055007",
+      "percentiles": [
+        96.35467426343804,
+        94.03815878251743
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 95.19641652297773,
+      "min_percentile": 94.03815878251743,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_377_2018-10-29 03:19:49.634408",
+      "percentiles": [
+        99.73950524737631,
+        90.59676875210856
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 95.16813699974244,
+      "min_percentile": 90.59676875210856,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_91_437_2018-06-16 14:12:16.524666",
+      "percentiles": [
+        94.79158857485568,
+        95.45488623158526
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 95.12323740322047,
+      "min_percentile": 94.79158857485568,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_139_28_2018-09-29 05:41:40.994764",
+      "percentiles": [
+        98.37131719019416,
+        91.7925553847884
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 95.08193628749129,
+      "min_percentile": 91.7925553847884,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_360_2018-08-15 04:10:12.824676",
+      "percentiles": [
+        96.9284107946027,
+        93.05982457455582
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.99411768457927,
+      "min_percentile": 93.05982457455582,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_377_2020-02-26 17:04:20.286210",
+      "percentiles": [
+        99.21096034185472,
+        90.75830272134343
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.98463153159906,
+      "min_percentile": 90.75830272134343,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_193_816_2021-04-14 18:11:15.750338",
+      "percentiles": [
+        93.154047976012,
+        96.77062638227687
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.96233717914444,
+      "min_percentile": 93.154047976012,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_95_444_2019-09-04 18:37:05.322571",
+      "percentiles": [
+        90.39845565634606,
+        99.4845940475298
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.94152485193793,
+      "min_percentile": 90.39845565634606,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_127_19_2021-08-24 16:48:04.195803",
+      "percentiles": [
+        98.89609415998201,
+        90.92664092664093
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.91136754331147,
+      "min_percentile": 90.92664092664093,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_377_2019-09-10 00:27:34.369337",
+      "percentiles": [
+        98.76499250374813,
+        91.05442686858085
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.90970968616449,
+      "min_percentile": 91.05442686858085,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_139_28_2018-05-10 14:45:55.870618",
+      "percentiles": [
+        90.29761235428614,
+        99.48832327473104
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.8929678145086,
+      "min_percentile": 90.29761235428614,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_379_2021-04-29 17:01:56.001426",
+      "percentiles": [
+        96.32871064467766,
+        93.39718119799086
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.86294592133426,
+      "min_percentile": 93.39718119799086,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_138_29_2019-06-30 20:51:53.735535",
+      "percentiles": [
+        96.68453407301897,
+        93.0338468458338
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.85919045942639,
+      "min_percentile": 93.0338468458338,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_365_2019-05-22 16:50:07.841107",
+      "percentiles": [
+        93.36019490254873,
+        96.18960152940735
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.77489821597804,
+      "min_percentile": 93.36019490254873,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_88_24_2018-07-13 16:20:16.795000",
+      "percentiles": [
+        93.56960791663543,
+        95.90096337669154
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.73528564666348,
+      "min_percentile": 93.56960791663543,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_139_28_2018-09-29 17:16:01.865041",
+      "percentiles": [
+        98.0789414498838,
+        91.37646661918507
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.72770403453444,
+      "min_percentile": 91.37646661918507,
+      "is_canary": false
+    },
+    {
+      "session_id": "19_102_260_1634_2019-11-11 17:40:18.882889",
+      "percentiles": [
+        90.57533733133434,
+        98.86610690456556
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.72072211794995,
+      "min_percentile": 90.57533733133434,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_138_29_2018-07-14 17:48:52.953548",
+      "percentiles": [
+        91.40742128935533,
+        98.03388686883832
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.72065407909682,
+      "min_percentile": 91.40742128935533,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_380_2018-07-22 18:51:37.161190",
+      "percentiles": [
+        99.5445685583627,
+        89.88829328635154
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.71643092235712,
+      "min_percentile": 89.88829328635154,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_194_821_2019-01-28 21:57:51.910039",
+      "percentiles": [
+        99.5483508245877,
+        89.82120098957942
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.68477590708356,
+      "min_percentile": 89.82120098957942,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_178_828_2021-07-19 23:20:30.565643",
+      "percentiles": [
+        96.94317415098583,
+        92.42605990178805
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.68461702638695,
+      "min_percentile": 92.42605990178805,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_131_30_2019-03-19 02:01:40.168149",
+      "percentiles": [
+        97.91775995202039,
+        91.40270645125014
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.66023320163526,
+      "min_percentile": 91.40270645125014,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_782_2019-04-05 15:14:30.719209",
+      "percentiles": [
+        95.06559220389805,
+        94.11687532798561
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.59123376594184,
+      "min_percentile": 94.11687532798561,
+      "is_canary": false
+    },
+    {
+      "session_id": "19_102_260_1633_2021-04-23 19:22:43.602299",
+      "percentiles": [
+        91.65417197690981,
+        97.48669315540896
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.57043256615938,
+      "min_percentile": 91.65417197690981,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_123_557_2018-07-26 16:17:29.694682",
+      "percentiles": [
+        90.92698103306095,
+        98.15758893428796
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.54228498367445,
+      "min_percentile": 90.92698103306095,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_179_800_2018-10-25 14:07:05.954925",
+      "percentiles": [
+        97.2881292402264,
+        91.53390561157552
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.41101742590095,
+      "min_percentile": 91.53390561157552,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_139_28_2020-03-12 03:30:08.549107",
+      "percentiles": [
+        96.74450858385187,
+        99.84818951945424,
+        86.6308055628444
+      ],
+      "n_seeds": 3,
+      "mean_percentile": 94.4078345553835,
+      "min_percentile": 86.6308055628444,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_193_825_2018-10-09 13:08:55.279362",
+      "percentiles": [
+        95.01274458355199,
+        93.77975186476255
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.39624822415726,
+      "min_percentile": 93.77975186476255,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_376_2018-05-25 15:52:53.491231",
+      "percentiles": [
+        94.7990853887098,
+        93.97420999362747
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.38664769116863,
+      "min_percentile": 93.97420999362747,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_178_828_2019-02-11 22:08:46.737141",
+      "percentiles": [
+        97.02961019490255,
+        91.73694666216875
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.38327842853565,
+      "min_percentile": 91.73694666216875,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_785_2019-12-09 14:22:28.137769",
+      "percentiles": [
+        96.44463602968739,
+        92.31360347865203
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.37911975416971,
+      "min_percentile": 92.31360347865203,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_125_21_2019-03-25 23:34:54.066577",
+      "percentiles": [
+        92.34387885148811,
+        96.39590673963565
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.36989279556188,
+      "min_percentile": 92.34387885148811,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_785_2019-05-31 13:54:01.561638",
+      "percentiles": [
+        92.91041979010495,
+        95.7625848045279
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.33650229731643,
+      "min_percentile": 92.91041979010495,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_363_2019-02-15 17:15:39.371765",
+      "percentiles": [
+        94.50296124147238,
+        94.14708197458675
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.32502160802957,
+      "min_percentile": 94.14708197458675,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_179_810_2021-09-10 12:42:39.840070",
+      "percentiles": [
+        93.55461428892721,
+        95.08396431516606
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.31928930204663,
+      "min_percentile": 93.55461428892721,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_786_2019-10-07 14:45:02.932188",
+      "percentiles": [
+        98.52136431784108,
+        90.10645076652048
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.31390754218077,
+      "min_percentile": 90.10645076652048,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_780_2019-09-18 21:22:01.527209",
+      "percentiles": [
+        89.80995576879826,
+        98.77609926153616
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.29302751516721,
+      "min_percentile": 89.80995576879826,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_127_19_2021-09-01 00:41:51.748872",
+      "percentiles": [
+        89.87818590704647,
+        98.68618337206688
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.28218463955668,
+      "min_percentile": 89.87818590704647,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_786_2019-03-11 22:53:50.028106",
+      "percentiles": [
+        91.71851574212893,
+        96.77437492971474
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.24644533592183,
+      "min_percentile": 91.71851574212893,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_802_2018-09-26 13:02:37.996424",
+      "percentiles": [
+        99.04610194902548,
+        89.09775845265762
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.07193020084155,
+      "min_percentile": 89.09775845265762,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_138_29_2019-06-26 02:30:41.344833",
+      "percentiles": [
+        96.91318689556938,
+        91.22685358722543
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.0700202413974,
+      "min_percentile": 91.22685358722543,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_194_826_2019-11-26 00:58:41.941511",
+      "percentiles": [
+        95.53410794602699,
+        92.55725906211343
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.04568350407021,
+      "min_percentile": 92.55725906211343,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_377_2018-05-08 11:56:05.564277",
+      "percentiles": [
+        90.42094609790838,
+        97.62529519811073
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 94.02312064800955,
+      "min_percentile": 90.42094609790838,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_193_829_2021-07-20 18:27:33.500144",
+      "percentiles": [
+        91.29057650498538,
+        96.66204363145663
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.97631006822101,
+      "min_percentile": 91.29057650498538,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_178_824_2019-12-13 14:13:17.769826",
+      "percentiles": [
+        95.30137191693531,
+        92.63653060459538
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.96895126076535,
+      "min_percentile": 92.63653060459538,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_802_2019-12-05 15:09:55.609350",
+      "percentiles": [
+        91.11814978634081,
+        99.51085123130552,
+        91.26026164861116
+      ],
+      "n_seeds": 3,
+      "mean_percentile": 93.96308755541916,
+      "min_percentile": 91.11814978634081,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_365_2021-01-14 22:12:26.553361",
+      "percentiles": [
+        94.37551540595247,
+        93.39742868923123
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.88647204759185,
+      "min_percentile": 93.39742868923123,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_126_20_2018-07-09 02:13:44.319169",
+      "percentiles": [
+        98.86985531149261,
+        88.89867676275443
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.88426603712352,
+      "min_percentile": 88.89867676275443,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_360_2018-07-28 00:52:22.515676",
+      "percentiles": [
+        92.74925037481259,
+        95.00899617662493
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.87912327571877,
+      "min_percentile": 92.74925037481259,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_90_26_2019-06-25 16:46:25.098082",
+      "percentiles": [
+        97.43815592203899,
+        90.0798410675463
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.75899849479265,
+      "min_percentile": 90.0798410675463,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_365_2021-05-20 22:24:57.132294",
+      "percentiles": [
+        94.43548991678537,
+        93.01510551369991
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.72529771524265,
+      "min_percentile": 93.01510551369991,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_193_820_2019-12-12 00:41:25.772221",
+      "percentiles": [
+        89.06777119724117,
+        98.24005697792106
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.65391408758111,
+      "min_percentile": 89.06777119724117,
+      "is_canary": false
+    },
+    {
+      "session_id": "19_102_260_1635_2019-11-13 16:33:53.204149",
+      "percentiles": [
+        94.10210277746542,
+        93.10454698804213
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.60332488275378,
+      "min_percentile": 93.10454698804213,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_366_2018-04-30 15:04:33.947158",
+      "percentiles": [
+        91.56795861758752,
+        95.62357086628931
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.59576474193841,
+      "min_percentile": 91.56795861758752,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_379_2018-08-22 03:17:06.203297",
+      "percentiles": [
+        87.25449775112443,
+        99.86693155408952
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.56071465260698,
+      "min_percentile": 87.25449775112443,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_139_28_2019-02-14 02:22:28.620828",
+      "percentiles": [
+        87.9404047976012,
+        99.14723742409475
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.54382111084797,
+      "min_percentile": 87.9404047976012,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_367_2019-03-15 19:30:19.847779",
+      "percentiles": [
+        90.74365605907268,
+        96.24582974097537
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.49474290002402,
+      "min_percentile": 90.74365605907268,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_362_2018-11-29 19:57:35.145598",
+      "percentiles": [
+        88.20188919709123,
+        98.723619597406
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.46275439724862,
+      "min_percentile": 88.20188919709123,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_178_817_2020-01-16 13:49:55.735025",
+      "percentiles": [
+        97.19806582202564,
+        89.65665879530717
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.4273623086664,
+      "min_percentile": 89.65665879530717,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_139_28_2018-07-25 01:42:15.110751",
+      "percentiles": [
+        97.18328335832084,
+        89.5588125046855
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.37104793150317,
+      "min_percentile": 89.5588125046855,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_795_2019-03-25 14:22:35.730739",
+      "percentiles": [
+        91.9996251874063,
+        94.70182540574984
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.35072529657808,
+      "min_percentile": 91.9996251874063,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_130_31_2018-07-24 15:41:16.993006",
+      "percentiles": [
+        97.16454272863568,
+        89.50594144768903
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.33524208816235,
+      "min_percentile": 89.50594144768903,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_193_820_2019-07-24 23:30:21.006955",
+      "percentiles": [
+        95.5828335832084,
+        91.00194917160206
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.29239137740524,
+      "min_percentile": 91.00194917160206,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_89_25_2021-02-16 21:56:05.205082",
+      "percentiles": [
+        89.75449775112443,
+        96.78948946697653
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.27199360905048,
+      "min_percentile": 89.75449775112443,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_366_2018-10-09 15:11:36.727928",
+      "percentiles": [
+        92.86115900742185,
+        93.65558346140871
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.25837123441528,
+      "min_percentile": 92.86115900742185,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_88_24_2019-07-17 17:56:02.708820",
+      "percentiles": [
+        99.71699527700727,
+        86.79248819251818
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.25474173476272,
+      "min_percentile": 86.79248819251818,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_365_2019-03-15 19:25:21.752940",
+      "percentiles": [
+        94.96026688657321,
+        91.3921061509052
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.1761865187392,
+      "min_percentile": 91.3921061509052,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_92_442_2018-08-18 00:38:36.815910",
+      "percentiles": [
+        91.79347826086956,
+        94.53315341654485
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.1633158387072,
+      "min_percentile": 91.79347826086956,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_178_824_2020-12-08 14:18:40.250019",
+      "percentiles": [
+        91.59857571214393,
+        94.70912362246045
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.15384966730218,
+      "min_percentile": 91.59857571214393,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_178_824_2020-05-04 14:37:38.684836",
+      "percentiles": [
+        89.94864682509933,
+        96.35078906923567
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.1497179471675,
+      "min_percentile": 89.94864682509933,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_91_437_2018-07-16 01:13:51.617046",
+      "percentiles": [
+        99.61953669690382,
+        86.59757103231127
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.10855386460754,
+      "min_percentile": 86.59757103231127,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_194_821_2019-08-15 13:32:59.291590",
+      "percentiles": [
+        95.39542728635682,
+        90.73241125979234
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.06391927307459,
+      "min_percentile": 90.73241125979234,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_383_2018-11-06 20:22:28.703839",
+      "percentiles": [
+        88.87743628185908,
+        97.22420062225888
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.05081845205898,
+      "min_percentile": 88.87743628185908,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_377_2019-04-03 15:31:45.475172",
+      "percentiles": [
+        95.72494189969262,
+        90.30438205195487
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 93.01466197582374,
+      "min_percentile": 90.30438205195487,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_789_2018-09-10 20:44:24.462444",
+      "percentiles": [
+        86.68753279856061,
+        99.29339880796192
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.99046580326126,
+      "min_percentile": 86.68753279856061,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_377_2018-07-13 20:10:51.103971",
+      "percentiles": [
+        88.19527736131934,
+        97.7229281457326
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.95910275352597,
+      "min_percentile": 88.19527736131934,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_178_824_2021-02-04 15:23:38.645701",
+      "percentiles": [
+        91.92091454272864,
+        93.9556938301222
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.93830418642543,
+      "min_percentile": 91.92091454272864,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_139_28_2021-04-09 00:24:01.318267",
+      "percentiles": [
+        96.22001499250375,
+        89.65252267786191
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.93626883518283,
+      "min_percentile": 89.65252267786191,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_127_19_2018-08-29 03:27:55.622163",
+      "percentiles": [
+        87.05584707646177,
+        98.69737976534093
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.87661342090135,
+      "min_percentile": 87.05584707646177,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_378_2020-02-03 20:49:49.455501",
+      "percentiles": [
+        95.40257890396582,
+        90.3118791468306
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.85722902539821,
+      "min_percentile": 90.3118791468306,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_367_2020-02-18 21:32:29.597336",
+      "percentiles": [
+        93.27348376939801,
+        92.41481425947445
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.84414901443623,
+      "min_percentile": 92.41481425947445,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_193_819_2019-10-04 13:00:35.747045",
+      "percentiles": [
+        95.89017991004498,
+        89.72037932456239
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.80527961730368,
+      "min_percentile": 89.72037932456239,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_139_28_2018-10-25 05:26:27.462599",
+      "percentiles": [
+        99.63455772113943,
+        85.97158707549292
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.80307239831617,
+      "min_percentile": 85.97158707549292,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_129_17_2018-07-11 15:43:06.102167",
+      "percentiles": [
+        91.39553189894295,
+        94.20661993477528
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.8010759168591,
+      "min_percentile": 91.39553189894295,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_129_17_2018-05-10 03:10:19.929032",
+      "percentiles": [
+        97.10832083958022,
+        83.24337493909067,
+        97.89144206619935
+      ],
+      "n_seeds": 3,
+      "mean_percentile": 92.74771261495675,
+      "min_percentile": 83.24337493909067,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_128_18_2019-03-11 21:43:42.401079",
+      "percentiles": [
+        85.55176549966265,
+        99.92316053825105
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.73746301895684,
+      "min_percentile": 85.55176549966265,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_807_2018-09-25 18:01:35.316445",
+      "percentiles": [
+        93.35269865067467,
+        92.07744499006635
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.71507182037051,
+      "min_percentile": 92.07744499006635,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_95_27_2018-06-28 13:47:55.722302",
+      "percentiles": [
+        90.27475822775321,
+        95.0766520484276
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.67570513809041,
+      "min_percentile": 90.27475822775321,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_366_2019-12-05 17:21:45.026958",
+      "percentiles": [
+        94.77659494714746,
+        90.46592698103306
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.62126096409025,
+      "min_percentile": 90.46592698103306,
+      "is_canary": false
+    },
+    {
+      "session_id": "19_102_260_1640_2019-11-19 17:03:08.512450",
+      "percentiles": [
+        91.61668790763926,
+        93.45740095205967
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.53704442984946,
+      "min_percentile": 91.61668790763926,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_784_2019-07-23 14:36:52.725149",
+      "percentiles": [
+        99.11356821589206,
+        85.90786415773296
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.51071618681252,
+      "min_percentile": 85.90786415773296,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_138_29_2018-10-16 04:12:09.951839",
+      "percentiles": [
+        93.75327985606117,
+        91.24901600629757
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.50114793117936,
+      "min_percentile": 91.24901600629757,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_363_2019-11-26 18:46:16.593035",
+      "percentiles": [
+        90.49591423644951,
+        94.49941901870385
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.49766662757668,
+      "min_percentile": 90.49591423644951,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_139_28_2019-06-06 04:51:42.817016",
+      "percentiles": [
+        93.19101881700277,
+        91.72883007834464
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.4599244476737,
+      "min_percentile": 91.72883007834464,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_83_386_2019-10-18 01:09:15.769676",
+      "percentiles": [
+        99.60082458770614,
+        98.20645451478691,
+        79.53855381039847
+      ],
+      "n_seeds": 3,
+      "mean_percentile": 92.44861097096384,
+      "min_percentile": 79.53855381039847,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_808_2021-05-12 15:30:40.059376",
+      "percentiles": [
+        94.44340329835083,
+        90.39845565634606
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.42092947734844,
+      "min_percentile": 90.39845565634606,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_129_17_2018-11-09 06:37:28.292480",
+      "percentiles": [
+        95.77773613193403,
+        89.00029987255417
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.3890180022441,
+      "min_percentile": 89.00029987255417,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_95_27_2020-03-09 17:44:50.298199",
+      "percentiles": [
+        91.59482758620689,
+        93.17628097005135
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.38555427812912,
+      "min_percentile": 91.59482758620689,
+      "is_canary": false
+    },
+    {
+      "session_id": "19_102_260_1636_2019-06-10 18:30:28.228415",
+      "percentiles": [
+        96.01356923307594,
+        88.69335432362533
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.35346177835063,
+      "min_percentile": 88.69335432362533,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_789_2019-02-27 15:50:10.249231",
+      "percentiles": [
+        90.7627436281859,
+        93.84324162231052
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.30299262524821,
+      "min_percentile": 90.7627436281859,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_364_2018-12-07 21:59:14.400368",
+      "percentiles": [
+        92.16770372591648,
+        92.38136292075868
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.27453332333758,
+      "min_percentile": 92.16770372591648,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_365_2019-04-12 17:06:28.011895",
+      "percentiles": [
+        85.38418290854572,
+        99.1322112681336
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.25819708833967,
+      "min_percentile": 85.38418290854572,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_179_810_2018-09-17 18:47:35.570560",
+      "percentiles": [
+        94.96420405562428,
+        89.55092401694344
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.25756403628387,
+      "min_percentile": 89.55092401694344,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_131_30_2019-05-22 04:01:40.167831",
+      "percentiles": [
+        88.53260869565217,
+        95.94609790838894
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.23935330202056,
+      "min_percentile": 88.53260869565217,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_379_2019-04-02 13:54:02.685212",
+      "percentiles": [
+        91.0506784616538,
+        93.4199182877919
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.23529837472284,
+      "min_percentile": 91.0506784616538,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_138_566_2018-06-15 17:26:47.528844",
+      "percentiles": [
+        93.50213659194843,
+        90.86666416763504
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.18440037979173,
+      "min_percentile": 90.86666416763504,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_178_824_2019-04-29 21:57:59.927558",
+      "percentiles": [
+        90.4516491754123,
+        93.91094118969977
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.18129518255603,
+      "min_percentile": 90.4516491754123,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_380_2018-09-20 13:48:59.385142",
+      "percentiles": [
+        89.12774570807407,
+        95.17017767448834
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.14896169128122,
+      "min_percentile": 89.12774570807407,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_179_815_2021-06-25 14:17:23.315613",
+      "percentiles": [
+        92.38539675400128,
+        91.89001761817296
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.13770718608711,
+      "min_percentile": 91.89001761817296,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_812_2019-01-24 15:20:59.118543",
+      "percentiles": [
+        88.3743159157358,
+        95.84129839949024
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.10780715761302,
+      "min_percentile": 88.3743159157358,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_784_2019-06-11 14:35:26.714953",
+      "percentiles": [
+        85.19941524851937,
+        99.00483526369054
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.10212525610496,
+      "min_percentile": 85.19941524851937,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_179_783_2021-08-19 16:37:55.829557",
+      "percentiles": [
+        94.68328335832084,
+        89.50672813823607
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.09500574827845,
+      "min_percentile": 89.50672813823607,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_179_796_2020-02-11 14:26:11.105098",
+      "percentiles": [
+        94.87818590704647,
+        89.30726843348202
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.09272717026425,
+      "min_percentile": 89.30726843348202,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_179_788_2019-12-27 22:04:28.302455",
+      "percentiles": [
+        92.52811094452774,
+        91.55702987368342
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.04257040910558,
+      "min_percentile": 91.55702987368342,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_364_2018-10-05 15:33:52.252496",
+      "percentiles": [
+        86.12902016642927,
+        97.9403275984857
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.03467388245748,
+      "min_percentile": 86.12902016642927,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_382_2018-05-19 21:42:33.006022",
+      "percentiles": [
+        96.73701176999775,
+        87.29804700678487
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 92.01752938839131,
+      "min_percentile": 87.29804700678487,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_193_819_2019-07-15 22:53:15.150366",
+      "percentiles": [
+        90.00937031484258,
+        93.9896547846621
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.99951254975234,
+      "min_percentile": 90.00937031484258,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_193_825_2020-03-04 14:06:27.304442",
+      "percentiles": [
+        88.25811530099708,
+        95.64606215091652
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.9520887259568,
+      "min_percentile": 88.25811530099708,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_360_2018-07-16 17:41:40.497649",
+      "percentiles": [
+        98.84736486993027,
+        85.0532273783642
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.95029612414723,
+      "min_percentile": 85.0532273783642,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_130_31_2018-09-19 02:46:09.226568",
+      "percentiles": [
+        96.82346326836581,
+        87.03662056298961
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.93004191567772,
+      "min_percentile": 87.03662056298961,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_179_797_2019-07-10 13:32:31.355148",
+      "percentiles": [
+        96.32482476854454,
+        87.53045694793268
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.92764085823862,
+      "min_percentile": 87.53045694793268,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_139_28_2019-12-01 23:39:03.720676",
+      "percentiles": [
+        88.77164705000375,
+        95.080215908239
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.92593147912137,
+      "min_percentile": 88.77164705000375,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_131_30_2018-06-05 15:21:37.336251",
+      "percentiles": [
+        93.22850288627333,
+        90.61926003673577
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.92388146150455,
+      "min_percentile": 90.61926003673577,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_383_2019-06-07 21:00:24.259239",
+      "percentiles": [
+        89.53335832083958,
+        94.2030886873079
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.86822350407374,
+      "min_percentile": 89.53335832083958,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_379_2021-05-18 17:48:43.632927",
+      "percentiles": [
+        93.30721943174152,
+        90.42505341279659
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.86613642226905,
+      "min_percentile": 90.42505341279659,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_139_28_2019-09-26 01:28:12.935219",
+      "percentiles": [
+        94.83656945798036,
+        88.87327111211064
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.8549202850455,
+      "min_percentile": 88.87327111211064,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_193_829_2019-05-31 19:28:40.342492",
+      "percentiles": [
+        95.87878106375801,
+        87.81159800577277
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.84518953476538,
+      "min_percentile": 87.81159800577277,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_376_2018-07-24 15:00:58.169534",
+      "percentiles": [
+        88.64462686007721,
+        95.00506053904112
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.82484369955917,
+      "min_percentile": 88.64462686007721,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_125_21_2019-10-13 22:17:08.303765",
+      "percentiles": [
+        98.11656671664169,
+        85.46555214034035
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.79105942849102,
+      "min_percentile": 85.46555214034035,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_785_2019-05-15 19:39:09.555270",
+      "percentiles": [
+        94.4883808095952,
+        94.87049739495484,
+        85.9673126663418
+      ],
+      "n_seeds": 3,
+      "mean_percentile": 91.77539695696395,
+      "min_percentile": 85.9673126663418,
+      "is_canary": false
+    },
+    {
+      "session_id": "19_102_260_1639_2019-11-04 21:30:42.859095",
+      "percentiles": [
+        98.00397331134268,
+        85.49499568917045
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.74948450025656,
+      "min_percentile": 85.49499568917045,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_123_23_2019-07-16 18:47:00.677011",
+      "percentiles": [
+        87.29572713643178,
+        96.1973837100341
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.74655542323293,
+      "min_percentile": 87.29572713643178,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_179_794_2019-07-15 22:18:44.184146",
+      "percentiles": [
+        86.8684407796102,
+        96.55695917831841
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.71269997896431,
+      "min_percentile": 86.8684407796102,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_178_817_2019-12-31 14:18:39.529906",
+      "percentiles": [
+        94.45464767616193,
+        88.80496307680774
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.62980537648482,
+      "min_percentile": 88.80496307680774,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_785_2018-11-28 15:11:43.971425",
+      "percentiles": [
+        85.11320188919709,
+        98.08276172270325
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.59798180595017,
+      "min_percentile": 85.11320188919709,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_139_28_2020-02-16 23:29:22.079461",
+      "percentiles": [
+        83.7387556221889,
+        99.43961316440513
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.58918439329702,
+      "min_percentile": 83.7387556221889,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_782_2019-05-01 13:39:38.424142",
+      "percentiles": [
+        88.49137931034483,
+        94.60416822850289
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.54777376942386,
+      "min_percentile": 88.49137931034483,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_376_2018-11-19 14:55:51.468164",
+      "percentiles": [
+        95.93485268760777,
+        87.14906855579295
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.54196062170035,
+      "min_percentile": 87.14906855579295,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_129_17_2019-09-18 15:54:47.544990",
+      "percentiles": [
+        84.26606192368243,
+        98.78364195217033
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.52485193792637,
+      "min_percentile": 84.26606192368243,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_361_2018-09-07 19:50:01.063411",
+      "percentiles": [
+        96.51585576130145,
+        79.94115221709959,
+        98.11260636503354
+      ],
+      "n_seeds": 3,
+      "mean_percentile": 91.52320478114486,
+      "min_percentile": 79.94115221709959,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_380_2020-02-12 18:11:27.163776",
+      "percentiles": [
+        96.64730134932533,
+        78.82042055549309,
+        99.05724031937625
+      ],
+      "n_seeds": 3,
+      "mean_percentile": 91.50832074139822,
+      "min_percentile": 78.82042055549309,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_808_2019-10-29 14:57:07.594689",
+      "percentiles": [
+        86.30945687619476,
+        96.63193012707576
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.47069350163525,
+      "min_percentile": 86.30945687619476,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_179_815_2019-08-27 13:29:39.839089",
+      "percentiles": [
+        98.81742194235166,
+        84.11178168459722
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.46460181347445,
+      "min_percentile": 84.11178168459722,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_124_558_2018-08-07 21:49:57.791901",
+      "percentiles": [
+        87.82421289355322,
+        95.03523502511433
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.42972395933378,
+      "min_percentile": 87.82421289355322,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_194_826_2021-04-19 14:12:39.054045",
+      "percentiles": [
+        98.52500187420347,
+        84.22798665517112
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.3764942646873,
+      "min_percentile": 84.22798665517112,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_782_2019-11-18 23:07:14.272507",
+      "percentiles": [
+        83.82871064467766,
+        98.83616327448556
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.3324369595816,
+      "min_percentile": 83.82871064467766,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_127_19_2019-10-01 16:23:49.378022",
+      "percentiles": [
+        92.32571214392803,
+        90.3347327385861
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.33022244125706,
+      "min_percentile": 90.3347327385861,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_81_4550_2021-09-08 01:54:42.442960",
+      "percentiles": [
+        90.60907046476761,
+        91.81160506784616
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.21033776630688,
+      "min_percentile": 90.60907046476761,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_780_2019-12-13 15:21:39.548978",
+      "percentiles": [
+        98.26649175412294,
+        84.1267758743487
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.19663381423581,
+      "min_percentile": 84.1267758743487,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_178_817_2019-07-29 22:49:51.488912",
+      "percentiles": [
+        95.80397301349325,
+        86.52685632894786
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.16541467122056,
+      "min_percentile": 86.52685632894786,
+      "is_canary": false
+    },
+    {
+      "session_id": "19_102_260_1633_2019-05-16 16:03:06.800014",
+      "percentiles": [
+        86.5188544868431,
+        95.661056340668
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.08995541375555,
+      "min_percentile": 86.5188544868431,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_193_827_2020-05-28 13:23:52.246539",
+      "percentiles": [
+        84.67953523238381,
+        97.47169952770072
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.07561738004227,
+      "min_percentile": 84.67953523238381,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_376_2019-05-24 16:51:28.814761",
+      "percentiles": [
+        89.33015968213509,
+        92.77521646238614
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.05268807226062,
+      "min_percentile": 89.33015968213509,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_124_22_2018-10-25 03:35:30.906002",
+      "percentiles": [
+        95.44006297323638,
+        86.59706863590358
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 91.01856580456999,
+      "min_percentile": 86.59706863590358,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_778_2018-12-20 21:29:58.794091",
+      "percentiles": [
+        94.88904715495914,
+        87.06660669440384
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.9778269246815,
+      "min_percentile": 87.06660669440384,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_805_2019-10-18 14:23:00.053145",
+      "percentiles": [
+        89.7724716995277,
+        92.14925596911428
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.96086383432099,
+      "min_percentile": 89.7724716995277,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_131_30_2019-05-20 15:59:51.604026",
+      "percentiles": [
+        89.17313242625286,
+        92.71094950706602
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.94204096665945,
+      "min_percentile": 89.17313242625286,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_90_26_2018-09-11 21:29:30.566381",
+      "percentiles": [
+        88.62545917984856,
+        93.23625323287979
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.93085620636418,
+      "min_percentile": 88.62545917984856,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_379_2018-10-11 20:00:39.233909",
+      "percentiles": [
+        89.26724137931035,
+        92.5837768948197
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.92550913706503,
+      "min_percentile": 89.26724137931035,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_383_2019-08-07 15:01:24.082541",
+      "percentiles": [
+        90.90449059149861,
+        90.81418450350489
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.85933754750175,
+      "min_percentile": 90.81418450350489,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_802_2018-12-12 13:25:39.279346",
+      "percentiles": [
+        88.28810255641352,
+        93.35994602496345
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.82402429068848,
+      "min_percentile": 88.28810255641352,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_179_800_2019-03-20 13:09:16.650903",
+      "percentiles": [
+        94.01611694152923,
+        87.57918806462496
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.7976525030771,
+      "min_percentile": 87.57918806462496,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_129_17_2018-05-06 20:24:01.841506",
+      "percentiles": [
+        82.83417047754705,
+        98.74985942947109
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.79201495350907,
+      "min_percentile": 82.83417047754705,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_127_561_2018-07-25 17:27:02.048118",
+      "percentiles": [
+        86.3212143928036,
+        95.24871612250253
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.78496525765306,
+      "min_percentile": 86.3212143928036,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_130_564_2018-07-09 21:36:27.360624",
+      "percentiles": [
+        95.9236074668266,
+        93.03733413299348,
+        83.21962739438467
+      ],
+      "n_seeds": 3,
+      "mean_percentile": 90.72685633140158,
+      "min_percentile": 83.21962739438467,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_138_29_2019-09-25 03:21:25.565298",
+      "percentiles": [
+        83.87743628185908,
+        97.56540970087713
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.7214229913681,
+      "min_percentile": 83.87743628185908,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_383_2018-08-27 20:09:10.807341",
+      "percentiles": [
+        91.72226386806597,
+        89.66415532816073
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.69320959811336,
+      "min_percentile": 89.66415532816073,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_179_783_2019-07-10 14:08:52.080543",
+      "percentiles": [
+        89.34515330984331,
+        92.03680797631095
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.69098064307713,
+      "min_percentile": 89.34515330984331,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_138_29_2018-06-03 03:39:22.982124",
+      "percentiles": [
+        84.18103448275862,
+        97.0817558196199
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.63139515118925,
+      "min_percentile": 84.18103448275862,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_178_824_2018-10-16 22:39:44.033700",
+      "percentiles": [
+        98.57008995502248,
+        82.68113497507403
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.62561246504825,
+      "min_percentile": 82.68113497507403,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_361_2019-03-13 18:31:27.891263",
+      "percentiles": [
+        90.43665667166417,
+        90.80703201139515
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.62184434152965,
+      "min_percentile": 90.43665667166417,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_91_441_2018-09-14 02:34:40.445265",
+      "percentiles": [
+        99.38338706049929,
+        94.0231651548092,
+        78.417738126476
+      ],
+      "n_seeds": 3,
+      "mean_percentile": 90.60809678059483,
+      "min_percentile": 78.417738126476,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_128_18_2018-07-06 16:55:04.304610",
+      "percentiles": [
+        82.9316290576505,
+        98.21395104764046
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.57279005264547,
+      "min_percentile": 82.9316290576505,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_179_798_2019-11-22 19:20:17.796429",
+      "percentiles": [
+        95.73275862068965,
+        85.40987293376813
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.57131577722889,
+      "min_percentile": 85.40987293376813,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_376_2018-11-13 17:34:43.934694",
+      "percentiles": [
+        96.16350551015819,
+        84.95520485811748
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.55935518413784,
+      "min_percentile": 84.95520485811748,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_126_20_2019-06-05 02:06:32.424995",
+      "percentiles": [
+        97.63662943249119,
+        83.46328297784609
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.54995620516864,
+      "min_percentile": 83.46328297784609,
+      "is_canary": false
+    },
+    {
+      "session_id": "19_102_260_1639_2020-01-21 22:18:36.295593",
+      "percentiles": [
+        84.73575712143928,
+        96.32857303497133
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.53216507820531,
+      "min_percentile": 84.73575712143928,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_123_23_2018-06-28 16:37:32.405277",
+      "percentiles": [
+        81.82721139430285,
+        99.22220556263588
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.52470847846936,
+      "min_percentile": 81.82721139430285,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_125_21_2018-08-01 15:09:50.429666",
+      "percentiles": [
+        98.10518029837318,
+        82.92724069423099
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.51621049630208,
+      "min_percentile": 82.92724069423099,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_123_23_2019-03-20 00:26:07.811194",
+      "percentiles": [
+        91.44051278206761,
+        89.49844435281328
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.46947856744045,
+      "min_percentile": 89.49844435281328,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_807_2019-12-02 15:18:21.382307",
+      "percentiles": [
+        88.05284857571215,
+        92.81216028788845
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.4325044318003,
+      "min_percentile": 88.05284857571215,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_793_2019-10-15 18:57:13.931949",
+      "percentiles": [
+        90.71707024514582,
+        89.97151317515649
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.34429171015115,
+      "min_percentile": 89.97151317515649,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_123_23_2018-08-10 03:52:13.065838",
+      "percentiles": [
+        86.43314966827842,
+        94.22161412452675
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.32738189640258,
+      "min_percentile": 86.43314966827842,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_792_2018-10-30 15:35:03.851760",
+      "percentiles": [
+        88.29647676161919,
+        92.33638203763401
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.3164293996266,
+      "min_percentile": 88.29647676161919,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_126_20_2021-09-01 13:10:51.104305",
+      "percentiles": [
+        83.41204692829567,
+        97.20170933763167
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.30687813296367,
+      "min_percentile": 83.41204692829567,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_91_437_2019-06-07 16:23:34.962679",
+      "percentiles": [
+        83.39643151660545,
+        97.12309768348452
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.25976460004497,
+      "min_percentile": 83.39643151660545,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_179_788_2020-01-06 23:34:32.798040",
+      "percentiles": [
+        91.27998500749625,
+        89.2285489372868
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.25426697239152,
+      "min_percentile": 89.2285489372868,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_178_828_2021-07-06 13:17:29.260938",
+      "percentiles": [
+        92.13021965664592,
+        88.34851381236179
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.23936673450385,
+      "min_percentile": 88.34851381236179,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_128_18_2018-07-17 01:24:58.095037",
+      "percentiles": [
+        90.59337281655297,
+        89.84743983806882
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.2204063273109,
+      "min_percentile": 89.84743983806882,
+      "is_canary": false
+    },
+    {
+      "session_id": "19_102_260_1640_2019-12-20 21:01:29.401966",
+      "percentiles": [
+        81.34980133443287,
+        99.07223450912771
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.2110179217803,
+      "min_percentile": 81.34980133443287,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_179_783_2019-07-12 13:59:24.002448",
+      "percentiles": [
+        91.08883058470765,
+        89.32641127520803
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.20762092995784,
+      "min_percentile": 89.32641127520803,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_379_2020-01-06 16:07:15.399027",
+      "percentiles": [
+        91.37304145738061,
+        89.04112156539341
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.207081511387,
+      "min_percentile": 89.04112156539341,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_191_807_2019-06-14 14:26:38.397449",
+      "percentiles": [
+        87.64055472263868,
+        92.76744883424544
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.20400177844206,
+      "min_percentile": 87.64055472263868,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_78_366_2018-08-20 21:45:18.229078",
+      "percentiles": [
+        82.3431291701027,
+        98.06027212414259
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.20170064712264,
+      "min_percentile": 82.3431291701027,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_129_17_2019-12-01 19:55:34.582180",
+      "percentiles": [
+        95.12894519829072,
+        85.25244574384347
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.1906954710671,
+      "min_percentile": 85.25244574384347,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_131_30_2021-06-03 02:43:59.445436",
+      "percentiles": [
+        98.97488755622189,
+        81.36784496007797
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.17136625814993,
+      "min_percentile": 81.36784496007797,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_126_20_2020-02-14 18:38:59.207912",
+      "percentiles": [
+        81.07616762875777,
+        99.17344528995014
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.12480645935395,
+      "min_percentile": 81.07616762875777,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_139_28_2021-05-11 02:16:24.373798",
+      "percentiles": [
+        92.35512407226929,
+        87.88282040709225
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.11897223968077,
+      "min_percentile": 87.88282040709225,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_89_439_2019-03-27 16:10:42.113099",
+      "percentiles": [
+        92.70747432341255,
+        87.47469825324237
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.09108628832746,
+      "min_percentile": 87.47469825324237,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_79_378_2018-09-21 16:57:04.904501",
+      "percentiles": [
+        83.81250468550866,
+        96.25332683585111
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.03291576067988,
+      "min_percentile": 83.81250468550866,
+      "is_canary": false
+    },
+    {
+      "session_id": "1_1_179_788_2019-07-02 13:18:27.824619",
+      "percentiles": [
+        82.09198590598996,
+        97.9590689306196
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.02552741830478,
+      "min_percentile": 82.09198590598996,
+      "is_canary": false
+    },
+    {
+      "session_id": "2_39_92_436_2018-09-17 15:36:54.531974",
+      "percentiles": [
+        98.83611964914911,
+        81.18182840436299
+      ],
+      "n_seeds": 2,
+      "mean_percentile": 90.00897402675605,
+      "min_percentile": 81.18182840436299,
+      "is_canary": false
+    }
+  ]
+}
