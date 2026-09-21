@@ -1,0 +1,494 @@
+#!/usr/bin/env python3
+"""
+Fase A della guida scientifica (ChargeShield_FL_spina_dorsale_consolidata.md,
+sezione 7, righe 148-154): genera i TRE output previsti.
+
+    risultati/matrice_run_completati.xlsx  -> registro run
+    risultati/matrice_confronti.xlsx       -> matrice di confrontabilita'
+    risultati/Matrice_sintesi.xlsx         -> lacune effettive + minimo rerun
+
+REGOLA NON NEGOZIABILE della guida (riga 150):
+    "Nessun valore mancante va riempito per analogia."
+Quindi: commit e versione/hash degli split NON sono registrati nei JSON di
+questo progetto e restano VUOTI, con la dicitura "non registrato". Non si
+deducono dalla data, dal nome della cartella o da altre run.
+
+Gli stati di validita' ammessi sono i cinque della guida:
+    verificata | completata da verificare | invalidata | incompleta | pianificata
+
+Uso:
+    python3 scripts/genera_matrici_faseA.py
+"""
+from __future__ import annotations
+import glob
+import json
+import os
+import re
+from collections import defaultdict
+from datetime import datetime
+
+import openpyxl
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+
+RADICE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+USCITA = os.path.join(RADICE, "risultati")
+FONT = "Arial"
+
+# Commit del fix che rende la loss grezza dei canary indipendente dal filtro
+# LiRA (Sprint 10zz+119). I JSON canary precedenti hanno canary_raw_mse_auc_roc
+# calcolata su un pool filtrato dalla calibrazione shadow: la metrica c'e' ma
+# non e' confrontabile con i baseline, che girano senza shadow.
+STACCO_FIX_RAW = datetime(2026, 9, 16, 21, 0)
+
+VERDE = PatternFill("solid", fgColor="E2EFDA")
+GIALLO = PatternFill("solid", fgColor="FFF2CC")
+ROSSO = PatternFill("solid", fgColor="FCE4E4")
+GRIGIO = PatternFill("solid", fgColor="EDEDED")
+BORDO = Border(*[Side(style="thin", color="BFBFBF")] * 4)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Lettura delle evidenze
+# ─────────────────────────────────────────────────────────────────────────────
+def mappa_log() -> dict[str, list[str]]:
+    """Associa il nome di uno sweep ai file di log che lo nominano."""
+    m = defaultdict(list)
+    for p in glob.glob(os.path.join(RADICE, "logs", "*.log")):
+        nome = os.path.basename(p)
+        chiave = re.sub(r"\.log$", "", nome)
+        m[chiave].append(os.path.join("logs", nome))
+    return m
+
+
+def trova_log(sweep: str, log_disponibili: dict[str, list[str]]) -> str:
+    """Log plausibile per uno sweep. Solo corrispondenze di nome, mai inferenze."""
+    s = sweep.lstrip("_")
+    esatti = [v for k, vs in log_disponibili.items() if k == s for v in vs]
+    if esatti:
+        return "; ".join(sorted(esatti))
+    parziali = [v for k, vs in log_disponibili.items()
+                if s and (s in k or k in s) for v in vs]
+    return "; ".join(sorted(set(parziali))) if parziali else ""
+
+
+def superficie(cfg: dict) -> str:
+    """Punto di osservazione dell'avversario (sezione 5 della guida)."""
+    if cfg.get("no_dp"):
+        return "A0 — update non privatizzato (nessun clipping, nessun rumore)"
+    return {
+        "dp-fedavg": "A1 — update grezzo g (limite superiore, oltre lo Scenario 1)",
+        "central": "A2 — update clippato g_bar (Scenario 1)",
+        "local": "A3 — update clippato e rumorizzato g_tilde (Scenario 1)",
+    }.get(cfg.get("dp_mode"), "non determinabile dal config")
+
+
+def regime(cfg: dict, sweep: str) -> str:
+    can = cfg.get("canary") or {}
+    if can.get("enabled") or "canary" in sweep.lower():
+        return "canary (indotto)"
+    if cfg.get("record_dp"):
+        return "naturale — record-DP (diagnostico)"
+    return "naturale"
+
+
+def rq_di(cfg: dict, sweep: str, reg: str) -> str:
+    """Mappa sulle RQ della guida, sezione 4."""
+    if reg.startswith("canary"):
+        return "CTRL — validazione dello strumento, non una RQ"
+    if cfg.get("no_dp") is not None or cfg.get("dp_mode"):
+        return "RQ1"
+    return "non classificabile"
+
+
+def stato_validita(cfg: dict, sweep: str, reg: str, ts: datetime,
+                   mia: dict) -> tuple[str, str]:
+    """Stato + motivo. Solo criteri oggettivi e verificabili nel file stesso.
+
+    Il criterio "post-fix" NON usa il timestamp, che sarebbe una congettura:
+    usa la presenza del campo canary_raw_n_member_distinct, introdotto dal fix
+    stesso (Sprint 10zz+119). Se il campo c'e', la loss grezza e' stata
+    raccolta prima del filtro di calibrazione LiRA; se non c'e', no.
+    """
+    can = cfg.get("canary") or {}
+    e_canary = reg.startswith("canary")
+    raw_pulita = mia.get("canary_raw_n_member_distinct") is not None
+
+    if e_canary and not can:
+        return ("incompleta",
+                "il blocco 'canary' non e' registrato nel config del JSON (i run "
+                "anteriori allo Sprint 10zz+113 non lo salvavano): k, duplicati e "
+                "swap_assignment non sono ricostruibili dal file, quindi il disegno "
+                "dell'esperimento non e' verificabile. RISOLVIBILE A MANO: il YAML "
+                "corrispondente e' probabilmente ancora in config/ con un nome "
+                "affine allo sweep; associarlo e' una verifica, non un'analogia, "
+                "e va fatta guardando il file, non deducendola dal nome")
+
+    if can.get("enabled"):
+        nt, nnm = can.get("n_templates"), can.get("n_nonmember_templates")
+        if can.get("swap_assignment") and nt is not None and nt != nnm:
+            return ("invalidata",
+                    f"braccio di scambio con gruppi sbilanciati ({nt} vs {nnm}): i due "
+                    "bracci pescano insiemi di membri DISGIUNTI, quindi non e' un "
+                    "controllo negativo (guida sez. 6; docs/CanaryPositiveControl.md 4.1)")
+        if not raw_pulita:
+            return ("completata da verificare",
+                    "canary anteriore al fix Sprint 10zz+119 (manca il campo "
+                    "canary_raw_n_member_distinct): canary_raw_mse_auc_roc e' calcolata "
+                    "su un pool filtrato da insufficient_calibration di LiRA, quindi non "
+                    "e' appaiata con la baseline a init casuale, che gira senza shadow")
+        if re.fullmatch(r"_canary_balanced(_swap)?_s\d+", sweep):
+            return ("verificata",
+                    "campagna bilanciata post-fix: numeri ricontrollati dai JSON il "
+                    "2026-09-21 (30/30 round sopra 0.5, min 0.6125, t(4)=9.90 appaiato "
+                    "sui 5 seed, 400 coppie distinte in tutte le celle)")
+        return ("completata da verificare",
+                "cella di ablation post-fix: il dato e' pulito ma non e' stato "
+                "sottoposto alla stessa verifica numerica della campagna principale")
+
+    if not mia:
+        return ("incompleta", "nessuna metrica MIA nel JSON")
+    return ("completata da verificare",
+            "nessun difetto noto, ma commit e hash degli split non sono registrati: "
+            "la tracciabilita' completa richiesta dalla Fase A non e' ricostruibile")
+
+
+def leggi_run() -> list[dict]:
+    log_disp = mappa_log()
+    righe = []
+    for f in sorted(glob.glob(os.path.join(RADICE, "experiments", "*", "experiment_*.json"))):
+        sweep = os.path.basename(os.path.dirname(f))
+        base = os.path.basename(f)
+        try:
+            d = json.load(open(f))
+        except Exception as e:
+            righe.append({"id": f"{sweep}/{base}", "errore": type(e).__name__})
+            continue
+        cfg = d.get("config") or {}
+        summ = d.get("summary") or {}
+        pr = d.get("per_round") or {}
+        ultimo = max(pr, key=int) if pr else None
+        mia = (pr.get(ultimo) or {}).get("mia", {}) if ultimo else {}
+        try:
+            ts = datetime.strptime(d.get("timestamp", ""), "%Y%m%d_%H%M%S")
+        except Exception:
+            ts = None
+        reg = regime(cfg, sweep)
+        stato, motivo = stato_validita(cfg, sweep, reg, ts, mia)
+        m = re.search(r"seed(\d+)", sweep)
+        seed_nome = m.group(1) if m else None
+        discorde = seed_nome is not None and str(cfg.get("seed")) != seed_nome
+        can = cfg.get("canary") or {}
+        righe.append({
+            "id": f"{sweep}/{base}",
+            "sweep": sweep,
+            "rq": rq_di(cfg, sweep, reg),
+            "commit": "",
+            "configurazione": (
+                f"dp_mode={cfg.get('dp_mode')}; no_dp={cfg.get('no_dp')}; "
+                f"eps={cfg.get('epsilon')}; delta={cfg.get('delta')}; "
+                f"round={cfg.get('fl_rounds')}; epoche={cfg.get('epochs')}; "
+                f"batch={cfg.get('batch_size')}; feature={len(cfg.get('feature_names') or []) or 'n.d.'}; "
+                f"hidden={cfg.get('hidden_dims')}; latent={cfg.get('latent_dim')}"
+                + (f"; canary k={can.get('n_templates')}/{can.get('n_nonmember_templates')}, "
+                   f"dup={can.get('n_duplicates')}, swap={can.get('swap_assignment')}"
+                   if can.get("enabled") else "")
+            ),
+            "hash_split": "",
+            "seed": cfg.get("seed"),
+            "seed_nome": seed_nome,
+            "seed_discorde": discorde,
+            "algoritmo": f"FedProx, mu={cfg.get('proximal_mu')}"
+                         if cfg.get("proximal_mu") else "non registrato",
+            "regime": reg,
+            "superficie": superficie(cfg),
+            "dp_accounting": (
+                f"eps_naive={cfg.get('epsilon_cumulative_naive')}; "
+                f"eps_avanzata={cfg.get('epsilon_cumulative_advanced')}; "
+                f"eps_migliore={cfg.get('epsilon_cumulative_best_known')}; "
+                "nessun accountant RDP, nessun enforcement"
+            ),
+            "checkpoint": f"{len(pr)} round valutati",
+            "metriche": (
+                f"LiRA medio={summ.get('mean_lira_auc_roc')}; "
+                f"Yeom medio={summ.get('mean_auc_roc')}; "
+                f"Shadow medio={summ.get('mean_shadow_auc_roc')}; "
+                f"LiRA composto={mia.get('composed_lira_auc_roc')}"
+                + (f"; canary raw={mia.get('canary_raw_mse_auc_roc')}"
+                   if mia.get("canary_raw_mse_auc_roc") is not None else "")
+            ),
+            "log": trova_log(sweep, log_disp),
+            "artefatti": f"experiments/{sweep}/ (JSON + xlsx + history/)",
+            "stato": stato,
+            "motivo": motivo,
+            "ts": ts,
+        })
+    return righe
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scrittura
+# ─────────────────────────────────────────────────────────────────────────────
+def stile(ws, larghezze, altezza=100):
+    for r in range(1, ws.max_row + 1):
+        for c in range(1, ws.max_column + 1):
+            cel = ws.cell(r, c)
+            cel.font = Font(name=FONT, size=9, bold=(r == 1))
+            cel.alignment = Alignment(wrap_text=True, vertical="top")
+            cel.border = BORDO
+            if r == 1:
+                cel.fill = GRIGIO
+    for col, w in zip("ABCDEFGHIJKLMNO", larghezze):
+        ws.column_dimensions[col].width = w
+    ws.freeze_panes = "A2"
+    for r in range(2, ws.max_row + 1):
+        ws.row_dimensions[r].height = altezza
+
+
+def colora_stato(ws, col):
+    for r in range(2, ws.max_row + 1):
+        v = str(ws.cell(r, col).value or "")
+        if v.startswith("verificata"):
+            ws.cell(r, col).fill = VERDE
+        elif v.startswith("invalidata") or v.startswith("incompleta"):
+            ws.cell(r, col).fill = ROSSO
+        elif v:
+            ws.cell(r, col).fill = GIALLO
+
+
+def scrivi_registro(righe):
+    p = os.path.join(USCITA, "matrice_run_completati.xlsx")
+    wb = openpyxl.load_workbook(p)
+    ws = wb["Matrice_run"]
+    ws.cell(1, 16).value = "fase (spina dorsale)"
+    ws.cell(1, 17).value = "motivo dello stato"
+    for i, r in enumerate(righe, start=2):
+        note_seed = (f"{r['seed']} (cartella dice {r['seed_nome']}: DISCORDE, "
+                     "usare il nome cartella)") if r.get("seed_discorde") else r.get("seed")
+        for c, v in enumerate([
+            r["id"], r["rq"], "non registrato", r["configurazione"],
+            "non registrato", note_seed, r["algoritmo"], r["regime"],
+            r["superficie"], r["dp_accounting"], r["checkpoint"], r["metriche"],
+            r["log"] or "nessun log associabile per nome", r["artefatti"],
+            r["stato"], "Fase A — inventario", r["motivo"],
+        ], start=1):
+            ws.cell(i, c).value = v
+    stile(ws, [34, 12, 14, 52, 16, 20, 18, 18, 30, 34, 14, 40, 30, 30, 22, 16, 50], 90)
+    colora_stato(ws, 15)
+
+    lg = wb["Legenda_stati"]
+    for i, (s, d) in enumerate([
+        ("verificata", "Numeri ricontrollati dai JSON da una seconda persona/passata, e nessun difetto noto sulla pipeline che li ha prodotti."),
+        ("completata da verificare", "La run e' terminata e le metriche esistono, ma la tracciabilita' richiesta dalla Fase A non e' completa: commit e hash degli split non sono registrati in nessun JSON di questo progetto."),
+        ("invalidata", "Esiste un motivo documentato per cui la run non risponde alla domanda per cui e' stata eseguita. Conservata, non cancellata (guida riga 152)."),
+        ("incompleta", "La run manca di metriche o si e' interrotta."),
+        ("pianificata", "Non ancora eseguita. Nessuna run in questo registro ha questo stato: le lacune stanno in Matrice_sintesi."),
+        ("", ""),
+        ("NOTA su 'commit' e 'hash split'", "Vuoti per tutte le 235 run: non sono mai stati salvati nei JSON. La guida (riga 150) vieta di riempirli per analogia, quindi restano vuoti. Registrarli e' una modifica al codice, non una ricostruzione."),
+    ], start=2):
+        lg.cell(i, 1).value = s
+        lg.cell(i, 2).value = d
+    stile(lg, [30, 110], 60)
+    wb.save(p)
+    return p, ws.max_row - 1
+
+
+def scrivi_confronti(righe):
+    p = os.path.join(USCITA, "matrice_confronti.xlsx")
+    wb = openpyxl.load_workbook(p)
+    ws = wb["Matrice_confronti"]
+    ws.cell(1, 12).value = "fase (spina dorsale)"
+
+    nat = [r for r in righe if r["regime"] == "naturale" and r["rq"] == "RQ1"]
+    celle = defaultdict(list)
+    for r in nat:
+        chiave = ("no-DP" if (r["configurazione"].find("no_dp=True") >= 0)
+                  else re.search(r"dp_mode=([\w-]+).*?eps=([\d.]+)", r["configurazione"]).group(0)
+                  if re.search(r"dp_mode=([\w-]+).*?eps=([\d.]+)", r["configurazione"]) else "?")
+        celle[chiave].append(r)
+
+    conf = []
+    nodp = celle.get("no-DP", [])
+    n = 0
+    for chiave, rs in sorted(celle.items(), key=str):
+        if chiave == "no-DP":
+            continue
+        n += 1
+        seed_dp = {str(r["seed_nome"] or r["seed"]) for r in rs}
+        seed_nodp = {str(r["seed_nome"] or r["seed"]) for r in nodp}
+        appaiati = sorted(seed_dp & seed_nodp)
+        conf.append([
+            f"C{n:02d}", "RQ1", "no-DP (regime naturale)", chiave,
+            "si, se appaiati per seed" if appaiati else "no: nessun seed in comune",
+            "dati, split, architettura, algoritmo, round, epoche, batch: identici",
+            ("nessuna differenza non controllata individuata oltre al fattore DP"
+             if appaiati else "manca il riferimento appaiato"),
+            f"{len(rs)} run nella cella DP, {len(nodp)} nella cella no-DP; "
+            f"seed appaiabili: {appaiati or 'nessuno'}",
+            "da verificare: alcune celle contengono run di sweep diversi, e "
+            "check_significance.py deduplica scegliendo il file piu' recente",
+            "confronto disponibile" if appaiati else "confronto non costruibile",
+            "Il contrasto B0/B2 della guida (sez. 8) e' questo. Manca invece il "
+            "braccio B1 'clipping senza rumore', mai eseguito.",
+            "Fase A — confrontabilita' (il confronto si esegue in Fase B)",
+        ])
+
+    conf.append([
+        "C-RQ2", "RQ2", "partizione IID", "partizione non-IID (per sito)",
+        "no", "—",
+        "il braccio IID non esiste: i client sono i 3 siti reali raggruppati per "
+        "site_id, quindi la partizione e' non-IID per natura, non per costruzione",
+        "nessuna configurazione registra split.strategy: default 'random' in tutte "
+        "le 235 run; l'alternativa 'entity_aware' non e' mai stata attivata",
+        "—", "confronto non costruibile",
+        "Serve costruire il riferimento IID rimescolando le sessioni fra i siti a "
+        "parita' di numerosita' per client (guida Fase E).",
+        "Fase A — lacuna rilevata (si esegue in Fase E)",
+    ])
+    conf.append([
+        "C-RQ3", "RQ3", "FedAvg (mu=0)", "FedProx (mu=0.01)",
+        "no", "—",
+        "il braccio mu=0 non esiste",
+        "proximal_mu = 0.01 su 235 run su 235, verificato con "
+        "scripts/build_run_registry.py il 2026-09-21",
+        "—", "confronto non costruibile",
+        "Da eseguire da zero riusando split, candidati, checkpoint e condizioni DP "
+        "della Fase B (guida Fase D).",
+        "Fase A — lacuna rilevata (si esegue in Fase D)",
+    ])
+
+    for i, riga in enumerate(conf, start=2):
+        for c, v in enumerate(riga, start=1):
+            ws.cell(i, c).value = v
+    stile(ws, [12, 10, 26, 30, 22, 34, 42, 42, 34, 24, 46, 30], 110)
+    colora_stato(ws, 10)
+    for r in range(2, ws.max_row + 1):
+        if "non costruibile" in str(ws.cell(r, 10).value):
+            ws.cell(r, 10).fill = ROSSO
+
+    lg = wb["Legenda_stati"]
+    for i, (s, d) in enumerate([
+        ("confronto disponibile", "Esistono run appaiabili per seed su entrambi i bracci. Non significa che il confronto sia gia' stato fatto ne' che sia valido: significa che i dati ci sono."),
+        ("confronto non costruibile", "Manca del tutto uno dei due bracci. Nessuna analisi sui dati esistenti puo' produrlo."),
+        ("", ""),
+        ("NOTA", "La guida (riga 152) chiede di segnalare le configurazioni duplicate: le celle central eps=0.5, central eps=1.0 e local eps=1.0 contengono piu' run per lo stesso seed, provenienti da sweep diversi."),
+    ], start=2):
+        lg.cell(i, 1).value = s
+        lg.cell(i, 2).value = d
+    stile(lg, [30, 110], 60)
+    wb.save(p)
+    return p, len(conf)
+
+
+def scrivi_sintesi(righe):
+    p = os.path.join(USCITA, "Matrice_sintesi.xlsx")
+    wb = openpyxl.load_workbook(p)
+    ws = wb["Matrice_sintesi"]
+    ws.cell(1, 10).value = "fase (spina dorsale)"
+
+    n_tot = len(righe)
+    n_nat = sum(1 for r in righe if r["regime"] == "naturale")
+    n_can = sum(1 for r in righe if r["regime"].startswith("canary"))
+    n_inv = sum(1 for r in righe if r["stato"] == "invalidata")
+    n_ver = sum(1 for r in righe if r["stato"] == "verificata")
+    n_incompl = sum(1 for r in righe if r["stato"] == "incompleta")
+
+    S = [
+        [f"{n_nat} run in regime naturale", "RQ1", "completata da verificare",
+         "C01..C11", "si, appaiando per seed",
+         "Nessuna lacuna sul fattore DP. Manca il braccio B1 'clipping senza "
+         "rumore' (sigma=0), che la guida chiede in Fase B per separare "
+         "l'effetto del clipping da quello del rumore.",
+         "1 cella B1: clipping attivo, sigma=0, stessi 5 seed della cella di "
+         "riferimento. Riusa i config esistenti cambiando un solo parametro.",
+         "alta", "Da decidere in Fase B: quale superficie e' primaria. "
+         "Raccomandazione motivata: A1/dp-fedavg, perche' un nullo li' limita "
+         "anche A2 e A3.",
+         "Fase A -> B"],
+        [f"{n_tot} run totali", "RQ2", "lacuna strutturale", "C-RQ2", "no",
+         "Non esiste alcun riferimento IID. I client sono i 3 siti reali, quindi "
+         "l'eterogeneita' non e' un fattore manipolato ma una proprieta' dei dati. "
+         "Nessuna run puo' colmarla a posteriori.",
+         "Costruire la partizione IID rimescolando le sessioni fra i siti a parita' "
+         "di numerosita' per client, poi IID/non-IID x senza-DP/con-DP: 4 celle x 5 "
+         "seed = 20 run.",
+         "media", "La guida (Fase E) avverte che una partizione IID artificiale e' "
+         "un riferimento sperimentale, non un deployment reale: va dichiarato.",
+         "Fase A -> E"],
+        [f"{n_tot} run totali", "RQ3", "lacuna strutturale", "C-RQ3", "no",
+         "proximal_mu = 0.01 su 235 run su 235. Nessuna esecuzione con mu=0, quindi "
+         "il confronto FedAvg/FedProx non e' recuperabile dai dati esistenti.",
+         "Ripetere la configurazione di Fase B con mu=0, appaiata per split e seed: "
+         "1 algoritmo x 2 livelli di protezione x 5 seed = 10 run.",
+         "alta", "Attenzione: proximal_mu vive in cfg['ml'], non in "
+         "cfg['experiment']. Impostarlo nel posto sbagliato verrebbe ignorato in "
+         "silenzio.",
+         "Fase A -> D"],
+        ["—", "RQ4", "esclusa per scelta", "—", "—",
+         "Threat model passivo (Scenario 1, aggregatore honest-but-curious). "
+         "ByzantineDetector e' implementato e testato a unita' ma mai esercitato "
+         "end-to-end contro un client Byzantine attivo.",
+         "Nessun rerun. La guida (sez. 4) chiede di registrare l'esclusione e non "
+         "rivendicare una risposta.",
+         "nessuna", "Da dichiarare come RQ rinviata in Fase F, con ragione e "
+         "conseguenza sul claim: non deve sparire dalla narrativa.",
+         "Fase A -> F"],
+        [f"{n_can} run canary ({n_ver} verificate, {n_incompl} incompleta)", "CTRL",
+         "verificata per la campagna bilanciata post-fix", "—", "non applicabile",
+         f"Il controllo positivo e' superato e il negativo bilanciato regge "
+         f"(30/30 round sopra 0.5, min 0.6125, t(4)=9.90 appaiato sui 5 seed). "
+         f"Ma {n_incompl} run canary hanno il blocco 'canary' NON registrato nel "
+         f"config: k, duplicati e swap_assignment non sono leggibili dal file, "
+         f"quindi non si puo' stabilire dal JSON se quei bracci di scambio fossero "
+         f"bilanciati. Nessuna e' marcata 'invalidata' proprio per questo: "
+         f"invalidare richiederebbe un'analogia, che la guida vieta.",
+         "Nessun rerun. Serve pero' una verifica documentale: associare a ciascuna "
+         "delle run incomplete il YAML di config corrispondente e registrare k e "
+         "swap_assignment nel registro. E' lettura di file, non nuovo calcolo.",
+         "bassa", "La guida (sez. 6) e' esplicita: 'simmetrico = membership' non "
+         "e' un teorema generale, e il canary non certifica il null naturale. Tenere "
+         "il risultato separato dal regime naturale (guida Fase C).",
+         "Fase A (strumento) — non e' una RQ"],
+    ]
+    for i, riga in enumerate(S, start=2):
+        for c, v in enumerate(riga, start=1):
+            ws.cell(i, c).value = v
+    stile(ws, [30, 10, 26, 14, 20, 56, 52, 12, 52, 22], 160)
+    for r in range(2, ws.max_row + 1):
+        v = str(ws.cell(r, 3).value or "")
+        ws.cell(r, 3).fill = (VERDE if v.startswith("verificata")
+                              else ROSSO if "lacuna" in v else GIALLO)
+
+    rg = wb["Regole_intersezione"]
+    for i, (k, d) in enumerate([
+        ("Una run puo' servire piu' RQ", "Una run in regime naturale serve RQ1; la stessa run servirebbe RQ3 solo se esistesse la gemella con mu=0. Non esiste, quindi non la si conta per RQ3."),
+        ("Regime naturale e canary non si mescolano", "La guida (Fase C) vieta di usare il canary per certificare il null naturale. Nel registro sono due popolazioni separate e non vanno aggregate."),
+        ("Deduplica", "check_significance.py deduplica per (dp_mode, epsilon, seed) scegliendo il file piu' recente. E' una scelta implicita: va dichiarata nel paper o sostituita con un criterio esplicito."),
+        ("Priorita'", "alta = blocca una RQ dichiarata; media = blocca una RQ ma con costo maggiore; nessuna = non serve rerun."),
+        ("Cosa NON e' in queste matrici", "Qualunque decisione sulle fasi B-F. La Fase A si ferma a: cosa esiste, cosa e' confrontabile, cosa manca. Le raccomandazioni sono marcate come tali e rinviate alla fase competente."),
+    ], start=2):
+        rg.cell(i, 1).value = k
+        rg.cell(i, 2).value = d
+    stile(rg, [34, 110], 60)
+    wb.save(p)
+    return p, len(S)
+
+
+def main():
+    os.makedirs(USCITA, exist_ok=True)
+    righe = leggi_run()
+    p1, n1 = scrivi_registro(righe)
+    p2, n2 = scrivi_confronti(righe)
+    p3, n3 = scrivi_sintesi(righe)
+    print(f"registro run   : {n1} righe -> {p1}")
+    print(f"confrontabilita: {n2} righe -> {p2}")
+    print(f"sintesi        : {n3} righe -> {p3}")
+    stati = defaultdict(int)
+    for r in righe:
+        stati[r["stato"]] += 1
+    print("\nstati di validita':")
+    for k, v in sorted(stati.items()):
+        print(f"   {k:28s} {v}")
+
+
+if __name__ == "__main__":
+    main()
