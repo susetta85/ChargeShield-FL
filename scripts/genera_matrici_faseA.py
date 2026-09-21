@@ -71,6 +71,43 @@ def trova_log(sweep: str, log_disponibili: dict[str, list[str]]) -> str:
     return "; ".join(sorted(set(parziali))) if parziali else ""
 
 
+def parametri_canary_dai_log() -> dict[str, dict]:
+    """k, duplicati e swap letti dai LOG, non dedotti.
+
+    Risolve le run canary anteriori allo Sprint 10zz+113, che non salvano il
+    blocco 'canary' nel JSON. La riga di log
+        "[CANARY] Iniettati K template x D duplicati ... + N gemelli non-membro"
+    contiene entrambe le cardinalita' in chiaro, e "[SWAP ATTIVO]" dice se il
+    braccio e' quello scambiato. E' lettura di un'evidenza, non un'analogia:
+    il log e' l'output della run stessa.
+    """
+    pat = re.compile(
+        r"Iniettati (\d+) template . (\d+) duplicati.*?\+ (\d+) gemelli non-membro"
+    )
+    fuori = {}
+    for p in glob.glob(os.path.join(RADICE, "logs", "*.log")):
+        txt = open(p, errors="replace").read()
+        m = pat.search(txt)
+        if not m:
+            continue
+        k, dup, nnm = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        fuori[os.path.basename(p)] = {
+            "k": k, "dup": dup, "nnm": nnm,
+            "swap": "[SWAP ATTIVO]" in txt,
+            "bilanciato": k == nnm,
+        }
+    return fuori
+
+
+def canary_dal_log(sweep: str, par: dict[str, dict]) -> dict | None:
+    """Parametri canary per uno sweep, se un log con quel nome esiste."""
+    s = sweep.lstrip("_")
+    for nome, v in par.items():
+        if re.sub(r"\.log$", "", nome) == s:
+            return v
+    return None
+
+
 def superficie(cfg: dict) -> str:
     """Punto di osservazione dell'avversario (sezione 5 della guida)."""
     if cfg.get("no_dp"):
@@ -101,7 +138,7 @@ def rq_di(cfg: dict, sweep: str, reg: str) -> str:
 
 
 def stato_validita(cfg: dict, sweep: str, reg: str, ts: datetime,
-                   mia: dict) -> tuple[str, str]:
+                   mia: dict, dal_log: dict | None = None) -> tuple[str, str]:
     """Stato + motivo. Solo criteri oggettivi e verificabili nel file stesso.
 
     Il criterio "post-fix" NON usa il timestamp, che sarebbe una congettura:
@@ -114,14 +151,29 @@ def stato_validita(cfg: dict, sweep: str, reg: str, ts: datetime,
     raw_pulita = mia.get("canary_raw_n_member_distinct") is not None
 
     if e_canary and not can:
+        if dal_log:
+            k, nnm, sw = dal_log["k"], dal_log["nnm"], dal_log["swap"]
+            if sw and not dal_log["bilanciato"]:
+                return ("invalidata",
+                        f"RISOLTO DAL LOG (2026-09-21): braccio di scambio con gruppi "
+                        f"sbilanciati, k_membro={k} contro k_nonmembro={nnm}. Con "
+                        f"cardinalita' diverse i due bracci pescano insiemi di membri "
+                        f"DISGIUNTI, quindi non e' un controllo negativo (guida sez. 6; "
+                        f"docs/CanaryPositiveControl.md 4.1). Il config non era nel JSON, "
+                        f"ma la riga '[CANARY] Iniettati ...' del log lo dichiara")
+            return ("completata da verificare",
+                    f"il blocco 'canary' non e' nel JSON, ma il log risolve il disegno: "
+                    f"k_membro={k}, duplicati={dal_log['dup']}, k_nonmembro={nnm}, "
+                    f"swap={'si' if sw else 'no'}, "
+                    f"{'bilanciato' if dal_log['bilanciato'] else 'SBILANCIATO'}. "
+                    f"Il braccio base resta un positive control leggibile; la coppia con "
+                    f"lo swap no, se sbilanciata")
         return ("incompleta",
                 "il blocco 'canary' non e' registrato nel config del JSON (i run "
-                "anteriori allo Sprint 10zz+113 non lo salvavano): k, duplicati e "
-                "swap_assignment non sono ricostruibili dal file, quindi il disegno "
-                "dell'esperimento non e' verificabile. RISOLVIBILE A MANO: il YAML "
-                "corrispondente e' probabilmente ancora in config/ con un nome "
-                "affine allo sweep; associarlo e' una verifica, non un'analogia, "
-                "e va fatta guardando il file, non deducendola dal nome")
+                "anteriori allo Sprint 10zz+113 non lo salvavano) e NON esiste un log "
+                "con il nome di questo sweep: k, duplicati e swap_assignment non sono "
+                "ricavabili da nessuna evidenza. Dedurli dal nome della cartella "
+                "sarebbe l'analogia che la guida vieta")
 
     if can.get("enabled"):
         nt, nnm = can.get("n_templates"), can.get("n_nonmember_templates")
@@ -154,6 +206,7 @@ def stato_validita(cfg: dict, sweep: str, reg: str, ts: datetime,
 
 def leggi_run() -> list[dict]:
     log_disp = mappa_log()
+    par_canary = parametri_canary_dai_log()
     righe = []
     for f in sorted(glob.glob(os.path.join(RADICE, "experiments", "*", "experiment_*.json"))):
         sweep = os.path.basename(os.path.dirname(f))
@@ -173,7 +226,8 @@ def leggi_run() -> list[dict]:
         except Exception:
             ts = None
         reg = regime(cfg, sweep)
-        stato, motivo = stato_validita(cfg, sweep, reg, ts, mia)
+        stato, motivo = stato_validita(cfg, sweep, reg, ts, mia,
+                                       canary_dal_log(sweep, par_canary))
         m = re.search(r"seed(\d+)", sweep)
         seed_nome = m.group(1) if m else None
         discorde = seed_nome is not None and str(cfg.get("seed")) != seed_nome
@@ -259,21 +313,31 @@ def scrivi_registro(righe):
     p = os.path.join(USCITA, "matrice_run_completati.xlsx")
     wb = openpyxl.load_workbook(p)
     ws = wb["Matrice_run"]
-    ws.cell(1, 16).value = "fase (spina dorsale)"
-    ws.cell(1, 17).value = "motivo dello stato"
+    # Colonne "commit" e "versione/hash degli split" RIMOSSE il 2026-09-21 su
+    # decisione dell'utente: erano vuote su tutte le 235 righe perche' non sono
+    # mai state registrate. Da oggi run_experiments.py salva config.git_commit,
+    # quindi le run FUTURE saranno tracciabili e la colonna potra' tornare.
+    for c, v in enumerate(["ID run", "RQ", "configurazione", "seed", "algoritmo/mu",
+                           "regime naturale o canary", "superficie dell'attacco",
+                           "DP/accounting", "checkpoint", "metriche", "log",
+                           "artefatti", "stato di validita'",
+                           "fase (spina dorsale)", "motivo dello stato"], start=1):
+        ws.cell(1, c).value = v
+    for c in range(16, 18):
+        ws.cell(1, c).value = None
     for i, r in enumerate(righe, start=2):
         note_seed = (f"{r['seed']} (cartella dice {r['seed_nome']}: DISCORDE, "
                      "usare il nome cartella)") if r.get("seed_discorde") else r.get("seed")
         for c, v in enumerate([
-            r["id"], r["rq"], "non registrato", r["configurazione"],
-            "non registrato", note_seed, r["algoritmo"], r["regime"],
+            r["id"], r["rq"], r["configurazione"],
+            note_seed, r["algoritmo"], r["regime"],
             r["superficie"], r["dp_accounting"], r["checkpoint"], r["metriche"],
             r["log"] or "nessun log associabile per nome", r["artefatti"],
             r["stato"], "Fase A — inventario", r["motivo"],
         ], start=1):
             ws.cell(i, c).value = v
-    stile(ws, [34, 12, 14, 52, 16, 20, 18, 18, 30, 34, 14, 40, 30, 30, 22, 16, 50], 90)
-    colora_stato(ws, 15)
+    stile(ws, [34, 12, 52, 20, 18, 18, 30, 34, 14, 40, 30, 30, 22, 16, 50], 90)
+    colora_stato(ws, 13)
 
     lg = wb["Legenda_stati"]
     for i, (s, d) in enumerate([
@@ -283,7 +347,7 @@ def scrivi_registro(righe):
         ("incompleta", "La run manca di metriche o si e' interrotta."),
         ("pianificata", "Non ancora eseguita. Nessuna run in questo registro ha questo stato: le lacune stanno in Matrice_sintesi."),
         ("", ""),
-        ("NOTA su 'commit' e 'hash split'", "Vuoti per tutte le 235 run: non sono mai stati salvati nei JSON. La guida (riga 150) vieta di riempirli per analogia, quindi restano vuoti. Registrarli e' una modifica al codice, non una ricostruzione."),
+        ("NOTA su 'commit' e 'hash split'", "Colonne RIMOSSE il 2026-09-21. La guida (riga 150) le elenca, ma erano vuote su tutte le 235 righe: non sono mai state salvate nei JSON, e dedurle dalla data sarebbe l'analogia che la guida vieta. Due colonne vuote non informano. Da oggi run_experiments.py registra config.git_commit (con marcatore -dirty se l'albero aveva modifiche non committate), quindi le run future saranno tracciabili e la colonna potra' tornare con dati veri."),
     ], start=2):
         lg.cell(i, 1).value = s
         lg.cell(i, 2).value = d
@@ -473,15 +537,55 @@ def scrivi_sintesi(righe):
     return p, len(S)
 
 
+
+def scrivi_costo_per_sito():
+    """Costo per sito: NON e' nei JSON, solo nei log.
+
+    Errore trovato e corretto il 2026-09-21: la decision matrix affermava che
+    il dato per client fosse "nella stessa struttura" dei JSON. Non e' vero.
+    per_round[*].fl contiene SOLO mean_loss globale; nessuna chiave nomina un
+    client o un sito. La loss per client esiste unicamente nella riga di log
+    "[<sito>-NN] Round R — loss=..., n=...". Questa tabella la estrae da li'.
+    """
+    p = os.path.join(USCITA, "Matrice_sintesi.xlsx")
+    wb = openpyxl.load_workbook(p)
+    ws = wb.create_sheet("Costo_per_sito")
+    ws.append(["log", "condizione DP", "sito", "round finale",
+               "loss finale", "n sessioni del client"])
+    pat = re.compile(r"\[(\w+)-\d+\] Round (\d+) — loss=([\d.eE+-]+), n=(\d+)")
+    righe = []
+    for f in sorted(glob.glob(os.path.join(RADICE, "logs", "*.log"))):
+        txt = open(f, errors="replace").read()
+        if "[NO-DP BASELINE]" in txt:
+            cond = "no-DP"
+        else:
+            m = re.search(r"GradientManager — .=([\d.]+)", txt)
+            cond = f"DP (eps={m.group(1)})" if m else "non determinabile dal log"
+        ultimo = {}
+        for m in pat.finditer(txt):
+            sito, rnd, loss, n = m.group(1), int(m.group(2)), float(m.group(3)), int(m.group(4))
+            if sito not in ultimo or rnd > ultimo[sito][0]:
+                ultimo[sito] = (rnd, loss, n)
+        for sito, (rnd, loss, n) in sorted(ultimo.items()):
+            righe.append([os.path.basename(f), cond, sito, rnd, loss, n])
+    for r in righe:
+        ws.append(r)
+    stile(ws, [42, 26, 12, 14, 18, 22], 18)
+    wb.save(p)
+    return len(righe)
+
+
 def main():
     os.makedirs(USCITA, exist_ok=True)
     righe = leggi_run()
     p1, n1 = scrivi_registro(righe)
     p2, n2 = scrivi_confronti(righe)
     p3, n3 = scrivi_sintesi(righe)
+    n4 = scrivi_costo_per_sito()
     print(f"registro run   : {n1} righe -> {p1}")
     print(f"confrontabilita: {n2} righe -> {p2}")
     print(f"sintesi        : {n3} righe -> {p3}")
+    print(f"costo per sito : {n4} righe (foglio in Matrice_sintesi)")
     stati = defaultdict(int)
     for r in righe:
         stati[r["stato"]] += 1

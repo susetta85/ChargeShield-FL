@@ -372,6 +372,34 @@ def load_sessions(cfg: dict) -> list[dict[str, Any]]:
     return sessions
 
 
+def _git_commit_corrente() -> str | None:
+    """Commit HEAD del repository, con marcatore 'dirty' se ci sono modifiche.
+
+    Aggiunto 2026-09-21 (Fase A della guida scientifica). Restituisce None se
+    git non e' disponibile o la cartella non e' un repository: meglio un campo
+    assente che un valore inventato, come impone la riga 150 della guida.
+    """
+    import subprocess
+    try:
+        radice = Path(__file__).resolve().parent.parent
+        sha = subprocess.run(
+            ["git", "-C", str(radice), "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if sha.returncode != 0:
+            return None
+        commit = sha.stdout.strip()
+        stato = subprocess.run(
+            ["git", "-C", str(radice), "status", "--porcelain"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if stato.returncode == 0 and stato.stdout.strip():
+            return f"{commit}-dirty"
+        return commit
+    except Exception:
+        return None
+
+
 def group_sessions_by_site(sessions: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     """
     Raggruppa le sessioni per SITO REALE, usando il campo "site_id" già presente
@@ -6623,6 +6651,30 @@ def save_results(
             # due volte. None quando i canary non sono abilitati (ogni run
             # pubblicato non-canary), quindi nessun cambiamento per quelli.
             "canary":     (cfg.get("canary") if cfg.get("canary", {}).get("enabled") else None),
+            # partition_strategy / split_strategy (2026-09-21, Fase A della
+            # guida scientifica). Stessa classe di bug di "canary" qui sopra,
+            # trovata dall'inventario: NESSUNA delle 235 run registrava con
+            # quale partizione fosse stata eseguita, quindi non esisteva modo
+            # di distinguere a posteriori un riferimento IID da uno per sito —
+            # e infatti la matrice di confrontabilita' ha dovuto dichiarare
+            # RQ2 non costruibile. Salvarle entrambe rende ogni run futura
+            # auto-descrittiva su questo asse.
+            #   partition_strategy: come le sessioni sono assegnate ai CLIENT
+            #                       ('per_site' = non-IID naturale, 'iid' =
+            #                        rimescolate fra i siti a numerosita' fissa)
+            #   split_strategy:     come si separa train da holdout
+            #                       ('random' oppure 'entity_aware')
+            "partition_strategy": (cfg.get("partition", {}) or {}).get("strategy", "per_site"),
+            "split_strategy":     (cfg.get("split", {}) or {}).get("strategy", "random"),
+            # git_commit (2026-09-21, Fase A). L'inventario ha mostrato che
+            # NESSUNA delle 235 run registra il commit con cui e' stata
+            # prodotta, quindi la tracciabilita' chiesta dalla riga 150 della
+            # guida non e' ricostruibile a posteriori per nulla di gia' fatto:
+            # dedurla dalla data sarebbe l'analogia che la guida vieta. Da qui
+            # in avanti la si registra. `dirty` segnala che l'albero di lavoro
+            # aveva modifiche non committate al momento del run, nel qual caso
+            # il solo hash NON identifica il codice eseguito.
+            "git_commit": _git_commit_corrente(),
             # epsilon_cumulative_naive (2026-07-22, review indipendente pre-push):
             # PRIMA di questo fix, solo l'epsilon NOMINALE per-round veniva
             # esportato — mai il budget cumulativo reale su tutti i round.
@@ -7211,6 +7263,59 @@ def main() -> None:
     # office1) — mai i sintetici, che userebbero sessioni duplicate/sovrapposte
     # tra client e invaliderebbero qualunque misura di privacy o utility.
     real_cluster_membership = group_indices_by_site(train_sessions)
+
+    # ── Partizione IID come RIFERIMENTO SPERIMENTALE (2026-09-21, RQ2) ───────
+    # Fino a oggi l'unica partizione possibile era quella per site_id reale,
+    # quindi non-IID PER NATURA e non per costruzione: l'eterogeneita' non era
+    # un fattore manipolabile e RQ2 non aveva un braccio di controllo. Questo
+    # blocco costruisce il riferimento omogeneo che la guida chiede alla Fase E.
+    #
+    # DISEGNO (guida, Fase E): "Costruire un riferimento circa IID e una
+    # partizione eterogenea, inizialmente mantenendo le stesse numerosita' per
+    # client: cosi' la differenza riguarda principalmente la distribuzione
+    # delle feature." Quindi si rimescolano le sessioni FRA i siti ma si
+    # conservano ESATTAMENTE le cardinalita' per client della partizione
+    # naturale. L'unica cosa che cambia e' quali sessioni finiscono dove.
+    #
+    # COSA ALTERA, da dichiarare nel paper: la partizione IID rompe la
+    # corrispondenza client<->sito, quindi rompe anche la coerenza temporale e
+    # la separazione fra utenti che il raggruppamento per sito garantiva. E'
+    # un riferimento sperimentale, NON un deployment realistico.
+    #
+    # ATTENZIONE PER LiRA: la verita' di membership per-client cambia con la
+    # partizione. Qui cambia solo l'assegnazione ai client, non lo split
+    # train/holdout, quindi il pool dei non-membri resta lo stesso; ma gli
+    # shadow universe per-cluster cambiano, ed e' corretto che cambino.
+    _part_cfg = cfg.get("partition", {}) or {}
+    _part_strategy = _part_cfg.get("strategy", "per_site")
+    if _part_strategy == "iid":
+        _rng_part = random.Random(seed)
+        _tutti = [i for idxs in real_cluster_membership.values() for i in idxs]
+        _rng_part.shuffle(_tutti)
+        _nuovo: dict[str, list[int]] = {}
+        _pos = 0
+        for cid, idxs in real_cluster_membership.items():
+            _nuovo[cid] = _tutti[_pos:_pos + len(idxs)]
+            _pos += len(idxs)
+        assert _pos == len(_tutti), "partizione IID: indici persi nel rimescolamento"
+        assert {len(v) for v in _nuovo.values()} == {
+            len(v) for v in real_cluster_membership.values()
+        }, "partizione IID: le numerosita' per client devono restare identiche"
+        logger.warning(
+            "[PARTIZIONE IID] Le sessioni sono state rimescolate FRA i siti "
+            "conservando le numerosita' per client (%s). Questo e' un "
+            "RIFERIMENTO SPERIMENTALE per RQ2, non un deployment reale: la "
+            "corrispondenza client-sito, la coerenza temporale e la "
+            "separazione fra utenti sono deliberatamente rotte.",
+            {c: len(v) for c, v in _nuovo.items()},
+        )
+        real_cluster_membership = _nuovo
+    elif _part_strategy != "per_site":
+        raise ValueError(
+            f"partition.strategy sconosciuta: {_part_strategy!r}. "
+            "Valori ammessi: 'per_site' (default, non-IID naturale) o 'iid'."
+        )
+
     _byz_enabled_main = cfg.get("byzantine_attack", {}).get("enabled", False)
     if _byz_enabled_main:
         cluster_membership = inject_synthetic_client_indices(
