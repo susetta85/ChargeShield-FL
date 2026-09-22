@@ -78,7 +78,8 @@ python3 scripts/genera_matrici_faseA.py
 python3 -m pytest tests/ -q --ignore=tests/test_privacy_auditor_subscriber.py --ignore=tests/test_run_experiments_integration.py --ignore=tests/test_sprint4.py --ignore=tests/test_sprint5.py
 ```
 
-Baseline attesa senza torch: 297 passed. Con torch installato: `make test`.
+Baseline attesa senza torch: 297 passed con `datasets/` presente, 264 senza (i 33
+restanti leggono i file reali dei dataset). Con torch e dati: `make test`.
 
 ## Struttura
 

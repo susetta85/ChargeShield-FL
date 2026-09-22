@@ -192,3 +192,10 @@ sono in `scripts/_applicati/`.*
     ma rumorizza l'aggregato, e `_compute_sigma` non accetta σ = 0. Serve un flag
     `--clip-only` (client clip, nessun rumore, `epsilon_cumulative_*` a `None`), oppure
     il braccio va dichiarato non eseguito.
+39. **33 test leggono i dataset reali senza skip.** `tests/test_acn_dataset.py` e
+    `tests/test_chargeplace_scotland_adapter.py` aprono file sotto `datasets/`, che non è
+    versionato: in un clone senza dati falliscono con `FileNotFoundError` invece di
+    essere saltati (verificato il 2026-09-22: 264 passed, 2 failed, 31 errors). Aggiungere
+    `pytest.mark.skipif(not Path(...).exists(), reason=...)` a livello di modulo, così la
+    baseline resta leggibile ovunque; la funzionalità va coperta anche da un test su un
+    file sintetico piccolo committato in `tests/`.

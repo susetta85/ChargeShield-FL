@@ -106,6 +106,10 @@ guida.
 
 ## 5. Test
 
-Nel sandbox torch non è installato. La suite non-torch gira con:
+La suite non-torch gira con:
 `python3 -m pytest tests/ -q --ignore=tests/test_privacy_auditor_subscriber.py --ignore=tests/test_run_experiments_integration.py --ignore=tests/test_sprint4.py --ignore=tests/test_sprint5.py`
-Baseline attesa: 297 passed. Sulla macchina con torch: `make test`.
+Baseline attesa: 297 passed con `datasets/` scaricato; senza, 264 passed e 33 fra
+errori e fallimenti, tutti `FileNotFoundError` in `test_acn_dataset.py` e
+`test_chargeplace_scotland_adapter.py`, che leggono i file reali (segnalazione 39).
+Dipendenze minime: pytest, pyyaml, numpy, scipy, pandas, openpyxl. Sulla macchina
+con torch e dati: `make test`.
