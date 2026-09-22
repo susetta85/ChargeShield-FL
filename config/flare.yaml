@@ -1,3 +1,7 @@
+# STATO (2026-09-22): file del progetto iniziale. Nessun percorso attivo lo legge:
+# i valori (100 round, 5 epoche) NON sono quelli degli esperimenti, che vivono in
+# config/experiment*.yaml. Resta qui solo perche' src/flare/flare_connector.py
+# (scaffolding non collegato) e il suo test lo cercano a questo percorso.
 flare:
   aggregation: FedAvg
   rounds: 100

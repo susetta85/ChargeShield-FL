@@ -4,9 +4,12 @@
 
 > **Stato: documento CANONICO (deciso il 2026-09-22).** È l'unica guida attiva del
 > progetto. Lo stato corrente dei risultati è in `STATO.md`, gli esperimenti da
-> eseguire in `ESPERIMENTI.md`. I documenti in `docs/_storico/` sono superati e non
-> vanno usati per pianificare. `ChargeShield-FL_CLAIM.md` è un'ipotesi di contributo
-> metodologico subordinata alla sezione 9 di questa guida.
+> eseguire in `ESPERIMENTI.md`, il sistema reale in `SISTEMA.md`. I documenti
+> superati sono stati eliminati il 2026-09-22 e restano solo nella storia git.
+> `ChargeShield-FL_CLAIM.md` è un'ipotesi di contributo metodologico subordinata
+> alla sezione 9 di questa guida. I riferimenti a `Ricerca_DP_MIA_paper_dataset.md`
+> e alla versione precedente di questa guida indicano file mai entrati nel
+> repository.
 >
 > **Precisazione a RQ1 (2026-09-22).** L'unità protetta è un fattore di RQ1: il
 > meccanismo client-level (clip più rumore sull'update del client, `GradientManager`)

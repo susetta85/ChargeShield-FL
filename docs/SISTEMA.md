@@ -147,15 +147,5 @@ globale nell'analisi offline; clipping assoluto al round 1 in dp-fedavg; nessun
 live (segnalazione 1). Il seed governa il modello globale solo dai job successivi
 al 2026-09-10.
 
-## 10. Come si lancia una run
-
-```bash
-python3 scripts/run_experiments.py --config config/experiment.yaml --rounds 10 --seed 42 \
-  --sweep-dir experiments/nodp-sweep2 --no-dp \
-  --per-sample-dump experiments/nodp-sweep2/per_sample_seed42.json
-```
-
-Flag principali: `--dp-mode {dp-fedavg,central,local}`, `--epsilon`, `--no-dp`,
-`--n-shadow`, `--epochs`, `--per-sample-dump`, `--roc-curve-dump-dir`,
-`--centralized-control`. Output: `experiment_<timestamp>.json` più un xlsx per
-run. Aggregazione: `scripts/check_significance.py`, `scripts/genera_matrici_faseA.py`.
+Per lanciare una run e aggregare i risultati vedi il README; per gli esperimenti
+previsti `ESPERIMENTI.md`.

@@ -21,9 +21,13 @@ dicembre 2026).
 Documenti di riferimento, da leggere su richiesta: `docs/CanaryPositiveControl.md`,
 `docs/VulnerabilitaPerRecord.md`, `docs/LimiteTeoricoDP.md`,
 `docs/MetricsReference_DSN2027.md`, `docs/NVFlareIntegration.md`,
-`docs/PrivacyAuditor.md`, `docs/ReadingList_DSN2027.md`, `docs/LiteratureReview.md`,
-`docs/Testing.md`. `docs/ChargeShield-FL_CLAIM.md` è un'ipotesi di contributo
-metodologico subordinata alla guida.
+`docs/ReadingList_DSN2027.md`, `docs/LiteratureReview.md`.
+`docs/ChargeShield-FL_CLAIM.md` è un'ipotesi di contributo metodologico
+subordinata alla guida. I config sono indicizzati in `config/README.md`.
+
+**Se lavori con un assistente AI**: dagli `CLAUDE.md` come prima istruzione. Contiene
+cosa leggere, dove stanno i numeri e il protocollo di sessione. Claude Code lo
+carica da solo.
 
 I numeri vivono solo in `risultati/`: `Matrice_sintesi.xlsx`,
 `matrice_run_completati.xlsx`, `matrice_confronti.xlsx`,
@@ -74,8 +78,7 @@ python3 scripts/genera_matrici_faseA.py
 python3 -m pytest tests/ -q --ignore=tests/test_privacy_auditor_subscriber.py --ignore=tests/test_run_experiments_integration.py --ignore=tests/test_sprint4.py --ignore=tests/test_sprint5.py
 ```
 
-Baseline attesa senza torch: 297 passed. Con torch installato si esegue la suite
-completa.
+Baseline attesa senza torch: 297 passed. Con torch installato: `make test`.
 
 ## Struttura
 

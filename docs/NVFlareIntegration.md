@@ -478,7 +478,7 @@ Due gap identificati da una review esterna e confermati leggendo il codice (non 
 2. **Privacy Auditor invocato imperativamente, non come subscriber (fase 8).** `_run_ids_analysis()`
    calcolava le delta peer-relative a mano e chiamava `auditor.audit()` direttamente. Fix: nuova
    `PrivacyAuditorSubscriber` (`src/auditor/privacy_auditor_subscriber.py`, vedi
-   `docs/PrivacyAuditor.md` per il design completo) sottoscritta allo stesso `MLPlane`, reagisce
+   `docs/SISTEMA.md` sezione 6) sottoscritta allo stesso `MLPlane`, reagisce
    all'evento `"aggregation"` invece di essere chiamata da un loop esterno — stessa formula, stessi
    numeri, solo il meccanismo di attivazione cambia.
 3. **Fix collegato: sensibilità DP pesata.** `GradientManager.privatize_aggregate()` (chiamato qui
