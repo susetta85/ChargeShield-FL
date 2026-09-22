@@ -2,6 +2,21 @@
 
 **Revisione 3 · 19 settembre 2026 · Per il dottorando e gli strumenti AI che lo assistono**
 
+> **Stato: documento CANONICO (deciso il 2026-09-22).** È l'unica guida attiva del
+> progetto. Lo stato corrente dei risultati è in `STATO.md`, gli esperimenti da
+> eseguire in `ESPERIMENTI.md`. I documenti in `docs/_storico/` sono superati e non
+> vanno usati per pianificare. `ChargeShield-FL_CLAIM.md` è un'ipotesi di contributo
+> metodologico subordinata alla sezione 9 di questa guida.
+>
+> **Precisazione a RQ1 (2026-09-22).** L'unità protetta è un fattore di RQ1: il
+> meccanismo client-level (clip più rumore sull'update del client, `GradientManager`)
+> e quello record-level (DP-SGD con clipping per esempio, `record_dp` in
+> `AutoencoderTrainer`) proteggono unità diverse, mentre gli attacchi misurano
+> sempre il record. Per il client-level si distinguono inoltre i tre punti di
+> osservazione A1 grezzo, A2 clippato, A3 clippato e rumorizzato; per il
+> record-level i tre punti collassano in uno. I due meccanismi si attivano uno alla
+> volta.
+
 ## 1. La direzione del progetto: leggere prima di iniziare qualsiasi attività
 
 ### Obiettivo centrale

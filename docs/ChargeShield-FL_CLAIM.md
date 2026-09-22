@@ -6,6 +6,13 @@ non entra nel paper.
 
 Versione 2, 19 settembre 2026.
 
+> **Stato: IPOTESI, non linea del paper (deciso il 2026-09-22).** La linea canonica è
+> `ChargeShield_FL_spina_dorsale_consolidata.md`, che alla sezione 9 fissa le
+> condizioni per riaprire questa pista. Fino ad allora: i controlli di C1 entrano nel
+> paper come metodologia della misura, non come contributo; la frase "la letteratura
+> usa i canary, noi li validiamo" non va usata; C2 poggia su una cella record-DP a un
+> seed con ε da ricalcolare (vedi `Segnalazioni_tecniche_2026-09-22.md`, punto 4).
+
 ---
 
 ## 1. La decisione da prendere
