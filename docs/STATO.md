@@ -83,8 +83,15 @@ Senza DP circa 122 sessioni in eccesso sul caso sono riconoscibili in modo
 sistematico, mentre l'AUC aggregata della stessa cella è 0.51. Sotto DP a ε = 1
 l'eccesso scompare, ma con utility distrutta: le due spiegazioni non sono
 separabili con i dati attuali. È il motivo per cui lo sweep di ε in 2-16 è il
-prossimo esperimento. Nota: i due script che calcolano il percentile non usano la
-stessa definizione (411 contro 412), da unificare prima di citare il numero.
+prossimo esperimento.
+
+Due precisazioni da tenere presenti. Il percentile è calcolato sui
+`composed_score` di LiRA: poiché lo scorer è degenere (4.4), quel punteggio è in
+pratica una funzione monotona della loss, quindi il risultato regge come
+classifica per loss, ma va descritto così e lo scorer resta congelato finché lo
+sweep non è chiuso. I due script che calcolano il percentile non usano la stessa
+definizione (411 contro 412, segnalazione 6): da unificare prima di citare il
+numero nel paper.
 
 ### 3.3 Lo strumento è validato, ma su un sito
 
@@ -99,7 +106,10 @@ baseline a inizializzazione casuale, 5 seed, regime canary.
 
 Trenta round su trenta sopra 0.5 sulla loss grezza, tutte le somme A+B sopra 1,
 Δ medio per seed +0.23 con t(4) = 9.9. Il segnale è simmetrico allo scambio dei
-ruoli, quindi è appartenenza e non difficoltà intrinseca dei template. Tre
+ruoli, quindi è appartenenza e non difficoltà intrinseca dei template. Questi
+sono i numeri post correzione del 2026-09-16 (il pool raw non è più filtrato dalla
+calibrazione LiRA); `sections/validation.tex` riporta ancora quelli precedenti,
+0.757 e 0.716 con t = 11.25 (segnalazione 35). Tre
 artefatti sono stati intercettati dai controlli prima di questo risultato: pool
 diversi per i due gruppi, scoring asimmetrico fra le classi, effetto
 dell'assegnazione sotto DP. Caltech e JPL hanno solo run a seed 42 e senza il
@@ -126,10 +136,23 @@ end-to-end.
 
 ### 3.6 Unità protetta e persona
 
-Su ACN-Data l'identificativo utente copre il 72.6% delle sessioni (Caltech 52%,
-JPL 93%, Office 1 35%); 1 028 utenti contribuiscono in mediana 14 sessioni e
-l'8.5% ricarica in più di un sito. Né record-level né client-level limitano il
-contributo di una persona.
+Su ACN-Data l'identificativo utente copre il 72.6% delle sessioni (JPL 93.5%,
+Caltech 52.1%, Office 1 34.8%, misurati il 2026-09-21, scheda
+`risultati/decision_matrix_ACN_membership_DP.xlsx`); 1 028 utenti contribuiscono in
+mediana 14 sessioni e l'8.5% ricarica in più di un sito. Né record-level né
+client-level limitano il contributo di una persona. Attenzione: il paper
+(`sections/setup.tex`) riporta Caltech e JPL invertiti su questo dato
+(segnalazione 36).
+
+## 3.7 La scheda scientifica
+
+I campi della sezione 5 della guida (popolazione, unità, partizioni, modello,
+training, avversario, DP, misura, costo) sono compilati in
+`risultati/decision_matrix_ACN_membership_DP.xlsx` con lo script che li determina
+e il log che li prova. Due campi restano aperti e vanno congelati prima di
+leggere i risultati dello sweep: la superficie primaria e la soglia di costo
+accettabile (vedi `ESPERIMENTI.md`, sezione 0). Manca inoltre il braccio B1 della
+Fase B, clipping senza rumore: non esiste un flag per eseguirlo.
 
 ## 4. Cosa manca, in ordine
 

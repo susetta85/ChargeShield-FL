@@ -155,3 +155,32 @@ sui JSON prima di correggere, non fidarti della lista. L'ambiente di revisione n
     `preliminaries.tex` usa T=3 come "operating point" mentre la campagna è a T=10;
     δ confrontato con |D|≈1344 vale solo per Office 1; blocco autori non anonimizzato
     per il double-blind.
+
+## H. Aggiunte dal secondo check di coerenza (2026-09-22, sera)
+
+35. **`sections/validation.tex` riporta i numeri canary PRE correzione.** Righe 103-107
+    e 126: 0.7570 / 0.7164, Δ = +0.2367, t = 11.25. Dopo il fix del 2026-09-16 (il pool
+    raw non è più filtrato dalla calibrazione LiRA, `CanaryPositiveControl.md` §6.6) i
+    valori sono 0.7447 / 0.7152, Δ = +0.2299, t = 9.90. Allineare a Overleaf secondo la
+    regola di `CLAUDE.md`.
+36. **`sections/setup.tex:128-130` inverte Caltech e JPL sulla copertura dell'identificativo
+    utente.** Il paper dice 94% Caltech e 52% JPL; la scheda
+    `risultati/decision_matrix_ACN_membership_DP.xlsx` (misura del 2026-09-21) dice JPL
+    93.5% e Caltech 52.1%. La cifra "31.452 sessioni identificate" non può essere di
+    Caltech, che ne ha 31.404 in totale. Stesso errore in
+    `docs/paper/paper_privacy_unit_e_ids.md`.
+37. **Le run record-DP con `--no-dp` finiscono nel gruppo "no-DP baseline" e lo
+    sostituiscono.** `record_dp` non disattiva il client-level: per una cella record-DP
+    pulita serve `--no-dp`, e infatti tutte le run record-DP canary hanno `no_dp=True`.
+    Ma `check_significance.py::discover_groups` (righe 96-114) etichetta `no_dp=True`
+    come "no-DP baseline" e deduplica per `(label, seed)` tenendo il file più recente:
+    una run `rq1-recorddp-nm1` a seed 42 sostituirebbe il seed 42 di `nodp-sweep2` senza
+    alcun avviso. Stesso problema in `genera_matrici_faseA.py`. Fix: includere
+    `record_dp.enabled` e `noise_multiplier` nell'etichetta del gruppo. Da chiudere
+    prima di E-B. Il comando E-B nel vecchio TestRoadmap non aveva `--no-dp`:
+    corretto in `ESPERIMENTI.md`.
+38. **Non esiste un braccio B1, clipping senza rumore.** La Fase B della guida lo
+    richiede per separare l'effetto del clipping da quello del rumore; `central` clippa
+    ma rumorizza l'aggregato, e `_compute_sigma` non accetta σ = 0. Serve un flag
+    `--clip-only` (client clip, nessun rumore, `epsilon_cumulative_*` a `None`), oppure
+    il braccio va dichiarato non eseguito.

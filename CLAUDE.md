@@ -18,7 +18,10 @@ quest'ordine e non leggere altro finché il compito non lo richiede:
 
 `docs/_storico/` contiene documenti superati: non usarli per pianificare né per
 citare numeri, salvo richiesta esplicita dell'utente. Il README è una panoramica
-con puntatori; lo sprint-log storico è in `docs/_storico/SprintLog.md`.
+con puntatori; lo sprint-log storico è in `docs/_storico/SprintLog.md`. Finché il
+passo 3 della pulizia (spostamento in `_storico/`) non è eseguito, i documenti
+superati sono ancora in `docs/` e nel README: vale comunque la regola di non
+leggerli all'avvio.
 
 `docs/Segnalazioni_tecniche_2026-09-22.md` è l'elenco dei bug e dei problemi
 tecnici aperti, in carico al dottorando.
