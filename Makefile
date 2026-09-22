@@ -371,7 +371,7 @@ experiment-dp: _check-deps
 		--dp-mode dp-fedavg
 	@echo "✓ Esperimento DP-FedAvg completato — confronta con no-DP nel foglio Attack Comparison"
 
-# Central DP (2026-07-22, vedi docs/CaseStudies.md §2.4.3): client clippano SENZA
+# Central DP (2026-07-22, vedi docs/SISTEMA.md sezione 4): client clippano SENZA
 # rumorizzare, il server aggrega pulito e aggiunge UN SOLO rumore all'aggregato.
 # Atteso: LiRA sul singolo update NON mostra soppressione, a nessun ε (non un bug).
 .PHONY: experiment-central-dp
@@ -562,7 +562,7 @@ experiment-dp-sweep: _check-deps _sweep_lock
 		exit 1; \
 	fi
 
-# Central DP multi-seed sweep (2026-07-22) — CS4 candidate, docs/CaseStudies.md §2.4.3.
+# Central DP multi-seed sweep (2026-07-22) — vedi docs/SISTEMA.md sezione 4.
 .PHONY: experiment-central-dp-sweep
 experiment-central-dp-sweep: _check-deps _sweep_lock
 	@mkdir -p $(EXPERIMENTS); \
