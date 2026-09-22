@@ -1,6 +1,6 @@
 # Reading List for DSN 2027 Paper
 
-> **Stato: documento OPERATIVO per la scrittura del paper: cosa leggere e cosa è stato verificato full-text.**
+> **Stato: documento OPERATIVO per la scrittura del paper: cosa leggere e cosa è stato verificato full-text. I rimandi a `DSN2027_Positioning.md`, `TestRoadmap_DSN2027.md` e altri documenti eliminati il 2026-09-22 puntano alla storia git: lo stato corrente è in `STATO.md` ed `ESPERIMENTI.md`.**
 
 Status: **living document, update as papers are read.** Derived from `docs/LiteratureReview.md`
 (first-pass, 10-category search, 2026-07-24) — this file re-organizes that material by *reading

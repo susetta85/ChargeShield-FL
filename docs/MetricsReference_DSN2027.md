@@ -1,6 +1,6 @@
 # Reference metriche — DSN 2027
 
-> **Stato: documento OPERATIVO, di riferimento: leggere su richiesta, non all'avvio. Le note storiche in ogni sezione (bug trovati, tabelle superate) restano come cronologia; i numeri correnti sono in `risultati/` e in `STATO.md`. Le sezioni 9 (PES) e 11-13 (Krum, coseno, CUSUM) descrivono componenti fuori dal paper.**
+> **Stato: documento OPERATIVO, di riferimento: leggere su richiesta, non all'avvio. Le note storiche in ogni sezione (bug trovati, tabelle superate) restano come cronologia; i numeri correnti sono in `risultati/` e in `STATO.md`. Le sezioni 9 (PES) e 11-13 (Krum, coseno, CUSUM) descrivono componenti fuori dal paper. I rimandi a `DSN2027_Positioning.md`, `TestRoadmap_DSN2027.md` e altri documenti eliminati il 2026-09-22 puntano alla storia git: lo stato corrente è in `STATO.md` ed `ESPERIMENTI.md`.**
 
 ## Metriche aggiunte il 2026-09-21
 
