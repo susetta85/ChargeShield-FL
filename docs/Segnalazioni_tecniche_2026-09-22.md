@@ -199,3 +199,12 @@ sono in `scripts/_applicati/`.*
     `pytest.mark.skipif(not Path(...).exists(), reason=...)` a livello di modulo, così la
     baseline resta leggibile ovunque; la funzionalità va coperta anche da un test su un
     file sintetico piccolo committato in `tests/`.
+40. **Commenti e docstring nel codice rimandano a documenti eliminati il 2026-09-22**
+    (TestRoadmap, Positioning, CaseStudies, DeveloperGuide, PES_v1): 22 occorrenze in
+    `scripts/run_experiments.py`, 5 in `compute_pes.py`, 3 in `check_significance.py`,
+    3 in `generate_excel_report.py`, 2 ciascuno in `compare_results.py`,
+    `src/core/autoencoder.py`, `src/core/base_attack.py`, `src/plugins/attacks/__init__.py`,
+    `src/adapters/chargeplace_scotland_adapter.py`, una in `autoencoder_trainer.py`,
+    `gradient_manager.py`, `ml_plane.py`, `privacy_auditor.py`, `fedmia.py`. Non bloccano
+    nulla: sostituirli con `docs/SISTEMA.md` o `docs/STATO.md` quando si tocca il file per
+    altro, non con un commit dedicato mentre la campagna gira.
