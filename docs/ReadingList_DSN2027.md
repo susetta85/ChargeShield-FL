@@ -1,5 +1,7 @@
 # Reading List for DSN 2027 Paper
 
+> **Stato: documento OPERATIVO per la scrittura del paper: cosa leggere e cosa è stato verificato full-text.**
+
 Status: **living document, update as papers are read.** Derived from `docs/LiteratureReview.md`
 (first-pass, 10-category search, 2026-07-24) — this file re-organizes that material by *reading
 priority* rather than by topic category, to answer a narrower question: "what should I actually

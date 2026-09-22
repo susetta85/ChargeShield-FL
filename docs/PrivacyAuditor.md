@@ -1,5 +1,7 @@
 # PrivacyAuditor: Design, Implementation, and Empirical Role in ChargeShield-FL
 
+> **Stato: documento OPERATIVO, di riferimento. Il Privacy Auditor è infrastruttura, non un contributo del paper: è un contatore di budget, non una misura di rischio (vedi `SISTEMA.md` sezione 6). Le sezioni 9.4, 11 e la tassonomia dei cluster fittizi sono superate.**
+
 **Component:** Privacy Auditor (`PrivacyAuditor`)
 **Framework:** ChargeShield-FL — A Research Framework for Evaluating Membership Inference Attacks Against Federated Learning in EV Charging Infrastructure
 **Target Venue:** DSN 2027 (International Conference on Dependable Systems and Networks)

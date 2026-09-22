@@ -1,6 +1,6 @@
 # Canary Positive Control — protocollo, confondente, baseline
 
-Stato: 2026-09-21, Sprint 10zz+121. **Controllo superato** — vedi §6.
+Stato: documento OPERATIVO. Aggiornato al 2026-09-21, Sprint 10zz+121. **Controllo superato** — vedi §6.
 
 > **Nota di collegamento (2026-09-21).** Questo documento riguarda la
 > validazione dello STRUMENTO in regime canary indotto. Il primo segnale di

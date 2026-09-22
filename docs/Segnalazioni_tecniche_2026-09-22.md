@@ -141,6 +141,14 @@ sui JSON prima di correggere, non fidarti della lista. L'ambiente di revisione n
 
 ## G. Documentazione e paper
 
+*Nota 2026-09-22 sera: i punti 30-33 riguardano documenti eliminati nella pulizia del
+contesto (Architecture, MLPlane, IDS, CaseStudies, errata, Roadmap); quanto di valido
+contenevano è in `SISTEMA.md`. Restano da correggere solo i commenti nel codice citati
+al punto 30 e i punti 34-36 sul paper. Il config del punto 26 `_smoke_auditor.yaml` è
+stato rinominato `experiment_canary_balanced_recorddp_nm5.yaml`; `datasets.yaml`,
+`nodes/` e `overfit_control` sono in `config/_legacy_unused/`; gli script del punto 27
+sono in `scripts/_applicati/`.*
+
 30. Conteggio parametri incoerente: 570 (`core/autoencoder.py:72`), 618 con BatchNorm,
     "~650" (`gradient_manager.py:419`), 1200 (`Architecture.md:498`).
 31. `docs/MLPlane.md` §5.5 descrive StandardScaler; il codice fa min-max [0,1]. §8 dello

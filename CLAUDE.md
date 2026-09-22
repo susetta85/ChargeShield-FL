@@ -16,12 +16,11 @@ quest'ordine e non leggere altro finché il compito non lo richiede:
 3. `docs/ESPERIMENTI.md` — gli esperimenti ancora da eseguire, in ordine, con i
    gate.
 
-`docs/_storico/` contiene documenti superati: non usarli per pianificare né per
-citare numeri, salvo richiesta esplicita dell'utente. Il README è una panoramica
-con puntatori; lo sprint-log storico è in `docs/_storico/SprintLog.md`. Finché il
-passo 3 della pulizia (spostamento in `_storico/`) non è eseguito, i documenti
-superati sono ancora in `docs/` e nel README: vale comunque la regola di non
-leggerli all'avvio.
+I documenti superati sono stati eliminati il 2026-09-22 (pulizia del contesto) e
+restano recuperabili dalla storia git, commit precedenti a `f89c1cc` inclusi: non
+recuperarli per pianificare né per citare numeri, salvo richiesta esplicita
+dell'utente. Il README è una panoramica con puntatori; lo sprint-log storico è
+in `docs/SprintLog.md`; `docs/SISTEMA.md` descrive cosa esiste davvero nel codice.
 
 `docs/Segnalazioni_tecniche_2026-09-22.md` è l'elenco dei bug e dei problemi
 tecnici aperti, in carico al dottorando.
@@ -87,7 +86,7 @@ quindi confronta gli hash, non le lunghezze.
 - **Ogni documento in `docs/` porta in testa una riga di stato**: canonico,
   operativo, ipotesi o storico. Un documento nuovo senza riga di stato non va
   creato.
-- **Sprint-log**: le voci nuove si inseriscono in `docs/_storico/SprintLog.md`
+- **Sprint-log**: le voci nuove si inseriscono in `docs/SprintLog.md`
   immediatamente SOPRA la voce più recente, con un tetto di dieci righe per voce.
   Il README non contiene più lo sprint-log.
 - **Verificare, non assumere**: i numeri si leggono dalle matrici in

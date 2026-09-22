@@ -1,5 +1,7 @@
 # Testing Documentation — ChargeShield-FL
 
+> **Stato: documento OPERATIVO, di riferimento. I conteggi dei test sono stantii: la baseline corrente è in `CLAUDE.md`.**
+
 **Project:** ChargeShield-FL: Membership Inference Attack Evaluation Framework for Federated Learning in EV Charging Infrastructure
 **Target venue:** DSN 2027
 **Document version:** 1.0

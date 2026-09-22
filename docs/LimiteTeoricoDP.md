@@ -1,6 +1,6 @@
 # Il limite teorico della DP, e perché ai nostri ε è vacuo
 
-Stato: 2026-09-21.
+Stato: documento OPERATIVO. Aggiornato al 2026-09-21.
 Codice: `scripts/compute_pes.py::humphries_bound`.
 Tabella: foglio `Utility_privacy_limite` in `risultati/Matrice_sintesi.xlsx`.
 

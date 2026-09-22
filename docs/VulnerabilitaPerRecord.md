@@ -1,6 +1,6 @@
 # Vulnerabilità per record — analisi worst-case cross-seed
 
-Stato: 2026-09-21. **Primo segnale di membership su dati naturali** trovato in
+Stato: documento OPERATIVO. Aggiornato al 2026-09-21. **Primo segnale di membership su dati naturali** trovato in
 questo progetto.
 Codice: `scripts/analyze_worst_case_vulnerability.py` (conteggio),
 `scripts/worst_case_livello_di_caso.py` (livello di caso).

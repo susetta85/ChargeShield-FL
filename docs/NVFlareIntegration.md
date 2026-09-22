@@ -1,5 +1,7 @@
 # NVFLARE / Containerlab Integration — Status and Plan
 
+> **Stato: documento OPERATIVO, di riferimento. Deployment NVFlare e Containerlab, divergenze note dalla simulazione. Attenzione alla segnalazione 1 sul seed dello snapshot.**
+
 **Started:** 2026-07-22
 **Status:** Job scaffold + client Executor + custom Aggregator + DP wiring + structured exports (fase 1-5) written. **First real execution: 2026-07-24** (see "First real run" section below) — 4 real bugs found and fixed across three attempts; **the third attempt completed all 10 rounds successfully** (`make nvflare-sim-smoke`, 1 client/caltech, `min_clients=1`: "Round 9 finished" → "Finished ScatterAndGather Training", no errors). This confirms the DXO/Executor/Aggregator/DP/IDS-export pipeline runs end-to-end for a single client. **Same day, follow-up fix**: raw exports are now timestamped per run (see "Fix 2026-07-24: export non più sovrascritti tra run" below) so a second/accidental run can no longer silently overwrite a prior run's results.
 

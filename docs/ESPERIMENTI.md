@@ -1,7 +1,8 @@
 # ChargeShield-FL — Esperimenti da eseguire
 
 > **Stato: documento CANONICO.** Aggiornato il 2026-09-22 (secondo check). Sostituisce,
-> per gli esperimenti ancora da lanciare, `TestRoadmap_DSN2027.md` (storico). Ogni
+> per gli esperimenti ancora da lanciare, il vecchio `TestRoadmap_DSN2027.md`, eliminato
+> il 2026-09-22 e recuperabile dalla storia git. Ogni
 > voce dice quale RQ serve, quale conclusione può cambiare, cosa deve essere vero
 > prima di lanciarla, il comando, e come si legge l'esito. Le run vanno una alla
 > volta sulla stessa macchina (lock anti-concorrenza nel Makefile, OOM del

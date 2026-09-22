@@ -1,5 +1,7 @@
 # Literature Review — First Pass (not PRISMA-systematic)
 
+> **Stato: documento OPERATIVO per la scrittura del paper. Prima passata, non sistematica; la matrice di confrontabilità richiesta dalla guida (sezione 3) è ancora da costruire.**
+
 Status: **draft, first pass, ongoing.** Owner task: #65 — kept permanently open, update
 incrementally as more categories/papers are added in future sessions.
 

@@ -1,5 +1,7 @@
 # Reference metriche — DSN 2027
 
+> **Stato: documento OPERATIVO, di riferimento: leggere su richiesta, non all'avvio. Le note storiche in ogni sezione (bug trovati, tabelle superate) restano come cronologia; i numeri correnti sono in `risultati/` e in `STATO.md`.**
+
 ## Metriche aggiunte il 2026-09-21
 
 | metrica | che cosa misura | documento |
