@@ -1,19 +1,15 @@
 % ChargeShield-FL --- DSN 2027 submission
-% Skeleton pronto per Overleaf. Contiene per ora SOLO le sezioni Related
-% Work e Architecture/Framework (con pseudocodice e figure), piu' la
-% bibliografia completa, per richiesta esplicita dell'utente 2026-09-15.
-% Le altre sezioni (Introduction, Threat Model, Case Study, Results,
-% Validation, Discussion, Limitations) restano nello skeleton .docx
-% esistente (docs/paper/ChargeShield-FL_DSN2027_paper_skeleton.docx) e
-% vanno riportate qui separatamente quando saranno pronte -- vedi
-% README_OVERLEAF.md per la lista di label usate come forward-reference
-% da queste due sezioni verso sezioni non ancora presenti in questo file.
+% RISTRUTTURATO il 2026-09-23 sulle sette sezioni della guida canonica
+% (docs/ChargeShield_FL_spina_dorsale_consolidata.md, sez. 10), su richiesta
+% esplicita dell'utente. I file delle sezioni precedenti (introduction,
+% preliminaries, threat_model, related_work, framework, attacks, setup,
+% validation) e le tre figure restano nel progetto e NON sono cancellati:
+% sono solo esclusi da questo main.tex (vedi l'elenco commentato in fondo).
+% Numeri: solo da risultati/ (STATO.md sez. 3) e da CanaryPositiveControl.md
+% sez. 6 per il canary. Dove una cella non esiste ancora c'e' \pending{...}
+% o una nota \Susy{...}: nessun numero e' stato stimato o anticipato.
 %
 % Compilazione: pdflatex -> bibtex -> pdflatex -> pdflatex
-% Pacchetti richiesti: IEEEtran, algorithm, algorithmic, tikz, amsmath,
-% amssymb, booktabs. Verificato NON localmente compilabile in questo
-% sandbox (IEEEtran/algorithm/algorithmic non installati, nessun accesso
-% root per installarli) -- Overleaf ha tutti e quattro di default.
 
 \documentclass[conference]{IEEEtran}
 
@@ -33,6 +29,7 @@
 \usepackage{todonotes}
 \newcommand{\Proffy}[2][]{\todo[color=red!50, , inline, #1]{\textbf{Proffy:} #2}}
 \newcommand{\Susy}[2][]{\todo[color=green!50, , inline, #1]{\textbf{Susy:} #2}}
+\newcommand{\pending}[1]{\textcolor{red}{\textbf{[#1]}}}
 
 
 %\usepackage{algpseudocode}
@@ -43,7 +40,7 @@
 %\algnewcommand\algorithmicensure{\textbf{Ensure:}}
 %\algnewcommand\Ensure{\item[\algorithmicensure]}
 
-\title{CChargeShield-FL: An Event-Driven Framework for Empirical Privacy Auditing in FL-Enabled OT Systems}
+\title{Differential Privacy and Membership Inference in Federated EV-Charging Autoencoders: An Empirical Study}
 
 % \titlerunning{ChargeShield-FL: An Event-Driven ML Plane and Privacy Auditor for Measuring Differential-Privacy Effectiveness Against Membership Inference in Federated EV-Charging Systems for Measuring Differential-Privacy Effectiveness Against Membership Inference in Federated EV-Charging Systems}
 
@@ -58,85 +55,70 @@
 
 \maketitle
 
-% ABSTRACT riscritto 2026-09-16 (Sprint 10zz+114). Sostituisce sia il
-% placeholder sia la versione nello skeleton .docx. Motivo: quella versione
-% affermava che il sanity-check a cinque assi "rules out an insensitive
-% attack harness" --- un claim che lo Sprint 10oo dichiarava esplicitamente
-% NON dimostrato ("il sanity-check dimostra che l'overfitting e' difficile
-% da INDURRE, non che la metodologia d'attacco sappia rilevare membership
-% in generale") e che e' ora superato dall'evidenza reale del canary
-% positive control. Inoltre il numero-titolo del vecchio abstract era
-% calcolato con LiRA, la stessa metrica che la sezione 5.6 mostra degenerare in
-% questo regime: qui si dichiara esplicitamente che il nullo regge anche su
-% Yeom e Shadow, che non usano calibrazione per-record.
-%
-% AGGIORNATO 2026-09-16 (Sprint 10zz+118): il controllo negativo a gruppi
-% bilanciati e' stato eseguito e PASSA, quindi la frase sul canary ora
-% afferma la simmetria sotto scambio dei ruoli, che e' cio' che distingue
-% appartenenza da difficolta' intrinseca dei template sorteggiati.
-%
-% DUE NUMERI CAMBIATI, non ritoccarli all'indietro:
-%  - Delta +0.30 -> +0.24. Il primo era la media dei soli bracci base a
-%    gruppi sbilanciati; +0.2367 e' la media sui dieci bracci bilanciati.
-%  - "four of five seeds at 10-21 sigma" RIMOSSO. Quella sigma era la std
-%    dei baseline (0.008-0.016), che misura la dispersione su 20
-%    re-inizializzazioni A CAMPIONE DI TEMPLATE FISSATO e sovrastima la
-%    significativita' di circa 8x: l'incertezza dominante e' quali 20+20
-%    template sono stati sorteggiati, e Hanley-McNeil su 20 vs 20 item
-%    distinti da' SE ~ 0.08. Sostituito dal test appaiato sui cinque seed
-%    (t = 11.25, df = 4), che e' il test corretto e passa comunque.
-% Vedi sections/validation.tex e docs/CanaryPositiveControl.md sez. 5.2.
+% ABSTRACT riscritto 2026-09-23 per la struttura a sette sezioni. Sostituisce
+% la versione del 2026-09-16, che (a) presentava la validazione dello
+% strumento come contributo trasferibile principale, contro la guida sez. 9
+% e 11, e (b) citava Delta = +0.24 e t = 11.25, numeri canary PRECEDENTI alla
+% correzione del 16 settembre (segnalazione 35). I numeri qui sotto sono solo
+% quelli di STATO.md sez. 3; i risultati di E-A, E-B, E-D, E-E sono segnaposto.
 \begin{abstract}
-Federated learning is increasingly proposed for critical infrastructure,
-but whether differential privacy applied to the FL communication channel
-prevents membership-inference leakage remains an open question (or but if membership-inference information leakage, even while applying mechanisms like differential privacy on the communication channel, remains an open question) . We present
-ChargeShield-FL, an event-driven ML Plane with privacy and integrity
-telemetry, evaluated on real EV-charging data (ACN-Data, three sites) in
-simulation and in a multi-container NVFLARE deployment. We probe two
-independent observation surfaces --- the aggregated global model (Yeom,
-Shadow) and per-client updates (LiRA) --- at three points of adversary
-privilege along the privatisation pipeline. On natural data no
-configuration yields a detectable membership signal, including without DP,
-and the null holds on all three scorers (composed LiRA AUC
-$0.4975$--$0.5024$; ten configurations, five seeds each). We then validate
-the instrument rather than assume it: an injected-canary positive control,
-paired with a balanced role-exchange negative control, recovers the
-injected memorization on the raw-loss surface and does so \emph{symmetrically}
-under exchange of the member and non-member roles --- the signature of
-membership rather than of intrinsic template difficulty (mean
-$\Delta = +0.24$ over matched random-initialisation baselines; $t = 11.25$,
-$p < 0.001$, paired across five seeds), while the shadow-calibrated score
-does not. Validating the auditor, not the null alone, is the transferable
-contribution.
+Charging-session records tell where and when a person charges a vehicle, and
+repositories holding them, together with names, vehicle identifiers and
+protocol logs, have been exposed or stolen repeatedly in recent years.
+Federated learning (FL) avoids pooling these records, but the artifacts it
+shares can still reveal whether a given session was used for training, and
+differential privacy (DP) bounds that leakage only for a chosen protected
+unit and mechanism. We present an empirical study of membership inference and
+reconstruction cost in federated autoencoders trained on 66{,}713 real
+sessions from the three ACN-Data sites, one client per site. We ask how attack
+success and model cost change with the DP configuration and the training
+length, with the federated algorithm (FedAvg or FedProx), and with the data
+partition, under client-level and record-level DP and three adversary
+observation points, using loss-threshold, shadow-calibrated and
+likelihood-ratio attacks, a per-record analysis and instrument controls. On
+the evidence verified so far, without DP no attack separates members from
+non-members on average (AUC $0.50$--$0.51$ over 49 runs), yet a per-record
+analysis recognises a systematic excess of sessions over the chance level;
+client-level DP at $\varepsilon \le 1$ removes that excess only while raising
+the reconstruction error more than 100-fold, so in those cells protection and
+loss of utility cannot be told apart. A canary positive control with role
+exchange shows that the measurement detects induced memorisation on one site.
+\pending{RQ1: operating point from the $\varepsilon$ sweep and record-level
+DP; RQ3; RQ2 --- to be written from the result matrices once the runs are
+complete.}
 \end{abstract}
 
 % ---------------------------------------------------------------------
-% Sezioni non ancora portate in LaTeX in questo giro (restano nel .docx
-% esistente finche' non richieste esplicitamente):
-%   \section{Introduction}\label{sec:introduction}
-%   \section{Threat Model}\label{sec:threat-model}
-%   \section{Case Study and Experimental Setup}
-%   (Instrument Validation: FATTA, vedi sections/validation.tex)
-%   \section{Results}\label{sec:results}
-%     \subsection{...}\label{sec:results-surface-b}
-%     \subsection{Utility Cost}\label{sec:results-utility}
-%   \section{PES\_v1}
-%   \section{Limitations}\label{sec:limitations}
-%   \section{Discussion and Conclusion}\label{sec:discussion}
+% Struttura a sette sezioni (guida, sez. 10), 2026-09-23.
 % ---------------------------------------------------------------------
+\input{sections/s1_introduction.tex}
+\input{sections/s2_background.tex}
+\input{sections/s3_system_threat.tex}
+\input{sections/s4_methodology.tex}
+\input{sections/s5_results.tex}
+\input{sections/s6_discussion.tex}
+\input{sections/s7_conclusion.tex}
 
-\input{sections/introduction.tex}
-\input{sections/preliminaries.tex}
-\input{sections/threat_model.tex}
-\input{sections/related_work.tex}
-\input{sections/framework.tex}
-\input{sections/attacks.tex}
-\input{sections/setup.tex}
-\input{sections/validation.tex}
-
-\input{figures/ml_plane_architecture.tex}
-\input{figures/dp_placements.tex}
-\input{figures/adversary_observation_points.tex}
+% ---------------------------------------------------------------------
+% Versione precedente (fino al 2026-09-16), esclusa il 2026-09-23 ma
+% conservata nel progetto. Contiene numeri e affermazioni superati:
+% validation.tex ha i numeri canary pre-correzione (segnalazione 35),
+% setup.tex inverte Caltech e JPL sulla copertura degli identificativi
+% (segnalazione 36), related_work.tex dice mu = 0 mentre il protocollo usa
+% mu = 0.01, introduction.tex (versione Overleaf con le note in maiuscolo)
+% dice 85% di utenti multi-sito invece di 8.5%. Non reintrodurli senza
+% correggerli.
+%\input{sections/introduction.tex}
+%\input{sections/preliminaries.tex}
+%\input{sections/threat_model.tex}
+%\input{sections/related_work.tex}
+%\input{sections/framework.tex}
+%\input{sections/attacks.tex}
+%\input{sections/setup.tex}
+%\input{sections/validation.tex}
+%\input{figures/ml_plane_architecture.tex}
+%\input{figures/dp_placements.tex}
+%\input{figures/adversary_observation_points.tex}
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}

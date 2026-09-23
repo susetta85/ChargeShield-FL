@@ -1,0 +1,210 @@
+% ChargeShield-FL --- DSN 2027 --- 5. Results
+% Scritta il 2026-09-23. Numeri SOLO da:
+%   risultati/Matrice_sintesi.xlsx, foglio Utility_privacy_limite (tab. 8),
+%   risultati/worst_case/livello_di_caso.json (tab. 9),
+%   docs/CanaryPositiveControl.md sez. 6 (tab. 10; JSON grezzi non
+%   riverificati in questa stesura), STATO.md sez. 3.4-3.6.
+% RQ1 (E-A, E-B), RQ3 (E-E) e RQ2 (E-D): segnaposto, nessun numero anticipato.
+
+\section{Results}
+\label{sec:results}
+
+We report RQ1 first, then RQ3 and RQ2, and keep the natural regime and the
+canary regime apart throughout: the canary tests the sensitivity of the
+instrument, it does not answer a research question. All numbers are read from the result matrices
+generated from the run records.
+
+\subsection{Natural Regime Without DP}
+\label{sec:results-nodp}
+
+Table~\ref{tab:campaign} reports the campaign completed before the
+$\varepsilon$ sweep. Without DP (49 runs), the three attacks are close to
+chance on average: AUC $0.503$ for the loss threshold, $0.501$ for the shadow
+attack and $0.513$ for the composed LiRA score, with a TPR at 1\% FPR of
+$0.0098$ against a chance level of $0.01$. The equivalence test at margin
+$0.02$ is satisfied in every cell. Within the metric and precision reported,
+no attack separates members from non-members on average.
+
+\begin{table}[t]
+\centering
+\caption{Campaign in the natural regime: reconstruction cost and attack AUC.
+Loss: final reconstruction loss on the natural hold-out; ratio to the no-DP
+cell. TPR at 1\% FPR of the composed LiRA score (chance $0.01$). $n$: runs.}
+\label{tab:campaign}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}lrrrrrrr@{}}
+\toprule
+Cell & $n$ & Loss & Ratio & Yeom & Shadow & LiRA & TPR \\
+\midrule
+no DP (A0)                 & 49 & 0.0027 & 1     & 0.503 & 0.501 & 0.513 & 0.0098 \\
+\midrule
+\texttt{dp-fedavg} $\varepsilon{=}16$ & 1 & 0.0069 & 2.6 & 0.499 & 0.499 & 0.503 & 0 \\
+\texttt{dp-fedavg} $\varepsilon{=}8$  & 1 & 0.0125 & 4.6 & 0.498 & 0.500 & 0.499 & 0 \\
+\texttt{dp-fedavg} $\varepsilon{=}1$  & 14 & 0.345 & 127.9 & 0.500 & 0.500 & 0.498 & 0.0104 \\
+\texttt{dp-fedavg} $\varepsilon{=}0.5$ & 10 & 0.423 & 157.0 & 0.500 & 0.499 & 0.498 & 0.0098 \\
+\texttt{dp-fedavg} $\varepsilon{=}0.1$ & 10 & 0.422 & 156.8 & 0.500 & 0.499 & 0.499 & 0.0090 \\
+\texttt{central} $\varepsilon{=}1$   & 14 & 0.291 & 108.1 & 0.500 & 0.499 & 0.503 & 0.0103 \\
+\texttt{central} $\varepsilon{=}0.5$ & 9  & 0.475 & 176.2 & 0.499 & 0.499 & 0.502 & 0.0102 \\
+\texttt{central} $\varepsilon{=}0.1$ & 5  & 0.481 & 178.7 & 0.500 & 0.499 & 0.502 & 0.0105 \\
+\texttt{local} $\varepsilon{=}1$     & 11 & 0.376 & 139.5 & 0.500 & 0.500 & 0.498 & 0.0108 \\
+\texttt{local} $\varepsilon{=}0.5$   & 6  & 0.423 & 157.2 & 0.500 & 0.499 & 0.498 & 0.0102 \\
+\texttt{local} $\varepsilon{=}0.1$   & 6  & 0.416 & 154.3 & 0.500 & 0.500 & 0.499 & 0.0093 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The per-record analysis tells a different story (Table~\ref{tab:perrecord}).
+Of the 17{,}561 sessions that are members in at least two of the five seeds,
+412 are flagged without DP, against $289.9$ expected by chance (standard
+deviation $16.2$): $z = 7.56$, an excess of about 122 sessions ($2.35\%$ of
+the sessions against $1.65\%$). These sessions are ranked systematically high
+across independently trained models while the aggregate AUC of the same cell
+is $0.51$. Since the composed score is, in this regime, a monotone function of
+the loss, the result is a consistent ranking by reconstruction error, and we
+report it as such rather than as the success of a calibrated attack.
+\Susy{Segnalazione 6: i due script worst-case danno 411 e 412; unificare il
+percentile prima della submission e rigenerare la tabella.}
+
+\begin{table}[t]
+\centering
+\caption{Per-record analysis: member sessions flagged in at least two of five
+seeds, against the chance level from 200 within-seed permutations.}
+\label{tab:perrecord}
+\footnotesize
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Cell & Flagged & Expected & SD & $z$ \\
+\midrule
+no DP                              & 412 & 289.9 & 16.2 & 7.56 \\
+\texttt{dp-fedavg} $\varepsilon{=}1$ & 290 & 289.8 & 15.9 & 0.02 \\
+\texttt{central} $\varepsilon{=}1$   & 299 & 289.9 & 14.7 & 0.62 \\
+\texttt{local} $\varepsilon{=}1$     & 291 & 289.8 & 17.3 & 0.07 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Client-Level DP at \texorpdfstring{$\varepsilon \le 1$}{eps <= 1}}
+\label{sec:results-dp-low}
+
+At $\varepsilon \le 1$ per round, under every placement, the reconstruction
+loss is between 108 and 179 times the no-DP reference
+(Table~\ref{tab:campaign}), far beyond the acceptable cost of
+Table~\ref{tab:spec}. In the same cells the per-record excess disappears
+($z$ between $0.02$ and $0.62$, Table~\ref{tab:perrecord}). The two facts
+admit two explanations that these data cannot separate: DP removed the signal,
+or the model no longer learns the data and therefore has nothing to reveal.
+These cells are not an operating point, and we do not read them as evidence
+that DP protects.
+
+Nor does the formal guarantee constrain the attacks there. Taken at face value
+and composed over the 10 rounds, the per-round values give cumulative labels
+of 10, 5 and 1; the corresponding bounds on the AUC of any membership test on
+the client unit are $0.99996$, $0.993$ and $0.731$ (Section~\ref{sec:bg-dp}).
+Only the smallest is not vacuous, and it concerns clients rather than the
+records we attack. The pilot cells at $\varepsilon = 8$ and $16$ keep the cost
+within $4.6$ and $2.6$ times the reference, but have one seed each and are not
+a result.
+
+\Susy{STATO sez. 3.1: dp-fedavg e local hanno eseguito lo stesso codice fino
+al 15 settembre; verificare nel registro quali run delle celle dp-fedavg sono
+successive alla modifica (A1 grezzo) prima di citarle come A1.}
+
+\subsection{RQ1: The \texorpdfstring{$\varepsilon$}{eps} Sweep and Record-Level DP}
+\label{sec:results-rq1}
+
+\pending{E-A, client-level \texttt{dp-fedavg} at $\varepsilon \in \{2, 4, 8,
+16\}$, five seeds each: loss ratio, AUC of the three attacks, TPR at 1\% FPR
+and, after E-C, the per-record count with $z$, read with the rules of
+Table~\ref{tab:reading}. Planned figure: reconstruction ratio and per-record
+$z$ against $\varepsilon$, one point per seed.}
+
+\pending{E-B, record-level DP-SGD at noise multipliers $0.5$, $1$, $2$ on the
+ordinary configuration: the same quantities, compared with the client-level
+cell of comparable cost at the same seed, not at the same $\varepsilon$.}
+
+\subsection{Instrument Validation}
+\label{sec:results-canary}
+
+The balanced canary control on Office~1 passes on the raw-loss surface
+(Table~\ref{tab:canary}). Mean AUC is $0.745$ in the base arm and $0.715$ in
+the exchanged arm; all 30 round-level values exceed $0.5$ (minimum $0.6125$);
+all five per-seed sums exceed one; and all ten increases over the untrained
+baseline are positive. The pattern is symmetric under role exchange, which is
+the signature of membership rather than of template difficulty. Averaging the
+two arms within each seed, the mean increase is $+0.230$ (standard deviation
+$0.052$), $t = 9.90$ with four degrees of freedom ($p < 0.001$); the one-sided
+sign test gives five of five ($p = 0.031$).
+
+\begin{table}[t]
+\centering
+\caption{Canary control on Office~1, raw-loss AUC averaged over three rounds.
+A: base arm; B: roles exchanged; baselines from untrained networks.}
+\label{tab:canary}
+\footnotesize
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{@{}lrrrrrrr@{}}
+\toprule
+Seed & A & B & A+B & Base A & Base B & $\Delta_A$ & $\Delta_B$ \\
+\midrule
+42   & 0.648 & 0.684 & 1.332 & 0.527 & 0.473 & $+0.120$ & $+0.212$ \\
+123  & 0.803 & 0.818 & 1.622 & 0.345 & 0.655 & $+0.458$ & $+0.163$ \\
+456  & 0.684 & 0.760 & 1.444 & 0.583 & 0.417 & $+0.101$ & $+0.343$ \\
+789  & 0.790 & 0.654 & 1.444 & 0.376 & 0.625 & $+0.414$ & $+0.030$ \\
+1234 & 0.798 & 0.659 & 1.458 & 0.387 & 0.613 & $+0.411$ & $+0.047$ \\
+\midrule
+Mean & 0.745 & 0.715 & 1.460 &  &  & $+0.301$ & $+0.159$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The shadow-calibrated LiRA score does not track the surface on which
+memorisation is present: its mean canary AUC is $0.651$ and $0.696$ in the two
+arms, and one of the 30 round-level values falls below $0.5$. The per-record
+variance estimates hit their floor in 97--99\% of the records, so the
+per-record calibration cancels from the ranking. A symmetry check of the
+scoring rule, which should return $0.5$, returns $0.21$--$0.34$ under the
+\texttt{central} placement. And an unplanned repetition of the whole campaign
+with identical configurations and seeds reproduced the raw-loss AUC bit for bit
+in all ten cells, while the LiRA AUC changed on one seed (from $0.616$ to
+$0.649$ in arm A, from $0.632$ to $0.598$ in arm B). The target model is
+deterministic under seeding; the shadow calibration is not. This is why the
+raw loss is our primary metric and the LiRA scorer is frozen until the sweep is
+complete.
+
+The control establishes sensitivity in the canary regime on one site only.
+Caltech and JPL have runs at a single seed without the balanced protocol, so
+the control is \pending{to be repeated on Caltech}. With record-level DP at
+noise multiplier 5, in the canary regime, the raw-loss AUC of the canaries falls
+from $0.68$ to $0.53$ while the model remains trainable; this comes from one
+seed without the exchanged arm, and we do not report its $\varepsilon$ until
+the accountant is corrected.
+\Susy{Numeri canary da CanaryPositiveControl.md sez. 6 (campagna post
+correzione, seconda tornata); JSON grezzi non riverificati in questa stesura.}
+
+\subsection{RQ3: FedAvg and FedProx}
+\label{sec:results-rq3}
+
+\pending{E-E: $\mu = 0$ against $\mu = 0.01$, paired by seed, first without
+DP (compared with the no-DP campaign), then at the operating point chosen from
+E-A. Report attack metrics and reconstruction cost together, within each
+protection level and as the DP reduction relative to the same algorithm.}
+
+\subsection{RQ2: Partition}
+\label{sec:results-rq2}
+
+\pending{E-D: IID against per-site partition, same records and seeds, first
+without DP (running), then at the E-A operating point. Report per-client data
+quantity and feature statistics to show that the factor was actually changed,
+and per-site results where the numbers allow.}
+
+\subsection{Deployment Consistency}
+\label{sec:results-nvflare}
+
+In the five-container NVIDIA FLARE deployment at $\varepsilon = 1$ the attacks
+converge on the same null as in simulation. Twenty-five deployment dumps at
+$\varepsilon \le 1$ await reanalysis; an earlier reanalysis was invalid because
+it rebuilt the train/hold-out split with the wrong seed, and since those cells
+lie in the regime of destroyed utility, the reanalysis is deferred to the
+operating point chosen from E-A. \pending{2--3 NVFlare cells at the operating
+point.}

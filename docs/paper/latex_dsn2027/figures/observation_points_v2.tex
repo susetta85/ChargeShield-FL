@@ -1,0 +1,43 @@
+% ChargeShield-FL --- DSN 2027 --- Figura: punti di osservazione A0-A3
+% 2026-09-23. Sostituisce nel nuovo main.tex figures/adversary_observation_points.tex
+% (che resta nel progetto): quella didascalia diceva che l'update grezzo non
+% lascia mai il client, mentre sotto dp-fedavg il server lo riceve e lo
+% clippa all'arrivo (SISTEMA.md sez. 4, tabella dei placement).
+% Nessun \\ annidato dentro un altro comando nei nodi (bug TikZ gia' visto).
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  font=\footnotesize,
+  stage/.style={draw, rounded corners, minimum height=0.65cm,
+                minimum width=1.45cm, align=center, font=\scriptsize},
+  adv/.style={draw, circle, minimum size=0.5cm, thick,
+              red!65!black, font=\scriptsize\bfseries},
+  arr/.style={-Latex, thick}
+]
+  \node[stage] (raw)   {update\\$g$};
+  \node[stage, right=0.5cm of raw]   (clip)  {clipped\\$\bar{g}$};
+  \node[stage, right=0.5cm of clip]  (noise) {noised\\$\tilde{g}$};
+  \node[stage, right=0.5cm of noise] (agg)   {aggregate\\FedAvg};
+
+  \draw[arr] (raw)   -- node[above, font=\scriptsize]{clip} (clip);
+  \draw[arr] (clip)  -- node[above, font=\scriptsize]{$+\mathcal{N}$} (noise);
+  \draw[arr] (noise) -- (agg);
+
+  \node[adv, above=0.35cm of raw]   (a1) {A1};
+  \node[adv, above=0.35cm of clip]  (a2) {A2};
+  \node[adv, above=0.35cm of noise] (a3) {A3};
+  \draw[arr, red!65!black] (a1) -- (raw);
+  \draw[arr, red!65!black] (a2) -- (clip);
+  \draw[arr, red!65!black] (a3) -- (noise);
+
+  \node[font=\scriptsize, align=center, below=0.3cm of raw]   {\texttt{dp-fedavg}\\(A0 if no DP)};
+  \node[font=\scriptsize, align=center, below=0.3cm of clip]  {\texttt{central}};
+  \node[font=\scriptsize, align=center, below=0.3cm of noise] {\texttt{local}};
+\end{tikzpicture}
+\caption{Observation points of a client's update along the client-level
+privatisation pipeline, ordered by the information left to the adversary.
+The three placements are the same Gaussian mechanism observed at different
+points, not three mechanisms. Under record-level DP the noise is added inside
+local training and the points collapse into one.}
+\label{fig:observation}
+\end{figure}

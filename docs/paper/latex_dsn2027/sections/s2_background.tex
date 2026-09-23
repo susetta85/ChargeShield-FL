@@ -1,0 +1,158 @@
+% ChargeShield-FL --- DSN 2027 --- 2. Background and Related Work
+% Scritta il 2026-09-23. Assorbe la parte ancora valida di preliminaries.tex
+% e related_work.tex, con tre correzioni: il protocollo usa FedProx con
+% mu = 0.01 (related_work.tex diceva mu = 0); il campo operativo e' T = 10
+% round (preliminaries.tex usava T = 3, che e' il regime canary); esiste
+% anche il meccanismo record-level DP-SGD. Filoni e implicazioni dalla guida,
+% sez. 3.
+
+\section{Background and Related Work}
+\label{sec:background}
+
+\subsection{Differential Privacy and the Protected Unit}
+\label{sec:bg-dp}
+
+A randomised mechanism $\mathcal{M}$ satisfies $(\varepsilon,\delta)$-DP if,
+for every pair of adjacent datasets $D, D'$ and every set of outputs $O$,
+\begin{equation}
+\Pr[\mathcal{M}(D) \in O] \le e^{\varepsilon} \Pr[\mathcal{M}(D') \in O] + \delta
+\label{eq:dp}
+\end{equation}
+\cite{dwork2006calibrating,dwork2014algorithmic}. The definition is empty until
+the adjacency relation is fixed, and the adjacency is what we call the
+\emph{protected unit}. Under \emph{record-level} adjacency $D$ and $D'$ differ
+in one record; DP-SGD achieves it by clipping each example's gradient, adding
+Gaussian noise to the sum, and tracking the privacy loss across steps with a
+moments or R\'enyi accountant~\cite{abadi2016deep,mironov2017renyi}. Under
+\emph{client-level} adjacency they differ in one client's data; DP-FedAvg
+achieves it by clipping each client's update and adding noise to the
+aggregate~\cite{mcmahan2018learning}. Membership inference, as we measure it,
+concerns records. The two mechanisms therefore relate differently to the
+quantity we measure, and the same $\varepsilon$ does not describe equivalent
+protection under the two (Section~\ref{sec:system-dp}).
+
+Composition bounds the guarantee of $T$ rounds: basic composition gives
+$(T\varepsilon, T\delta)$, and advanced composition a bound growing as
+$\sqrt{T}$ that is tighter only for small $\varepsilon$ and large
+$T$~\cite{dwork2014algorithmic}. Under the hypothesis-testing reading of DP,
+an $(\varepsilon,\delta)$ guarantee bounds any membership test on the
+protected unit: $\mathrm{TPR} \le e^{\varepsilon}\mathrm{FPR} + \delta$, hence
+an advantage $\mathrm{TPR} - \mathrm{FPR}$ of at most
+$(e^{\varepsilon} - 1 + 2\delta)/(e^{\varepsilon} + 1)$~\cite{kairouz2015composition}.
+The bound assumes that the protected units are independent; records of the
+same person are not, and the bound need not hold for
+them~\cite{humphries2020differentially}.
+
+\subsection{Membership Inference and Its Metrics}
+\label{sec:bg-mia}
+
+Given a target record $x$ and a model $f$, an attack computes a score $s(x,f)$
+meant to be larger for members than for non-members. For an autoencoder the
+natural per-record quantity is the reconstruction error
+$\ell(x,f) = \lVert f(x) - x \rVert_2^2 / d$. The \emph{loss-threshold} attack
+uses $s = -\ell$~\cite{yeom2018privacy}; a \emph{shadow} attack calibrates the
+threshold on models trained by the attacker on data of known
+membership~\cite{shokri2017membership,salem2019mlleaks}; LiRA fits, for each
+record, Gaussian distributions of its loss under shadow models trained with it
+(IN) and without it (OUT) and scores the log-likelihood
+ratio~\cite{carlini2022membership}. Sablayrolles et al.\ showed that, when the
+two loss distributions are known, a function of the loss is Bayes-optimal, so
+access beyond the loss helps only by improving their
+estimate~\cite{sablayrolles2019whitebox}.
+
+We report the AUC for continuity with the literature and the true-positive
+rate at a fixed false-positive rate (TPR at FPR), whose chance level is
+$\mathrm{TPR} = \mathrm{FPR}$, not $0.5$. A near-chance AUC does not exclude a
+residual in the low-FPR region of the ROC or in a subgroup of
+records~\cite{carlini2022membership}, which is why we also analyse records
+individually (Section~\ref{sec:method-perrecord}).
+
+\subsection{Related Work}
+\label{sec:related}
+
+\paragraph{DP, attacks and utility} The empirical trade-off between
+protection, membership inference and model quality is well studied. Jayaraman
+and Evans~\cite{jayaraman2019evaluating} showed that the $\varepsilon$ values
+used in practice are far from those at which attacks degrade, and that
+evaluating a DP model requires reporting both attack success and utility.
+Rahman et al.~\cite{rahman2018membership} measured membership inference
+against differentially private deep models, and Naseri
+et al.~\cite{naseri2022local} compared local and central DP in FL against
+membership inference and backdoor attacks. We do not claim the first DP/MIA
+study, in FL or elsewhere; what we add is a controlled comparison in one real
+system, across protected units and observation points, with the cost on the
+model reported alongside.
+
+\paragraph{Attack quality and metrics} LiRA and the evaluation at low FPR
+address the limits of average metrics~\cite{carlini2022membership}. We adopt
+both, and we report where the per-record calibration fails in our regime
+(Section~\ref{sec:results-canary}).
+
+\paragraph{Validity of the evaluation} Several works document apparent
+membership signals produced by differences between the member and non-member
+distributions rather than by training. Duan et al.~\cite{duan2024mia} found
+that attacks on large language models are close to chance once members and
+non-members are drawn from the same distribution; Gomez~\cite{gomez2026clip}
+showed that attacks on CLIP relied on out-of-distribution non-members and
+collapse to chance on a controlled benchmark; Bai et al.~\cite{bai2026splitbias}
+showed that audits of synthetic medical images can detect the data split
+rather than membership. The validity of the measurement is therefore a known
+problem. We draw members and non-members from the same site pools with the
+same split procedure, and we do not present that correction as a new method.
+
+\paragraph{Canaries and auditing} Canaries and adversary instantiation turn a
+DP mechanism into an empirical lower bound on $\varepsilon$ under stated
+assumptions~\cite{jagielski2020auditing,nasr2021adversary,nasr2023tight};
+Steinke et al.~\cite{steinke2023privacy} obtained such bounds from a single
+training run with many randomly included canaries; CANIFE crafts canaries for
+FL~\cite{maddock2023canife}; Andrew et al.~\cite{andrew2024oneshot} estimate
+the empirical privacy of federated training in one run with random canary
+clients. Our canary is simpler and serves a different purpose: it tests
+whether our attacks detect induced memorisation, and it yields no bound on
+$\varepsilon$.
+
+\paragraph{Subject-level membership} Suri et al.~\cite{suri2022subject}
+studied whether a subject whose records are spread across silos took part in
+federated training. Users who charge at several sites exist in our data
+(Section~\ref{sec:system-data}); that motivates a limit of our study, not a
+subject-level attack we evaluate.
+
+\paragraph{EV charging} PFAD-BC~\cite{aldweesh2026pfadbc} trains a federated
+LSTM autoencoder for anomaly detection on ACN-Data and on a labelled
+EV-charging attack dataset, with DP and Byzantine-resilient aggregation, and
+evaluates membership inference with a metric that is not an AUC. It is the
+closest prior work in domain; we compare protocols with it, not numbers.
+
+\paragraph{Our prior work} Our QRS 2026 fast abstract~\cite{imperatrice2026toward}
+stated the problem of the information exposed by FL artifacts in OT
+infrastructures. The present paper measures it.
+
+Table~\ref{tab:comparability} places the closest works along the dimensions
+that determine whether their results transfer to ours.
+
+\begin{table*}[t]
+\centering
+\caption{Comparability with the closest prior work. n.e.: not extracted in
+this draft; n.a.: not applicable.}
+\label{tab:comparability}
+\footnotesize
+\begin{tabular}{@{}p{2.6cm}p{2.0cm}p{2.3cm}p{3.1cm}p{2.6cm}p{3.3cm}@{}}
+\toprule
+Work & Setting & Protected unit & Adversary's observation & Controls / audit & Difference from this study \\
+\midrule
+Jayaraman and Evans~\cite{jayaraman2019evaluating} & centralised & record (DP-SGD variants) & model outputs and loss & n.e. & centralised classifiers; no federated observation points \\
+Naseri et al.~\cite{naseri2022local} & FL & client (local and central DP) & n.e. & n.e. & no reconstruction cost on real OT data \\
+Carlini et al.~\cite{carlini2022membership} & centralised & n.a. (attack paper) & outputs and loss, shadow models & n.a. & defines LiRA and low-FPR evaluation, which we adopt \\
+CANIFE~\cite{maddock2023canife} & FL & client & client updates & crafted canaries, $\varepsilon$ estimate & our canary tests sensitivity, not $\varepsilon$ \\
+Andrew et al.~\cite{andrew2024oneshot} & FL & client & n.e. & random canary clients, one run & no natural-regime attack comparison \\
+Suri et al.~\cite{suri2022subject} & cross-silo FL & subject & n.e. & n.e. & we measure multi-site users but do not attack subjects \\
+PFAD-BC~\cite{aldweesh2026pfadbc} & FL, ACN-Data & n.e. & n.e. & n.e. & different model, metric and aggregation \\
+This work & cross-silo FL, 3 real sites & client and record & global model; per-client update at A0--A3 & canary, role exchange, untrained baseline & --- \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\Susy{Matrice di confrontabilita' da completare dal testo originale dei paper
+(guida sez. 3: task/modello, split, unita', osservazioni, algoritmo, budget e
+accounting, metriche, controlli, qualita' del modello, codice). Le celle n.e.
+non sono state estratte: non riempirle per analogia.}

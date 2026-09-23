@@ -1,0 +1,96 @@
+% ChargeShield-FL --- DSN 2027 --- 6. Discussion and Limitations
+% Scritta il 2026-09-23. La tabella delle conclusioni consentite traduce la
+% guida sez. 11 ("Espressioni da non usare senza l'evidenza corrispondente").
+
+\section{Discussion and Limitations}
+\label{sec:discussion}
+
+\subsection{What the Evidence Allows}
+\label{sec:disc-allowed}
+
+Table~\ref{tab:allowed} pairs each observation of Section~\ref{sec:results}
+with the conclusion it supports and with the stronger reading it does not.
+
+\begin{table*}[t]
+\centering
+\caption{Conclusions supported by the current evidence, and readings they do
+not support.}
+\label{tab:allowed}
+\footnotesize
+\begin{tabular}{@{}p{4.3cm}p{6.1cm}p{5.6cm}@{}}
+\toprule
+Observation & Supported conclusion & Not supported \\
+\midrule
+Aggregate AUC near $0.5$ without DP & no attack we ran separates members from non-members on average, within the equivalence margin & the system does not leak membership \\
+Per-record excess without DP ($z = 7.56$) & about 120 sessions are ranked systematically high by reconstruction error across seeds & an operational attacker identifies these sessions \\
+No excess at $\varepsilon \le 1$, loss $>100\times$ & at these settings the model no longer serves its purpose; protection and loss of utility are confounded & DP eliminated the leakage \\
+Canary control passes on Office~1 & the instrument detects induced memorisation in that regime & the instrument validates the natural-regime null \\
+Incidents of Table~\ref{tab:incidents} & charging records are personal data and central stores fail in practice & FL or DP would have prevented these incidents \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+Two points deserve emphasis. The aggregate null and the per-record excess are
+not in contradiction: the AUC averages over thousands of sessions, and an
+excess of about 120 sessions among 17{,}561 barely moves it. This is exactly
+the situation in which reading the AUC alone would report ``no leakage'' while
+some records are distinguishable. Conversely, the disappearance of the excess
+under DP at $\varepsilon \le 1$ is the result that is easiest to overstate, and
+it is the one the $\varepsilon$ sweep is designed to resolve.
+
+\subsection{Relation to the Incidents}
+\label{sec:disc-incidents}
+
+The incidents of Section~\ref{sec:threat-incidents} motivate the problem but
+are neither evidence for nor against our findings. DP bounds what a trained
+model or an update reveals about a protected unit; it does not protect the
+databases, cloud platforms and payment interfaces through which the reported
+data were lost. FL reduces the need for a central training pool, but each
+operator still holds its own records, which were the object of the 2023 and
+2024 exposures. The question our measurements answer is therefore
+complementary to incident response: if an operator joins a federation, how
+much do the artifacts it sends add to what it already has to protect.
+
+\subsection{Limitations}
+\label{sec:disc-limits}
+
+\paragraph{Attack calibration and access} The calibrated LiRA degenerates in
+this regime, so the per-record analysis is a ranking by loss, and its shadow
+models use data that an aggregator would not hold. Our measurements are
+upper bounds for the attacks considered, not a demonstration of what a
+realistic adversary achieves, and an adaptive attack tailored to this system
+is not evaluated.
+
+\paragraph{Meaning of $\varepsilon$} The client-level $\varepsilon$ is a
+calibration parameter: the classical Gaussian calibration does not certify
+$\varepsilon \ge 1$, normalisation statistics and batch-normalisation buffers
+are released outside the mechanism, and the record-level accountant has a
+known error. We compare the two protected units at comparable cost, never at
+equal $\varepsilon$.
+
+\paragraph{Unit and person} Neither protected unit bounds the contribution of a
+person with many sessions or with sessions at several sites, and the
+identifiers that let us measure this cover 34.8\%--93.5\% of the sessions
+depending on the site.
+
+\paragraph{Scope of the control} The canary control covers one site, in a
+regime altered on purpose (duplicated templates, higher capacity, a nearly
+unique feature, 1{,}000 epochs). It shows sensitivity there, not at the effect
+sizes of the natural regime.
+
+\paragraph{Statistical power} Five seeds per cell bound what paired tests can
+show; we report per-seed values and use equivalence tests only with a stated
+margin, whose justification is still open.
+
+\paragraph{Utility} We measure reconstruction error on natural data, not the
+detector's ability to detect attacks, for which no labels exist. A small loss
+does not show that the detector is useful.
+
+\paragraph{Transferability} Three real sites are not necessarily three
+independent commercial operators, the model is one small autoencoder, and one
+dataset is used. An adapter for a second charging dataset exists, but a single
+test run does not support any claim of transfer.
+
+\paragraph{Missing arms} The clip-only arm (B1) does not exist yet, so the
+effect of client-level DP cannot be split between clipping and noise; RQ3 and
+RQ2 are \pending{pending}.

@@ -1,0 +1,219 @@
+% ChargeShield-FL --- DSN 2027 --- 3. System, Data and Threat Model
+% Scritta il 2026-09-23. Fonti: docs/SISTEMA.md (sez. 1-4, 7-9), STATO.md
+% sez. 3.7 per gli identificativi (corregge l'inversione Caltech/JPL di
+% setup.tex, segnalazione 36), fonti giornalistiche/vendor per gli incidenti
+% (verificate il 2026-09-23, vedi references.bib).
+
+\section{System, Data and Threat Model}
+\label{sec:system}
+
+\subsection{Incidents in the EV-Charging Ecosystem}
+\label{sec:threat-incidents}
+
+Table~\ref{tab:incidents} summarises four publicly reported incidents. We
+include them because they establish two premises of this work, and we are
+explicit about a third point that they do \emph{not} establish.
+
+\begin{table*}[t]
+\centering
+\caption{Publicly reported incidents involving EV-charging data. Figures are
+those reported by the cited sources and were not verified independently.}
+\label{tab:incidents}
+\footnotesize
+\begin{tabular}{@{}p{1.3cm}p{2.6cm}p{3.0cm}p{5.2cm}p{4.0cm}@{}}
+\toprule
+When & Affected party & Vector & Data reported exposed & Relation to this study \\
+\midrule
+Jun.\ 2023 & Shell Recharge Solutions~\cite{whittaker2023shell} & Internet-facing logging database without password, found by a researcher & fleet customers' names, e-mail addresses and phone numbers; VINs; locations of charging points, including residential ones & central store of charging logs; outside our threat model \\
+Nov.\ 2024 & several charge-point operators using a common third-party charging application~\cite{robb2024cpo} & data offered on a hacking forum & about 116{,}000 records: names, contact details, addresses, vehicle make and model, VINs, keys and tokens, precise geolocation, OCPP logs; reportedly payment information & central store; shows session and protocol logs linked to identity \\
+Mar.\ 2026 & ELECQ, charger manufacturer~\cite{page2026elecq} & ransomware on the cloud platform; databases encrypted and copied & names, e-mail addresses, phone numbers, home addresses; the company stated that no financial data was involved and that chargers were unaffected; notified to the UK ICO and the German BfDI & central cloud store; outside our threat model \\
+Recurrent (reports since 2024) & drivers at public chargers~\cite{muncaster2024quishing,rac2024qr} & fake QR codes on chargers leading to look-alike payment pages (``quishing'') & payment card details and, potentially, credentials & targets the payment interface, not training; outside our threat model \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+First, charging data sit next to identity. The records exposed in 2023 and
+2024 joined sessions, locations and protocol logs to names, addresses and
+VINs; this is what makes the membership of a single session a personal fact
+rather than a statistical curiosity. Second, centralised stores of such data
+fail in practice, through misconfiguration (2023), compromise of a shared
+application (2024) or ransomware (2026), which is the usual motivation for
+keeping records at the operator that collected them and training federatively.
+
+What the incidents do not establish is equally important. None of them is a
+membership inference attack, and none involves a machine-learning model: they
+compromise a database, a cloud platform or the user. FL does not remove these
+vectors --- each operator still holds its own records and payment interfaces
+--- and DP, which bounds what a trained model or update reveals about a unit,
+protects neither a database nor a payment page. Quishing, in particular, lies
+entirely outside the training pipeline and is listed only to delimit the
+scope. The question we study is narrower: what the artifacts \emph{added} by
+federated training can reveal about the records behind them.
+
+\subsection{Data}
+\label{sec:system-data}
+
+We use ACN-Data~\cite{lee2019acndata} from its three real sites, all available
+years, for 66{,}713 sessions (Table~\ref{tab:data}); each session carries its
+site, and each site is one FL client. Sessions are split 80/20 into training
+and hold-out at random with the run's seed; the training part of a site is
+that client's data. Six continuous features describe a session: delivered
+energy, mean power (energy over duration), requested energy, declared
+availability window, connection hour in the site's local time, and duration.
+They are scaled to $[0,1]$ with min--max statistics computed on the training
+split only. ACN-Data carries no intrusion labels (the field provided for them
+is empty in every session), so we cannot and do not evaluate the detector's
+ability to detect attacks.
+
+\begin{table}[t]
+\centering
+\caption{Data per site. Identifier coverage: share of sessions carrying a user
+identifier (measured on 2026-09-21).}
+\label{tab:data}
+\footnotesize
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Site (client) & Sessions & With user identifier \\
+\midrule
+Caltech  & 31{,}404 & 52.1\% \\
+JPL      & 33{,}629 & 93.5\% \\
+Office~1 & 1{,}680  & 34.8\% \\
+\midrule
+Total    & 66{,}713 & 72.6\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Among identified sessions there are 1{,}028 distinct users, with a median of
+14 sessions each, and 8.5\% of them charge at more than one site. The median
+is not a maximum, and coverage differs across sites, so these figures
+characterise the data rather than evaluate the privacy of persons
+(Section~\ref{sec:threat-unit}).
+
+\subsection{Federation and Model}
+\label{sec:system-model}
+
+The model is a dense autoencoder $6 \rightarrow 16 \rightarrow 8 \rightarrow 4
+\rightarrow 8 \rightarrow 16 \rightarrow 6$ with 570 linear parameters and 48
+normalisation parameters, batch normalisation in the encoder (group
+normalisation under record-level DP, which is incompatible with batch
+statistics), a sigmoid output and mean-squared-error loss. It flags a session
+as anomalous when its reconstruction error is high. We chose an autoencoder
+because no labels exist, because the nodes that train it are station
+controllers, and because its reconstruction error is at once the detector's
+score and the quantity that loss-based attacks threshold, which removes a
+degree of freedom between what the system computes and what the attacker
+observes.
+
+Training uses Adam with learning rate $10^{-3}$ and batch size 32. Each round
+every client runs 50 local epochs with the FedProx objective, $\mu =
+0.01$~\cite{li2020fedprox}, the proximal term being active from the second
+round; the server averages the updates weighted by sample count. The ordinary
+protocol has 10 rounds with all three clients in every round. The canary
+regime (Section~\ref{sec:method-controls}) changes these settings on purpose:
+3 rounds, 1{,}000 local epochs, hidden widths $(32,16)$ with latent dimension
+8, and a seventh feature, the session start time, which is nearly unique per
+session.
+
+\subsection{Differential Privacy Mechanisms}
+\label{sec:system-dp}
+
+\paragraph{Client-level} At the end of a round, the client's update --- the
+difference from the weights it received --- is clipped to $L_2$ norm $C = 1$
+and perturbed with Gaussian noise of standard deviation
+$\sigma = C\sqrt{2\ln(1.25/\delta)}/\varepsilon$, with $\delta = 10^{-5}$;
+batch-normalisation buffers are excluded from clipping and noise. The
+mechanism can be placed at three points, which determine what the aggregator
+receives (Table~\ref{tab:placements}). The per-round $\varepsilon$ of this
+mechanism is a calibration parameter for $\sigma$ rather than a verified
+guarantee, for three reasons: the classical Gaussian calibration above
+guarantees $(\varepsilon,\delta)$-DP only for $\varepsilon <
+1$~\cite[Thm.~A.1]{dwork2014algorithmic}, whereas the sweep uses $\varepsilon$
+up to 16 (an analytic calibration~\cite{balle2018improving} would be needed to
+state the guarantee there); the batch-normalisation buffers are released
+without noise; and the normalisation statistics are computed on training data
+outside the accounted mechanism. We therefore report $\sigma$ together with
+$\varepsilon$, and cumulative values $T\varepsilon$ only as labels.
+
+\begin{table}[t]
+\centering
+\caption{Client-level DP placements and what the aggregator receives.}
+\label{tab:placements}
+\footnotesize
+\begin{tabular}{@{}p{1.45cm}p{1.55cm}p{1.9cm}p{2.25cm}@{}}
+\toprule
+Placement & Clips & Adds noise & Aggregator receives \\
+\midrule
+none & --- & --- & A0: raw update, no DP \\
+\texttt{dp-fedavg} & server, per client, on arrival & server, per client & A1: raw update \\
+\texttt{central} & client & server, once on the aggregate & A2: clipped, not noised \\
+\texttt{local} & client & client & A3: clipped and noised \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Record-level} DP-SGD with microbatches of one record, per-example
+gradient clipping and Gaussian noise $\sigma C$ on the sum, the proximal term
+being added after the noise. It protects the unit that the attacks measure.
+Its budget is computed with an R\'enyi accountant~\cite{mironov2017renyi}
+under a Poisson-sampling assumption; the current accountant under-counts the
+rounds, so record-level $\varepsilon$ values are not reported until it is
+corrected \Susy{segnalazione 4: fl\_rounds e delta da cfg["experiment"], n per
+client, Poisson contro shuffle}. With record-level DP the three observation
+points collapse into one. The two mechanisms are enabled one at a time.
+
+\subsection{Threat Model}
+\label{sec:threat-model}
+
+We evaluate one scenario: an \emph{honest-but-curious} aggregator that follows
+the protocol and records what it legitimately receives, together with any
+participant that receives the global model. The two correspond to two
+observation surfaces. The \emph{global model} is available to every
+participant; an attack on it can place a record in the training data of
+\emph{some} client. The \emph{per-client update} is available to the
+aggregator; an attack on it attributes membership to a specific operator.
+Figure~\ref{fig:observation} shows the four observation points of the update.
+
+\input{figures/observation_points_v2.tex}
+
+A0 is the raw update of a run without DP. A1 is the raw update under
+\texttt{dp-fedavg}, which the server receives before clipping and noising it:
+relative to the \texttt{central} and \texttt{local} deployments it is a
+stronger position, since noise added after the observation cannot protect
+against that observation. A2 is the clipped update that a server adding noise
+centrally legitimately receives. A3 is the clipped and noised update, which is
+also what an observer on the network would see.
+\Susy{SISTEMA.md sez. 4 e 8 descrive A1 una volta come ``cio' che vede
+l'aggregatore'' e una volta come ``insider sul client'': ho usato la prima
+lettura, coerente con la tabella dei placement. Da confermare.}
+
+\paragraph{Adversary knowledge} The adversary knows the architecture and the
+training procedure. The shadow models of LiRA are trained on the site's real
+data, members and hold-out included, and the shadow attack trains its single
+shadow on half of the members. Both are broader accesses than the threat model
+grants to an aggregator, so these attacks measure a generous upper bound on
+what that aggregator could infer, not an operational attack.
+
+\paragraph{Out of scope} A malicious client (an integrity threat), a
+compromised gateway, a network eavesdropper under transport encryption and an
+adaptive attacker tailored to this system are not evaluated, nor are the
+vectors of Section~\ref{sec:threat-incidents}. The original project also asked
+whether the attack could be detected from anomalies in the gradients. We
+exclude that question: an honest-but-curious aggregator runs the inference
+offline without altering any update, so a detector that sees only the updates
+has no signal that an inference took place, and similarity-based filters such
+as Krum~\cite{blanchard2017machine} are not detectors of passive membership
+inference.
+
+\subsection{Protected Unit and Person}
+\label{sec:threat-unit}
+
+Neither protected unit coincides with the person. Record-level DP bounds each
+session separately, but a user contributes a median of 14 sessions, whose
+guarantees compose. Client-level DP bounds a site's whole contribution, but a
+user who charges at several sites contributes to several clients, and no
+operator can clip data it does not hold. The dependence among a person's
+records also weakens the membership bound of
+Section~\ref{sec:bg-dp}~\cite{humphries2020differentially}. We measure these
+properties of the data; we do not evaluate subject-level protection or
+subject-level attacks.

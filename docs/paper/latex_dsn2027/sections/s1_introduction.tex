@@ -1,0 +1,198 @@
+% ChargeShield-FL --- DSN 2027 --- 1. Introduction
+% Scritta il 2026-09-23 (struttura a sette sezioni, guida sez. 10).
+% Recepisce le note dell'utente nella versione Overleaf di
+% sections/introduction.tex: definire brevemente la MIA e raccontarne i
+% contributi in forma narrativa; spiegare subito la tecnica canary; nota
+% sull'AUC; riformulare le frasi sui tre studi applicativi; dire che
+% scambiare "l'attacco non rileva" per "non c'e' esposizione" e' pericoloso
+% in esercizio; eliminare il paragrafo Purdue (troppo lungo).
+% Aggiunge gli incidenti reali richiesti dall'utente (dettaglio in sez. 3.1).
+
+\section{Introduction}
+\label{sec:introduction}
+
+A charging session is a small record: when a vehicle was plugged in, at which
+charging point, for how long, and how much energy it drew. Linked to an
+account or to a vehicle identifier, a sequence of such records describes a
+person's routine. The systems that hold these records have repeatedly failed
+to keep them. In June 2023 a Shell Recharge Solutions database, reachable
+from the Internet without a password, exposed logging data containing fleet
+customers' names and contacts, vehicle identification numbers (VINs) and the
+locations of charging points, residential ones
+included~\cite{whittaker2023shell}. In November 2024 about 116{,}000 records
+from several charge-point operators that shared a third-party charging
+application appeared on a hacking forum; according to the published analysis
+they contained names, addresses, vehicle models and VINs, precise
+geolocation and the OCPP logs exchanged between operators and
+chargers~\cite{robb2024cpo}. In March 2026 a ransomware attack on the cloud
+platform of the charger manufacturer ELECQ encrypted and copied customer
+databases with names, e-mail and home addresses and phone numbers, and was
+notified to data-protection authorities in the United Kingdom and
+Germany~\cite{page2026elecq}. Section~\ref{sec:threat-incidents} summarises
+these incidents, and what they do and do not say about the threat studied
+here.
+
+Federated learning (FL)~\cite{mcmahan2017communication} is often proposed
+for such settings because the records stay with the operator that collected
+them: each site trains a model locally and shares only an update, which an
+aggregator combines into a global model. Not sharing the records, however, is
+not the same as not revealing them. A \emph{membership inference attack}
+(MIA) asks, for a given record and a trained model or update, whether that
+record was part of the training data. The question looks modest, but for a
+charging session a positive answer places a specific vehicle at a specific
+site at a specific time, and it is the elementary test on which most
+empirical evaluations of training-data leakage are built.
+
+The attack has a short and instructive history. Shokri
+et~al.~\cite{shokri2017membership} showed that membership leaks through a
+model's outputs by training \emph{shadow models} that imitate the target on
+data whose membership the attacker knows, and learning from them how members
+and non-members differ. Yeom et~al.~\cite{yeom2018privacy} then observed that
+much of that signal is already in the loss: a model fits its training records
+better than unseen ones, so thresholding the loss is itself an attack, and its
+success grows with overfitting. Salem et~al.~\cite{salem2019mlleaks} relaxed
+the attacker's knowledge requirements, showing that a single shadow model
+trained on different data often suffices. Carlini
+et~al.~\cite{carlini2022membership} recast the problem as a hypothesis test
+on each record --- the likelihood-ratio attack (LiRA), which compares a
+record's loss with the losses it obtains in shadow models trained with and
+without it --- and argued that an attack should be judged by how many members
+it identifies at a very low false-positive rate, not by its average accuracy.
+In FL the same question can be put to the global model, which every
+participant receives, or to an individual update, which the aggregator
+receives~\cite{nasr2019comprehensive}.
+
+Differential privacy (DP)~\cite{dwork2006calibrating,dwork2014algorithmic}
+is the standard answer to this risk: noise calibrated to a bounded
+contribution makes the output nearly insensitive to the presence of any one
+protected unit, whatever the attacker does. The guarantee, however, is stated
+with respect to a unit, a mechanism and its outputs. In FL the unit can be a
+whole client~\cite{mcmahan2018learning} or a single record~\cite{abadi2016deep},
+and the two protect different things. The parameter $\varepsilon$ is not a
+fraction of identifiable records, and a weak attack shows neither that the
+protection is effective nor that it is useless. Empirical evaluation answers
+a complementary question: what \emph{specified} attacks can infer under the
+observed conditions~\cite{jayaraman2019evaluating,jagielski2020auditing}.
+
+Reading such evaluations requires care. Attack results are usually summarised
+by the area under the ROC curve (AUC)\footnote{The AUC is the probability that
+the attack scores a randomly chosen member above a randomly chosen
+non-member: $0.5$ is random guessing and $1$ perfect separation. Because it
+averages over all decision thresholds, an AUC close to $0.5$ is compatible
+with a few members being identified with high
+confidence~\cite{carlini2022membership}.}, and DP is often credited with
+bringing it close to $0.5$. In several applied studies, however, the attack was
+already at that level without protection, or no unprotected reference is
+shown. A study on cross-border telemedicine reports an AUC of about $0.50$ for
+centralised, federated and differentially private federated training
+alike~\cite{meyo2025telemedicine}; a study on maritime vessel data presents an
+AUC of about $0.51$ under DP as evidence of strong
+protection~\cite{khan2026maritime}; a study on precision medicine reports an
+unprotected centralised baseline of $0.5486$~\cite{pasupuleti2025biointelligence}.
+\Susy{Meyo et al.\ e Khan et al.\ verificati sulla pagina dell'editore il
+2026-09-23 (Khan: non ho visto un riferimento senza DP, da controllare nel
+testo completo). Pasupuleti: pagina non raggiungibile, valore 0.5486 non
+verificato sul testo originale (guida sez. 3 e 11).}
+When an attack cannot separate members from non-members before any protection
+is applied, an AUC near $0.5$ afterwards cannot show that DP suppressed a
+signal. Two hypotheses must then be kept apart: that the system exposes no
+membership signal detectable by the attack, and that the attack cannot detect
+a signal that is present. The difference is not only methodological. An
+operator who takes the second situation for the first concludes that no
+exposure exists and may deploy on that basis, while an adversary with a
+better-suited attack could still succeed. A measurement that returns chance
+is a statement about the instrument and its precision, not a certificate that
+the system is safe.
+
+The instrument itself can be tested with a \emph{positive control} based on
+canaries~\cite{maddock2023canife,steinke2023privacy}. The experimenter inserts
+known records into the training data --- here, real sessions duplicated many
+times so that the model is pushed to memorise them --- and keeps an equally
+chosen set of sessions out. Membership is then present by construction and
+the attack should find it; if it does not, its null results elsewhere say
+little. Two refinements make the control informative. Exchanging the roles of
+the two sets in a second training run separates membership from intrinsic
+difficulty, because a membership signal follows whichever set is trained on.
+Scoring the same records on an untrained model measures how far apart the two
+sets were before any training. A passed control shows that the instrument is
+sensitive in the regime in which it was run; it does not certify null results
+obtained in another regime.
+
+This paper reports an empirical study of this question in a concrete system:
+federated autoencoders trained on real charging sessions from the three sites
+of ACN-Data~\cite{lee2019acndata}, one client per site, extending the problem
+statement of our prior work~\cite{imperatrice2026toward}. Our objective is to
+establish \emph{under which conditions DP reduces the ability of membership
+inference attacks in this federated system, and at what cost to the model}. We
+keep the research questions of the original project:
+
+\begin{itemize}
+\item \textbf{RQ1.} How do attack performance and reconstruction error vary
+with the DP configuration and the number of rounds, with data, partition and
+federated algorithm fixed? The protected unit, client or record, is a factor
+of RQ1.
+\item \textbf{RQ3.} With data, partition, training resources and a comparable
+DP guarantee fixed, does FedProx with $\mu = 0.01$~\cite{li2020fedprox} change
+the attack--reconstruction trade-off relative to FedAvg ($\mu = 0$)?
+\item \textbf{RQ2.} With the same population and learning configuration, how
+do attacks and the cost of DP change between an approximately IID partition
+and the per-site partition?
+\end{itemize}
+
+\noindent We address them in the order RQ1, RQ3, RQ2, because the algorithm
+comparison reuses the central protocol most directly. A fourth question of the
+original project, detecting a passive attacker from anomalies in the
+gradients, is excluded for the reason given in Section~\ref{sec:threat-model}.
+
+We evaluate two DP mechanisms --- client-level clipping and noise on the
+update, and record-level DP-SGD --- and, for the client-level one, three
+observation points along the privatisation pipeline, ordered by the
+information they leave to the adversary. We measure attacks on the global
+model (loss threshold and a shadow-calibrated threshold) and on the per-client
+update (LiRA), a per-record analysis of which sessions are recognised
+consistently across seeds, and the reconstruction error on a fixed natural
+hold-out. Every cell uses five seeds, and metrics, surfaces and thresholds were
+fixed before the central sweep was read (Section~\ref{sec:method-spec}).
+
+The evidence verified so far establishes three facts. Without DP, no attack
+separates members from non-members on average, yet roughly 120 sessions above
+the chance level are recognised consistently across seeds. Client-level DP at
+$\varepsilon \le 1$ per round removes that excess but raises the
+reconstruction error more than 100-fold, so in those cells protection and loss
+of utility cannot be separated. And the measurement detects induced
+memorisation on one site, symmetrically under role exchange. The experiments
+that can place an operating point between these regimes --- the sweep over
+$\varepsilon \in [2, 16]$ and the record-level comparison --- and the RQ3 and
+RQ2 comparisons are \pending{running or pending: see Table~\ref{tab:matrix}}.
+
+Our contributions are the following.
+
+\begin{itemize}
+\item \textbf{A controlled characterisation of the DP--membership--reconstruction
+trade-off} on real multi-site EV-charging data, with two protected units and
+three observation points, reported together with the cost on the model and
+with per-seed variability (RQ1, Section~\ref{sec:results-rq1}).
+\pending{result of the $\varepsilon$ sweep and of record-level DP}
+
+\item \textbf{Paired comparisons} of FedAvg against FedProx (RQ3) and of an
+IID against the per-site partition (RQ2), with the same records, seeds and
+attacks. \pending{to be reduced explicitly if E-E or E-D are not completed
+(guide, Sec.~9)}
+
+\item \textbf{Measurement validity}: a canary control with role exchange and
+untrained-model baselines, a per-record analysis with a permutation chance
+level, and evidence that the shadow calibration of LiRA degenerates in this
+regime, which makes the uncalibrated loss the metric we rely on.
+
+\item \textbf{A reproducible evaluation}: configurations, seeds and analysis
+scripts for a single-process simulation and for a five-container NVIDIA FLARE
+deployment that runs the same attack code.
+\end{itemize}
+
+Section~\ref{sec:background} introduces DP, membership inference and the
+closest related work. Section~\ref{sec:system} describes the data, the
+federation, the DP mechanisms and the threat model, starting from the
+incidents above. Section~\ref{sec:method} specifies the experiments and the
+rules fixed before reading them, Section~\ref{sec:results} reports the
+results, Section~\ref{sec:discussion} states what they allow us to conclude and
+what they do not, and Section~\ref{sec:conclusion} concludes.

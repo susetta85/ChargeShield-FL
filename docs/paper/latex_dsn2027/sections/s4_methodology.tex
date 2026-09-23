@@ -1,0 +1,173 @@
+% ChargeShield-FL --- DSN 2027 --- 4. Experimental Methodology
+% Scritta il 2026-09-23. Fonti: ESPERIMENTI.md (sez. 0 congelata il
+% 2026-09-22 nella scheda risultati/decision_matrix_ACN_membership_DP.xlsx,
+% regole, E-A...E-E), SISTEMA.md sez. 7 e 9, CanaryPositiveControl.md.
+% Lo stato delle run nella Tabella tab:matrix e' quello del 2026-09-23 e va
+% aggiornato dalle matrici, non dai log.
+
+\section{Experimental Methodology}
+\label{sec:method}
+
+\subsection{Specification Fixed Before Reading the Results}
+\label{sec:method-spec}
+
+The guide of the project requires metrics, surfaces and thresholds to be
+fixed before the confirmatory runs are read, not after. Table~\ref{tab:spec}
+lists the decisions recorded on 2026-09-22, before any result of the
+$\varepsilon$ sweep was inspected.
+
+\begin{table}[t]
+\centering
+\caption{Evaluation specification fixed before the $\varepsilon$ sweep.}
+\label{tab:spec}
+\footnotesize
+\begin{tabular}{@{}p{2.0cm}p{5.9cm}@{}}
+\toprule
+Field & Decision \\
+\midrule
+Primary attack metric & raw loss (loss threshold) on the global model; per-record count with permutation $z$ on the composed LiRA score; calibrated LiRA and shadow attack as secondary \\
+Primary surface & per-client update (A1--A3) for the per-record analysis; global model for loss threshold and shadow attack \\
+Operating FPR & 1\%, chance level $\mathrm{TPR} = \mathrm{FPR}$; 0.1\% only where the number of records supports it \\
+Acceptable cost & final reconstruction loss within 3 times the no-DP reference \\
+Equivalence margin & AUC within 0.02 of 0.5, two one-sided tests (TOST) \\
+Replication unit & the seed; 5 seeds per cell; copies of a canary are not replicates \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\Susy{Guida sez. 8: il margine AUC 0.02 va motivato e non vale automaticamente
+per il TPR; manca ancora un margine per il TPR e per la ricostruzione.}
+
+\subsection{Attacks and Scores}
+\label{sec:method-attacks}
+
+All attacks derive their judgement from the reconstruction error of the target
+record. The \emph{loss-threshold} attack scores $-\ell(x, f)$ on the global
+model and uses no calibration. The \emph{shadow} attack scores the difference
+between the loss of a shadow model, trained on half of the members, and the
+loss of the target. \emph{LiRA} works on the per-client update: for each site
+it trains 16 shadow models, retrained at every round with a warm start and
+privatised like the client, fits a Gaussian log-likelihood ratio per record,
+and sums the per-round scores into a \emph{composed score}. We report the AUC
+and the TPR at 1\% FPR for each attack, and the reconstruction loss of the
+final global model on the fixed natural hold-out, both as an absolute value and
+as a ratio to the no-DP reference; since the no-DP loss is small, the ratio
+exaggerates changes near zero and is read together with the absolute value.
+
+\subsection{Per-Record Analysis}
+\label{sec:method-perrecord}
+
+Aggregate metrics can hide records that are recognised consistently. Within
+each seed we convert the composed score of every member session into a
+percentile. A session is \emph{flagged} if it is a member in at least two seeds,
+with mean percentile at least 90 and minimum at least 75. The chance level is
+obtained by permuting the scores within each seed, 200 times, and $z$ is the
+distance of the observed count from the permutation mean in units of its
+standard deviation. $z$ measures how far the count is from chance, not how
+severe the exposure of any record is. Because the calibration of LiRA
+degenerates in our regime (Section~\ref{sec:results-canary}), the composed
+score is in practice a monotone function of the loss, and the analysis is a
+ranking by loss; we describe it as such.
+
+\subsection{Controls}
+\label{sec:method-controls}
+
+\paragraph{Canary positive control} On one client, $k = 20$ real sessions are
+chosen as member templates and duplicated 30 times in the training data, and
+$k = 20$ further sessions, drawn from the same pool, are moved to the
+hold-out as non-member templates. The canary regime of
+Section~\ref{sec:system-model} is used. Because the copies of a template are
+identical, the AUC rests on $20 \times 20$ distinct pairs, not on the number
+of copies.
+
+\paragraph{Role exchange} Each run is repeated with the roles of the two sets
+exchanged. A signal due to intrinsic difficulty is antisymmetric (the two AUCs
+sum to one); a membership signal is symmetric (both exceed $0.5$). The exchange
+is exact only when the two sets have the same size: an earlier configuration
+with 5 member and 20 non-member templates drew disjoint sets in the two arms
+and is not used.
+
+\paragraph{Untrained baseline} The same canaries are scored on 20 randomly
+initialised networks per arm and seed; the effect of training is the increase
+over that baseline. The two arms' baselines sum to one by construction, so
+their sum checks the exchange, not the data.
+
+\paragraph{Clipping without noise} The guide foresees a clip-only arm (B1)
+that separates the effect of clipping from that of noise. The code has no
+clip-only setting yet; until it exists, the effect of client-level DP is
+attributed to clipping and noise together. \Susy{segnalazione 38.}
+
+\subsection{Experimental Matrix}
+\label{sec:method-matrix}
+
+Table~\ref{tab:matrix} links every experiment to its research question and
+shows its status. Seeds are 42, 123, 456, 789 and 1234 in every cell.
+
+\begin{table*}[t]
+\centering
+\caption{Experiments, research questions and status on 2026-09-23.}
+\label{tab:matrix}
+\footnotesize
+\begin{tabular}{@{}p{1.7cm}p{1.2cm}p{4.4cm}p{4.2cm}p{4.6cm}@{}}
+\toprule
+ID & RQ & Factor varied & Held fixed & Status \\
+\midrule
+Campaign & RQ1 & no DP; client-level $\varepsilon \in \{0.1, 0.5, 1\}$ at A1, A2, A3; pilot $\varepsilon \in \{8, 16\}$ at A1 & data, split procedure, model, FedProx $\mu=0.01$, 10 rounds & completed; pilot cells have one seed (Section~\ref{sec:results-nodp}) \\
+E-A & RQ1 & client-level $\varepsilon \in \{2, 4, 8, 16\}$, \texttt{dp-fedavg} (A1) & as above & running \pending{$\varepsilon=2$, seed 789: attacks failed on an environment error, to be re-run} \\
+B1 & RQ1 & clipping without noise & as above & not executable (no clip-only setting) \\
+E-B & RQ1 & record-level DP-SGD, noise multiplier $\in \{0.5, 1, 2\}$ & as above, client-level DP off & pending accountant and grouping fixes \\
+E-C & RQ1 & per-record analysis of all new cells & --- & pending unification of the percentile computation \\
+E-E & RQ3 & $\mu = 0$ against $\mu = 0.01$, without DP, then at the E-A operating point & data, split, seeds, rounds & pending configuration \\
+E-D & RQ2 & IID against per-site partition, without DP, then at the E-A operating point & population, model, seeds & no-DP arm running \\
+Canary, 2nd site & validity & balanced canary control on Caltech & canary protocol & pending \\
+NVFlare & validity & deployment at the E-A operating point & analysis code & after E-A \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Statistics and Reading Rules}
+\label{sec:method-stats}
+
+The seed is the unit of replication and runs are paired by seed across cells.
+Near-chance results are assessed with two one-sided tests against the margin of
+Table~\ref{tab:spec}~\cite{schuirmann1987tost}; an interval that includes the
+chance level is not by itself evidence of equivalence. With five paired seeds
+an exact Wilcoxon signed-rank test cannot reach two-sided significance at
+$0.05$ (its minimum $p$ is $0.0625$), so we report per-seed values rather than
+significance claims for cell differences. For the canary we average the two
+arms within each seed, which cancels the ceiling effect of low baselines, and
+test the five per-seed means with a paired $t$ test and a one-sided sign test.
+
+The conclusions allowed by each outcome of the $\varepsilon$ sweep were fixed
+in advance (Table~\ref{tab:reading}).
+
+\begin{table}[t]
+\centering
+\caption{Reading rules fixed before the $\varepsilon$ sweep (E-A).}
+\label{tab:reading}
+\footnotesize
+\begin{tabular}{@{}p{2.7cm}p{2.7cm}p{2.3cm}@{}}
+\toprule
+Outcome & Allowed conclusion & Next step \\
+\midrule
+in a cell of acceptable cost the per-record excess falls below $z = 3$ & observed reduction of per-record exposure, for these attacks and this access & fix that $\varepsilon$ as operating point for E-E and E-D \\
+excess remains at acceptable cost & client-level DP at that $\varepsilon$ does not reduce the measured exposure & report; E-B becomes decisive \\
+cost above threshold in every cell & no useful operating point for client-level DP in this regime & answer to RQ1 for this unit; go to E-B \\
+inconsistent across seeds & the experiment does not quantify the effect & targeted extra seeds on that cell only \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Realisation}
+\label{sec:method-realisation}
+
+Experiments run in a single-process simulation. The same federation also runs
+as a five-container NVIDIA FLARE deployment orchestrated with Containerlab
+(server, three site clients and an administration console, with mutual TLS);
+each round exports the updates and global weights, and the membership analysis
+is run offline with the same functions as in simulation. Known differences are
+that the deployment normalises features per site on the client, clips in
+absolute terms in the first round under \texttt{dp-fedavg}, has no no-DP
+switch, and requires the split seed to be read from the job snapshot. Main
+results come from the simulation; the deployment is used to check that the
+same conclusions hold.
