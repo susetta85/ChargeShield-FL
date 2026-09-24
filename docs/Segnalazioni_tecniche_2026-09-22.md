@@ -208,3 +208,57 @@ sono in `scripts/_applicati/`.*
     `gradient_manager.py`, `ml_plane.py`, `privacy_auditor.py`, `fedmia.py`. Non bloccano
     nulla: sostituirli con `docs/SISTEMA.md` o `docs/STATO.md` quando si tocca il file per
     altro, non con un commit dedicato mentre la campagna gira.
+
+## I. Trovato costruendo l'inventario dell'ambiente d'esecuzione (2026-09-22)
+
+41. **`requests` è usato ma non dichiarato in nessuna dipendenza di
+    `pyproject.toml`.** `scripts/download_acn_sessions.py:39` fa `import requests`
+    a livello di modulo, senza fallback — è l'unico modo nel repo per scaricare
+    ACN-Data da ev.caltech.edu. Non compare né in `[project.dependencies]` né in
+    nessun `[project.optional-dependencies]` (`dev`, `flare`, `viz`). A differenza
+    di `dp-accounting` (segnalazione 4), qui non c'è degradazione silenziosa: chi
+    non ce l'ha installato ottiene subito un `ModuleNotFoundError` lanciando lo
+    script. Fix: aggiungerlo a `[project.dependencies]` in `pyproject.toml`.
+    Verificato leggendo gli `import` reali di tutto `src/` e `scripts/`, non solo
+    questo file — nessun'altra libreria di terze parti usata nel codice risulta
+    mancante dalla dichiarazione (oltre a `dp-accounting`, già nota).
+
+## J. Trovato preparando la riscrittura del paper (2026-09-23)
+
+42. **Un attacco che fallisce non ferma lo sweep e la cella perde un seed in
+    silenzio.** `scripts/run_experiments.py:6174` (`run_registered_attacks`)
+    intercetta l'eccezione di ogni attacco registrato, scrive comunque il JSON con
+    le metriche a `None` ed esce con codice 0, quindi il `set -e` degli sweep non
+    si ferma. Caso reale in E-A: `experiments/rq1-eps2/experiment_20260922_180414.json`
+    (epsilon = 2, quarto seed del ciclo, cioe' 789) ha Yeom, Shadow e LiRA falliti
+    con `AttributeError: module 'numpy' has no attribute '_no_nep50_warning'`
+    (`logs/rq1_eps_sweep.log`, righe 1540-1697, ore 18:04 del 2026-09-22), JSON da
+    40 KB contro i 90 KB degli altri e nessun `per_sample_seed789.json`. La causa e'
+    d'ambiente (numpy/scipy incoerenti in quel momento: le run successive sono
+    andate), ma il codice la rende invisibile. Da fare: rilanciare la sola cella
+    epsilon = 2, seed 789, a fine sweep, prima di `check_significance.py`; valutare
+    un codice d'uscita non nullo quando falliscono tutti gli attacchi (tocca
+    `run_experiments.py`: solo dopo la campagna).
+
+## K. Trovato rigenerando le matrici dopo E-A (2026-09-24)
+
+43. **`genera_matrici_faseA.py` duplicava i fogli a ogni esecuzione.** Le quattro
+    funzioni che aggiungono fogli a `Matrice_sintesi.xlsx` (`scrivi_costo_per_sito`,
+    `scrivi_utility_privacy`, `scrivi_worst_case`, `scrivi_glossario`, righe 561-718
+    prima della correzione) aprono il file esistente e chiamano `create_sheet`: alla
+    seconda esecuzione openpyxl crea `Utility_privacy_limite1` accanto al vecchio
+    `Utility_privacy_limite`, che resta con i numeri precedenti. Chi apre il foglio
+    col nome atteso legge dati vecchi. **Corretto il 2026-09-24**: ogni funzione
+    elimina il foglio omonimo prima di ricrearlo; `Matrice_sintesi.xlsx` rigenerato
+    da quello committato, sei fogli senza duplicati.
+44. **Il foglio `Utility_privacy_limite` non compone le celle come
+    `check_significance.py`.** `scrivi_utility_privacy` (stesso script) raggruppa per
+    `(dp_mode, epsilon)` TUTTI i JSON di `experiments/*/`, senza escludere le cartelle
+    `_*` e `nvflare-*` e senza deduplicare per seed; `check_significance.py` fa
+    entrambe le cose. Effetti visti il 2026-09-24: a ε = 8 e 16 la run pilota a un
+    seed finisce insieme alle cinque di E-A (n = 6; a ε = 8 la media della loss scende
+    da 0.0655 a 0.0566); `local` ε = 0.5 e 0.1 includono una run NVFlare rianalizzata
+    il 2026-09-22 (la loss di `local` ε = 0.5 è passata da 0.4235 a 0.4118 senza nuove
+    simulazioni); le celle a 14 run sommano sweep diversi dello stesso seed. Va deciso
+    insieme alla segnalazione 9 quale regola vale; finché non è deciso, `STATO.md`
+    riporta E-A dai JSON, una run per seed.

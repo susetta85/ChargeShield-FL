@@ -1,6 +1,6 @@
 # ChargeShield-FL — Esperimenti da eseguire
 
-> **Stato: documento CANONICO.** Aggiornato il 2026-09-22 (secondo check). Sostituisce,
+> **Stato: documento CANONICO.** Aggiornato il 2026-09-24 (stato di E-A e del braccio no-DP di E-D). Sostituisce,
 > per gli esperimenti ancora da lanciare, il vecchio `TestRoadmap_DSN2027.md`, eliminato
 > il 2026-09-22 e recuperabile dalla storia git. Ogni
 > voce dice quale RQ serve, quale conclusione può cambiare, cosa deve essere vero
@@ -77,6 +77,23 @@ per record con z.
 | l'eccesso resta e il costo è accettabile | la DP client-level a quell'ε non riduce l'esposizione misurata | riportarlo; E-B diventa il confronto decisivo |
 | il costo supera la soglia in ogni cella | nessun punto operativo utile per il client-level in questo regime | è la risposta a RQ1 per questa unità; passare a E-B |
 | risultati incoerenti fra seed | l'esperimento non quantifica bene il fenomeno | aumento mirato dei seed sulla sola cella ambigua, con limite di risorse |
+
+**Stato (2026-09-24).** Eseguito dal 22 al 24 settembre, 20 run; numeri in `STATO.md`
+sezione 3.1b. Da fare prima di chiudere la cella ε = 2: rilanciare il solo seed 789,
+i cui attacchi sono falliti per un errore d'ambiente (segnalazione 42):
+
+```bash
+caffeinate -ims python3 scripts/run_experiments.py \
+  --config config/experiment_rq1_eps2.yaml --rounds 10 --seed 789 \
+  --sweep-dir experiments/rq1-eps2 \
+  --per-sample-dump experiments/rq1-eps2/per_sample_seed789.json \
+  2>&1 | tee logs/rq1_eps2_seed789_rerun.log
+```
+
+Per applicare la tabella di lettura servono ancora: la scelta del riferimento di costo
+(`STATO.md` sezione 3.8, decide se ε = 16 è a costo accettabile) ed E-C sulle quattro
+celle, dopo la segnalazione 6. La cella ε = 8 è incoerente fra seed (quarta riga
+della tabella).
 
 ## B1 — braccio clipping senza rumore
 
@@ -173,6 +190,14 @@ done 2>&1 | tee logs/rq2_partizione.log
 Poi la stessa coppia con la configurazione DP indicata da E-A. La partizione IID è
 un riferimento sperimentale, non un deployment: la ground truth di appartenenza
 per client cambia e va ricostruita.
+
+**Stato (2026-09-24).** Braccio no-DP eseguito dal 22 al 23 settembre su una seconda
+macchina (Mac, Python 3.13; E-A girava sulla prima con Python 3.14): 5 JSON e 5 dump
+per campione in ciascuna di `experiments/rq2-per_site` e `experiments/rq2-iid`, zero
+righe `[ERROR]` nel log. Prima di leggerlo vanno copiate le due cartelle e
+`logs/rq2_partizione.log` in questo checkout, poi `check_significance.py` e
+`genera_matrici_faseA.py`. La macchina diversa è una variabile non registrata nei JSON:
+va dichiarata nel paper.
 
 ## Canary bilanciato su un secondo sito
 

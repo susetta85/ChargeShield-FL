@@ -1,16 +1,20 @@
 # ChargeShield-FL — Stato del progetto
 
-> **Stato: documento CANONICO.** Aggiornato il 2026-09-22. Solo numeri presenti in
-> `risultati/` alla data; dove un numero non è verificabile dai JSON grezzi lo dice.
+> **Stato: documento CANONICO.** Aggiornato il 2026-09-24 (chiusura di E-A). Solo numeri
+> presenti in `risultati/` o letti dai JSON grezzi alla data, e lo dice dove.
 > Linea scientifica: la guida. Cosa fare: `ESPERIMENTI.md`. Cosa esiste nel codice:
 > `SISTEMA.md`. Questo file risponde a una sola domanda: a che punto siamo.
 
 ## 1. In una frase
 
-RQ1 non ha ancora una risposta: in media nessun attacco distingue membri da non
-membri nemmeno senza DP, l'unico segnale è per singolo record e solo senza DP, e
-tutte le celle con DP finora eseguite hanno il modello distrutto. Il prossimo
-esperimento, lo sweep di ε in 2-16, è l'unico che può cambiare questa frase.
+RQ1 non ha ancora una risposta; per il punto operativo contano ora due decisioni più
+che nuove run.
+In media nessun attacco distingue membri da non membri, con o senza DP; l'unico
+segnale è per singolo record senza DP. Lo sweep di ε in 2-16 (E-A, 19 run valide su
+20) mostra che a ε ≤ 8 il costo supera la soglia di 3 volte, mentre a ε = 16 la loss
+sta a 2.3 volte il riferimento no-DP della campagna ma a 3.7 volte quello appaiato per
+seed (`nodp-sweep2`): se ε = 16 sia un punto operativo dipende da quale riferimento
+vale (sezione 3.8), e poi dall'analisi per record E-C, ferma sulla segnalazione 6.
 
 ## 2. Glossario minimo
 
@@ -56,6 +60,31 @@ al 15 settembre perché eseguivano lo stesso codice; da allora dp-fedavg attacca
 l'update grezzo (A1), e quali celle siano post modifica va verificato nel
 registro. Il test di equivalenza TOST a margine 0.02 è soddisfatto ovunque; il
 Wilcoxon a 5 seed non può essere significativo per costruzione.
+
+### 3.1b Sweep di ε, client-level `dp-fedavg` (A1): E-A
+
+Fonte: i JSON di `experiments/rq1-eps{2,4,8,16}/` letti il 2026-09-24 (una run per
+seed, seed 42, 123, 456, 789, 1234), coerenti con `check_significance.py` (stessi n e
+stesse medie per gli attacchi) e con il foglio `Utility_privacy_limite` per ε = 2 e 4.
+Per ε = 8 e 16 quel foglio mescola la run pilota a un seed con le cinque di E-A (n = 6,
+segnalazione 44): qui sono solo le cinque. Riferimento di costo: la cella no-DP della
+campagna (49 run, loss 0.002693) e, appaiato per seed, `nodp-sweep2` (media 0.001676).
+
+| ε | seed validi | loss finale media | rapporto su no-DP campagna | rapporto appaiato per seed, min-max | Yeom | Shadow | LiRA composto | TPR a FPR 1% |
+|---|---|---|---|---|---|---|---|---|
+| 16 | 5 | 0.00614 | 2.3 | 3.1-4.2 | 0.5015 | 0.5011 | 0.4992 | 0.0097 |
+| 8 | 5 | 0.0655 | 24.3 | 8.4-202 | 0.5001 | 0.5002 | 0.4978 | 0.0101 |
+| 4 | 5 | 0.128 | 47.5 | 29.5-260 | 0.4999 | 0.5002 | 0.4959 | 0.0092 |
+| 2 | 4 (loss su 5) | 0.285 | 105.8 | 120-422 | 0.5000 | 0.5001 | 0.4952 | 0.0094 |
+
+Il TOST a margine 0.02 è soddisfatto in tutte e quattro le celle. La loss finale varia
+fra seed di un fattore 1.9 a ε = 16 (0.0039-0.0074), 2 a ε = 2, 4.5 a ε = 4 e 13.8 a
+ε = 8 (0.014-0.195), con il seed 456 sempre il più alto a ε ≤ 8: la cella ε = 8 è
+incoerente fra seed, caso previsto dalla tabella di lettura di `ESPERIMENTI.md` (seed
+aggiuntivi mirati su quella cella sola). A ε = 2 il seed 789 ha
+tutti e tre gli attacchi falliti per un errore d'ambiente (segnalazione 42): da
+rilanciare. I JSON di E-A registrano `git_commit`; il codice è lo stesso in tutte le
+run (f145b79 e poi ed0e1f9, che cambia solo il paper).
 
 ### 3.2 Vulnerabilità per record: l'unico segnale su dati naturali
 
@@ -133,17 +162,25 @@ contributo di una persona.
 ### 3.8 La scheda scientifica
 
 I campi della sezione 5 della guida sono compilati nella stessa scheda
-`decision_matrix_ACN_membership_DP.xlsx`. Restano aperti, da congelare prima di
-leggere lo sweep: superficie primaria e soglia di costo accettabile
-(`ESPERIMENTI.md`, sezione 0). Manca il braccio B1 della Fase B, clipping senza
-rumore, per cui non esiste un flag.
+`decision_matrix_ACN_membership_DP.xlsx`; le decisioni di `ESPERIMENTI.md` sezione 0
+sono state congelate il 2026-09-22, prima di leggere E-A. Resta ambiguo un punto che
+ora decide RQ1: "loss finale entro 3 volte il riferimento no-DP" non dice quale
+riferimento. I valori pilota citati in quella riga (2.6 e 4.6) usano la cella no-DP
+della campagna, 49 run di sweep diversi; il protocollo appaiato per seed della guida
+(sezione 8) porterebbe a `nodp-sweep2`. Con il primo ε = 16 è a costo accettabile
+(2.3), con il secondo no (3.7). È una decisione del supervisore, da prendere prima di
+leggere E-C a ε = 16. Manca il braccio B1 della Fase B, clipping senza rumore, per cui
+non esiste un flag.
 
 ## 4. Cosa manca
 
-L'elenco ordinato, con comandi e prerequisiti, è `ESPERIMENTI.md`: E-A sweep di ε,
-E-B record-level su dati naturali, E-C analisi per record, canary bilanciato su
-Caltech, E-E per RQ3, E-D per RQ2, rianalisi NVFlare al punto operativo. I bug che
-toccano i numeri sono in `Segnalazioni_tecniche_2026-09-22.md`, punti 1, 4, 5, 6,
-35, 36, 37, 38. Fuori dal paper, come infrastruttura o lavoro futuro: ML Plane,
+L'elenco ordinato, con comandi e prerequisiti, è `ESPERIMENTI.md`. E-A è eseguito
+(sezione 3.1b) salvo il rilancio di ε = 2, seed 789. Il braccio no-DP di E-D (RQ2, 10
+run) è stato eseguito su una seconda macchina e va copiato in `experiments/` di
+questa prima di rigenerare le matrici. Restano: la decisione sul riferimento di costo
+(sezione 3.8), E-C analisi per record dopo la segnalazione 6, E-B record-level su dati
+naturali, canary bilanciato su Caltech, E-E per RQ3, il braccio DP di E-D, rianalisi
+NVFlare al punto operativo. I bug che toccano i numeri sono in
+`Segnalazioni_tecniche_2026-09-22.md`, punti 1, 4, 5, 6, 35, 36, 37, 38, 42, 44. Fuori dal paper, come infrastruttura o lavoro futuro: ML Plane,
 Privacy Auditor, PES, ByzantineDetector, FedMIA-gradient, secondo dataset. Per le
 frasi da non scrivere senza evidenza: guida, sezione 11.

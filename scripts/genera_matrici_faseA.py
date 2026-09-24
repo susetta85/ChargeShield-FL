@@ -246,6 +246,17 @@ def leggi_run() -> list[dict]:
                 + (f"; canary k={can.get('n_templates')}/{can.get('n_nonmember_templates')}, "
                    f"dup={can.get('n_duplicates')}, swap={can.get('swap_assignment')}"
                    if can.get("enabled") else "")
+                # Fix 2026-09-22 (segnalazione 5/37): una run record-DP ha
+                # no_dp=True (serve a disattivare il client-level) e senza
+                # questo campo la stringa "configurazione" la mostrava
+                # indistinguibile da una vera baseline no-DP, anche se la
+                # colonna "regime" già la marcava "naturale — record-DP
+                # (diagnostico)" (funzione regime() sopra). Reso esplicito
+                # qui per chi legge solo questa colonna.
+                + (f"; record_dp: enabled={ (cfg.get('record_dp') or {}).get('enabled') }, "
+                   f"nm={ (cfg.get('record_dp') or {}).get('noise_multiplier') }, "
+                   f"eps_record_dp={cfg.get('epsilon_record_dp')}"
+                   if cfg.get("record_dp") else "")
             ),
             "hash_split": "",
             "seed": cfg.get("seed"),
@@ -549,6 +560,11 @@ def scrivi_costo_per_sito():
     """
     p = os.path.join(USCITA, "Matrice_sintesi.xlsx")
     wb = openpyxl.load_workbook(p)
+    # Fix 2026-09-23 (segnalazione 43): senza questa rimozione ogni nuova
+    # esecuzione aggiungeva un secondo foglio "Costo_per_sito1" accanto al vecchio,
+    # che restava con i numeri precedenti.
+    if "Costo_per_sito" in wb.sheetnames:
+        del wb["Costo_per_sito"]
     ws = wb.create_sheet("Costo_per_sito")
     ws.append(["log", "condizione DP", "sito", "round finale",
                "loss finale", "n sessioni del client"])
@@ -590,6 +606,11 @@ def scrivi_utility_privacy():
     import math
     p = os.path.join(USCITA, "Matrice_sintesi.xlsx")
     wb = openpyxl.load_workbook(p)
+    # Fix 2026-09-23 (segnalazione 43): senza questa rimozione ogni nuova
+    # esecuzione aggiungeva un secondo foglio "Utility_privacy_limite1" accanto al vecchio,
+    # che restava con i numeri precedenti.
+    if "Utility_privacy_limite" in wb.sheetnames:
+        del wb["Utility_privacy_limite"]
     ws = wb.create_sheet("Utility_privacy_limite")
     ws.append(["cella", "n run", "loss finale", "x rispetto a no-DP",
                "Yeom", "Shadow", "LiRA", "LiRA composto", "TPR@1%FPR",
@@ -663,6 +684,11 @@ def scrivi_worst_case():
     d = json.load(open(fjson))
     p = os.path.join(USCITA, "Matrice_sintesi.xlsx")
     wb = openpyxl.load_workbook(p)
+    # Fix 2026-09-23 (segnalazione 43): senza questa rimozione ogni nuova
+    # esecuzione aggiungeva un secondo foglio "Worst_case_per_record1" accanto al vecchio,
+    # che restava con i numeri precedenti.
+    if "Worst_case_per_record" in wb.sheetnames:
+        del wb["Worst_case_per_record"]
     ws = wb.create_sheet("Worst_case_per_record")
     ws.append(["gruppo", "n seed", "sessioni multi-seed", "record segnalati",
                "attesi per caso", "sd", "z", "% osservata", "% attesa", "lettura"])
@@ -704,6 +730,11 @@ def scrivi_glossario():
     """
     p = os.path.join(USCITA, "Matrice_sintesi.xlsx")
     wb = openpyxl.load_workbook(p)
+    # Fix 2026-09-23 (segnalazione 43): senza questa rimozione ogni nuova
+    # esecuzione aggiungeva un secondo foglio "Glossario_metriche1" accanto al vecchio,
+    # che restava con i numeri precedenti.
+    if "Glossario_metriche" in wb.sheetnames:
+        del wb["Glossario_metriche"]
     ws = wb.create_sheet("Glossario_metriche")
     ws.append(["termine", "definizione", "come si legge", "dove compare",
                "documento di riferimento"])

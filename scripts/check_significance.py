@@ -252,6 +252,20 @@ def discover_groups(
     Chiude anche task #36 (mai chiuso esplicitamente: la sensibilità
     corretta è già in central-sweep3/4/6/7, ora correttamente l'unica
     versione usata nelle statistiche aggregate).
+
+    Fix (2026-09-22, segnalazione 37, prerequisito bloccante per E-B):
+    le run record-level DP si lanciano con `--no-dp` per disattivare il
+    meccanismo client-level (il record-level non lo fa da solo), quindi
+    avevano `cfg["no_dp"] = True` come una vera baseline no-DP e finivano
+    nello stesso gruppo "no-DP baseline" — con la dedup per seed sopra,
+    una run record-DP più recente SOSTITUIVA silenziosamente il seed
+    corrispondente del riferimento no-DP di RQ1. Le run con
+    `record_dp.enabled` ricevono ora un'etichetta propria
+    (`"record-DP, nm=<noise_multiplier>"`), mai confusa con "no-DP
+    baseline". Nessuna run record-DP esiste ancora nella campagna E-A in
+    corso (dp-fedavg/central/local con epsilon reale, o no-DP puro senza
+    `record_dp`): questo fix non cambia l'etichetta di nessuna cella già
+    prodotta finora, riguarda solo le run E-B non ancora lanciate.
     """
     groups: dict[str, list[str]] = defaultdict(list)
     # (label, seed) -> file più recente visto finora per quella combinazione.
@@ -277,6 +291,18 @@ def discover_groups(
         dp_mode = cfg.get("dp_mode", "dp-fedavg")
         eps = cfg.get("epsilon")
         seed = cfg.get("seed")
+        # Fix (2026-09-22, segnalazione 37): le run record-level DP (E-B) si
+        # lanciano con --no-dp per disattivare il meccanismo client-level (il
+        # record-level non lo fa da solo — vedi SISTEMA.md §4), quindi
+        # cfg["no_dp"] è True esattamente come per una vera baseline no-DP.
+        # Senza questo controllo, `label` sopra le etichetta entrambe
+        # "no-DP baseline" e la dedup per seed sotto (tenendo il file più
+        # recente) fa sì che una run record-DP a un dato seed SOSTITUISCA
+        # silenziosamente il seed corrispondente di nodp-sweep2 — la stessa
+        # run che serve da riferimento no-DP per RQ1. Le run record-DP
+        # prendono qui un'etichetta propria, mai "no-DP baseline".
+        rdp_cfg = cfg.get("record_dp") or {}
+        rdp_on = bool(rdp_cfg.get("enabled"))
         # Normalizza il tipo di `seed` per la chiave di dedup: un rerun i cui
         # config.yaml/JSON salvano lo stesso seed logico con tipi diversi
         # (es. 42 int vs "42" str, capita se qualcuno quota il valore in YAML
@@ -287,7 +313,9 @@ def discover_groups(
         # quel fix doveva chiudere. `None` (seed assente/non impostato) resta
         # un valore a sé, non normalizzato a stringa.
         seed_key = str(seed) if seed is not None else None
-        if no_dp or eps is None:
+        if rdp_on:
+            label = f"record-DP, nm={rdp_cfg.get('noise_multiplier')}"
+        elif no_dp or eps is None:
             label = "no-DP baseline"
         else:
             label = f"{dp_mode}, eps={eps}"
