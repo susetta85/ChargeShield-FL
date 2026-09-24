@@ -118,7 +118,8 @@ del 2026-09-09 (dettagli nel commento in `Dockerfile.flare`).
   essere skippati — segnalazione 39, ancora aperta.
 - Con `datasets/` scaricato: 315 test passano nella suite non-torch (comando di
   `CLAUDE.md` §5; 297 prima del 2026-09-24). `make test`, con torch, raccoglie 448
-  test: il 2026-09-24 sul Mac 447 passati e 1 fallito (segnalazione 52).
+  test: il 2026-09-24 sul Mac 447 passati e 1 fallito, un test con dati non
+  normalizzati (segnalazione 52, corretto: il file ora passa 23 su 23).
 
 ## 9. Sistema operativo e hardware
 

@@ -382,4 +382,5 @@ sono in `scripts/_applicati/`.*
     normalizzano (`run_experiments.py::main`, righe 7260-7262), e il codice di `run_lira`
     con `no_dp` legge `updates` (righe 3854-3867). **Corretto nel test il 2026-09-24**:
     normalizzazione come in `main`, e il test accetta come cambiamento anche il round
-    saltato o una media dei punteggi diversa. Da verificare eseguendolo sul Mac.
+    saltato o una media dei punteggi diversa. **Verificato sul Mac il 2026-09-24**:
+    `tests/test_run_experiments_integration.py` 23 passati su 23, con numpy 1.26.4.
