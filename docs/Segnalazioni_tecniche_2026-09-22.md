@@ -359,3 +359,27 @@ sono in `scripts/_applicati/`.*
     shadow): la calibrazione LiRA sotto record-level confronta il bersaglio con shadow non
     privati. LiRA e' secondaria; da dichiarare, o da correggere prima di leggere E-B con
     LiRA.
+
+## N. Trovato eseguendo `make test` sul Mac (2026-09-24)
+
+52. **Un test torch fallisce: LiRA da' lo stesso AUC con gli update scalati per 1000.**
+    `make test` sul Mac dopo il commit `ff28f50`: 447 passati, 1 fallito,
+    `tests/test_run_experiments_integration.py::TestRunLiRA::test_lira_attacks_post_dp_updates_not_raw`
+    (righe 343-390): AUC 0.498437 sia con gli update normali sia con quelli scalati.
+    Il test protegge la correzione 2026-07-21c, cioe' LiRA che legge `updates` e non
+    `raw_updates` (`run_lira`, ramo `else` intorno alla riga 3864). Con il config del test
+    le modifiche di `ff28f50` non toccano quel percorso: niente `record_dp`, niente
+    `common_init`, il log delle norme legge soltanto i pesi. Nello stesso passaggio
+    `pip install dp-accounting` ha aggiornato numpy da 1.26.4, la versione con cui sono
+    state prodotte le run sul Mac, a 2.5.3 (dm-tree 0.1.10, dipendenza di dp-accounting,
+    chiede numpy >= 2.3 su Python 3.14; dp-accounting lo usa solo nei suoi test). numpy
+    riportato a 1.26.4: il test fallisce uguale (1 fallito, 35 passati nei due file), quindi
+    numpy non c'entra. **Causa probabile, nel test e non in LiRA**: le sessioni sintetiche
+    del test non sono normalizzate (`_make_sessions`, `minutes_available` fino a 600),
+    mentre il decoder ha una Sigmoid in uscita (`src/core/autoencoder.py:178-180`) e
+    ricostruisce in [0,1]. La loss e' dominata dalla scala dei dati e quasi non dipende
+    dai pesi, quindi l'AUC non cambia neanche moltiplicandoli per 1000. Le run vere
+    normalizzano (`run_experiments.py::main`, righe 7260-7262), e il codice di `run_lira`
+    con `no_dp` legge `updates` (righe 3854-3867). **Corretto nel test il 2026-09-24**:
+    normalizzazione come in `main`, e il test accetta come cambiamento anche il round
+    saltato o una media dei punteggi diversa. Da verificare eseguendolo sul Mac.

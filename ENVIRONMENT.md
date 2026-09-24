@@ -68,7 +68,10 @@ Verificate leggendo gli `import` reali in `src/` e `scripts/`, non assunte:
   installato` nel log e lascia i campi a `None`; si ricalcolano dopo con
   `scripts/ricalcola_epsilon_record_dp.py`. `tests/test_record_dp_accounting.py`
   fallisce in raccolta se manca. Serve solo per E-B; non è sul percorso di E-A.
-  Su un ambiente gia' installato: `pip install dp-accounting`.
+  Su un ambiente gia' installato, bloccando la versione di numpy presente:
+  `python3 -m pip install dp-accounting "numpy==$(python3 -c 'import numpy; print(numpy.__version__)')"`.
+  Il solo `pip install dp-accounting` sul Mac del 2026-09-24 ha aggiornato numpy da
+  1.26.4, la versione delle run gia' prodotte, a 2.5.3 (segnalazione 52).
 
 ## 6. Versioni pinnate "note-funzionanti" (da `Dockerfile.flare`)
 
@@ -113,8 +116,9 @@ del 2026-09-09 (dettagli nel commento in `Dockerfile.flare`).
   33 falliscono con `FileNotFoundError`
   (`test_acn_dataset.py`, `test_chargeplace_scotland_adapter.py`) invece di
   essere skippati — segnalazione 39, ancora aperta.
-- Con `datasets/` scaricato e torch installato: 315 test passano (`make test`; 297
-  prima del 2026-09-24).
+- Con `datasets/` scaricato: 315 test passano nella suite non-torch (comando di
+  `CLAUDE.md` §5; 297 prima del 2026-09-24). `make test`, con torch, raccoglie 448
+  test: il 2026-09-24 sul Mac 447 passati e 1 fallito (segnalazione 52).
 
 ## 9. Sistema operativo e hardware
 

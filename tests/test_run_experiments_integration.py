@@ -353,6 +353,14 @@ class TestRunLiRA:
         funzione stia effettivamente leggendo "updates" e non "raw_updates".
         """
         cfg = copy.deepcopy(tiny_cfg)
+        # Segnalazione 52 (2026-09-24): feature normalizzate in [0,1] con le
+        # statistiche del training, come in main(). Senza, il decoder (Sigmoid in
+        # uscita) ricostruisce in [0,1] feature che arrivano a 600
+        # (minutes_available): la loss e' dominata dalla scala dei dati, quasi non
+        # dipende dai pesi, e il test non distingue piu' updates da raw_updates.
+        _stats = run_exp.compute_feature_stats(train_sessions, _FEATURES)
+        train_sessions = run_exp.normalize_sessions(train_sessions, _stats, _FEATURES)
+        holdout_sessions = run_exp.normalize_sessions(holdout_sessions, _stats, _FEATURES)
         fl_results = run_exp.run_fl_rounds(cfg, train_sessions, no_dp=True)
 
         def _scaled_copy(fl_results_in: dict, factor: float) -> dict:
@@ -387,8 +395,16 @@ class TestRunLiRA:
             n_shadow=2, shadow_epochs_cap=2, no_dp=True,
         )
 
-        assert lira_normal[1]["lira_auc_roc"] != lira_scaled[1]["lira_auc_roc"], (
-            "LiRA ha prodotto lo stesso AUC con updates normali e updates scalati "
+        # Con i dati normalizzati il modello scalato satura la Sigmoid: la loss
+        # puo' finire oltre 8 sigma da entrambe le calibrazioni e il round venire
+        # saltato. Anche questo e' un cambiamento dovuto a "updates", quindi vale.
+        assert 1 in lira_normal, "LiRA non ha prodotto il round 1 con gli update normali"
+        r_norm, r_scal = lira_normal[1], lira_scaled.get(1)
+        assert r_scal is None or (
+            r_norm["lira_auc_roc"] != r_scal["lira_auc_roc"]
+            or r_norm["lira_member_score_mean"] != r_scal["lira_member_score_mean"]
+        ), (
+            "LiRA ha prodotto lo stesso risultato con updates normali e updates scalati "
             "×1000 — sospetto che stia ancora leggendo raw_updates invece di "
             "updates (regressione del bug 2026-07-21c)"
         )
