@@ -1,7 +1,7 @@
 # ChargeShield-FL — Stato del progetto
 
 > **Stato: documento CANONICO.** Aggiornato il 2026-09-24 (revisione: costo sul modello
-> rilasciato, analisi per record corretta, E-C, segnalazioni 46-53, controlli del protocollo). Solo numeri
+> rilasciato, analisi per record corretta, E-C, segnalazioni 46-53, controlli del protocollo, celle delle matrici ricomposte). Solo numeri
 > presenti in `risultati/` o letti dai JSON grezzi alla data, e lo dice dove.
 > Linea scientifica: la guida. Cosa fare: `ESPERIMENTI.md`. Cosa esiste nel codice:
 > `SISTEMA.md`. Questo file risponde a una sola domanda: a che punto siamo.
@@ -38,31 +38,34 @@ I termini che non si leggono da soli. La descrizione tecnica completa è in
 ### 3.1 Campagna principale, regime naturale, client-level
 
 Fonte: `risultati/Matrice_sintesi.xlsx`, foglio `Utility_privacy_limite`, rigenerato il
-2026-09-24 con il costo corretto (segnalazione 46). AUC-ROC media sulle run; `n` = run
-nella cella, con la composizione del foglio (segnalazione 44: pilota, NVFlare e sweep
-ripetuti insieme, riferimento no-DP di 49 run). Le colonne di costo sono rapporti sul
-no-DP: la prima sul modello rilasciato (il costo), la seconda sulla loss locale
-(diagnostica).
+2026-09-24 con il costo corretto (segnalazione 46) e con la composizione delle celle di
+`check_significance.py` (segnalazioni 44, 45, 53): una run per seed, la più recente,
+cartelle `_*`, NVFlare, entity-split e fedmia-gradient escluse. Il riferimento no-DP sono
+le 5 run di `nodp-sweep2` (holdout 0.00158); prima della correzione erano 49 run, fra cui
+le calibrazioni di overfitting, con holdout 0.00244 e LiRA composto 0.513, e tutti i
+rapporti risultavano più bassi. AUC-ROC media sulle run; `n` = run nella cella. Le colonne
+di costo sono rapporti sul no-DP: la prima sul modello rilasciato (il costo), la seconda
+sulla loss locale (diagnostica).
 
 | cella | n | costo: holdout del modello rilasciato | loss locale (diagnostica) | LiRA composto | Yeom | Shadow | TPR a FPR 1% |
 |---|---|---|---|---|---|---|---|
-| no-DP (A0) | 49 | 1 | 1 | 0.513 | 0.503 | 0.501 | 0.0098 |
-| dp-fedavg ε=16 (A1) | 6 | 47 | 2.3 | 0.500 | 0.501 | 0.501 | 0.0097 |
-| dp-fedavg ε=8 | 6 | 92 | 21 | 0.498 | 0.500 | 0.500 | 0.0101 |
-| dp-fedavg ε=4 | 5 | 122 | 47.5 | 0.496 | 0.500 | 0.500 | 0.0092 |
-| dp-fedavg ε=2 | 6 | 150 | 102 | 0.496 | 0.500 | 0.501 | 0.0096 |
-| dp-fedavg ε=1 | 14 | 161 | 128 | 0.498 | 0.500 | 0.500 | 0.0104 |
-| dp-fedavg ε=0.5 | 10 | 167 | 157 | 0.498 | 0.500 | 0.499 | 0.0098 |
-| dp-fedavg ε=0.1 | 10 | 173 | 157 | 0.499 | 0.500 | 0.499 | 0.0090 |
-| central ε=1 (A2) | 14 | 158 | 108 | 0.503 | 0.500 | 0.499 | 0.0103 |
-| central ε=0.5 | 9 | 187 | 176 | 0.502 | 0.499 | 0.499 | 0.0102 |
-| central ε=0.1 | 5 | 179 | 179 | 0.502 | 0.500 | 0.499 | 0.0105 |
-| local ε=1 (A3) | 11 | 158 | 140 | 0.498 | 0.500 | 0.500 | 0.0108 |
-| local ε=0.5 | 6 | 163 | 153 | 0.498 | 0.500 | 0.500 | 0.0106 |
-| local ε=0.1 | 6 | 173 | 156 | 0.499 | 0.499 | 0.499 | 0.0096 |
+| no-DP (A0) | 5 | 1 | 1 | 0.5004 | 0.5003 | 0.5016 | 0.0105 |
+| dp-fedavg ε=16 (A1) | 5 | 59.7 | 3.7 | 0.4992 | 0.5015 | 0.5011 | 0.0097 |
+| dp-fedavg ε=8 | 5 | 119.9 | 39.1 | 0.4978 | 0.5001 | 0.5002 | 0.0101 |
+| dp-fedavg ε=4 | 5 | 188.4 | 76.2 | 0.4959 | 0.4999 | 0.5002 | 0.0092 |
+| dp-fedavg ε=2 | 5 | 230.6 | 169.9 | 0.4957 | 0.5004 | 0.5005 | 0.0096 |
+| dp-fedavg ε=1 | 5 | 249.1 | 241.1 | 0.4971 | 0.5002 | 0.5000 | 0.0099 |
+| dp-fedavg ε=0.5 | 5 | 257.2 | 252.2 | 0.4980 | 0.4998 | 0.4993 | 0.0095 |
+| dp-fedavg ε=0.1 | 5 | 266.8 | 251.9 | 0.4996 | 0.4995 | 0.4994 | 0.0089 |
+| central ε=1 (A2) | 5 | 261.5 | 238.1 | 0.5024 | 0.5006 | 0.5001 | 0.0102 |
+| central ε=0.5 | 5 | 278.6 | 284.1 | 0.5003 | 0.5002 | 0.4996 | 0.0096 |
+| central ε=0.1 | 5 | 274.9 | 287.1 | 0.5020 | 0.5000 | 0.4992 | 0.0105 |
+| local ε=1 (A3) | 5 | 249.1 | 241.1 | 0.4983 | 0.5002 | 0.5000 | 0.0108 |
+| local ε=0.5 | 5 | 257.2 | 252.2 | 0.4975 | 0.4998 | 0.4993 | 0.0101 |
+| local ε=0.1 | 5 | 266.8 | 251.9 | 0.4986 | 0.4995 | 0.4994 | 0.0092 |
 
 Tre cose da tenere insieme leggendo la tabella. Il nullo aggregato vale anche
-senza DP. In ogni cella client-level il modello rilasciato costa almeno 47 volte il
+senza DP. In ogni cella client-level il modello rilasciato costa almeno 60 volte il
 riferimento, quindi il nullo sotto DP non distingue "la DP protegge" da "non c'è nulla
 da proteggere"; fino al 2026-09-24 la colonna di costo usava la loss locale e faceva
 sembrare ε = 16 e 8 celle con utility residua. Nota storica che
@@ -101,8 +104,8 @@ composto (segnalazione 50). I JSON registrano `git_commit`: f145b79 ed ed0e1f9, 
 
 Fonte: `logs/ctrl_riproduzione_s42.log` e il JSON di `experiments/_ctrl_common_init/`
 (commit `6d31e21`), letti il 2026-09-24, confrontati con `nodp-sweep2`; no-DP, seed 42.
-Le matrici non sono rigenerate: il foglio `Utility_privacy_limite` metterebbe questa
-run nella cella no-DP (segnalazione 53).
+La run ha un'etichetta di cella propria ("no-DP baseline, init comune") e, come
+cartella `_*`, resta fuori dalle celle delle matrici.
 
 | | holdout al round 1 | holdout al round 10 | Yeom | LiRA composto | TPR a FPR 1% |
 |---|---|---|---|---|---|
@@ -222,9 +225,8 @@ vanno tenuti fuori da `experiments/` finché la segnalazione 45 non è corretta.
 del protocollo sono eseguiti (sezione 3.1c). Restano: E-B record-level su dati naturali
 (prova da rifare dopo la segnalazione 49), la griglia del punto operativo client-level
 (8 run a un seed, config pronti), il canary su più siti, il braccio DP di E-D ed E-E, la
-rianalisi NVFlare, l'etichetta di cella negli script di analisi (segnalazioni 44, 45,
-53). Da decidere col supervisore: la metrica primaria per record (segnalazione 47) e se
+rianalisi NVFlare. Da decidere col supervisore: la metrica primaria per record (segnalazione 47) e se
 le campagne future usano l'inizializzazione comune (segnalazione 48). I bug che toccano i numeri sono in
-`Segnalazioni_tecniche_2026-09-22.md`, punti 1, 5, 6, 35, 36, 38, 44, 45, 48, 50, 51, 53. Fuori dal paper, come infrastruttura o lavoro futuro: ML Plane,
+`Segnalazioni_tecniche_2026-09-22.md`, punti 1, 5, 6, 9, 35, 36, 38, 45, 48, 50, 51. Fuori dal paper, come infrastruttura o lavoro futuro: ML Plane,
 Privacy Auditor, PES, ByzantineDetector, FedMIA-gradient, secondo dataset. Per le
 frasi da non scrivere senza evidenza: guida, sezione 11.

@@ -108,8 +108,8 @@ guida.
 
 La suite non-torch gira con:
 `python3 -m pytest tests/ -q --ignore=tests/test_privacy_auditor_subscriber.py --ignore=tests/test_run_experiments_integration.py --ignore=tests/test_sprint4.py --ignore=tests/test_sprint5.py`
-Baseline attesa: 315 passed con `datasets/` scaricato (297 prima del 2026-09-24);
-senza, 282 passed e 33 fra errori e fallimenti, tutti `FileNotFoundError` in `test_acn_dataset.py` e
+Baseline attesa: 321 passed con `datasets/` scaricato (297 prima del 2026-09-24);
+senza, 288 passed e 33 fra errori e fallimenti, tutti `FileNotFoundError` in `test_acn_dataset.py` e
 `test_chargeplace_scotland_adapter.py`, che leggono i file reali (segnalazione 39).
 Dipendenze minime: pytest, pyyaml, numpy, scipy, pandas, openpyxl, dp-accounting. Sulla macchina
 con torch e dati: `make test`.

@@ -279,7 +279,14 @@ sono in `scripts/_applicati/`.*
     il 2026-09-22 (la loss di `local` ε = 0.5 è passata da 0.4235 a 0.4118 senza nuove
     simulazioni); le celle a 14 run sommano sweep diversi dello stesso seed. Va deciso
     insieme alla segnalazione 9 quale regola vale; finché non è deciso, `STATO.md`
-    riporta E-A dai JSON, una run per seed.
+    riporta E-A dai JSON, una run per seed. **Corretto il 2026-09-24**: i fogli di
+    `genera_matrici_faseA.py` compongono le celle con `check_significance.discover_groups`
+    (funzione `composizione_celle`), quindi stesse esclusioni e una run per (cella, seed),
+    la piu' recente. Effetto sul foglio `Utility_privacy_limite`: la cella no-DP passa da
+    49 run (holdout 0.00244, LiRA composto 0.513, con le calibrazioni di overfitting) alle
+    5 di `nodp-sweep2` (0.00158, 0.500), e i rapporti di costo salgono (dp-fedavg eps = 1
+    da 161 a 249 volte). Le celle di `check_significance.py` non cambiano. Resta da
+    dichiarare la scelta del seed del config invece del nome della cartella (segnalazione 9).
 
 ## L. Trovato preparando E-E (2026-09-24)
 
@@ -297,7 +304,14 @@ sono in `scripts/_applicati/`.*
     della 37. Fix: includere `partition_strategy` e `proximal_mu` nell'etichetta del
     gruppo in entrambi gli script (tocca il codice: da autorizzare). Finche' non e'
     corretto, le cartelle di E-D ed E-E restano fuori da `experiments/` (per esempio
-    in `experiments_altre_macchine/`) e si analizzano a parte.
+    in `experiments_altre_macchine/`) e si analizzano a parte. **Corretto in parte il
+    2026-09-24** (`scripts/etichetta_cella.py`): `proximal_mu`, `partition_strategy`,
+    `split_strategy`, `max_grad_norm`, `common_init`, epoche, round e architettura entrano
+    nell'etichetta quando differiscono dalla base, quindi i bracci IID e mu = 0 hanno celle
+    proprie. Resta vero per i bracci con il config della base (E-D `per_site`, E-E
+    mu = 0.01): sono repliche di `nodp-sweep2` e, con la regola "la piu' recente", ne
+    sostituirebbero i seed. Finche' la segnalazione 9 non e' decisa restano fuori da
+    `experiments/`.
 
 ## M. Revisione del codice e dei numeri (2026-09-24)
 
@@ -400,7 +414,9 @@ sono in `scripts/_applicati/`.*
     esclude le cartelle `_*` (segnalazione 44), la metterebbe nella cella no-DP e
     cambierebbe il denominatore di tutti i rapporti di costo. Stessa classe della 45.
     **Corretto il 2026-09-24 nel JSON**: `config.max_grad_norm` salvato da questo commit;
-    tutti i config nel repository a quella data hanno C = 1.0. **Aperto negli script di
-    analisi**, da correggere insieme alla 44 e alla 45 con un'etichetta di cella fatta
-    dai campi registrati. Fino ad allora le matrici non si rigenerano e la griglia del
-    punto operativo usa cartelle `_op_*`, che `check_significance.py` esclude.
+    tutti i config nel repository a quella data hanno C = 1.0. **Corretto negli script
+    di analisi il 2026-09-24**: etichetta di cella comune in `scripts/etichetta_cella.py`,
+    usata da `check_significance.py` e, tramite `composizione_celle`, da
+    `genera_matrici_faseA.py` (test in `tests/test_etichetta_cella.py`). Una run con
+    C = 0.25 va nella cella "dp-fedavg, eps=16.0, C=0.25"; `_ctrl_common_init` avrebbe
+    "no-DP baseline, init comune" ed e' comunque esclusa come cartella `_*`.

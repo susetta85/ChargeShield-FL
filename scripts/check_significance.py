@@ -32,6 +32,9 @@ from collections import defaultdict
 from math import comb
 from typing import Any
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from etichetta_cella import etichetta_cella  # noqa: E402  (segnalazioni 44, 45, 53)
+
 random.seed(0)  # riproducibilita' del bootstrap stesso (non del training)
 
 EXPERIMENTS_GLOB = "experiments/*/experiment_*.json"
@@ -313,12 +316,14 @@ def discover_groups(
         # quel fix doveva chiudere. `None` (seed assente/non impostato) resta
         # un valore a sé, non normalizzato a stringa.
         seed_key = str(seed) if seed is not None else None
-        if rdp_on:
-            label = f"record-DP, nm={rdp_cfg.get('noise_multiplier')}"
-        elif no_dp or eps is None:
-            label = "no-DP baseline"
-        else:
-            label = f"{dp_mode}, eps={eps}"
+        # Segnalazioni 44, 45, 53 (2026-09-24): l'etichetta aggiunge un suffisso
+        # per ogni campo registrato che differisce dal config di base (C,
+        # common_init, proximal_mu, partizione, split, epoche, round, ...), cosi'
+        # una run con trattamento diverso non entra nella cella di un'altra e,
+        # con la deduplica per seed qui sotto, non ne sostituisce i seed. Per le
+        # run con i valori di base l'etichetta e' quella storica, identica al
+        # ramo rdp_on / no_dp / (dp_mode, eps) che c'era qui.
+        label = etichetta_cella(cfg)
         key = (label, seed_key)
         # `sorted(glob.glob(...))` non garantisce ordine cronologico tra
         # sweep-dir diverse (solo alfabetico per path) — confronto esplicito

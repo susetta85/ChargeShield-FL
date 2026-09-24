@@ -111,12 +111,13 @@ del 2026-09-09 (dettagli nel commento in `Dockerfile.flare`).
 - Non versionato in git (`datasets/` è in `.gitignore`).
 - Si scarica con `python3 scripts/download_acn_sessions.py` (richiede
   `requests` e `ACN_TOKEN`, vedi sopra).
-- Senza `datasets/`: 282 test passano (264 prima del 2026-09-24, piu' i 13 di
-  `tests/test_record_dp_accounting.py` e i 5 di `tests/test_costo_e_per_record.py`),
+- Senza `datasets/`: 288 test passano (264 prima del 2026-09-24, piu' i 13 di
+  `tests/test_record_dp_accounting.py`, i 5 di `tests/test_costo_e_per_record.py` e i 6 di
+  `tests/test_etichetta_cella.py`),
   33 falliscono con `FileNotFoundError`
   (`test_acn_dataset.py`, `test_chargeplace_scotland_adapter.py`) invece di
   essere skippati — segnalazione 39, ancora aperta.
-- Con `datasets/` scaricato: 315 test passano nella suite non-torch (comando di
+- Con `datasets/` scaricato: 321 test passano nella suite non-torch (comando di
   `CLAUDE.md` §5; 297 prima del 2026-09-24). `make test`, con torch, raccoglie 448
   test: il 2026-09-24 sul Mac 447 passati e 1 fallito, un test con dati non
   normalizzati (segnalazione 52, corretto: il file ora passa 23 su 23).

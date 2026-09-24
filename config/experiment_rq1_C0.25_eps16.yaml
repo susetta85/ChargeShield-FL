@@ -15,8 +15,8 @@
 # sposta al massimo di C per round, e al round 1 senza DP si sposta di circa 9).
 #
 # LETTURA. Un seed (42) per trovare il ginocchio, poi 5 seed sul punto scelto. Un
-# eps oltre 1 e' un livello di rumore, non una garanzia. Sweep-dir con "_" davanti
-# finche' le segnalazioni 44, 45 e 53 non sono corrette negli script di analisi.
+# eps oltre 1 e' un livello di rumore, non una garanzia. Sweep-dir con "_" davanti:
+# prova a un seed, esclusa dalle celle delle matrici (segnalazione 53).
 
 # ChargeShield-FL — Experiment Configuration
 # Usato da: scripts/run_experiments.py

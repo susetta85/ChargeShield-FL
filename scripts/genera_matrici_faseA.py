@@ -31,6 +31,22 @@ import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 RADICE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+import sys  # noqa: E402
+sys.path.insert(0, os.path.join(RADICE, "scripts"))
+from check_significance import discover_groups  # noqa: E402
+from etichetta_cella import etichetta_cella  # noqa: E402
+
+
+def composizione_celle() -> dict[str, list[str]]:
+    """Celle e run che le compongono, con la STESSA regola di check_significance.py
+    (segnalazioni 44, 45, 53, corrette il 2026-09-24): etichetta dai campi
+    registrati nel JSON (etichetta_cella.py), cartelle `_*`, `entity-split*`,
+    `nvflare-*` e `fedmia-gradient-*` escluse, una run per (cella, seed), la piu'
+    recente. Prima i fogli di questo script raggruppavano per (dp_mode, epsilon)
+    TUTTI i JSON, senza esclusioni ne' deduplica: la cella no-DP del foglio
+    Utility_privacy_limite conteneva 50 run invece delle 5 di nodp-sweep2.
+    Restituisce {etichetta: [percorsi assoluti]}."""
+    return dict(discover_groups(os.path.join(RADICE, "experiments", "*", "experiment_*.json")))
 USCITA = os.path.join(RADICE, "risultati")
 FONT = "Arial"
 
@@ -373,19 +389,22 @@ def scrivi_confronti(righe):
     ws = wb["Matrice_confronti"]
     ws.cell(1, 12).value = "fase (spina dorsale)"
 
-    nat = [r for r in righe if r["regime"] == "naturale" and r["rq"] == "RQ1"]
+    # Segnalazioni 44, 45, 53 (2026-09-24): celle con l'etichetta e la
+    # composizione di check_significance.py, non piu' ricavate dalla stringa
+    # "configurazione" su tutte le run del registro.
+    per_id = {r["id"]: r for r in righe if "errore" not in r}
     celle = defaultdict(list)
-    for r in nat:
-        chiave = ("no-DP" if (r["configurazione"].find("no_dp=True") >= 0)
-                  else re.search(r"dp_mode=([\w-]+).*?eps=([\d.]+)", r["configurazione"]).group(0)
-                  if re.search(r"dp_mode=([\w-]+).*?eps=([\d.]+)", r["configurazione"]) else "?")
-        celle[chiave].append(r)
+    for et, files in composizione_celle().items():
+        for f in files:
+            r = per_id.get(f"{os.path.basename(os.path.dirname(f))}/{os.path.basename(f)}")
+            if r and r["regime"] == "naturale" and r["rq"] == "RQ1":
+                celle[et].append(r)
 
     conf = []
-    nodp = celle.get("no-DP", [])
+    nodp = celle.get("no-DP baseline", [])
     n = 0
     for chiave, rs in sorted(celle.items(), key=str):
-        if chiave == "no-DP":
+        if chiave == "no-DP baseline":
             continue
         n += 1
         seed_dp = {str(r["seed_nome"] or r["seed"]) for r in rs}
@@ -399,8 +418,9 @@ def scrivi_confronti(righe):
              if appaiati else "manca il riferimento appaiato"),
             f"{len(rs)} run nella cella DP, {len(nodp)} nella cella no-DP; "
             f"seed appaiabili: {appaiati or 'nessuno'}",
-            "da verificare: alcune celle contengono run di sweep diversi, e "
-            "check_significance.py deduplica scegliendo il file piu' recente",
+            "una run per seed, la piu' recente, con la regola di check_significance.py "
+            "(segnalazioni 44, 45, 53); la cella puo' unire sweep diversi con lo stesso "
+            "trattamento registrato",
             "confronto disponibile" if appaiati else "confronto non costruibile",
             "Il contrasto B0/B2 della guida (sez. 8) e' questo. Manca invece il "
             "braccio B1 'clipping senza rumore', mai eseguito.",
@@ -445,7 +465,7 @@ def scrivi_confronti(righe):
         ("confronto disponibile", "Esistono run appaiabili per seed su entrambi i bracci. Non significa che il confronto sia gia' stato fatto ne' che sia valido: significa che i dati ci sono."),
         ("confronto non costruibile", "Manca del tutto uno dei due bracci. Nessuna analisi sui dati esistenti puo' produrlo."),
         ("", ""),
-        ("NOTA", "La guida (riga 152) chiede di segnalare le configurazioni duplicate: le celle central eps=0.5, central eps=1.0 e local eps=1.0 contengono piu' run per lo stesso seed, provenienti da sweep diversi."),
+        ("NOTA", "La guida (riga 152) chiede di segnalare le configurazioni duplicate. Dal 2026-09-24 le celle hanno una run per seed, la piu' recente, con la regola di check_significance.py; i duplicati restano visibili nel registro run (segnalazioni 9 e 44)."),
     ], start=2):
         lg.cell(i, 1).value = s
         lg.cell(i, 2).value = d
@@ -537,7 +557,7 @@ def scrivi_sintesi(righe):
     for i, (k, d) in enumerate([
         ("Una run puo' servire piu' RQ", "Una run in regime naturale serve RQ1; la stessa run servirebbe RQ3 solo se esistesse la gemella con mu=0. Non esiste, quindi non la si conta per RQ3."),
         ("Regime naturale e canary non si mescolano", "La guida (Fase C) vieta di usare il canary per certificare il null naturale. Nel registro sono due popolazioni separate e non vanno aggregate."),
-        ("Deduplica", "check_significance.py deduplica per (dp_mode, epsilon, seed) scegliendo il file piu' recente. E' una scelta implicita: va dichiarata nel paper o sostituita con un criterio esplicito."),
+        ("Deduplica", "check_significance.py e questo script compongono le celle con la stessa regola (segnalazioni 44, 45, 53, 2026-09-24): etichetta dai campi registrati nel JSON (scripts/etichetta_cella.py), cartelle _*, entity-split*, nvflare-* e fedmia-gradient-* escluse, una run per (cella, seed del config), la piu' recente. La scelta del seed del config invece del nome della cartella va dichiarata (segnalazione 9)."),
         ("Priorita'", "alta = blocca una RQ dichiarata; media = blocca una RQ ma con costo maggiore; nessuna = non serve rerun."),
         ("Cosa NON e' in queste matrici", "Qualunque decisione sulle fasi B-F. La Fase A si ferma a: cosa esiste, cosa e' confrontabile, cosa manca. Le raccomandazioni sono marcate come tali e rinviate alla fase competente."),
     ], start=2):
@@ -664,31 +684,34 @@ def scrivi_utility_privacy():
                "Yeom", "Shadow", "LiRA", "LiRA composto", "TPR@1%FPR",
                "eps per round", "eps_tot (T=10, base)",
                "Adv max teorica", "AUC max teorica", "lettura"])
+    # Segnalazioni 44, 45, 53 (2026-09-24): stessa composizione di
+    # check_significance.py (composizione_celle). Chiave = (etichetta, epsilon).
     celle = defaultdict(list)
-    for f in sorted(glob.glob(os.path.join(RADICE, "experiments", "*", "experiment_*.json"))):
-        sw = os.path.basename(os.path.dirname(f))
-        j = json.load(open(f)); c = j.get("config") or {}
-        if (c.get("canary") or {}).get("enabled") or "canary" in sw.lower():
+    for et, files in sorted(composizione_celle().items()):
+        if et.startswith("record-DP"):
             continue
-        if c.get("record_dp"):
-            continue
-        pr = j.get("per_round") or {}; su = j.get("summary") or {}
-        if not pr:
-            continue
-        ult = max(pr, key=int)
-        k = ("no-DP", None) if c.get("no_dp") else (c.get("dp_mode"), c.get("epsilon"))
-        celle[k].append((loss_holdout_modello_rilasciato(j), su.get("mean_auc_roc"),
-                         su.get("mean_shadow_auc_roc"), su.get("mean_lira_auc_roc"),
-                         pr[ult].get("mia", {}).get("composed_lira_auc_roc"),
-                         pr[ult].get("mia", {}).get("composed_tpr_at_fpr_0.01"),
-                         loss_addestramento_locale(j)))
+        for f in sorted(files):
+            sw = os.path.basename(os.path.dirname(f))
+            j = json.load(open(f)); c = j.get("config") or {}
+            if (c.get("canary") or {}).get("enabled") or "canary" in sw.lower():
+                continue
+            pr = j.get("per_round") or {}; su = j.get("summary") or {}
+            if not pr:
+                continue
+            ult = max(pr, key=int)
+            k = (et, None if et.startswith("no-DP") else c.get("epsilon"))
+            celle[k].append((loss_holdout_modello_rilasciato(j), su.get("mean_auc_roc"),
+                             su.get("mean_shadow_auc_roc"), su.get("mean_lira_auc_roc"),
+                             pr[ult].get("mia", {}).get("composed_lira_auc_roc"),
+                             pr[ult].get("mia", {}).get("composed_tpr_at_fpr_0.01"),
+                             loss_addestramento_locale(j)))
 
     def med(v, i):
         x = [t[i] for t in v if t[i] is not None]
         return sum(x) / len(x) if x else None
 
-    base = med(celle.get(("no-DP", None), []), 0)
-    base_loc = med(celle.get(("no-DP", None), []), 6)
+    base = med(celle.get(("no-DP baseline", None), []), 0)
+    base_loc = med(celle.get(("no-DP baseline", None), []), 6)
     for k in sorted(celle, key=lambda t: (str(t[0]), -(t[1] or 0))):
         v = celle[k]
         lf = med(v, 0)
@@ -714,7 +737,7 @@ def scrivi_utility_privacy():
         elif rap and rap > 3:
             lettura = ("COSTO OLTRE LA SOGLIA DI 3x (sezione 0 di ESPERIMENTI.md). "
                        + lettura)
-        ws.append([f"{k[0]}" + (f" eps={eps}" if eps else ""), len(v),
+        ws.append([k[0], len(v),
                    round(lf, 6) if lf else None, rap,
                    round(ll, 6) if ll else None, rap_loc,
                    round(med(v, 1) or 0, 4), round(med(v, 2) or 0, 4),

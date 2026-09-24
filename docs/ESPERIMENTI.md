@@ -130,17 +130,22 @@ segnalazione 37: senza la correzione al raggruppamento, queste run con
 
 **Prima di tutto: una run di prova a un seed** per misurare il tempo. DP-SGD a
 microbatch 1 su tre siti, 50 epoche, 10 round non è mai stato cronometrato.
-Primo tentativo del 2026-09-24 fermato: addestramento circa 12 minuti per round sul Mac,
+Primo tentativo del 2026-09-24: addestramento circa 12 minuti per round sul Mac,
 ma FedMIA e Shadow saltavano ogni round per l'architettura sbagliata negli attacchi
 (segnalazione 49, corretta; log in `logs/prova_recorddp_s42_attacchi_saltati.log`).
-Nessun JSON. Da rifare con lo stesso comando e un log nuovo. Gli shadow non usano
-DP-SGD (segnalazione 51): LiRA sotto record-level va letto con quella riserva.
+La run non si era fermata: è arrivata in fondo alle 14:47 e ha salvato un JSON in
+`experiments/_prova_recorddp/`, con gli attacchi saltati, da non usare; negli ultimi 25
+minuti si è sovrapposta ai controlli (a) e (b), e (a) riproduce comunque alla sesta cifra.
+Durata misurata sul Mac principale: 3 ore e 55 minuti (addestramento circa 12 minuti per
+round, 2 ore e 4 minuti; Shadow 5 minuti; LiRA circa 10 minuti per round). Da rifare in
+una cartella nuova. Gli shadow non usano DP-SGD (segnalazione 51): LiRA sotto
+record-level va letto con quella riserva.
 
 ```bash
 python3 scripts/run_experiments.py \
   --config config/experiment_rq1_recorddp_nm1.yaml --rounds 10 --seed 42 --no-dp \
-  --sweep-dir experiments/_prova_recorddp \
-  --per-sample-dump experiments/_prova_recorddp/per_sample_seed42.json
+  --sweep-dir experiments/_prova_recorddp_v2 \
+  --per-sample-dump experiments/_prova_recorddp_v2/per_sample_seed42.json
 ```
 
 Poi, se il tempo lo consente e dopo le correzioni 4, 5, 37:
@@ -327,7 +332,7 @@ massimo di C per round. Le run nuove scrivono le norme nel log e nel JSON.
 (42), `dp-fedavg`; 8 run nuove (C = 1, ε = 16 è E-A), circa 130 minuti ciascuna. A
 parita' di C/ε il rumore e' lo stesso: C = 0.25 con ε = 16 contro C = 1 con ε = 64, e
 C = 0.25 con ε = 64 contro C = 1 con ε = 256, separano rumore e distorsione del
-clipping. Cartelle `_op_*` finché la segnalazione 53 non è corretta nell'analisi.
+clipping. Cartelle `_op_*`: prove a un seed, escluse dalle celle delle matrici.
 Ordine: prima le due coppie a pari rumore. Config: `experiment_rq1_C{0.25,0.5}_eps*.yaml`
 ed `experiment_rq1_eps{64,256}.yaml`.
 
@@ -341,7 +346,8 @@ done' > /dev/null 2>&1 & disown
 
 **Lettura.** Per ogni run: holdout del modello rilasciato contro `nodp-sweep2` (media
 0.00158), norme dei delta sotto DP, attacchi. Il ginocchio e' il primo punto sotto 3
-volte; li' 5 seed, in cartelle senza `_` dopo la correzione della 53.
+volte; li' 5 seed, in cartelle senza `_`, che formano una cella propria con C
+nell'etichetta (segnalazione 53, corretta).
 
 ## Canary su più siti
 
