@@ -337,8 +337,13 @@ sono in `scripts/_applicati/`.*
     che hanno un solo client. A parita' di seed l'inizializzazione e' la stessa in tutte
     le celle, quindi i confronti restano omogenei. **Aggiunta il 2026-09-24** l'opzione
     `ml.common_init` (default False: run esistenti invariate) con il config di controllo
-    `experiment_ctrl_common_init.yaml`; il JSON registra `common_init`. Da misurare con
-    il controllo di `ESPERIMENTI.md` prima di decidere se rifare campagne.
+    `experiment_ctrl_common_init.yaml`; il JSON registra `common_init`. **Misurato il
+    2026-09-24** (`experiments/_ctrl_common_init`, seed 42, commit `6d31e21`): holdout
+    del modello rilasciato 0.0080 contro 0.0651 al round 1 e 0.00108 contro 0.00219 al
+    round 10, dentro la variabilita' fra seed di `nodp-sweep2` (0.00070-0.00219). Tutti
+    gli attacchi restano al caso (Yeom 0.4989, LiRA composto 0.4991, TPR a FPR 1%
+    0.0099). Le campagne restano valide e lo scostamento dal protocollo si dichiara;
+    se passare al protocollo standard lo decide il supervisore.
 49. **Con la DP a livello di record gli attacchi saltavano ogni round.** Il trainer forza
     `norm: group` quando `record_dp` e' attivo (`autoencoder_trainer.py:146-152`), ma
     `_autoencoder_arch_kwargs` ricostruiva BatchNorm se il config non diceva altro, e i
@@ -384,3 +389,18 @@ sono in `scripts/_applicati/`.*
     normalizzazione come in `main`, e il test accetta come cambiamento anche il round
     saltato o una media dei punteggi diversa. **Verificato sul Mac il 2026-09-24**:
     `tests/test_run_experiments_integration.py` 23 passati su 23, con numpy 1.26.4.
+53. **La soglia di clipping C non e' nel JSON, e le celle non distinguono C ne'
+    `common_init`.** `save_results` (`run_experiments.py`, blocco `config`) salvava
+    epsilon, delta e round ma non `experiment.max_grad_norm`. `genera_matrici_faseA.py`
+    (`scrivi_confronti`, riga 379; `scrivi_utility_privacy`, riga 679) forma le celle con
+    `(dp_mode, epsilon)` o "no-DP", e `check_significance.py::discover_groups` deduplica
+    per `(etichetta, seed)`. Una run con C = 0.25, eps = 16 e seed 42 finirebbe nella cella
+    di E-A a eps = 16 e, in `check_significance.py`, ne sostituirebbe il seed 42. Lo stesso
+    vale per `experiments/_ctrl_common_init`: il foglio `Utility_privacy_limite`, che non
+    esclude le cartelle `_*` (segnalazione 44), la metterebbe nella cella no-DP e
+    cambierebbe il denominatore di tutti i rapporti di costo. Stessa classe della 45.
+    **Corretto il 2026-09-24 nel JSON**: `config.max_grad_norm` salvato da questo commit;
+    tutti i config nel repository a quella data hanno C = 1.0. **Aperto negli script di
+    analisi**, da correggere insieme alla 44 e alla 45 con un'etichetta di cella fatta
+    dai campi registrati. Fino ad allora le matrici non si rigenerano e la griglia del
+    punto operativo usa cartelle `_op_*`, che `check_significance.py` esclude.

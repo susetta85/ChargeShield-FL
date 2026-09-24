@@ -1,6 +1,6 @@
 # ChargeShield-FL — Esperimenti da eseguire
 
-> **Stato: documento CANONICO.** Aggiornato il 2026-09-24 (revisione: costo, E-C, controlli, canary su più siti). Sostituisce,
+> **Stato: documento CANONICO.** Aggiornato il 2026-09-24 (revisione: costo, E-C, controlli (a) e (b) eseguiti, griglia del punto operativo, canary su più siti). Sostituisce,
 > per gli esperimenti ancora da lanciare, il vecchio `TestRoadmap_DSN2027.md`, eliminato
 > il 2026-09-22 e recuperabile dalla storia git. Ogni
 > voce dice quale RQ serve, quale conclusione può cambiare, cosa deve essere vero
@@ -286,6 +286,17 @@ rilasciato, Yeom, LiRA composto e test appaiato. Differenza dentro la variabilit
 seed: le campagne restano valide e lo scostamento si dichiara. Altrimenti decisione col
 supervisore.
 
+**Esito, 2026-09-24.** (a) riproduce `nodp-sweep2` seed 42: la loss di tutti i 10 round
+coincide alla sesta cifra (0.001200 al round 1, 0.002177 al round 10), con numpy 1.26.4
+(segnalazione 52). (b), `experiments/_ctrl_common_init`: holdout del modello rilasciato
+0.0080 contro 0.0651 al round 1, 0.00108 contro 0.00219 al round 10, dentro la
+variabilita' fra seed di `nodp-sweep2` (0.00070-0.00219); Yeom 0.4989, Shadow medio
+0.4997, LiRA composto 0.4991, TPR a FPR 1% 0.0099, tutti nel campo dei 5 seed senza
+inizializzazione comune. Il test appaiato per record non si applica a un seed solo.
+Lettura: le campagne restano valide, lo scostamento si dichiara; il protocollo delle
+campagne future e' una decisione del supervisore. La griglia qui sotto resta sul
+protocollo di E-A per restare confrontabile.
+
 ## Punto operativo client-level (dopo E-A)
 
 **RQ1.** Nessuna cella client-level di E-A sta sotto 3 volte. Cambiare posizionamento
@@ -304,6 +315,33 @@ Prima un seed per valore per trovare il ginocchio, poi 5 seed sul punto scelto; 
 nuovo per cella. Nel regime naturale non c'è segnale da ridurre neppure senza DP: il punto
 operativo dice quanto costa un rumore che lascia il modello utile, l'effetto sulla privacy
 si misura solo dove c'è segnale (canary su più siti, sotto).
+
+**Norme misurate** (controllo (a), `logs/ctrl_riproduzione_s42.log`, no-DP, C = 1). Round 1:
+8.84, 8.47, 4.64 (caltech, jpl, office1; ogni client parte dalla sua inizializzazione).
+Round 2: 0.78-0.92. Round 3-10: caltech 0.16-0.29, jpl 0.16-0.21, office1 0.51-0.59. Con
+C = 1 il clipping non agisce dopo il round 1. Due riserve: sotto DP le norme saranno
+piu' grandi (i client correggono il rumore), e con C piccolo il modello si sposta al
+massimo di C per round. Le run nuove scrivono le norme nel log e nel JSON.
+
+**Griglia, decisa il 2026-09-24.** C in {0.25, 0.5, 1} per ε in {16, 64, 256}, un seed
+(42), `dp-fedavg`; 8 run nuove (C = 1, ε = 16 è E-A), circa 130 minuti ciascuna. A
+parita' di C/ε il rumore e' lo stesso: C = 0.25 con ε = 16 contro C = 1 con ε = 64, e
+C = 0.25 con ε = 64 contro C = 1 con ε = 256, separano rumore e distorsione del
+clipping. Cartelle `_op_*` finché la segnalazione 53 non è corretta nell'analisi.
+Ordine: prima le due coppie a pari rumore. Config: `experiment_rq1_C{0.25,0.5}_eps*.yaml`
+ed `experiment_rq1_eps{64,256}.yaml`.
+
+```bash
+nohup caffeinate -ims bash -c '
+for c in C0.25_eps16 eps64 C0.25_eps64 eps256 C0.5_eps16 C0.5_eps64 C0.25_eps256 C0.5_eps256; do
+  python3 scripts/run_experiments.py --config config/experiment_rq1_$c.yaml \
+    --rounds 10 --seed 42 --sweep-dir experiments/_op_$c > logs/op_$c.log 2>&1
+done' > /dev/null 2>&1 & disown
+```
+
+**Lettura.** Per ogni run: holdout del modello rilasciato contro `nodp-sweep2` (media
+0.00158), norme dei delta sotto DP, attacchi. Il ginocchio e' il primo punto sotto 3
+volte; li' 5 seed, in cartelle senza `_` dopo la correzione della 53.
 
 ## Canary su più siti
 

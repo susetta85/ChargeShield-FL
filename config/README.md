@@ -13,6 +13,8 @@
 |---|---|---|
 | `experiment.yaml` | niente: è la base | no-DP con `--no-dp`; client-level con `--dp-mode` ed `--epsilon` |
 | `experiment_rq1_eps{2,4,8,16}.yaml` | solo ε | E-A, sweep di ε |
+| `experiment_rq1_eps{64,256}.yaml` | solo ε | punto operativo client-level, C = 1; un seed, sweep-dir `_op_*` |
+| `experiment_rq1_C{0.25,0.5}_eps{16,64,256}.yaml` | ε e `experiment.max_grad_norm` (C) | punto operativo client-level; un seed, sweep-dir `_op_*` |
 | `experiment_rq1_recorddp_nm{0.5,1,2,5}.yaml` | `record_dp` attivo con quel `noise_multiplier` | E-B, **sempre con `--no-dp`** |
 | `experiment_rq2_per_site.yaml`, `experiment_rq2_iid.yaml` | solo `partition.strategy` | E-D, RQ2 |
 | `experiment_rq3_mu0.yaml` | solo `ml.proximal_mu: 0.0` (FedAvg) | E-E, RQ3, con `--no-dp` |

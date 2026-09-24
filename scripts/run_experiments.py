@@ -6624,6 +6624,11 @@ def save_results(
             # controllo; assente o False = client con inizializzazioni diverse,
             # come in tutte le run prodotte fino a quella data.
             "common_init": bool(cfg["ml"].get("common_init", False)),
+            # max_grad_norm (2026-09-24, segnalazione 53): la soglia di clipping C
+            # client-level. Prima non era salvata, quindi due run con C diversi e
+            # stesso (dp_mode, epsilon) erano indistinguibili dal JSON. Tutti i
+            # config presenti nel repository a quella data hanno C = 1.0.
+            "max_grad_norm": cfg["experiment"].get("max_grad_norm"),
             # epochs (2026-08-27): aggiunto per poter distinguere risultati di una
             # sweep di calibrazione epochs (sanity-check positivo, vedi
             # docs/TestRoadmap_DSN2027.md #2) leggendo il JSON, invece di doversi

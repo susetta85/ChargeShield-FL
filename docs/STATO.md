@@ -1,7 +1,7 @@
 # ChargeShield-FL — Stato del progetto
 
 > **Stato: documento CANONICO.** Aggiornato il 2026-09-24 (revisione: costo sul modello
-> rilasciato, analisi per record corretta, E-C, segnalazioni 46-51). Solo numeri
+> rilasciato, analisi per record corretta, E-C, segnalazioni 46-53, controlli del protocollo). Solo numeri
 > presenti in `risultati/` o letti dai JSON grezzi alla data, e lo dice dove.
 > Linea scientifica: la guida. Cosa fare: `ESPERIMENTI.md`. Cosa esiste nel codice:
 > `SISTEMA.md`. Questo file risponde a una sola domanda: a che punto siamo.
@@ -96,6 +96,26 @@ regime"). Sull'holdout la variabilità fra seed è di circa 3 volte in ogni cell
 più e i seed aggiuntivi non servono. TOST soddisfatto in tutte e quattro le celle, sul LiRA
 composto (segnalazione 50). I JSON registrano `git_commit`: f145b79 ed ed0e1f9, e
 478d471 per il rilancio; il codice di training e attacco è lo stesso.
+
+### 3.1c Controlli del protocollo (segnalazione 48)
+
+Fonte: `logs/ctrl_riproduzione_s42.log` e il JSON di `experiments/_ctrl_common_init/`
+(commit `6d31e21`), letti il 2026-09-24, confrontati con `nodp-sweep2`; no-DP, seed 42.
+Le matrici non sono rigenerate: il foglio `Utility_privacy_limite` metterebbe questa
+run nella cella no-DP (segnalazione 53).
+
+| | holdout al round 1 | holdout al round 10 | Yeom | LiRA composto | TPR a FPR 1% |
+|---|---|---|---|---|---|
+| `nodp-sweep2`, seed 42 | 0.0651 | 0.00219 | 0.4988 | 0.5018 | 0.0117 |
+| stessi, 5 seed (min-max) | | 0.00070-0.00219 | 0.4975-0.5039 | 0.4961-0.5036 | 0.0086-0.0117 |
+| inizializzazione comune, seed 42 | 0.0080 | 0.00108 | 0.4989 | 0.4991 | 0.0099 |
+
+Il codice attuale riproduce `nodp-sweep2` (controllo (a): loss di addestramento uguale
+alla sesta cifra nei 10 round). Con l'inizializzazione comune il danno del round 1
+sparisce e al round 10 il modello e' migliore, ma dentro la variabilita' fra seed;
+gli attacchi restano al caso. Le campagne restano valide, lo scostamento dal protocollo
+standard si dichiara. Norme dei delta dal round 3: 0.16-0.29 (caltech, jpl) e
+0.51-0.59 (office1), sotto C = 1 (`ESPERIMENTI.md`, punto operativo).
 
 ### 3.2 Analisi per record: nessun segnale di appartenenza (E-C)
 
@@ -198,12 +218,13 @@ rumore, per cui non esiste un flag.
 L'elenco ordinato, con comandi e prerequisiti, è `ESPERIMENTI.md`. E-A è chiuso (sezione
 3.1b), E-C è eseguito sulle 8 celle esistenti (sezione 3.2). Il braccio no-DP di E-D
 (RQ2, 10 run, seconda macchina) e quello di E-E (RQ3, in corso su una terza macchina)
-vanno tenuti fuori da `experiments/` finché la segnalazione 45 non è corretta. Restano:
-il controllo dell'inizializzazione comune (segnalazione 48), E-B record-level su dati
-naturali (prova da rifare dopo la segnalazione 49), la ricerca di un punto operativo
-client-level (norme degli update, C più basso o ε più alti), il canary su più siti, il
-braccio DP di E-D ed E-E, la rianalisi NVFlare. Da decidere col supervisore: la metrica
-primaria per record (segnalazione 47). I bug che toccano i numeri sono in
-`Segnalazioni_tecniche_2026-09-22.md`, punti 1, 5, 6, 35, 36, 38, 44, 45, 48, 50, 51. Fuori dal paper, come infrastruttura o lavoro futuro: ML Plane,
+vanno tenuti fuori da `experiments/` finché la segnalazione 45 non è corretta. I controlli
+del protocollo sono eseguiti (sezione 3.1c). Restano: E-B record-level su dati naturali
+(prova da rifare dopo la segnalazione 49), la griglia del punto operativo client-level
+(8 run a un seed, config pronti), il canary su più siti, il braccio DP di E-D ed E-E, la
+rianalisi NVFlare, l'etichetta di cella negli script di analisi (segnalazioni 44, 45,
+53). Da decidere col supervisore: la metrica primaria per record (segnalazione 47) e se
+le campagne future usano l'inizializzazione comune (segnalazione 48). I bug che toccano i numeri sono in
+`Segnalazioni_tecniche_2026-09-22.md`, punti 1, 5, 6, 35, 36, 38, 44, 45, 48, 50, 51, 53. Fuori dal paper, come infrastruttura o lavoro futuro: ML Plane,
 Privacy Auditor, PES, ByzantineDetector, FedMIA-gradient, secondo dataset. Per le
 frasi da non scrivere senza evidenza: guida, sezione 11.
