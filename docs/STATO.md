@@ -1,20 +1,22 @@
 # ChargeShield-FL — Stato del progetto
 
-> **Stato: documento CANONICO.** Aggiornato il 2026-09-24 (chiusura di E-A). Solo numeri
+> **Stato: documento CANONICO.** Aggiornato il 2026-09-24 (revisione: costo sul modello
+> rilasciato, analisi per record corretta, E-C, segnalazioni 46-51). Solo numeri
 > presenti in `risultati/` o letti dai JSON grezzi alla data, e lo dice dove.
 > Linea scientifica: la guida. Cosa fare: `ESPERIMENTI.md`. Cosa esiste nel codice:
 > `SISTEMA.md`. Questo file risponde a una sola domanda: a che punto siamo.
 
 ## 1. In una frase
 
-RQ1 non ha ancora una risposta; per il punto operativo contano ora due decisioni più
-che nuove run.
-In media nessun attacco distingue membri da non membri, con o senza DP; l'unico
-segnale è per singolo record senza DP. Lo sweep di ε in 2-16 (E-A, 19 run valide su
-20) mostra che a ε ≤ 8 il costo supera la soglia di 3 volte, mentre a ε = 16 la loss
-sta a 2.3 volte il riferimento no-DP della campagna ma a 3.7 volte quello appaiato per
-seed (`nodp-sweep2`): se ε = 16 sia un punto operativo dipende da quale riferimento
-vale (sezione 3.8), e poi dall'analisi per record E-C, ferma sulla segnalazione 6.
+Nel regime naturale non c'è un'esposizione misurabile da ridurre: in media nessun
+attacco distingue membri da non membri, con o senza DP, e il test appaiato per record
+non trova segnale in nessuna delle 8 celle analizzate (sezione 3.2). L'eccesso per
+record senza DP, letto finora come l'unico segnale, compare identico fra i non membri:
+è stabilità del ranking, non appartenenza (segnalazione 47). Il costo, misurato ora sul
+modello globale rilasciato (segnalazione 46), supera la soglia di 3 volte in ogni cella
+client-level: a ε = 16 è 60 volte il no-DP appaiato. Per il client-level nessuna cella
+è un punto operativo; i prossimi passi sono E-B, la ricerca di un punto operativo con C
+più basso o ε più alti, e il canary su più siti (`ESPERIMENTI.md`).
 
 ## 2. Glossario minimo
 
@@ -26,85 +28,100 @@ I termini che non si leggono da soli. La descrizione tecnica completa è in
 | client-level / record-level | due meccanismi DP diversi. Il primo protegge il contributo del client e il suo ε è un parametro di calibrazione; il secondo è DP-SGD e protegge il record, la stessa unità che gli attacchi misurano. Si attivano uno alla volta; il record-level richiede `--no-dp`. |
 | A0, A1, A2, A3 | cosa vede l'avversario sull'update del client: grezzo senza DP; grezzo prima di clip e rumore (dp-fedavg); clippato (central); clippato e rumorizzato (local). Ordinati per informazione. Solo per il client-level. |
 | loss grezza | errore di ricostruzione senza calibrazione. È la metrica che regge; LiRA calibrato è degenere (3.4). |
-| record segnalati, z | sessioni membro in almeno 2 seed con percentile medio ≥ 90 e minimo ≥ 75; z misura quante deviazioni standard il conteggio dista dal livello di caso ottenuto per permutazione dentro il seed. Non misura la gravità. |
+| record segnalati, z | sessioni membro in almeno 2 seed con percentile medio ≥ 90 e minimo ≥ 75; z misura quante deviazioni standard il conteggio dista dal livello di caso ottenuto per permutazione dentro il seed. Misura la stabilità del ranking, non l'appartenenza (segnalazione 47). |
+| test appaiato | per le sessioni membro in un seed e non membro in un altro, differenza fra il percentile medio da membro e da non membro; z = media / errore standard. È la lettura primaria per record dal 2026-09-24. |
+| loss sull'holdout del modello rilasciato / loss locale | la prima è l'MSE del modello globale finale sull'holdout ed è il costo; la seconda è la loss di addestramento locale dell'ultimo round, solo diagnostica (segnalazione 46). |
 | regime naturale / canary | dati come sono / memorizzazione indotta con template duplicati, capacità 3.3x, feature temporale quasi univoca, 1000 epoche. Il canary valida lo strumento, non certifica il null naturale. |
 
 ## 3. Cosa è stato fatto e regge
 
 ### 3.1 Campagna principale, regime naturale, client-level
 
-Fonte: `risultati/Matrice_sintesi.xlsx`, foglio `Utility_privacy_limite`. AUC-ROC
-media sulle run; `n` = run nella cella.
+Fonte: `risultati/Matrice_sintesi.xlsx`, foglio `Utility_privacy_limite`, rigenerato il
+2026-09-24 con il costo corretto (segnalazione 46). AUC-ROC media sulle run; `n` = run
+nella cella, con la composizione del foglio (segnalazione 44: pilota, NVFlare e sweep
+ripetuti insieme, riferimento no-DP di 49 run). Le colonne di costo sono rapporti sul
+no-DP: la prima sul modello rilasciato (il costo), la seconda sulla loss locale
+(diagnostica).
 
-| cella | n | loss finale, rapporto su no-DP | LiRA composto | Yeom | Shadow | TPR a FPR 1% |
-|---|---|---|---|---|---|---|
-| no-DP (A0) | 49 | 1 | 0.513 | 0.503 | 0.501 | 0.0098 |
-| dp-fedavg ε=16 (A1) | 1 | 2.6 | 0.503 | 0.499 | 0.499 | 0 |
-| dp-fedavg ε=8 (A1) | 1 | 4.6 | 0.499 | 0.498 | 0.500 | 0 |
-| dp-fedavg ε=1 (A1) | 14 | 128 | 0.498 | 0.500 | 0.500 | 0.0104 |
-| dp-fedavg ε=0.5 | 10 | 157 | 0.498 | 0.500 | 0.499 | 0.0098 |
-| dp-fedavg ε=0.1 | 10 | 157 | 0.499 | 0.500 | 0.499 | 0.0090 |
-| central ε=1 (A2) | 14 | 108 | 0.503 | 0.500 | 0.499 | 0.0103 |
-| central ε=0.5 | 9 | 176 | 0.502 | 0.499 | 0.499 | 0.0102 |
-| central ε=0.1 | 5 | 179 | 0.502 | 0.500 | 0.499 | 0.0105 |
-| local ε=1 (A3) | 11 | 140 | 0.498 | 0.500 | 0.500 | 0.0108 |
-| local ε=0.5 | 6 | 157 | 0.498 | 0.500 | 0.499 | 0.0102 |
-| local ε=0.1 | 6 | 154 | 0.499 | 0.500 | 0.500 | 0.0093 |
+| cella | n | costo: holdout del modello rilasciato | loss locale (diagnostica) | LiRA composto | Yeom | Shadow | TPR a FPR 1% |
+|---|---|---|---|---|---|---|---|
+| no-DP (A0) | 49 | 1 | 1 | 0.513 | 0.503 | 0.501 | 0.0098 |
+| dp-fedavg ε=16 (A1) | 6 | 47 | 2.3 | 0.500 | 0.501 | 0.501 | 0.0097 |
+| dp-fedavg ε=8 | 6 | 92 | 21 | 0.498 | 0.500 | 0.500 | 0.0101 |
+| dp-fedavg ε=4 | 5 | 122 | 47.5 | 0.496 | 0.500 | 0.500 | 0.0092 |
+| dp-fedavg ε=2 | 6 | 150 | 102 | 0.496 | 0.500 | 0.501 | 0.0096 |
+| dp-fedavg ε=1 | 14 | 161 | 128 | 0.498 | 0.500 | 0.500 | 0.0104 |
+| dp-fedavg ε=0.5 | 10 | 167 | 157 | 0.498 | 0.500 | 0.499 | 0.0098 |
+| dp-fedavg ε=0.1 | 10 | 173 | 157 | 0.499 | 0.500 | 0.499 | 0.0090 |
+| central ε=1 (A2) | 14 | 158 | 108 | 0.503 | 0.500 | 0.499 | 0.0103 |
+| central ε=0.5 | 9 | 187 | 176 | 0.502 | 0.499 | 0.499 | 0.0102 |
+| central ε=0.1 | 5 | 179 | 179 | 0.502 | 0.500 | 0.499 | 0.0105 |
+| local ε=1 (A3) | 11 | 158 | 140 | 0.498 | 0.500 | 0.500 | 0.0108 |
+| local ε=0.5 | 6 | 163 | 153 | 0.498 | 0.500 | 0.500 | 0.0106 |
+| local ε=0.1 | 6 | 173 | 156 | 0.499 | 0.499 | 0.499 | 0.0096 |
 
 Tre cose da tenere insieme leggendo la tabella. Il nullo aggregato vale anche
-senza DP. In ogni cella a ε ≤ 1 la loss è oltre 100 volte il riferimento, quindi
-quel nullo non distingue "la DP protegge" da "non c'è nulla da proteggere". Le
-sole celle con utility residua, ε = 8 e 16, hanno un seed solo. Nota storica che
+senza DP. In ogni cella client-level il modello rilasciato costa almeno 47 volte il
+riferimento, quindi il nullo sotto DP non distingue "la DP protegge" da "non c'è nulla
+da proteggere"; fino al 2026-09-24 la colonna di costo usava la loss locale e faceva
+sembrare ε = 16 e 8 celle con utility residua. Nota storica che
 conta per la Tabella 2 del paper: dp-fedavg e local hanno coinciso bit a bit fino
 al 15 settembre perché eseguivano lo stesso codice; da allora dp-fedavg attacca
 l'update grezzo (A1), e quali celle siano post modifica va verificato nel
-registro. Il test di equivalenza TOST a margine 0.02 è soddisfatto ovunque; il
-Wilcoxon a 5 seed non può essere significativo per costruzione.
+registro. Il test di equivalenza TOST a margine 0.02 è soddisfatto ovunque, calcolato
+però sul LiRA composto e non sulla metrica primaria (segnalazione 50); il Wilcoxon a 5
+seed non può essere significativo per costruzione.
 
 ### 3.1b Sweep di ε, client-level `dp-fedavg` (A1): E-A
 
-Fonte: i JSON di `experiments/rq1-eps{2,4,8,16}/` letti il 2026-09-24 (una run per
-seed, seed 42, 123, 456, 789, 1234), coerenti con `check_significance.py` (stessi n e
-stesse medie per gli attacchi) e con il foglio `Utility_privacy_limite` per ε = 2 e 4.
-Per ε = 8 e 16 quel foglio mescola la run pilota a un seed con le cinque di E-A (n = 6,
-segnalazione 44): qui sono solo le cinque. Riferimento di costo: la cella no-DP della
-campagna (49 run, loss 0.002693) e, appaiato per seed, `nodp-sweep2` (media 0.001676).
+Fonte: i JSON di `experiments/rq1-eps{2,4,8,16}/` e `nodp-sweep2` letti il 2026-09-24,
+una run per seed (42, 123, 456, 789, 1234), la più recente: per ε = 2 seed 789 è il
+rilancio del 24 settembre, con gli attacchi e la stessa loss del primo tentativo bit per
+bit. Costo = loss sull'holdout del modello globale rilasciato al round 10
+(segnalazione 46), rapportata a `nodp-sweep2` (media 0.00158), sulla media e appaiata
+per seed. La loss locale è la vecchia colonna, tenuta come diagnostica.
 
-| ε | seed validi | loss finale media | rapporto su no-DP campagna | rapporto appaiato per seed, min-max | Yeom | Shadow | LiRA composto | TPR a FPR 1% |
-|---|---|---|---|---|---|---|---|---|
-| 16 | 5 | 0.00614 | 2.3 | 3.1-4.2 | 0.5015 | 0.5011 | 0.4992 | 0.0097 |
-| 8 | 5 | 0.0655 | 24.3 | 8.4-202 | 0.5001 | 0.5002 | 0.4978 | 0.0101 |
-| 4 | 5 | 0.128 | 47.5 | 29.5-260 | 0.4999 | 0.5002 | 0.4959 | 0.0092 |
-| 2 | 4 (loss su 5) | 0.285 | 105.8 | 120-422 | 0.5000 | 0.5001 | 0.4952 | 0.0094 |
+| ε | seed | holdout del modello rilasciato | rapporto su no-DP | appaiato, min-max | loss locale | Yeom | Shadow | LiRA composto | TPR a FPR 1% |
+|---|---|---|---|---|---|---|---|---|---|
+| 16 | 5 | 0.0945 | 60 | 30-157 | 0.00614 | 0.5015 | 0.5011 | 0.4992 | 0.0097 |
+| 8 | 5 | 0.190 | 120 | 67-490 | 0.0655 | 0.5001 | 0.5002 | 0.4978 | 0.0101 |
+| 4 | 5 | 0.299 | 188 | 131-490 | 0.128 | 0.4999 | 0.5002 | 0.4959 | 0.0092 |
+| 2 | 5 | 0.366 | 231 | 153-495 | 0.285 | 0.5004 | 0.5005 | 0.4957 | 0.0096 |
 
-Il TOST a margine 0.02 è soddisfatto in tutte e quattro le celle. La loss finale varia
-fra seed di un fattore 1.9 a ε = 16 (0.0039-0.0074), 2 a ε = 2, 4.5 a ε = 4 e 13.8 a
-ε = 8 (0.014-0.195), con il seed 456 sempre il più alto a ε ≤ 8: la cella ε = 8 è
-incoerente fra seed, caso previsto dalla tabella di lettura di `ESPERIMENTI.md` (seed
-aggiuntivi mirati su quella cella sola). A ε = 2 il seed 789 ha
-tutti e tre gli attacchi falliti per un errore d'ambiente (segnalazione 42): da
-rilanciare. I JSON di E-A registrano `git_commit`; il codice è lo stesso in tutte le
-run (f145b79 e poi ed0e1f9, che cambia solo il paper).
+Nessuna cella sta sotto la soglia di 3 volte: è la terza riga della tabella di lettura
+di `ESPERIMENTI.md` ("nessun punto operativo utile per il client-level in questo
+regime"). Sull'holdout la variabilità fra seed è di circa 3 volte in ogni cella (a ε = 8
+0.109-0.341): l'incoerenza di ε = 8, che veniva dalla loss locale (0.014-0.195), non c'è
+più e i seed aggiuntivi non servono. TOST soddisfatto in tutte e quattro le celle, sul LiRA
+composto (segnalazione 50). I JSON registrano `git_commit`: f145b79 ed ed0e1f9, e
+478d471 per il rilancio; il codice di training e attacco è lo stesso.
 
-### 3.2 Vulnerabilità per record: l'unico segnale su dati naturali
+### 3.2 Analisi per record: nessun segnale di appartenenza (E-C)
 
-Fonte: `risultati/worst_case/livello_di_caso.json`, 5 seed, 17 561 sessioni
-membro in almeno 2 seed, 200 permutazioni.
+Fonte: `risultati/worst_case/livello_di_caso.json`, rigenerato il 2026-09-24 con il
+controllo sui non membri e il test appaiato (segnalazione 47). 5 seed per cella, 17 561
+sessioni membro in almeno 2 seed, 200 permutazioni; test appaiato su 28 129 sessioni
+membro in un seed e non membro in un altro.
 
-| cella | segnalati | attesi per caso | z |
-|---|---|---|---|
-| no-DP | 412 | 289.9 | 7.56 |
-| dp-fedavg ε=1 | 290 | 289.8 | 0.02 |
-| central ε=1 | 299 | 289.9 | 0.62 |
-| local ε=1 | 291 | 289.8 | 0.07 |
+| cella | segnalati (membri) | attesi | z membri | z non membri | test appaiato | z appaiato |
+|---|---|---|---|---|---|---|
+| no-DP | 412 | 289.9 | 7.56 | 6.85 | +0.06 ± 0.22 | 0.26 |
+| dp-fedavg ε=16 | 326 | 290.4 | 2.12 | 0.22 | +0.07 ± 0.22 | 0.31 |
+| dp-fedavg ε=8 | 293 | 291.5 | 0.09 | 3.45 | +0.12 ± 0.22 | 0.56 |
+| dp-fedavg ε=4 | 355 | 288.9 | 4.31 | 3.86 | −0.31 ± 0.22 | −1.38 |
+| dp-fedavg ε=2 | 337 | 290.3 | 2.88 | 2.71 | −0.30 ± 0.22 | −1.34 |
+| dp-fedavg ε=1 | 290 | 289.8 | 0.02 | 0.60 | −0.21 ± 0.22 | −0.94 |
+| central ε=1 | 299 | 289.9 | 0.62 | 1.91 | +0.20 ± 0.22 | 0.91 |
+| local ε=1 | 291 | 289.8 | 0.07 | 1.53 | −0.29 ± 0.22 | −1.32 |
 
-Senza DP circa 122 sessioni in eccesso sul caso sono riconoscibili in modo
-sistematico mentre l'AUC aggregata della stessa cella è 0.51. Sotto DP l'eccesso
-scompare, ma con utility distrutta: le due spiegazioni non sono separabili. Il
-percentile è calcolato sui `composed_score` di LiRA, che nello stato attuale dello
-scorer sono in pratica una funzione monotona della loss: il risultato regge come
-classifica per loss e va descritto così. I due script che calcolano il percentile
-danno 411 e 412 (segnalazione 6): da unificare prima di citare il numero.
+Il conteggio sui membri, letto fino al 2026-09-24 come "l'unico segnale su dati
+naturali", compare quasi uguale fra i non membri: senza DP 406 segnalati contro 412.
+Misura quanto un modello ordina i record in modo coerente fra seed, cosa che la DP
+distrugge insieme all'utility; non misura l'appartenenza. Il test appaiato non trova un
+effetto dell'appartenenza in nessuna cella. La segnalazione 6 (percentile dei due
+script, 411 contro 412) riguarda ora solo il conteggio, che non è più la lettura
+primaria.
 
 ### 3.3 Lo strumento è validato, ma su un sito
 
@@ -138,9 +155,13 @@ chiuso (`ESPERIMENTI.md`, regole).
 ### 3.5 Record-level DP
 
 Implementato il 16 settembre, usato solo in regime canary a Office 1: a σ = 5 la
-loss grezza dei canary scende da 0.68 a 0.53 con il modello ancora addestrabile.
-Un seed, nessun braccio swap, e l'ε dichiarato di 7.15 viene da un accountant che
-conta un round su tre (segnalazione 4). Su dati naturali non esiste nessuna run.
+loss grezza dei canary scende da 0.68 a 0.53 con il modello ancora addestrabile (loss
+sull'holdout del modello rilasciato 0.006, simile alla loss locale). Un seed, nessun
+braccio swap. L'ε di 7.15 è corretto sotto l'ipotesi di campionamento di Poisson (3
+round, n = 1924: segnalazione 4, rettifica); il training usa shuffle, e il limite valido
+con lo shuffle, adiacenza per sostituzione e senza amplificazione, è 343. Su dati
+naturali non esiste ancora nessuna run valida: la prova del 24 settembre è stata fermata
+perché gli attacchi saltavano (segnalazione 49).
 
 ### 3.6 Infrastruttura
 
@@ -163,24 +184,26 @@ contributo di una persona.
 
 I campi della sezione 5 della guida sono compilati nella stessa scheda
 `decision_matrix_ACN_membership_DP.xlsx`; le decisioni di `ESPERIMENTI.md` sezione 0
-sono state congelate il 2026-09-22, prima di leggere E-A. Resta ambiguo un punto che
-ora decide RQ1: "loss finale entro 3 volte il riferimento no-DP" non dice quale
-riferimento. I valori pilota citati in quella riga (2.6 e 4.6) usano la cella no-DP
-della campagna, 49 run di sweep diversi; il protocollo appaiato per seed della guida
-(sezione 8) porterebbe a `nodp-sweep2`. Con il primo ε = 16 è a costo accettabile
-(2.3), con il secondo no (3.7). È una decisione del supervisore, da prendere prima di
-leggere E-C a ε = 16. Manca il braccio B1 della Fase B, clipping senza rumore, per cui
-non esiste un flag.
+sono state congelate il 2026-09-22, prima di leggere E-A. L'ambiguità sul riferimento
+di costo (campagna o `nodp-sweep2`) non decide più nulla: con la loss del modello
+rilasciato ε = 16 sta a 47 volte il primo e 60 volte il secondo (segnalazione 46). Due
+punti del §0 sono cambiati il 2026-09-24 e sono documentati lì come deviazioni: il
+costo, per un errore di implementazione (la definizione era giusta), e la metrica
+primaria per record, che va sostituita dal test appaiato (segnalazione 47): la seconda
+è una decisione del supervisore. Manca il braccio B1 della Fase B, clipping senza
+rumore, per cui non esiste un flag.
 
 ## 4. Cosa manca
 
-L'elenco ordinato, con comandi e prerequisiti, è `ESPERIMENTI.md`. E-A è eseguito
-(sezione 3.1b) salvo il rilancio di ε = 2, seed 789. Il braccio no-DP di E-D (RQ2, 10
-run) è stato eseguito su una seconda macchina e va copiato in `experiments/` di
-questa prima di rigenerare le matrici. Restano: la decisione sul riferimento di costo
-(sezione 3.8), E-C analisi per record dopo la segnalazione 6, E-B record-level su dati
-naturali, canary bilanciato su Caltech, E-E per RQ3, il braccio DP di E-D, rianalisi
-NVFlare al punto operativo. I bug che toccano i numeri sono in
-`Segnalazioni_tecniche_2026-09-22.md`, punti 1, 4, 5, 6, 35, 36, 37, 38, 42, 44. Fuori dal paper, come infrastruttura o lavoro futuro: ML Plane,
+L'elenco ordinato, con comandi e prerequisiti, è `ESPERIMENTI.md`. E-A è chiuso (sezione
+3.1b), E-C è eseguito sulle 8 celle esistenti (sezione 3.2). Il braccio no-DP di E-D
+(RQ2, 10 run, seconda macchina) e quello di E-E (RQ3, in corso su una terza macchina)
+vanno tenuti fuori da `experiments/` finché la segnalazione 45 non è corretta. Restano:
+il controllo dell'inizializzazione comune (segnalazione 48), E-B record-level su dati
+naturali (prova da rifare dopo la segnalazione 49), la ricerca di un punto operativo
+client-level (norme degli update, C più basso o ε più alti), il canary su più siti, il
+braccio DP di E-D ed E-E, la rianalisi NVFlare. Da decidere col supervisore: la metrica
+primaria per record (segnalazione 47). I bug che toccano i numeri sono in
+`Segnalazioni_tecniche_2026-09-22.md`, punti 1, 5, 6, 35, 36, 38, 44, 45, 48, 50, 51. Fuori dal paper, come infrastruttura o lavoro futuro: ML Plane,
 Privacy Auditor, PES, ByzantineDetector, FedMIA-gradient, secondo dataset. Per le
 frasi da non scrivere senza evidenza: guida, sezione 11.

@@ -557,6 +557,11 @@ def scrivi_costo_per_sito():
     per_round[*].fl contiene SOLO mean_loss globale; nessuna chiave nomina un
     client o un sito. La loss per client esiste unicamente nella riga di log
     "[<sito>-NN] Round R — loss=..., n=...". Questa tabella la estrae da li'.
+
+    Segnalazione 46 (2026-09-24): quella loss e' la loss di ADDESTRAMENTO LOCALE
+    del client nell'ultimo round (media sulle epoche locali, prima del rumore
+    DP), non la qualita' del modello globale rilasciato. Con DP client-level le
+    due cose divergono di uno o due ordini di grandezza.
     """
     p = os.path.join(USCITA, "Matrice_sintesi.xlsx")
     wb = openpyxl.load_workbook(p)
@@ -567,7 +572,7 @@ def scrivi_costo_per_sito():
         del wb["Costo_per_sito"]
     ws = wb.create_sheet("Costo_per_sito")
     ws.append(["log", "condizione DP", "sito", "round finale",
-               "loss finale", "n sessioni del client"])
+               "loss addestramento locale (ultimo round)", "n sessioni del client"])
     pat = re.compile(r"\[(\w+)-\d+\] Round (\d+) — loss=([\d.eE+-]+), n=(\d+)")
     righe = []
     for f in sorted(glob.glob(os.path.join(RADICE, "logs", "*.log"))):
@@ -592,11 +597,52 @@ def scrivi_costo_per_sito():
 
 
 
+def loss_holdout_modello_rilasciato(j: dict) -> float | None:
+    """Loss di ricostruzione del modello globale RILASCIATO all'ultimo round,
+    sull'holdout naturale. Segnalazione 46 (2026-09-24).
+
+    E' l'MSE medio per record del modello globale finale (quello che viene
+    distribuito ai client e che gli attacchi osservano) calcolato sui non-membri
+    dell'attacco Yeom, cioe' su tutto l'holdout: `-non_member_score_mean`
+    dell'ultimo round. Vale solo con superficie Yeom "global", il default: nessun
+    config la cambia, ma se un JSON la registra diversa si restituisce None.
+    None anche se Yeom e' fallito in quella run (segnalazione 42).
+    """
+    c = j.get("config") or {}
+    if ((c.get("yeom") or {}).get("observation_surface") or "global") != "global":
+        return None
+    pr = j.get("per_round") or {}
+    if not pr:
+        return None
+    m = (pr[max(pr, key=int)] or {}).get("mia") or {}
+    v = m.get("non_member_score_mean")
+    if v is None or v != v:  # None o NaN
+        return None
+    return -float(v)
+
+
+def loss_addestramento_locale(j: dict) -> float | None:
+    """Media pesata delle loss di addestramento LOCALE dei client nell'ultimo
+    round (`per_round[T].fl.mean_loss`), mediata sulle epoche locali e calcolata
+    PRIMA del rumore DP di quel round. Non e' la qualita' del modello rilasciato:
+    senza DP coincide quasi con la loss sull'holdout, con DP client-level no
+    (segnalazione 46). Resta utile come diagnostica: quanto bene un client
+    riadatta localmente il modello globale rumoroso che riceve."""
+    pr = j.get("per_round") or {}
+    loss = [(pr[r] or {}).get("fl", {}).get("mean_loss") for r in sorted(pr, key=int)]
+    loss = [x for x in loss if x is not None]
+    return loss[-1] if loss else None
+
+
 def scrivi_utility_privacy():
     """Griglia utility x privacy x limite teorico (2026-09-21).
 
     Tre cose in un foglio solo, perche' vanno lette insieme:
-      - il COSTO (loss finale sull'holdout, rapporto rispetto al no-DP)
+      - il COSTO: loss sull'holdout del modello globale RILASCIATO all'ultimo
+        round, rapporto rispetto al no-DP (segnalazione 46: fino al 2026-09-24
+        questa colonna usava la loss di addestramento locale, che con DP
+        client-level sottostima il costo di uno o due ordini di grandezza; ora
+        quella e' una colonna di diagnostica a parte)
       - la PRIVACY misurata (Yeom, Shadow, LiRA, LiRA composto, TPR@1%FPR)
       - il LIMITE TEORICO che la garanzia (eps,delta) permetterebbe
     Il limite usa l'epsilon CUMULATIVO su T round (composizione base,
@@ -612,7 +658,9 @@ def scrivi_utility_privacy():
     if "Utility_privacy_limite" in wb.sheetnames:
         del wb["Utility_privacy_limite"]
     ws = wb.create_sheet("Utility_privacy_limite")
-    ws.append(["cella", "n run", "loss finale", "x rispetto a no-DP",
+    ws.append(["cella", "n run", "loss holdout modello rilasciato",
+               "x rispetto a no-DP (holdout)",
+               "loss addestramento locale (diagnostica)", "x rispetto a no-DP (locale)",
                "Yeom", "Shadow", "LiRA", "LiRA composto", "TPR@1%FPR",
                "eps per round", "eps_tot (T=10, base)",
                "Adv max teorica", "AUC max teorica", "lettura"])
@@ -628,22 +676,23 @@ def scrivi_utility_privacy():
         if not pr:
             continue
         ult = max(pr, key=int)
-        loss = [pr[r].get("fl", {}).get("mean_loss") for r in sorted(pr, key=int)]
-        loss = [x for x in loss if x is not None]
         k = ("no-DP", None) if c.get("no_dp") else (c.get("dp_mode"), c.get("epsilon"))
-        celle[k].append((loss[-1] if loss else None, su.get("mean_auc_roc"),
+        celle[k].append((loss_holdout_modello_rilasciato(j), su.get("mean_auc_roc"),
                          su.get("mean_shadow_auc_roc"), su.get("mean_lira_auc_roc"),
                          pr[ult].get("mia", {}).get("composed_lira_auc_roc"),
-                         pr[ult].get("mia", {}).get("composed_tpr_at_fpr_0.01")))
+                         pr[ult].get("mia", {}).get("composed_tpr_at_fpr_0.01"),
+                         loss_addestramento_locale(j)))
 
     def med(v, i):
         x = [t[i] for t in v if t[i] is not None]
         return sum(x) / len(x) if x else None
 
     base = med(celle.get(("no-DP", None), []), 0)
+    base_loc = med(celle.get(("no-DP", None), []), 6)
     for k in sorted(celle, key=lambda t: (str(t[0]), -(t[1] or 0))):
         v = celle[k]
         lf = med(v, 0)
+        ll = med(v, 6)
         eps = k[1]
         if eps:
             et = 10 * eps
@@ -656,28 +705,37 @@ def scrivi_utility_privacy():
             teo = [None, None, None, None]
             lettura = "riferimento senza DP: nessuna garanzia da confrontare"
         rap = round(lf / base, 1) if (lf and base) else None
+        rap_loc = round(ll / base_loc, 1) if (ll and base_loc) else None
         if rap and rap > 50:
-            lettura = ("UTILITY DISTRUTTA (loss oltre 50x il riferimento): un nullo "
-                       "di privacy qui non distingue 'DP protegge' da 'il modello "
-                       "non impara, quindi non memorizza'. " + lettura)
+            lettura = ("UTILITY DISTRUTTA (loss sull'holdout del modello rilasciato "
+                       "oltre 50x il riferimento): un nullo di privacy qui non "
+                       "distingue 'DP protegge' da 'il modello non impara, quindi non "
+                       "memorizza'. " + lettura)
+        elif rap and rap > 3:
+            lettura = ("COSTO OLTRE LA SOGLIA DI 3x (sezione 0 di ESPERIMENTI.md). "
+                       + lettura)
         ws.append([f"{k[0]}" + (f" eps={eps}" if eps else ""), len(v),
                    round(lf, 6) if lf else None, rap,
+                   round(ll, 6) if ll else None, rap_loc,
                    round(med(v, 1) or 0, 4), round(med(v, 2) or 0, 4),
                    round(med(v, 3) or 0, 4), round(med(v, 4) or 0, 4),
                    round(med(v, 5) or 0, 4), *teo, lettura])
-    stile(ws, [22, 7, 13, 16, 9, 9, 9, 13, 11, 13, 18, 15, 16, 70], 80)
+    stile(ws, [22, 7, 16, 16, 18, 16, 9, 9, 9, 13, 11, 13, 18, 15, 16, 70], 80)
     for r in range(2, ws.max_row + 1):
         rap = ws.cell(r, 4).value
         if rap and rap > 50:
             ws.cell(r, 4).fill = ROSSO
-        elif rap:
+        elif rap and rap > 3:
             ws.cell(r, 4).fill = GIALLO
+        elif rap:
+            ws.cell(r, 4).fill = VERDE
     wb.save(p)
     return ws.max_row - 1
 
 
 def scrivi_worst_case():
-    """Vulnerabilita' per record: osservato contro livello di caso."""
+    """Vulnerabilita' per record: osservato contro livello di caso, con il
+    controllo sui non-membri e il test appaiato (segnalazione 47, 2026-09-24)."""
     fjson = os.path.join(USCITA, "worst_case", "livello_di_caso.json")
     if not os.path.exists(fjson):
         return 0
@@ -690,32 +748,48 @@ def scrivi_worst_case():
     if "Worst_case_per_record" in wb.sheetnames:
         del wb["Worst_case_per_record"]
     ws = wb.create_sheet("Worst_case_per_record")
-    ws.append(["gruppo", "n seed", "sessioni multi-seed", "record segnalati",
-               "attesi per caso", "sd", "z", "% osservata", "% attesa", "lettura"])
+    ws.append(["gruppo", "n seed", "sessioni multi-seed", "record segnalati (membri)",
+               "attesi per caso", "sd", "z membri (stabilita' del ranking)",
+               "z non-membri (controllo)", "z membri meno non-membri",
+               "test appaiato: diff. media di percentile (membro - non membro)",
+               "errore standard", "z appaiato", "% osservata", "% attesa", "lettura"])
     for et, r in d["gruppi"].items():
         z = r.get("z")
-        if z is not None and z > 3:
-            let = ("ECCESSO REALE: esiste un sottoinsieme di record sistematicamente "
-                   "nel decile alto su seed indipendenti. Invisibile nell'AUC "
-                   "aggregata, che in questa cella e' ~0.51.")
+        c = r.get("controllo_non_membri") or {}
+        a = r.get("appaiato") or {}
+        za = a.get("z")
+        if not a:
+            let = ("CONTROLLO MANCANTE: livello_di_caso.json prodotto prima della "
+                   "segnalazione 47, senza test appaiato. Il solo z sui membri misura "
+                   "la stabilita' del ranking, non l'appartenenza: rigenerare.")
+        elif za is not None and za > 3:
+            let = ("SEGNALE DI APPARTENENZA PER RECORD: la stessa sessione ha "
+                   "percentile piu' alto quando e' membro che quando non lo e'.")
         else:
-            let = ("indistinguibile dal caso. ATTENZIONE: in questa cella l'utility "
-                   "e' distrutta (loss oltre 100x), quindi l'assenza di eccesso NON "
-                   "prova che la DP protegga: un modello che non impara non espone.")
+            let = ("NESSUN SEGNALE DI APPARTENENZA PER RECORD (test appaiato). "
+                   + ("L'eccesso sui membri c'e' anche fra i non-membri: e' "
+                      "stabilita' del ranking dovuta al record. "
+                      if (z and z > 3 and c.get("z") and c["z"] > 3) else "")
+                   + "Se l'utility e' distrutta, l'assenza di segnale non prova "
+                   "che la DP protegga.")
         ws.append([et, r["n_seed"], r["sessioni_multi_seed"], r["osservati"],
-                   r["attesi_per_caso"], r["sd_nulla"], z,
+                   r["attesi_per_caso"], r["sd_nulla"], z, c.get("z"),
+                   r.get("z_eccesso_membri_meno_non_membri"),
+                   a.get("differenza_media"), a.get("errore_standard"), za,
                    r["percentuale_osservata"], r["percentuale_attesa"], let])
-    stile(ws, [22, 8, 20, 16, 16, 8, 9, 13, 12, 80], 76)
+    stile(ws, [22, 8, 20, 16, 16, 8, 16, 16, 16, 22, 12, 11, 13, 12, 80], 76)
     for r in range(2, ws.max_row + 1):
-        z = ws.cell(r, 7).value
-        ws.cell(r, 7).fill = ROSSO if (z and z > 3) else VERDE
+        z = ws.cell(r, 12).value
+        ws.cell(r, 12).fill = ROSSO if (z and z > 3) else VERDE
     par = d.get("parametri", {})
     ws.append([])
     ws.append([f"criterio: membro in >= {par.get('min_seed')} seed, percentile medio >= "
                f"{par.get('soglia')}, percentile minimo >= {par.get('pavimento')}; "
                f"livello di caso da {par.get('permutazioni')} permutazioni dei percentili "
                f"DENTRO ogni seed (conserva la distribuzione marginale, distrugge solo "
-               f"la corrispondenza fra seed)"])
+               f"la corrispondenza fra seed). Lettura primaria: test appaiato "
+               f"(segnalazione 47); il conteggio sui membri da solo misura la "
+               f"stabilita' del ranking."])
     wb.save(p)
     return ws.max_row - 1
 
@@ -769,13 +843,25 @@ def scrivi_glossario():
          "al contrario: la distanza fra permesso e misurato quantifica quanto la "
          "garanzia formale sia lasca rispetto al comportamento reale.",
          "foglio Utility_privacy_limite", "docs/LimiteTeoricoDP.md"),
-        ("x rispetto a no-DP",
-         "Rapporto fra la loss finale sull'holdout naturale della cella e quella "
-         "della cella senza DP. E' la misura di costo.",
+        ("x rispetto a no-DP (holdout)",
+         "Rapporto fra la loss di ricostruzione sull'holdout naturale del modello "
+         "globale RILASCIATO all'ultimo round e quella della cella senza DP. E' la "
+         "misura di costo (soglia di 3x, sezione 0 di ESPERIMENTI.md). Fino al "
+         "2026-09-24 la colonna usava la loss di addestramento locale "
+         "(segnalazione 46).",
          "Oltre 50x significa utility distrutta. In quelle celle un nullo di privacy "
          "NON distingue 'la DP protegge' da 'il modello non impara, quindi non "
          "memorizza e non espone'. Le due spiegazioni non sono separabili.",
          "foglio Utility_privacy_limite", "docs/LimiteTeoricoDP.md sez. 3"),
+        ("loss addestramento locale (diagnostica)",
+         "Media pesata delle loss di addestramento locale dei client nell'ultimo "
+         "round, mediata sulle 50 epoche e calcolata prima del rumore DP di quel "
+         "round (per_round[T].fl.mean_loss; nel log: 'Round T — loss globale').",
+         "NON e' la qualita' del modello rilasciato. Senza DP coincide quasi con la "
+         "loss sull'holdout; con DP client-level misura quanto bene un client "
+         "riadatta localmente il modello rumoroso che riceve, e la distanza dalla "
+         "loss sull'holdout misura il danno del rumore aggiunto all'aggregazione.",
+         "fogli Utility_privacy_limite e Costo_per_sito", "segnalazione 46"),
         ("A0 / A1 / A2 / A3",
          "Punti di osservazione dell'avversario sulla stessa pipeline di "
          "privatizzazione. A0 = nessuna DP. A1 = update grezzo g (dp-fedavg). "

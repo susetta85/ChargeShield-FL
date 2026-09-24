@@ -97,6 +97,7 @@ ml:
   epochs: 50
   batch_size: 32
   proximal_mu: 0.01
+  norm: group          # 2026-09-24, segnalazione 49: come il trainer sotto record_dp
   record_dp:
     enabled: true
     max_grad_norm: 1.0

@@ -61,12 +61,14 @@ Verificate leggendo gli `import` reali in `src/` e `scripts/`, non assunte:
   ottiene un `ModuleNotFoundError` diretto (non degrada in silenzio, a
   differenza del caso sotto). Non era già in `Segnalazioni_tecniche`: la
   aggiungo come nuovo punto 41 in quel file, come da protocollo.
-- **`dp-accounting`** — `scripts/run_experiments.py:148`, import lazy dentro
-  la funzione che calcola `epsilon_record_dp` (RDP accountant per il
-  record-level DP). Già segnalazione 4: qui l'`ImportError` degrada in
-  silenzio a `epsilon_record_dp: None` invece di fallire in modo visibile.
-  Serve solo per E-B (record-level DP); non è sul percorso di E-A (client-level,
-  in corso).
+- **`dp-accounting`** — dichiarato in `pyproject.toml` dal 2026-09-24
+  (segnalazione 4). Import lazy in `src/ml/record_dp_accounting.py`, che calcola
+  `epsilon_record_dp` (RDP accountant per la DP a livello di record). Se manca,
+  la run prosegue ma scrive un warning `[RECORD-DP] 'dp-accounting' non
+  installato` nel log e lascia i campi a `None`; si ricalcolano dopo con
+  `scripts/ricalcola_epsilon_record_dp.py`. `tests/test_record_dp_accounting.py`
+  fallisce in raccolta se manca. Serve solo per E-B; non è sul percorso di E-A.
+  Su un ambiente gia' installato: `pip install dp-accounting`.
 
 ## 6. Versioni pinnate "note-funzionanti" (da `Dockerfile.flare`)
 
@@ -106,15 +108,24 @@ del 2026-09-09 (dettagli nel commento in `Dockerfile.flare`).
 - Non versionato in git (`datasets/` è in `.gitignore`).
 - Si scarica con `python3 scripts/download_acn_sessions.py` (richiede
   `requests` e `ACN_TOKEN`, vedi sopra).
-- Senza `datasets/`: 264 test passano, 33 falliscono con `FileNotFoundError`
+- Senza `datasets/`: 282 test passano (264 prima del 2026-09-24, piu' i 13 di
+  `tests/test_record_dp_accounting.py` e i 5 di `tests/test_costo_e_per_record.py`),
+  33 falliscono con `FileNotFoundError`
   (`test_acn_dataset.py`, `test_chargeplace_scotland_adapter.py`) invece di
   essere skippati — segnalazione 39, ancora aperta.
-- Con `datasets/` scaricato e torch installato: 297 test passano (`make test`).
+- Con `datasets/` scaricato e torch installato: 315 test passano (`make test`; 297
+  prima del 2026-09-24).
 
 ## 9. Sistema operativo e hardware
 
 - Sviluppo/esperimenti: macOS — gli sweep usano `caffeinate` (comando
   macOS-specifico) per impedire lo sleep durante run multi-ora.
+- Windows (PC con i9, 2026-09-24, E-E): la simulazione gira, ma con i thread di
+  default di torch il round 1 durava 6 min contro 57 s sul Mac; con
+  `OMP_NUM_THREADS=1` e `MKL_NUM_THREADS=1` 1 min 56 s, loss identiche alla terza
+  cifra. Stessa causa della riga `OMP_NUM_THREADS` della sezione 7. Al posto di
+  `caffeinate` serve `SetThreadExecutionState` di kernel32; i comandi usati sono in
+  `ESPERIMENTI.md`, sezione E-E. La macchina non e' registrata nei JSON.
 - Deployment NVFlare/Containerlab: **non nativo su macOS**, gira nella VM
   Linux di OrbStack (`sudo containerlab deploy`). Richiede Docker + Containerlab
   + CLI `nvflare` (per `nvflare provision`) installati separatamente — nessuno
@@ -140,5 +151,5 @@ python3 -m pytest tests/ -q \
   --ignore=tests/test_sprint5.py
 ```
 
-Baseline attesa: 297 passed con `datasets/` presente e torch installato, 264
-senza (`CLAUDE.md` §5).
+Baseline attesa: 315 passed con `datasets/` presente e torch installato, 282
+senza (`CLAUDE.md` §5). Richiede `dp-accounting`.

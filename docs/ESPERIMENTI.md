@@ -1,6 +1,6 @@
 # ChargeShield-FL — Esperimenti da eseguire
 
-> **Stato: documento CANONICO.** Aggiornato il 2026-09-24 (stato di E-A e del braccio no-DP di E-D). Sostituisce,
+> **Stato: documento CANONICO.** Aggiornato il 2026-09-24 (revisione: costo, E-C, controlli, canary su più siti). Sostituisce,
 > per gli esperimenti ancora da lanciare, il vecchio `TestRoadmap_DSN2027.md`, eliminato
 > il 2026-09-22 e recuperabile dalla storia git. Ogni
 > voce dice quale RQ serve, quale conclusione può cambiare, cosa deve essere vero
@@ -23,6 +23,15 @@ dopo. Proposta da confermare con il supervisore e registrare nella scheda
 | margine di equivalenza | AUC entro 0.02 da 0.5 (TOST), come già in `check_significance.py` |
 | unità di replica | il seed; 5 seed per cella; le copie di un canary non sono repliche |
 
+**Deviazioni documentate il 2026-09-24.** (1) Costo: la definizione resta "loss finale
+entro 3 volte il riferimento no-DP", intesa come loss sull'holdout del modello globale
+rilasciato; `genera_matrici_faseA.py` usava invece la loss di addestramento locale
+(segnalazione 46). Corretta l'implementazione, non la regola. (2) Metrica primaria per
+record: il "conteggio per record con z" misura la stabilità del ranking e non
+l'appartenenza (segnalazione 47). Proposta: sostituirlo con il test appaiato, tenendo il
+conteggio come risultato secondario. Entrambi i risultati sono riportati in `STATO.md`
+3.2. **Da confermare con il supervisore.**
+
 ## Regole che valgono per tutti
 
 - **Scorer LiRA congelato.** Il riferimento worst-case no-DP (`nodp-sweep2`,
@@ -41,7 +50,7 @@ dopo. Proposta da confermare con il supervisore e registrare nella scheda
 |---|---|---|
 | E-C | unificare il percentile dei due script worst-case e rigenerare i JSON grezzi mancanti | 6 |
 | **E-B, bloccante** | `check_significance.py` e `genera_matrici_faseA.py` devono distinguere le celle record-DP: oggi raggruppano per `(dp_mode, epsilon, no_dp, seed)` e una run record-DP lanciata con `--no-dp` finisce nel gruppo "no-DP baseline", dove, essendo più recente, **sostituisce** il seed corrispondente di `nodp-sweep2` | 37 |
-| E-B | accountant record-DP: `fl_rounds` e `delta` da `cfg["experiment"]`, n per client, dichiarare Poisson vs shuffle, `dp-accounting` in `pyproject.toml` | 4 |
+| E-B | ~~accountant record-DP: `fl_rounds` e `delta` da `cfg["experiment"]`, n per client, dichiarare Poisson vs shuffle, `dp-accounting` in `pyproject.toml`~~ corretto il 2026-09-24 | 4 |
 | E-B | il warning `[NO-DP BASELINE]` deve controllare `record_dp.enabled` | 5 |
 | B1 | manca un flag clip-only (clipping attivo, σ = 0); va aggiunto o il braccio va dichiarato non eseguito | 38 |
 | rianalisi NVFlare | `--client-config` con lo snapshot del seed, già nello script rigenerato | 1 |
@@ -90,10 +99,13 @@ caffeinate -ims python3 scripts/run_experiments.py \
   2>&1 | tee logs/rq1_eps2_seed789_rerun.log
 ```
 
-Per applicare la tabella di lettura servono ancora: la scelta del riferimento di costo
-(`STATO.md` sezione 3.8, decide se ε = 16 è a costo accettabile) ed E-C sulle quattro
-celle, dopo la segnalazione 6. La cella ε = 8 è incoerente fra seed (quarta riga
-della tabella).
+**Lettura (2026-09-24, dopo la segnalazione 46).** Seed 789 a ε = 2 rilanciato: 5 seed
+validi per cella. Con il costo sul modello rilasciato nessuna cella sta sotto 3 volte
+(ε = 16: 60 volte `nodp-sweep2`): terza riga della tabella, "nessun punto operativo
+utile per il client-level in questo regime". E-C non trova segnale per record in
+nessuna cella. ε = 8 non è più incoerente fra seed sulla misura corretta: niente seed
+aggiuntivi. Prossimi passi: E-B e la ricerca di un punto operativo client-level, sezioni
+sotto.
 
 ## B1 — braccio clipping senza rumore
 
@@ -118,6 +130,11 @@ segnalazione 37: senza la correzione al raggruppamento, queste run con
 
 **Prima di tutto: una run di prova a un seed** per misurare il tempo. DP-SGD a
 microbatch 1 su tre siti, 50 epoche, 10 round non è mai stato cronometrato.
+Primo tentativo del 2026-09-24 fermato: addestramento circa 12 minuti per round sul Mac,
+ma FedMIA e Shadow saltavano ogni round per l'architettura sbagliata negli attacchi
+(segnalazione 49, corretta; log in `logs/prova_recorddp_s42_attacchi_saltati.log`).
+Nessun JSON. Da rifare con lo stesso comando e un log nuovo. Gli shadow non usano
+DP-SGD (segnalazione 51): LiRA sotto record-level va letto con quella riserva.
 
 ```bash
 python3 scripts/run_experiments.py \
@@ -141,13 +158,20 @@ for nm in 0.5 1 2; do
 done' 2>&1 | tee logs/rq1_recorddp.log
 ```
 
-**Lettura.** Il budget della cella è `epsilon_record_dp`, non `epsilon`. Riportare
-l'ε per client e il massimo. Il confronto è con la cella client-level allo stesso
-seed e a costo comparabile, non allo stesso ε: sono unità diverse.
+**Lettura.** Il budget della cella è `epsilon_record_dp`, non `epsilon`: è il massimo
+sui client dell'ε di Poisson (`epsilon_record_dp_per_client`), di solito Office 1, che
+ha pochi record. È un'approssimazione, perché il training usa shuffle con batch fissi:
+riportarlo sempre insieme a `epsilon_record_dp_shuffle_bound` (adiacenza per
+sostituzione, senza amplificazione), ciascuno con la propria adiacenza. Il confronto
+è con la cella client-level allo stesso seed e a costo comparabile, non allo stesso ε:
+sono unità diverse.
 
 ## E-C — analisi per record su tutte le celle nuove. Solo calcolo
 
-Dopo la segnalazione 6.
+**Stato (2026-09-24).** Eseguito sulle 8 celle esistenti (no-DP, dp-fedavg ε = 16, 8,
+4, 2, 1, central e local ε = 1) con il test corretto della segnalazione 47: nessun
+segnale di appartenenza per record, numeri in `STATO.md` 3.2. Le celle record-DP si
+aggiungono dopo E-B. La segnalazione 6 riguarda ora solo il conteggio secondario.
 
 ```bash
 python3 scripts/worst_case_livello_di_caso.py \
@@ -173,11 +197,35 @@ privato; riportare insieme attacco e costo.
 
 **Stato (2026-09-24).** `config/experiment_rq3_mu0.yaml` creato: differisce da
 `config/experiment.yaml` solo per `ml.proximal_mu: 0.0` e per il nome. Il braccio
-no-DP si esegue su una terza macchina (Windows), alternando per seed mu = 0
-(`experiments/rq3-mu0`) e un braccio appaiato mu = 0.01 sulla stessa macchina
-(`experiments/rq3-mu0.01`, `config/experiment.yaml`), perche' `nodp-sweep2` e' di
-un'altra macchina e di un commit dell'8 settembre. Al rientro delle cartelle vale
-la segnalazione 45: tenerle fuori da `experiments/` finche' non e' corretta.
+no-DP gira su una terza macchina (Windows, i9, commit 478d471): mu = 0 in
+`experiments/rq3-mu0` e un braccio appaiato mu = 0.01 sulla stessa macchina in
+`experiments/rq3-mu0.01` (`config/experiment.yaml`), perche' `nodp-sweep2` e' di
+un'altra macchina e di un commit dell'8 settembre. Primo tentativo (08:39) fermato
+dopo l'addestramento della prima run, nessun JSON: con i thread di default torch era
+circa 8 volte piu' lento del Mac (`ENVIRONMENT.md` sezione 9). Rilanciato alle 10:59
+con `OMP_NUM_THREADS=1`, **i due bracci in parallelo**, uno per finestra PowerShell,
+log `logs/rq3_mu0.log` e `logs/rq3_mu0.01.log`. Il parallelo deroga alla regola "una
+run alla volta" di `CLAUDE.md`: da confermare o da riportare a un braccio alla volta.
+Il round 1 e' identico nei due bracci (il termine prossimale entra dal round 2),
+controllo che i bracci differiscono solo per mu. Blocco di lancio, per ciascun
+braccio (`$n = "mu0"; $c = "config\experiment_rq3_mu0.yaml"` oppure
+`$n = "mu0.01"; $c = "config\experiment.yaml"`, con `PYTHONUTF8`,
+`OMP_NUM_THREADS` e `MKL_NUM_THREADS` impostati nella stessa finestra):
+
+```powershell
+& {
+  Add-Type -Namespace W -Name P -MemberDefinition '[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint f);'
+  [W.P]::SetThreadExecutionState(2147483649) | Out-Null
+  $dir = "experiments\rq3-$n"
+  foreach ($s in 42,123,456,789,1234) {
+    cmd /c ".venv\Scripts\python.exe scripts\run_experiments.py --config $c --rounds 10 --seed $s --no-dp --sweep-dir $dir --per-sample-dump $dir\per_sample_seed$s.json >> logs\rq3_$n.log 2>&1"
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path "$dir\per_sample_seed$s.json")) { return }
+  }
+}
+```
+
+Al rientro delle cartelle vale la segnalazione 45: tenerle fuori da `experiments/`
+finche' non e' corretta.
 
 ## E-D — RQ2, partizione IID contro per sito
 
@@ -207,6 +255,68 @@ righe `[ERROR]` nel log. Prima di leggerlo vanno copiate le due cartelle e
 `genera_matrici_faseA.py`. La macchina diversa è una variabile non registrata nei JSON:
 va dichiarata nel paper. Attenzione alla segnalazione 45 prima di copiarle in
 `experiments/`.
+
+## Controllo dell'inizializzazione comune (segnalazione 48)
+
+**Validità della campagna, non una RQ.** Nelle run esistenti i tre client partono da
+inizializzazioni diverse. Due passi sul Mac, uno alla volta.
+
+(a) Riproduzione, solo addestramento, circa 15 minuti: stesso config di `nodp-sweep2`,
+codice attuale. Si ferma a `Round 10 — loss globale` e si confronta round per round con
+`per_round[r].fl.mean_loss` del JSON di `nodp-sweep2` seed 42. Il log contiene anche le
+norme dei delta per client (`[NORMA DELTA]`), che servono alla sezione successiva.
+
+```bash
+nohup python3 scripts/run_experiments.py --config config/experiment.yaml \
+  --rounds 10 --seed 42 --no-dp --sweep-dir experiments/_ctrl_riproduzione_s42 \
+  > logs/ctrl_riproduzione_s42.log 2>&1 &
+```
+
+(b) Se (a) riproduce, la cella di controllo completa, circa 2 ore:
+
+```bash
+nohup python3 scripts/run_experiments.py --config config/experiment_ctrl_common_init.yaml \
+  --rounds 10 --seed 42 --no-dp --sweep-dir experiments/_ctrl_common_init \
+  --per-sample-dump experiments/_ctrl_common_init/per_sample_seed42.json \
+  > logs/ctrl_common_init_s42.log 2>&1 &
+```
+
+**Lettura.** Confronto con `nodp-sweep2` seed 42 su loss sull'holdout del modello
+rilasciato, Yeom, LiRA composto e test appaiato. Differenza dentro la variabilità fra
+seed: le campagne restano valide e lo scostamento si dichiara. Altrimenti decisione col
+supervisore.
+
+## Punto operativo client-level (dopo E-A)
+
+**RQ1.** Nessuna cella client-level di E-A sta sotto 3 volte. Cambiare posizionamento
+non basta: central aggiunge circa 0.50σ sul modello globale contro 0.69σ di dp-fedavg e
+local, un fattore 1.4 contro un eccesso di 60 volte. Il limite è strutturale: tre client,
+uno con metà dei dati, e rumore per client che la media non ammortizza. Due leve, da
+scegliere dopo la misura delle norme del passo (a) sopra:
+
+- **C più basso a parità di ε** (`experiment.max_grad_norm`): il rumore è proporzionale
+  a C; utile se le norme reali dei delta stanno molto sotto 1.
+- **ε più alti** (per esempio 64 e 256): estrapolando E-A la soglia cade fra circa 100 e
+  500 per round; è un livello di rumore, non una garanzia (la calibrazione gaussiana vale
+  per ε < 1).
+
+Prima un seed per valore per trovare il ginocchio, poi 5 seed sul punto scelto; un config
+nuovo per cella. Nel regime naturale non c'è segnale da ridurre neppure senza DP: il punto
+operativo dice quanto costa un rumore che lascia il modello utile, l'effetto sulla privacy
+si misura solo dove c'è segnale (canary su più siti, sotto).
+
+## Canary su più siti
+
+**Validazione dello strumento in federazione, prerequisito per leggere la DP
+client-level.** Tutte le run canary finora hanno un solo client (Office 1), dove la DP
+client-level non ha senso. Proposta: i tre siti reali, canary iniettati solo in Office 1
+con il protocollo bilanciato già validato (k = 20, 30 duplicati, `paired_split`, braccio
+scambiato, 5 seed, regime canary). Superficie primaria l'update di Office 1: nel modello
+globale Office 1 pesa circa il 3.6%, e la diluizione va misurata. Condizioni: senza DP,
+client-level al punto operativo, record-level. Serve un config nuovo, mai eseguito in
+questa combinazione: prima una run di prova a un seed per verificare che iniezione e
+punteggi funzionino con tre client e per misurare il tempo (1000 epoche su tre siti).
+Da definire col supervisore: numero di epoche, LiRA completo o solo loss grezza.
 
 ## Canary bilanciato su un secondo sito
 

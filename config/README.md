@@ -1,6 +1,6 @@
 # Indice dei config
 
-> **Stato: documento OPERATIVO.** Una riga per file, aggiornato il 2026-09-22. Ogni
+> **Stato: documento OPERATIVO.** Una riga per file, aggiornato il 2026-09-24. Ogni
 > config è una cella: prima di crearne uno nuovo cercare qui se esiste già. La base
 > di tutti è `experiment.yaml`; le colonne dicono cosa cambia rispetto a quella base
 > (3 siti, 10 round, 50 epoche, 6 feature, ε = 1, n_shadow 16, FedProx mu 0.01).
@@ -15,6 +15,8 @@
 | `experiment_rq1_eps{2,4,8,16}.yaml` | solo ε | E-A, sweep di ε |
 | `experiment_rq1_recorddp_nm{0.5,1,2,5}.yaml` | `record_dp` attivo con quel `noise_multiplier` | E-B, **sempre con `--no-dp`** |
 | `experiment_rq2_per_site.yaml`, `experiment_rq2_iid.yaml` | solo `partition.strategy` | E-D, RQ2 |
+| `experiment_rq3_mu0.yaml` | solo `ml.proximal_mu: 0.0` (FedAvg) | E-E, RQ3, con `--no-dp` |
+| `experiment_ctrl_common_init.yaml` | solo `ml.common_init: true` | controllo del protocollo, segnalazione 48; no-DP, seed 42 |
 | `experiment_robustness_entity_split.yaml` | `split.strategy: entity_aware` | robustezza dello split, già eseguito a 5 seed |
 | `experiment_chargeplace_scotland.yaml` | secondo dataset, 3 council area | futuro; una sola run di prova |
 

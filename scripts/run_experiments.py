@@ -46,6 +46,7 @@ from ml.fedavg_aggregator import FedAvgAggregator
 from ml.gradient_manager import GradientManager
 from ml.ml_plane import FLArtifactCollector, MLPlane
 from ml.base_ml import MLPlaneEvent
+from ml.record_dp_accounting import record_dp_fields as _record_dp_fields_impl
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -100,77 +101,28 @@ def _auditor_telemetry(reports: dict) -> dict:
                  "contabilita' DP formale."),
     }
 
-def _record_dp_fields(cfg: dict, n_sessions: int | None = None) -> dict:
+def _record_dp_fields(
+    cfg: dict,
+    n_sessions: int | None = None,
+    n_per_client: dict[str, int] | None = None,
+) -> dict:
     """
     Campi record-DP per il JSON risultato (Sprint 10zz+117).
 
     Senza questi, una cella con DP per-record e' indistinguibile da una
     no-DP: il campo "epsilon" del JSON e' il budget CLIENT-level e non si
     applica al meccanismo per-record, che ha un budget suo calcolato via
-    accountant RDP (a sigma=1.0, 1000 epoche, 3 round vale ~88, non 1.0).
+    accountant RDP.
 
-    epsilon_record_dp resta None se l'accountant non e' installato o se
-    n_sessions non e' noto: in quel caso si ricalcola a posteriori dal JSON,
-    perche' record_dp/epochs/fl_rounds/batch_size sono comunque salvati.
+    Correzione della segnalazione 4 (2026-09-24): il calcolo e' spostato in
+    src/ml/record_dp_accounting.py. Prima leggeva fl_rounds e delta dalla
+    radice di cfg (vivono in cfg["experiment"]: rounds valeva sempre 1),
+    usava il numero globale di sessioni invece di quello di ogni client e
+    dichiarava un campionamento di Poisson senza avvertire che il training
+    usa shuffle. Ora: round e delta effettivi, epsilon per client e massimo,
+    piu' il limite valido con lo shuffle. Vedi la docstring del modulo.
     """
-    ml = cfg.get("ml", {}) if isinstance(cfg.get("ml"), dict) else cfg
-    rdp_cfg = ml.get("record_dp") or {}
-    out = {
-        "record_dp": rdp_cfg or None,
-        "norm": ml.get("norm", "batch"),
-        "batch_size": ml.get("batch_size"),
-        "n_train_sessions": n_sessions,
-        "epsilon_record_dp": None,
-        "record_dp_accounting_note": None,
-    }
-    if not rdp_cfg.get("enabled"):
-        out["record_dp_accounting_note"] = (
-            "record-DP disattivo: il campo 'epsilon' si riferisce al "
-            "meccanismo client-level (weight perturbation)."
-        )
-        return out
-
-    sigma = float(rdp_cfg.get("noise_multiplier", 0.0))
-    batch = int(ml.get("batch_size", 32) or 32)
-    epochs = int(ml.get("epochs", 1) or 1)
-    rounds = int(cfg.get("fl_rounds", 1) or 1)
-    delta = float(cfg.get("delta", 1e-5) or 1e-5)
-
-    if not n_sessions or sigma <= 0.0:
-        out["record_dp_accounting_note"] = (
-            "record-DP attivo ma epsilon non calcolato "
-            f"(n_sessions={n_sessions}, sigma={sigma}). "
-            "ATTENZIONE: il campo 'epsilon' NON si applica a questa cella."
-        )
-        return out
-
-    try:
-        from dp_accounting import dp_event, rdp as _rdp
-        steps = (n_sessions // batch) * epochs * rounds
-        acc = _rdp.RdpAccountant()
-        acc.compose(
-            dp_event.PoissonSampledDpEvent(
-                batch / n_sessions, dp_event.GaussianDpEvent(sigma)),
-            steps,
-        )
-        out["epsilon_record_dp"] = float(acc.get_epsilon(target_delta=delta))
-        out["record_dp_accounting_note"] = (
-            f"epsilon_record_dp = {out['epsilon_record_dp']:.4g} "
-            f"(RDP accountant, Poisson subsampling q={batch/n_sessions:.5f}, "
-            f"{steps} passi, sigma={sigma}, delta={delta}). "
-            "Questo, NON il campo 'epsilon', e' il budget di questa cella."
-        )
-    except ImportError:
-        out["record_dp_accounting_note"] = (
-            "record-DP attivo; 'dp-accounting' non installato, epsilon da "
-            "calcolare a posteriori. Il campo 'epsilon' NON si applica."
-        )
-    except Exception as exc:  # pragma: no cover
-        out["record_dp_accounting_note"] = (
-            f"record-DP attivo; accountant fallito ({exc}). "
-            "Il campo 'epsilon' NON si applica."
-        )
-    return out
+    return _record_dp_fields_impl(cfg, n_sessions=n_sessions, n_per_client=n_per_client)
 
 def _autoencoder_arch_kwargs(cfg: dict) -> dict[str, Any]:
     """
@@ -204,7 +156,13 @@ def _autoencoder_arch_kwargs(cfg: dict) -> dict[str, Any]:
         # "global_weights ha 16 elementi, state_dict ne richiede 22" e il run
         # non produce alcuna misura. E' esattamente la classe di mismatch che
         # questa funzione esiste per prevenire.
-        "norm": str(ml_cfg.get("norm", "batch")),
+        # Segnalazione 49 (2026-09-24): il trainer forza "group" quando record_dp
+        # e' attivo (src/ml/autoencoder_trainer.py); qui si ricostruiva invece
+        # "batch" se il config non lo diceva, e FedMIA/Shadow/LiRA saltavano
+        # ogni round ("global_weights ha 16 elementi, state_dict ne richiede
+        # 22"). Stessa regola del trainer, cosi' le due architetture coincidono.
+        "norm": ("group" if (ml_cfg.get("record_dp") or {}).get("enabled")
+                 else str(ml_cfg.get("norm", "batch"))),
     }
 
 
@@ -1218,6 +1176,31 @@ def run_fl_rounds(
         )
         logger.info(f"Cluster {cid}: {len(cluster_sessions[cid])} sessioni")
 
+    # Segnalazione 48 (2026-09-24): i trainer qui sopra nascono con
+    # inizializzazioni DIVERSE (estrazioni successive dal generatore globale),
+    # quindi nel round 1 FedAvg media tre reti indipendenti, a differenza del
+    # protocollo standard in cui il server distribuisce un unico modello
+    # iniziale. Nei JSON di nodp-sweep2 il modello globale dopo il round 1 ha
+    # loss sull'holdout 0.057-0.065 contro 0.0012 di loss locale; al round 3 e'
+    # recuperato. Con ml.common_init: true tutti i client partono dai pesi del
+    # primo trainer. Default False: il comportamento di tutte le run gia'
+    # prodotte resta identico e confrontabile. _global_weights torna a None
+    # perche' il termine prossimale FedProx resti attivo solo dal round 2, come
+    # nelle run esistenti: cosi' la cella di controllo differisce SOLO per
+    # l'inizializzazione (nel FedProx standard sarebbe attivo anche al round 1,
+    # verso il modello iniziale). Nessuna estrazione casuale in piu': il resto
+    # della run consuma il generatore come prima.
+    if ml_cfg.get("common_init", False) and cluster_ids:
+        _w0 = trainers[cluster_ids[0]].get_weights()
+        for cid in cluster_ids[1:]:
+            trainers[cid].set_weights(_w0)
+        for _t in trainers.values():
+            _t._global_weights = None
+        logger.info(
+            f"[COMMON INIT] {len(cluster_ids)} client inizializzati con i pesi di "
+            f"{cluster_ids[0]}-01 (ml.common_init: true, segnalazione 48)"
+        )
+
     gm = GradientManager({
         "epsilon":       exp_cfg["epsilon"],
         "delta":         exp_cfg["delta"],
@@ -1292,6 +1275,7 @@ def run_fl_rounds(
 
     for round_num in range(1, fl_rounds + 1):
         logger.info(f"=== FL Round {round_num}/{fl_rounds} ===")
+        _delta_norms: dict[str, float] = {}
 
         for cid, trainer in trainers.items():
             # Fix 2026-07-22 (review B1): cattura i pesi del modello PRIMA del
@@ -1305,6 +1289,28 @@ def run_fl_rounds(
 
             # Training locale
             update = trainer.train_local(cluster_sessions[cid], round_num)
+
+            # Norma L2 del delta del client (2026-09-24, solo misura: nessun
+            # effetto sul training ne' sulla DP). Serve a scegliere la soglia di
+            # clipping C (max_grad_norm) sui valori reali: stessa definizione di
+            # GradientManager._clip_weights(), cioe' parametri float esclusi i
+            # buffer BatchNorm, rispetto al modello ricevuto a inizio round.
+            _nd_sq = 0.0
+            for _k, _w, _r in zip(trainer.get_weight_keys(), update.weights or [],
+                                  pre_round_weights or []):
+                if _k.split(".")[-1] in ("running_mean", "running_var",
+                                         "num_batches_tracked"):
+                    continue
+                _wt = _w if isinstance(_w, torch.Tensor) else torch.tensor(_w)
+                _rt = _r if isinstance(_r, torch.Tensor) else torch.tensor(_r)
+                if not _wt.is_floating_point():
+                    continue
+                _nd_sq += float(((_wt.float() - _rt.float()) ** 2).sum())
+            _delta_norms[cid] = _nd_sq ** 0.5
+            logger.info(
+                f"[NORMA DELTA] Round {round_num} {cid}: ||delta||_2 = "
+                f"{_delta_norms[cid]:.4f} (C = {exp_cfg['max_grad_norm']})"
+            )
 
             # ── Gradient scaling attack ──────────────────────────────────────
             # Se questo cluster è il nodo Byzantine e l'attacco è abilitato,
@@ -1483,6 +1489,7 @@ def run_fl_rounds(
 
         results[round_num] = {
             "mean_loss":         aggregated.mean_loss,
+            "delta_norm_per_client": dict(_delta_norms),
             "n_participants":    aggregated.n_participants,
             "updates":           _collected_updates,  # privatized — usati da FedMIA — dal ML Plane
             "raw_updates":       _store_raw,          # pre-DP — usati da IDS (None sotto local DP) — dal ML Plane
@@ -6500,6 +6507,10 @@ def save_results(
     # l'accountant RDP. Opzionale: senza, epsilon_record_dp resta
     # None e la nota nel JSON lo dichiara.
     n_train_sessions: int | None = None,
+    # Segnalazione 4 (2026-09-24): sessioni di training di OGNI client,
+    # {cluster_id: n}. L'accountant record-DP e' per client (q = B/n_i);
+    # senza, epsilon_record_dp resta None invece di usare il totale.
+    n_train_per_client: dict[str, int] | None = None,
 ) -> Path:
     """
     Salva risultati in experiments/ (o sweep_dir) con timestamp.
@@ -6609,6 +6620,10 @@ def save_results(
             "delta":      cfg["experiment"]["delta"],
             "fl_rounds":  cfg["experiment"]["fl_rounds"],
             "proximal_mu": cfg["ml"]["proximal_mu"],
+            # common_init (2026-09-24, segnalazione 48): True solo nella cella di
+            # controllo; assente o False = client con inizializzazioni diverse,
+            # come in tutte le run prodotte fino a quella data.
+            "common_init": bool(cfg["ml"].get("common_init", False)),
             # epochs (2026-08-27): aggiunto per poter distinguere risultati di una
             # sweep di calibrazione epochs (sanity-check positivo, vedi
             # docs/TestRoadmap_DSN2027.md #2) leggendo il JSON, invece di doversi
@@ -6713,7 +6728,7 @@ def save_results(
             # JSON record-DP e' indistinguibile da uno no-DP, e il campo
             # 'epsilon' qui sopra (client-level) viene letto come budget della
             # cella, che e' falso: a sigma=1.0 il budget reale vale ~88, non 1.0.
-            **_record_dp_fields(cfg, n_train_sessions),
+            **_record_dp_fields(cfg, n_train_sessions, n_train_per_client),
         },
         "summary": {
             # Yeom 2018 — loss-based MIA sul modello globale (baseline debole)
@@ -6780,7 +6795,11 @@ def save_results(
             # Itera sull'unione di tutti i round: FL, MIA e IDS.
             # round 0 è escluso: contiene solo raw_global_weights (init model) per IDS.
             str(r): {
-                "fl":  {"mean_loss": (fl_results or {}).get(r, {}).get("mean_loss")},
+                "fl":  {"mean_loss": (fl_results or {}).get(r, {}).get("mean_loss"),
+                        # 2026-09-24: norma L2 del delta di ogni client prima della
+                        # DP, per scegliere max_grad_norm sui valori reali.
+                        "delta_norm_per_client": (fl_results or {}).get(r, {}).get(
+                            "delta_norm_per_client")},
                 "mia": mia_results.get(r, {}),
                 "ids": ids_results.get(r, {}),
             }
@@ -7441,6 +7460,7 @@ def main() -> None:
         cfg, mia_results, ids_results, fl_results,
         sweep_dir=sweep_dir, extra_summary=_extra_summary,
         n_train_sessions=len(train_sessions),
+        n_train_per_client={cid: len(s) for cid, s in cluster_sessions.items()},
     )
 
     logger.info("=" * 60)

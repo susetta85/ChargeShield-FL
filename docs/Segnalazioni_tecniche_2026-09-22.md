@@ -45,6 +45,24 @@ sui JSON prima di correggere, non fidarti della lista. L'ambiente di revisione n
    Stesso bug in `scripts/fix_json_recorddp_fields.py`. L'ε=7.15 a σ=5 e il "~88" a
    σ=1 vanno ricalcolati. `dp_accounting` non è dichiarato in `pyproject.toml` e
    l'ImportError degrada in silenzio a `epsilon_record_dp: None`.
+   **Corretto il 2026-09-24.** Il calcolo è in `src/ml/record_dp_accounting.py`;
+   `run_experiments.py::_record_dp_fields` (riga 103) lo chiama. Round e delta da
+   `cfg["experiment"]` (dove `load_config` scrive anche `--rounds`), nessun default
+   silenzioso; n per client passato da `main` (`n_train_per_client` di
+   `save_results`), ε per client e massimo in `epsilon_record_dp`. Accanto all'ε di
+   Poisson, dichiarato come approssimazione, il JSON riporta
+   `epsilon_record_dp_shuffle_bound`: adiacenza per sostituzione, senza
+   amplificazione, E·T gaussiani a σ/2, valido con lo shuffle. `dp-accounting` in
+   `pyproject.toml`; se manca, warning nel log. JSON già prodotti:
+   `scripts/ricalcola_epsilon_record_dp.py` (sola lettura; sostituisce
+   `scripts/_applicati/fix_json_recorddp_fields.py`, che resta com'era). Test:
+   `tests/test_record_dp_accounting.py`. **Rettifica** a questa voce: 7.15 (σ=5) e
+   88 (σ=1) erano già coerenti con 3 round e n = 1924 (Office 1 con canary, dai log),
+   sotto l'ipotesi di Poisson: ricalcolati, restano. Il limite valido con lo shuffle
+   per quelle run è 343 a σ=5. Per E-B a σ=1 il codice vecchio avrebbe scritto
+   ε ≈ 1.0; per client è JPL 4.8, Caltech 5.0, Office 1 30.4 (Poisson), 1212 il
+   limite con lo shuffle. Nessuna cella già prodotta cambia confrontabilità:
+   training e attacchi non sono toccati, solo i campi di budget del JSON.
 5. **Le celle record-DP sono etichettate no-DP.** Il warning `[NO-DP BASELINE]`
    (`run_experiments.py:1280`) scatta con `--no-dp` anche se `record_dp` è attivo.
    Nel registro (`scripts/genera_matrici_faseA.py`) nessuna delle 237 righe riporta
@@ -280,3 +298,64 @@ sono in `scripts/_applicati/`.*
     gruppo in entrambi gli script (tocca il codice: da autorizzare). Finche' non e'
     corretto, le cartelle di E-D ed E-E restano fuori da `experiments/` (per esempio
     in `experiments_altre_macchine/`) e si analizzano a parte.
+
+## M. Revisione del codice e dei numeri (2026-09-24)
+
+46. **Il costo "loss finale" non era la loss del modello rilasciato.**
+    `genera_matrici_faseA.py::scrivi_utility_privacy` (righe 626-634 prima della
+    correzione) prendeva `per_round[T].fl.mean_loss`, cioe' la media pesata delle loss
+    di addestramento LOCALE dei client nell'ultimo round (`fedavg_aggregator.py:138-143`,
+    media sulle 50 epoche, prima del rumore DP di quel round). Docstring, glossario, §0
+    di `ESPERIMENTI.md` e paper dichiarano invece la loss del modello globale finale
+    sull'holdout. Senza DP coincidono (`nodp-sweep2`: 0.00168 contro 0.00158); con DP
+    client-level no: a ε = 16 0.0061 contro 0.0945, cioe' 60 volte il no-DP appaiato
+    (30-157 per seed) invece di 2.3-3.7. **Corretto il 2026-09-24**: la colonna di costo
+    e' `-non_member_score_mean` di Yeom al round finale (modello globale rilasciato,
+    tutto l'holdout), gia' presente nei JSON; manca solo nel vecchio JSON del seed 789 a
+    ε = 2, gia' rilanciato. La loss locale resta come diagnostica e `Costo_per_sito` e'
+    rietichettato. Nessuna run da ripetere; cambia la lettura di E-A: nessun ε in 2-16
+    sotto la soglia di 3 volte.
+47. **Il conteggio per record non misurava l'appartenenza.**
+    `worst_case_livello_di_caso.py` (percentili fra i soli membri e permutazione dentro
+    il seed, righe 46-91 prima della correzione) misura la stabilita' del ranking di un
+    record fra seed, che c'e' anche per un record facile da ricostruire indipendentemente
+    dall'appartenenza. Controllo sui dump di `nodp-sweep2`: lo stesso criterio sulle
+    apparizioni da non-membro segnala 406 sessioni contro 288.9 attese, z = 6.85 (membri
+    412, z = 7.56); test appaiato sulle 28 129 sessioni membro in un seed e non-membro in
+    un altro: differenza di percentile +0.06 ± 0.22. **Corretto il 2026-09-24**: lo
+    script riporta anche il controllo sui non-membri, lo z della differenza e il test
+    appaiato, che e' la lettura primaria; aggiornati `scrivi_worst_case` e
+    `analyze_worst_case_vulnerability.py`. E-C ricalcolato su 8 celle: nessun segnale di
+    appartenenza per record (z appaiato fra -1.38 e +0.91). La metrica primaria per
+    record del §0 va sostituita: decisione del supervisore.
+48. **I client non partono dallo stesso modello iniziale.**
+    `run_experiments.py::run_fl_rounds` crea i trainer uno dopo l'altro (righe 1211-1219
+    prima della correzione) senza distribuire un modello comune: nel round 1 FedAvg media
+    tre reti con inizializzazioni diverse. In `nodp-sweep2` il modello globale dopo il
+    round 1 ha holdout 0.057-0.065 contro 0.0012 di loss locale; al round 3 e' recuperato
+    (0.003) e al round 10 coincide con la loss di addestramento. Non tocca le run canary,
+    che hanno un solo client. A parita' di seed l'inizializzazione e' la stessa in tutte
+    le celle, quindi i confronti restano omogenei. **Aggiunta il 2026-09-24** l'opzione
+    `ml.common_init` (default False: run esistenti invariate) con il config di controllo
+    `experiment_ctrl_common_init.yaml`; il JSON registra `common_init`. Da misurare con
+    il controllo di `ESPERIMENTI.md` prima di decidere se rifare campagne.
+49. **Con la DP a livello di record gli attacchi saltavano ogni round.** Il trainer forza
+    `norm: group` quando `record_dp` e' attivo (`autoencoder_trainer.py:146-152`), ma
+    `_autoencoder_arch_kwargs` ricostruiva BatchNorm se il config non diceva altro, e i
+    config `experiment_rq1_recorddp_nm*.yaml` non lo dicevano: FedMIA e Shadow saltano
+    ogni round ("global_weights ha 16 elementi, state_dict ne richiede 22"). Visto nella
+    prova E-B del 2026-09-24, fermata (`logs/prova_recorddp_s42_attacchi_saltati.log`,
+    nessun JSON). Le run canary record-DP non sono toccate: i loro config hanno
+    `norm: group`. **Corretto il 2026-09-24**: `norm: group` nei quattro config e la
+    stessa regola del trainer in `_autoencoder_arch_kwargs`.
+50. **Il TOST gira sul LiRA composto, la metrica primaria e' Yeom.**
+    `check_significance.py` applica `tost_equivalence` a `composed_lira_auc_roc` (blocco
+    TOST in `main`), mentre il §0 fissa la loss grezza (Yeom) come metrica primaria; l'IC
+    e' bootstrap percentile su 5 seed, piu' stretto di uno basato su t. Con Yeom fra
+    0.4999 e 0.5015 la conclusione non cambia. Da allineare.
+51. **In E-B gli shadow non replicano l'addestramento del bersaglio.** Con `--no-dp`,
+    necessario per il record-level, gli shadow di LiRA e dello Shadow attack si
+    addestrano senza DP-SGD (`run_lira`, ramo `if not no_dp` della privatizzazione degli
+    shadow): la calibrazione LiRA sotto record-level confronta il bersaglio con shadow non
+    privati. LiRA e' secondaria; da dichiarare, o da correggere prima di leggere E-B con
+    LiRA.

@@ -25,6 +25,10 @@ dependencies = [
                     # diversi) e chi ricostruisce l'ambiente dall'artifact non riproduce
                     # gli stessi numeri. Era gia' installato in questo sandbox (per
                     # questo il vero test girava qui) ma non nell'ambiente dichiarato.
+    "dp-accounting>=0.4",  # 2026-09-24 — segnalazione 4: accountant RDP della DP a livello
+                           # di record (src/ml/record_dp_accounting.py). Prima non era
+                           # dichiarato e l'ImportError lasciava epsilon_record_dp a None
+                           # senza avvisi.
 ]
 
 [project.optional-dependencies]

@@ -1,26 +1,20 @@
-# ChargeShield-FL — record-level DP in regime NATURALE (2026-09-21)
+# ChargeShield-FL — controllo del protocollo: inizializzazione comune (2026-09-24)
 #
-# MOTIVO. Le 10 run record-DP esistenti sono TUTTE in regime canary, tutte con
-# noise_multiplier=5.0, e su 3 seed. Non esiste una sola cella record-DP su dati
-# naturali, quindi il confronto client-level contro record-level — che e' il
-# cuore della RQ1, perche' il meccanismo protegge il client mentre l'attacco
-# misura il record — non e' mai stato eseguito.
+# RQ: nessuna. Controllo di validita' della campagna (segnalazione 48): nelle run
+# prodotte fino al 2026-09-24 i tre client partono da inizializzazioni diverse e
+# nel round 1 FedAvg media tre reti indipendenti. Questa cella e' identica a
+# config/experiment.yaml salvo ml.common_init: true (e il nome): tutti i client
+# partono dai pesi del primo trainer, il termine prossimale resta attivo dal
+# round 2. Si lancia no-DP, seed 42, e si confronta con nodp-sweep2 seed 42:
+# loss sull'holdout del modello rilasciato, Yeom, LiRA composto al round 10.
+# Se la differenza sta nella variabilita' fra seed, le campagne restano valide
+# e lo scostamento si dichiara; altrimenti si decide col supervisore.
 #
-# DISEGNO. Stessa configurazione ordinaria delle celle client-level (6 feature,
-# 10 round, 50 epoche locali), record_dp attivo, canary disabilitati. Il
-# confronto e' con la cella client-level allo stesso punto di osservazione e
-# allo stesso seed.
-#
-# ATTENZIONE. record_dp implementa DP-SGD vero (clipping per-esempio, Abadi et
-# al. 2016), quindi il costo computazionale e' molto piu' alto: microbatch da 1.
-# noise_multiplier NON e' epsilon: l'epsilon corrispondente e' riportato nel
-# JSON come epsilon_record_dp.
-
 # ChargeShield-FL — Experiment Configuration
 # Usato da: scripts/run_experiments.py
 
 experiment:
-  name: chargeshield_rq1_recorddp_nm5
+  name: chargeshield_ctrl_common_init
   # fl_rounds qui sotto è SOLO il default per chi invoca run_experiments.py
   # direttamente senza --rounds. Fix 2026-07-24 (trovato verificando i
   # parametri prima del consolidamento multi-seed): ogni target Makefile
@@ -97,11 +91,7 @@ ml:
   epochs: 50
   batch_size: 32
   proximal_mu: 0.01
-  norm: group          # 2026-09-24, segnalazione 49: come il trainer sotto record_dp
-  record_dp:
-    enabled: true
-    max_grad_norm: 1.0
-    noise_multiplier: 5.0
+  common_init: true    # unico campo nuovo: segnalazione 48
 
 output:
   experiments_dir: experiments
@@ -154,6 +144,3 @@ byzantine_attack:
   attack_type: gradient_scaling
   byzantine_node: synthetic_1  # cluster attaccante fittizio
   scale_factor: 10          # intensità: 10× → rilevabile da Krum; 3× → borderline
-
-# ── record-level DP (DP-SGD, clipping per-esempio) ─────────────
-
