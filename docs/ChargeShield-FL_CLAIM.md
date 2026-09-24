@@ -176,7 +176,7 @@ il controllo invece di fidarcene.
 > li usiamo per caratterizzare il confine di rilevabilità della memorizzazione
 > su un deployment di ricarica elettrica.**
 
-In una riga: **la letteratura usa i canary per validare la misura; noi validiamo
+ una riga da non usare: **la letteratura usa i canary per validare la misura; noi validiamo
 i canary.**
 
 ---
