@@ -171,6 +171,14 @@ in silenzio), 5 seed con `--no-dp`, confrontato con `nodp-sweep2`. Il braccio co
 DP attende il punto operativo indicato da E-A. Nessuna ipotesi che FedProx sia più
 privato; riportare insieme attacco e costo.
 
+**Stato (2026-09-24).** `config/experiment_rq3_mu0.yaml` creato: differisce da
+`config/experiment.yaml` solo per `ml.proximal_mu: 0.0` e per il nome. Il braccio
+no-DP si esegue su una terza macchina (Windows), alternando per seed mu = 0
+(`experiments/rq3-mu0`) e un braccio appaiato mu = 0.01 sulla stessa macchina
+(`experiments/rq3-mu0.01`, `config/experiment.yaml`), perche' `nodp-sweep2` e' di
+un'altra macchina e di un commit dell'8 settembre. Al rientro delle cartelle vale
+la segnalazione 45: tenerle fuori da `experiments/` finche' non e' corretta.
+
 ## E-D — RQ2, partizione IID contro per sito
 
 **Fase E della guida, terza priorità.** Config appaiati pronti, differiscono per il
@@ -197,7 +205,8 @@ per campione in ciascuna di `experiments/rq2-per_site` e `experiments/rq2-iid`, 
 righe `[ERROR]` nel log. Prima di leggerlo vanno copiate le due cartelle e
 `logs/rq2_partizione.log` in questo checkout, poi `check_significance.py` e
 `genera_matrici_faseA.py`. La macchina diversa è una variabile non registrata nei JSON:
-va dichiarata nel paper.
+va dichiarata nel paper. Attenzione alla segnalazione 45 prima di copiarle in
+`experiments/`.
 
 ## Canary bilanciato su un secondo sito
 

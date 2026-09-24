@@ -262,3 +262,21 @@ sono in `scripts/_applicati/`.*
     simulazioni); le celle a 14 run sommano sweep diversi dello stesso seed. Va deciso
     insieme alla segnalazione 9 quale regola vale; finché non è deciso, `STATO.md`
     riporta E-A dai JSON, una run per seed.
+
+## L. Trovato preparando E-E (2026-09-24)
+
+45. **Le run no-DP di E-D ed E-E finiscono nel gruppo "no-DP baseline" e ne
+    sostituiscono i seed.** `check_significance.py::discover_groups` (righe 273-330)
+    etichetta "no-DP baseline" ogni run con `no_dp=True` e senza `record_dp`, senza
+    guardare `partition_strategy` ne' `ml.proximal_mu`, che pure sono registrati nel
+    JSON, e deduplica per `(etichetta, seed)` tenendo il file piu' recente. Le run di
+    `rq2-per_site` e `rq2-iid` (E-D, 22-23 settembre) e quelle di E-E hanno
+    `no_dp=True`, gli stessi cinque seed e timestamp successivi a `nodp-sweep2`
+    (8 settembre): copiate in `experiments/`, sostituirebbero in silenzio i seed del
+    riferimento no-DP di RQ1, e fra loro vincerebbe l'ultima in ordine di timestamp.
+    `genera_matrici_faseA.py` fa lo stesso (cella "no-DP" alle righe 379 e 633, e il
+    foglio `Utility_privacy_limite` non deduplica, segnalazione 44). Stessa classe
+    della 37. Fix: includere `partition_strategy` e `proximal_mu` nell'etichetta del
+    gruppo in entrambi gli script (tocca il codice: da autorizzare). Finche' non e'
+    corretto, le cartelle di E-D ed E-E restano fuori da `experiments/` (per esempio
+    in `experiments_altre_macchine/`) e si analizzano a parte.
