@@ -100,11 +100,19 @@ più e i seed aggiuntivi non servono. TOST soddisfatto in tutte e quattro le cel
 composto (segnalazione 50). I JSON registrano `git_commit`: f145b79 ed ed0e1f9, e
 478d471 per il rilancio; il codice di training e attacco è lo stesso.
 
-Punto operativo, prime due celle della griglia (seed 42, JSON in `experiments/_op_*` letti
-il 2026-09-24, fuori dalle matrici perché prove a un seed): C = 0.25 con ε = 16 costa 12
-volte, C = 1 con ε = 64, stesso rumore, 2.6 volte. Il costo viene dalla distorsione del
-clipping più che dal rumore; ε = 64 con C = 1 è il primo punto sotto la soglia, da
-confermare su 5 seed. Attacchi al caso in entrambe.
+Punto operativo: griglia C ∈ {0.25, 0.5, 1} × ε ∈ {16, 64, 256}, seed 42 (JSON in
+`experiments/_op_*` letti il 2026-09-25, fuori dalle matrici perché prove a un seed). Costo
+in volte `nodp-sweep2`:
+
+| C (righe), ε (colonne) | 16 | 64 | 256 |
+|---|---|---|---|
+| 0.25 | 11.9 | 10.2 | 6.9 |
+| 0.5 | 8.8 | 5.3 | 2.6 |
+| 1 | 41.6 (E-A) | 2.6 | 2.9 |
+
+A parità di rumore C più grande costa meno: domina la distorsione del clipping. Tre celle
+sotto 3 volte; il punto operativo per la regola è C = 1, ε = 64, da confermare su 5 seed.
+Attacchi al caso in tutte le celle.
 
 ### 3.1c Controlli del protocollo (segnalazione 48)
 
@@ -255,7 +263,8 @@ braccio con DP, ancora da eseguire. Mancano le statistiche delle feature per cli
 due partizioni, che la guida chiede per mostrare che il fattore è cambiato.
 
 Il braccio per sito ha lo stesso config di `nodp-sweep2` ma gira sull'altra macchina, e
-la loss sull'holdout differisce per seed fino al 23% (segnalazione 55): il confronto di RQ2
+la loss sull'holdout differisce per seed fino al 23% (segnalazione 55, confermata: dipende
+dalla macchina, non dal codice): il confronto di RQ2
 usa perciò i due bracci della stessa macchina, non `nodp-sweep2`.
 
 ## 4. Cosa manca

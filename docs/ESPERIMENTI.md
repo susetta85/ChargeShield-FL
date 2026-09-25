@@ -386,14 +386,39 @@ done' > /dev/null 2>&1 & disown
 volte; li' 5 seed, in cartelle senza `_`, che formano una cella propria con C
 nell'etichetta (segnalazione 53, corretta).
 
-**Esito parziale, 2026-09-24 (2 celle su 8, seed 42).** C = 0.25 con ε = 16: holdout
-0.0189, 12 volte `nodp-sweep2`. C = 1 con ε = 64, stesso C/ε e quindi stesso rumore: 0.00409,
-2.6 volte. A parità di rumore C = 0.25 costa 4.6 volte di più: domina la distorsione del
-clipping, e abbassare C non è la leva. ε = 64 con C = 1 è il primo punto sotto 3 volte, quindi
-per la regola sopra è il punto operativo: 5 seed in `rq1-eps64` quando la griglia libera il
-Mac principale. Attacchi al caso in entrambe le celle (Yeom 0.496 e 0.500, TPR a FPR 1%
-0.010 e 0.012). Il salto fra ε = 16 (60 volte, E-A) ed ε = 64 suggerisce anche una cella
-ε = 32 per descrivere il ginocchio.
+**Esito, griglia completa il 2026-09-25 (seed 42, cartelle `_op_*`).** Loss sull'holdout del
+modello rilasciato in rapporto alla media di `nodp-sweep2` (0.00158); per C = 1 ed ε = 16 la
+run di E-A allo stesso seed.
+
+| C (righe), ε (colonne) | 16 | 64 | 256 |
+|---|---|---|---|
+| 0.25 | 11.9 | 10.2 | 6.9 |
+| 0.5 | 8.8 | 5.3 | 2.6 |
+| 1 | 41.6 (E-A) | 2.6 | 2.9 |
+
+A parità di rumore (stesso C/ε) il C più grande costa sempre meno: 0.25 con ε = 16 contro 1
+con ε = 64, 11.9 contro 2.6; 0.25 con ε = 64 contro 1 con ε = 256, 10.2 contro 2.9. La
+distorsione del clipping pesa più del rumore. A ε fisso il C migliore dipende da ε: a ε = 16
+conviene 0.5, a ε = 64 conviene 1. Sotto le 3 volte ci sono tre celle, e con C = 1 ε = 256 non
+costa meno di ε = 64: resta un costo di circa 2.6-2.9 volte che il rumore non spiega, a un seed
+solo. Attacchi al caso in tutte le celle (Yeom 0.494-0.502, TPR a FPR 1% 0.009-0.012). Norme
+dei delta al round 10: con C = 0.25 sempre sopra C (0.43-0.69), con C = 1 sotto (0.14-0.47).
+
+**Decisione, per la regola fissata prima della griglia.** Punto operativo C = 1, ε = 64, il
+più piccolo ε sotto 3 volte. Ora 5 seed in `rq1-eps64`, sul Mac principale come E-A; poi una
+cella ε = 32 a un seed per descrivere il ginocchio fra 16 e 64. Circa 13 ore.
+
+```bash
+nohup caffeinate -ims bash -c '
+set -e
+for s in 123 456 789 1234 42; do
+  python3 scripts/run_experiments.py --config config/experiment_rq1_eps64.yaml --rounds 10 \
+    --seed $s --sweep-dir experiments/rq1-eps64 \
+    --per-sample-dump experiments/rq1-eps64/per_sample_seed$s.json
+done
+python3 scripts/run_experiments.py --config config/experiment_rq1_eps32.yaml --rounds 10 \
+  --seed 42 --sweep-dir experiments/_op_eps32' > logs/rq1_eps64.log 2>&1 & disown
+```
 
 ## Canary su più siti
 

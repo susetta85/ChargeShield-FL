@@ -442,8 +442,11 @@ sono in `scripts/_applicati/`.*
     su `src/ml` aggiunge solo l'accountant, le modifiche a `run_fl_rounds` non toccano il
     percorso no-DP, e il controllo (a) riproduce `nodp-sweep2` alla sesta cifra sul Mac
     principale. La differenza viene quindi dalla macchina, sul percorso no-DP con
-    BatchNorm; con la DP per record (GroupNorm) i due Mac coincidono alla sesta cifra. Da
-    confermare con il controllo (a) sul secondo Mac. Conseguenza: le celle vanno
+    BatchNorm; con la DP per record (GroupNorm) i due Mac coincidono alla sesta cifra.
+    **Confermato il 2026-09-24** con il controllo (a) sul secondo Mac (codice di oggi,
+    `logs/ctrl_riproduzione_mac2.log` su quella macchina): la loss dei 10 round coincide
+    alla sesta cifra con il braccio per sito di E-D, girato li' con il commit 3815da7, e
+    differisce da `nodp-sweep2` gia' al round 1 (0.001195 contro 0.001200). Conseguenza: le celle vanno
     confrontate sulla stessa macchina, e ogni confronto fra macchine va dichiarato; vale
     per E-D, per E-E su Windows e per E-B sul secondo Mac contro il client-level del
     principale. La differenza resta dentro la variabilita' fra seed (0.00070-0.00219).
