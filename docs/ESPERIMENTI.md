@@ -141,6 +141,22 @@ round, 2 ore e 4 minuti; Shadow 5 minuti; LiRA circa 10 minuti per round). Da ri
 una cartella nuova. Gli shadow non usano DP-SGD (segnalazione 51): LiRA sotto
 record-level va letto con quella riserva.
 
+**Esito della prova, 2026-09-24** (`_prova_recorddp_v2`, secondo Mac, commit 2c4a0f0, σ = 1,
+seed 42; valori letti dal JSON sul secondo Mac e trascritti, da riverificare quando il JSON
+sarà in `experiments_altre_macchine/`). Tutti gli attacchi girano. Loss sull'holdout del
+modello rilasciato 0.00240: 1.29 volte il braccio per sito di E-D allo stesso seed e sulla
+stessa macchina, 1.51 volte la media di `nodp-sweep2`. Attacchi al caso: Yeom 0.498, Shadow
+medio 0.497, LiRA composto 0.504, TPR a FPR 1% 0.0104. ε per record, Poisson: 30.2 per
+Office 1 (1341 record), 5.0 Caltech, 4.8 JPL; limite valido con lo shuffle 1212. Durata
+sul secondo Mac: 3 ore e 24 minuti.
+
+Due conseguenze per la campagna. (1) A σ = 1 il costo è quasi nullo e l'ε di Office 1 è
+già 30: σ = 0.5 aggiungerebbe poco, σ = 2 e 5 descrivono meglio il compromesso. Proposta:
+σ ∈ {1, 2, 5}, config già presenti. (2) La cella record-DP cambia anche l'architettura
+(GroupNorm al posto di BatchNorm, clipping per esempio): il rapporto sul no-DP mescola
+l'effetto del rumore con quello della normalizzazione. Per separarli serve una cella
+no-DP con `ml.norm: group`, oggi assente. Entrambe le scelte sono da confermare.
+
 ```bash
 python3 scripts/run_experiments.py \
   --config config/experiment_rq1_recorddp_nm1.yaml --rounds 10 --seed 42 --no-dp \

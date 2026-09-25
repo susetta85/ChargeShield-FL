@@ -191,7 +191,11 @@ round, n = 1924: segnalazione 4, rettifica); il training usa shuffle, e il limit
 con lo shuffle, adiacenza per sostituzione e senza amplificazione, è 343. Su dati
 naturali: la prova del 24 settembre sul Mac principale è arrivata in fondo con gli
 attacchi saltati (segnalazione 49, JSON in `_prova_recorddp` da non usare); il rilancio
-`_prova_recorddp_v2` sul secondo Mac esegue tutti gli attacchi, esito in arrivo.
+`_prova_recorddp_v2` sul secondo Mac esegue tutti gli attacchi. A σ = 1, seed 42, la loss
+sull'holdout è 1.29 volte il no-DP della stessa macchina, gli attacchi sono al caso, l'ε
+per record di Poisson è 30.2 (Office 1) e il limite con lo shuffle 1212 (valori trascritti
+dal secondo Mac, `ESPERIMENTI.md` E-B). Il confronto col no-DP mescola rumore e cambio di
+normalizzazione (GroupNorm).
 
 ### 3.6 Infrastruttura
 
