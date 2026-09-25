@@ -253,6 +253,68 @@
         "z": -1.316
       },
       "lettura": "nessun segnale di appartenenza per record (test appaiato)"
+    },
+    "rq2-per_site": {
+      "cartella": "experiments_altre_macchine/rq2-per_site",
+      "n_seed": 5,
+      "sessioni_multi_seed": 17561,
+      "osservati": 432,
+      "attesi_per_caso": 289.99,
+      "sd_nulla": 16.09,
+      "z": 8.827,
+      "eccesso_assoluto": 142.0,
+      "percentuale_osservata": 2.46,
+      "percentuale_attesa": 1.651,
+      "controllo_non_membri": {
+        "n_seed": 5,
+        "sessioni_multi_seed": 17517,
+        "osservati": 404,
+        "attesi_per_caso": 289.86,
+        "sd_nulla": 15.95,
+        "z": 7.156,
+        "eccesso_assoluto": 114.1,
+        "percentuale_osservata": 2.306,
+        "percentuale_attesa": 1.655
+      },
+      "z_eccesso_membri_meno_non_membri": 1.231,
+      "appaiato": {
+        "n_sessioni": 28129,
+        "differenza_media": -0.329,
+        "errore_standard": 0.2203,
+        "z": -1.494
+      },
+      "lettura": "nessun segnale di appartenenza per record (test appaiato)"
+    },
+    "rq2-iid": {
+      "cartella": "experiments_altre_macchine/rq2-iid",
+      "n_seed": 5,
+      "sessioni_multi_seed": 17561,
+      "osservati": 366,
+      "attesi_per_caso": 291.69,
+      "sd_nulla": 17.61,
+      "z": 4.22,
+      "eccesso_assoluto": 74.3,
+      "percentuale_osservata": 2.084,
+      "percentuale_attesa": 1.661,
+      "controllo_non_membri": {
+        "n_seed": 5,
+        "sessioni_multi_seed": 17517,
+        "osservati": 504,
+        "attesi_per_caso": 292.05,
+        "sd_nulla": 15.72,
+        "z": 13.481,
+        "eccesso_assoluto": 212.0,
+        "percentuale_osservata": 2.877,
+        "percentuale_attesa": 1.667
+      },
+      "z_eccesso_membri_meno_non_membri": -5.833,
+      "appaiato": {
+        "n_sessioni": 28132,
+        "differenza_media": -0.034,
+        "errore_standard": 0.2215,
+        "z": -0.153
+      },
+      "lettura": "nessun segnale di appartenenza per record (test appaiato)"
     }
   }
 }

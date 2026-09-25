@@ -80,6 +80,10 @@ certs/
 # xlsx/json di sweep (potenzialmente grandi, in crescita con più esperimenti).
 experiments/
 
+# Run prodotte su altre macchine e analizzate a parte (segnalazione 45, 2026-09-24):
+# E-D (RQ2) dal secondo Mac. Lette da genera_matrici_faseA.py, foglio RQ2_partizione.
+experiments_altre_macchine/
+
 # Metadata locale di Claude Code / Cowork — mai da versionare.
 .claude/
 

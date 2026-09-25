@@ -255,11 +255,32 @@ per client cambia e va ricostruita.
 **Stato (2026-09-24).** Braccio no-DP eseguito dal 22 al 23 settembre su una seconda
 macchina (Mac, Python 3.13; E-A girava sulla prima con Python 3.14): 5 JSON e 5 dump
 per campione in ciascuna di `experiments/rq2-per_site` e `experiments/rq2-iid`, zero
-righe `[ERROR]` nel log. Prima di leggerlo vanno copiate le due cartelle e
-`logs/rq2_partizione.log` in questo checkout, poi `check_significance.py` e
-`genera_matrici_faseA.py`. La macchina diversa è una variabile non registrata nei JSON:
-va dichiarata nel paper. Attenzione alla segnalazione 45 prima di copiarle in
-`experiments/`.
+righe `[ERROR]` nel log. **Analizzato il 2026-09-24**: le due cartelle e il log stanno in
+`experiments_altre_macchine/` (non versionata; non in `experiments/`, segnalazione 45),
+`genera_matrici_faseA.py` ne fa il foglio `RQ2_partizione`, il test per record è in
+`livello_di_caso.json`. Esito in `STATO.md` 3.9: attacchi al caso in entrambi i bracci,
+nessuna differenza significativa, loss sull'holdout più bassa con IID ma non
+significativa. La macchina diversa è una variabile non registrata nei JSON e non è
+trascurabile (segnalazione 55): il confronto usa i due bracci della stessa macchina.
+
+**Braccio con DP.** Al punto operativo client-level scelto con la regola della griglia,
+prima di guardare RQ2 con DP: C = 1, ε = 64 (2.6 volte il no-DP, un seed). Config
+`experiment_rq2_per_site_eps64.yaml` ed `experiment_rq2_iid_eps64.yaml`, 10 run, sulla
+seconda macchina come il braccio senza DP (segnalazione 55); poi in
+`experiments_altre_macchine/`. Da aggiungere: le statistiche delle feature per client
+nelle due partizioni.
+
+```bash
+nohup caffeinate -ims bash -c '
+set -e
+for strat in per_site iid; do
+  for s in 42 123 456 789 1234; do
+    python3 scripts/run_experiments.py --config config/experiment_rq2_${strat}_eps64.yaml \
+      --rounds 10 --seed $s --sweep-dir experiments/rq2-${strat}-eps64 \
+      --per-sample-dump experiments/rq2-${strat}-eps64/per_sample_seed$s.json
+  done
+done' > logs/rq2_partizione_eps64.log 2>&1 & disown
+```
 
 ## Controllo dell'inizializzazione comune (segnalazione 48)
 
@@ -348,6 +369,15 @@ done' > /dev/null 2>&1 & disown
 0.00158), norme dei delta sotto DP, attacchi. Il ginocchio e' il primo punto sotto 3
 volte; li' 5 seed, in cartelle senza `_`, che formano una cella propria con C
 nell'etichetta (segnalazione 53, corretta).
+
+**Esito parziale, 2026-09-24 (2 celle su 8, seed 42).** C = 0.25 con ε = 16: holdout
+0.0189, 12 volte `nodp-sweep2`. C = 1 con ε = 64, stesso C/ε e quindi stesso rumore: 0.00409,
+2.6 volte. A parità di rumore C = 0.25 costa 4.6 volte di più: domina la distorsione del
+clipping, e abbassare C non è la leva. ε = 64 con C = 1 è il primo punto sotto 3 volte, quindi
+per la regola sopra è il punto operativo: 5 seed in `rq1-eps64` quando la griglia libera il
+Mac principale. Attacchi al caso in entrambe le celle (Yeom 0.496 e 0.500, TPR a FPR 1%
+0.010 e 0.012). Il salto fra ε = 16 (60 volte, E-A) ed ε = 64 suggerisce anche una cella
+ε = 32 per descrivere il ginocchio.
 
 ## Canary su più siti
 

@@ -1,7 +1,7 @@
 # ChargeShield-FL — Stato del progetto
 
 > **Stato: documento CANONICO.** Aggiornato il 2026-09-24 (revisione: costo sul modello
-> rilasciato, analisi per record corretta, E-C, segnalazioni 46-53, controlli del protocollo, celle delle matrici ricomposte). Solo numeri
+> rilasciato, analisi per record corretta, E-C, segnalazioni 46-55, controlli del protocollo, celle delle matrici ricomposte, RQ2 senza DP). Solo numeri
 > presenti in `risultati/` o letti dai JSON grezzi alla data, e lo dice dove.
 > Linea scientifica: la guida. Cosa fare: `ESPERIMENTI.md`. Cosa esiste nel codice:
 > `SISTEMA.md`. Questo file risponde a una sola domanda: a che punto siamo.
@@ -99,6 +99,12 @@ regime"). Sull'holdout la variabilità fra seed è di circa 3 volte in ogni cell
 più e i seed aggiuntivi non servono. TOST soddisfatto in tutte e quattro le celle, sul LiRA
 composto (segnalazione 50). I JSON registrano `git_commit`: f145b79 ed ed0e1f9, e
 478d471 per il rilancio; il codice di training e attacco è lo stesso.
+
+Punto operativo, prime due celle della griglia (seed 42, JSON in `experiments/_op_*` letti
+il 2026-09-24, fuori dalle matrici perché prove a un seed): C = 0.25 con ε = 16 costa 12
+volte, C = 1 con ε = 64, stesso rumore, 2.6 volte. Il costo viene dalla distorsione del
+clipping più che dal rumore; ε = 64 con C = 1 è il primo punto sotto la soglia, da
+confermare su 5 seed. Attacchi al caso in entrambe.
 
 ### 3.1c Controlli del protocollo (segnalazione 48)
 
@@ -217,17 +223,49 @@ primaria per record, che va sostituita dal test appaiato (segnalazione 47): la s
 è una decisione del supervisore. Manca il braccio B1 della Fase B, clipping senza
 rumore, per cui non esiste un flag.
 
+### 3.9 RQ2: partizione IID contro per sito, senza DP (E-D)
+
+Fonte: foglio `RQ2_partizione` di `risultati/Matrice_sintesi.xlsx` e
+`risultati/worst_case/livello_di_caso.json`, dai JSON di
+`experiments_altre_macchine/rq2-per_site` e `rq2-iid` (secondo Mac, commit 3815da7),
+letti il 2026-09-24. Senza DP, 5 seed per braccio appaiati per seed; i bracci differiscono
+solo per `partition.strategy`, con le stesse numerosità per client.
+
+| metrica | per sito | IID | IID − per sito, appaiata (± sd) | t, 4 gdl |
+|---|---|---|---|---|
+| loss sull'holdout del modello rilasciato | 0.00162 | 0.00133 | −0.00029 ± 0.00051 | −1.26 |
+| divario holdout − membri | 0.000278 | 0.000274 | −0.000004 ± 0.000079 | −0.12 |
+| Yeom, ultimo round | 0.5001 | 0.5011 | +0.0010 ± 0.0041 | 0.57 |
+| Shadow, media sui round | 0.5014 | 0.5012 | −0.0001 ± 0.0015 | −0.19 |
+| LiRA composto | 0.4982 | 0.4993 | +0.0011 ± 0.0044 | 0.57 |
+| TPR a FPR 1% (LiRA composto) | 0.0091 | 0.0089 | −0.0002 ± 0.0020 | −0.21 |
+
+Test appaiato per record: per sito −0.33 ± 0.22 (z = −1.49), IID −0.03 ± 0.22
+(z = −0.15), nessun segnale in nessuno dei due. Senza DP, passare dalla partizione per
+sito a una IID con le stesse numerosità non cambia il successo degli attacchi valutati,
+al caso in entrambi, né il divario fra membri e non membri. Il modello IID ha la loss
+sull'holdout più bassa in 4 seed su 5, in media del 18%, non significativa a 5 seed. Nel
+regime naturale RQ2 non misura quindi un effetto dell'eterogeneità sulla membership,
+perché non c'è segnale da modulare; l'effetto sul costo della DP si misura solo col
+braccio con DP, ancora da eseguire. Mancano le statistiche delle feature per client nelle
+due partizioni, che la guida chiede per mostrare che il fattore è cambiato.
+
+Il braccio per sito ha lo stesso config di `nodp-sweep2` ma gira sull'altra macchina, e
+la loss sull'holdout differisce per seed fino al 23% (segnalazione 55): il confronto di RQ2
+usa perciò i due bracci della stessa macchina, non `nodp-sweep2`.
+
 ## 4. Cosa manca
 
 L'elenco ordinato, con comandi e prerequisiti, è `ESPERIMENTI.md`. E-A è chiuso (sezione
 3.1b), E-C è eseguito sulle 8 celle esistenti (sezione 3.2). Il braccio no-DP di E-D
-(RQ2, 10 run, seconda macchina) e quello di E-E (RQ3, in corso su una terza macchina)
-vanno tenuti fuori da `experiments/` finché la segnalazione 45 non è corretta. I controlli
+(RQ2) è analizzato (sezione 3.9) e sta in `experiments_altre_macchine/`; quello di E-E
+(RQ3, in corso su una terza macchina) andrà nello stesso posto, non in `experiments/`
+(segnalazione 45). I controlli
 del protocollo sono eseguiti (sezione 3.1c). Restano: E-B record-level su dati naturali
 (prova da rifare dopo la segnalazione 49), la griglia del punto operativo client-level
 (8 run a un seed, config pronti), il canary su più siti, il braccio DP di E-D ed E-E, la
 rianalisi NVFlare. Da decidere col supervisore: la metrica primaria per record (segnalazione 47) e se
 le campagne future usano l'inizializzazione comune (segnalazione 48). I bug che toccano i numeri sono in
-`Segnalazioni_tecniche_2026-09-22.md`, punti 1, 5, 6, 9, 35, 36, 38, 45, 48, 50, 51. Fuori dal paper, come infrastruttura o lavoro futuro: ML Plane,
+`Segnalazioni_tecniche_2026-09-22.md`, punti 1, 5, 6, 9, 35, 36, 38, 45, 48, 50, 51, 55. Fuori dal paper, come infrastruttura o lavoro futuro: ML Plane,
 Privacy Auditor, PES, ByzantineDetector, FedMIA-gradient, secondo dataset. Per le
 frasi da non scrivere senza evidenza: guida, sezione 11.

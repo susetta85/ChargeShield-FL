@@ -27,7 +27,8 @@ citare numeri.
 Solo in `risultati/`: `Matrice_sintesi.xlsx`, `matrice_run_completati.xlsx`,
 `matrice_confronti.xlsx`, `decision_matrix_ACN_membership_DP.xlsx`,
 `worst_case/*.json`, generati da `scripts/genera_matrici_faseA.py` dai JSON in
-`experiments/`. `experiments/` e `logs/` non sono versionati: se mancano nel
+`experiments/` e, per le run di altre macchine (oggi E-D), in
+`experiments_altre_macchine/`. Queste cartelle e `logs/` non sono versionate: se mancano nel
 checkout, si legge dalle matrici e si dichiara che i JSON grezzi non sono stati
 riverificati. Un numero che non sta né in `risultati/` né in un JSON letto adesso
 non si scrive. Log incollati in chat e commenti nel codice non sono una fonte: in

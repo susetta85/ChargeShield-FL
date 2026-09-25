@@ -48,6 +48,8 @@ def composizione_celle() -> dict[str, list[str]]:
     Restituisce {etichetta: [percorsi assoluti]}."""
     return dict(discover_groups(os.path.join(RADICE, "experiments", "*", "experiment_*.json")))
 USCITA = os.path.join(RADICE, "risultati")
+# Run di altre macchine analizzate a parte (segnalazione 45): oggi E-D, RQ2.
+ALTRE_MACCHINE = os.path.join(RADICE, "experiments_altre_macchine")
 FONT = "Arial"
 
 # Commit del fix che rende la loss grezza dei canary indipendente dal filtro
@@ -427,18 +429,34 @@ def scrivi_confronti(righe):
             "Fase A — confrontabilita' (il confronto si esegue in Fase B)",
         ])
 
-    conf.append([
-        "C-RQ2", "RQ2", "partizione IID", "partizione non-IID (per sito)",
-        "no", "—",
-        "il braccio IID non esiste: i client sono i 3 siti reali raggruppati per "
-        "site_id, quindi la partizione e' non-IID per natura, non per costruzione",
-        "nessuna configurazione registra split.strategy: default 'random' in tutte "
-        "le 235 run; l'alternativa 'entity_aware' non e' mai stata attivata",
-        "—", "confronto non costruibile",
-        "Serve costruire il riferimento IID rimescolando le sessioni fra i siti a "
-        "parita' di numerosita' per client (guida Fase E).",
-        "Fase A — lacuna rilevata (si esegue in Fase E)",
-    ])
+    _rq2 = leggi_rq2()
+    if _rq2:
+        _s = sorted(set(_rq2["rq2-per_site"]) & set(_rq2["rq2-iid"]))
+        _c = sorted({j["config"].get("git_commit", "")[:7] for b in _rq2.values() for j in b.values()})
+        conf.append([
+            "C-RQ2", "RQ2", "partizione IID", "partizione per sito (non-IID)",
+            "si, appaiati per seed",
+            "dati, split globale, numerosita' per client, architettura, algoritmo, round, "
+            "epoche, macchina e commit identici: cambia solo partition.strategy",
+            "la partizione IID rompe corrispondenza client-sito, coerenza temporale e "
+            "separazione fra utenti: e' un riferimento sperimentale, non un deployment",
+            f"{len(_s)} seed per braccio, senza DP, seconda macchina "
+            f"(experiments_altre_macchine/, commit {', '.join(_c)})",
+            "una run per seed, la piu' recente",
+            "confronto disponibile",
+            "Numeri nel foglio RQ2_partizione di Matrice_sintesi.xlsx. Manca il braccio "
+            "con DP: stessa coppia al punto operativo client-level.",
+            "Fase E — braccio senza DP eseguito, braccio con DP da eseguire",
+        ])
+    else:
+        conf.append([
+            "C-RQ2", "RQ2", "partizione IID", "partizione non-IID (per sito)",
+            "no", "—",
+            "il braccio IID non e' in questo checkout (experiments_altre_macchine/ assente)",
+            "—", "—", "confronto non costruibile",
+            "Copiare E-D in experiments_altre_macchine/ (ESPERIMENTI.md, E-D).",
+            "Fase E",
+        ])
     conf.append([
         "C-RQ3", "RQ3", "FedAvg (mu=0)", "FedProx (mu=0.01)",
         "no", "—",
@@ -474,6 +492,31 @@ def scrivi_confronti(righe):
     return p, len(conf)
 
 
+def riga_rq2_sintesi(n_tot: int) -> list:
+    """Riga RQ2 della Matrice_sintesi, dai dati di E-D se ci sono."""
+    rq2 = leggi_rq2()
+    if not rq2:
+        return [f"{n_tot} run totali", "RQ2", "lacuna strutturale", "C-RQ2", "no",
+                "Il braccio IID di E-D non e' in questo checkout.",
+                "IID/non-IID x senza-DP/con-DP: 4 celle x 5 seed = 20 run.",
+                "media", "Partizione IID = riferimento sperimentale, non un deployment.",
+                "Fase A -> E"]
+    s, st = statistiche_rq2(rq2)
+    h = st["loss holdout del modello rilasciato"]; y = st["Yeom, AUC all'ultimo round"]
+    n = len(s)
+    return [f"{2 * n} run E-D senza DP (seconda macchina)", "RQ2", "completata da verificare",
+            "C-RQ2", "si, appaiando per seed",
+            f"Braccio senza DP eseguito. Loss sull'holdout del modello rilasciato, IID "
+            f"contro per sito: {sum(h['iid']) / n:.6f} contro {sum(h['per_site']) / n:.6f} "
+            f"(t = {h['t']:.2f}, {n - 1} gdl); Yeom {sum(y['iid']) / n:.4f} contro "
+            f"{sum(y['per_site']) / n:.4f}. Manca il braccio con DP.",
+            "IID e per sito al punto operativo client-level: 2 celle x 5 seed = 10 run; la "
+            "cella per sito coincide con quella di RQ1 al punto operativo.",
+            "media", "Partizione IID = riferimento sperimentale, non un deployment: va "
+            "dichiarato. Macchina diversa da E-A: variabile da dichiarare.",
+            "Fase E"]
+
+
 def scrivi_sintesi(righe):
     p = os.path.join(USCITA, "Matrice_sintesi.xlsx")
     wb = openpyxl.load_workbook(p)
@@ -499,16 +542,7 @@ def scrivi_sintesi(righe):
          "Raccomandazione motivata: A1/dp-fedavg, perche' un nullo li' limita "
          "anche A2 e A3.",
          "Fase A -> B"],
-        [f"{n_tot} run totali", "RQ2", "lacuna strutturale", "C-RQ2", "no",
-         "Non esiste alcun riferimento IID. I client sono i 3 siti reali, quindi "
-         "l'eterogeneita' non e' un fattore manipolato ma una proprieta' dei dati. "
-         "Nessuna run puo' colmarla a posteriori.",
-         "Costruire la partizione IID rimescolando le sessioni fra i siti a parita' "
-         "di numerosita' per client, poi IID/non-IID x senza-DP/con-DP: 4 celle x 5 "
-         "seed = 20 run.",
-         "media", "La guida (Fase E) avverte che una partizione IID artificiale e' "
-         "un riferimento sperimentale, non un deployment reale: va dichiarato.",
-         "Fase A -> E"],
+        riga_rq2_sintesi(n_tot),
         [f"{n_tot} run totali", "RQ3", "lacuna strutturale", "C-RQ3", "no",
          "proximal_mu = 0.01 su 235 run su 235. Nessuna esecuzione con mu=0, quindi "
          "il confronto FedAvg/FedProx non e' recuperabile dai dati esistenti.",
@@ -818,6 +852,144 @@ def scrivi_worst_case():
 
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# RQ2 (E-D): partizione IID contro per sito, dai JSON di experiments_altre_macchine/
+# ─────────────────────────────────────────────────────────────────────────────
+# Segnalazione 45: il braccio per sito di E-D ha il config della base, quindi in
+# experiments/ sostituirebbe i seed di nodp-sweep2 (una run per cella e seed, la piu'
+# recente). I due bracci, prodotti su una seconda macchina, stanno percio' in
+# experiments_altre_macchine/ (non versionato) e si confrontano fra loro, appaiati
+# per seed: stessa macchina, stesso commit, cambia solo partition.strategy.
+RQ2_BRACCI = {"rq2-per_site": "per_site", "rq2-iid": "iid"}
+T_CRITICO_4GDL = 2.776  # t di Student, 4 gradi di liberta', alpha = 0.05 bilaterale
+
+
+def leggi_rq2() -> dict | None:
+    """{braccio: {seed: json}} per i due bracci di E-D; None se manca un braccio.
+    A parita' di seed vince il file piu' recente (nome col timestamp), come in
+    check_significance.py. Un JSON con partition_strategy diversa dal braccio e'
+    un errore di dati, non un caso da gestire in silenzio."""
+    out = {}
+    for braccio, strategia in RQ2_BRACCI.items():
+        fs = sorted(glob.glob(os.path.join(ALTRE_MACCHINE, braccio, "experiment_*.json")))
+        if not fs:
+            return None
+        per_seed = {}
+        for f in fs:
+            j = json.load(open(f))
+            c = j.get("config") or {}
+            if c.get("partition_strategy") != strategia or not c.get("no_dp"):
+                raise ValueError(f"{f}: atteso partition_strategy={strategia} e no_dp, "
+                                 f"trovato {c.get('partition_strategy')}, no_dp={c.get('no_dp')}")
+            per_seed[c.get("seed")] = j
+        out[braccio] = per_seed
+    return out
+
+
+def _metriche_rq2(j: dict) -> dict:
+    pr = j.get("per_round") or {}
+    ult = str(max(int(r) for r in pr))
+    m = pr[ult].get("mia", {})
+    su = j.get("summary") or {}
+    ho = loss_holdout_modello_rilasciato(j)
+    mem = -m["member_score_mean"] if m.get("member_score_mean") is not None else None
+    return {
+        "loss holdout del modello rilasciato": ho,
+        "loss sui membri del modello rilasciato": mem,
+        "divario holdout - membri": (ho - mem) if (ho is not None and mem is not None) else None,
+        "loss addestramento locale (diagnostica)": loss_addestramento_locale(j),
+        "Yeom, AUC all'ultimo round": m.get("auc_roc"),
+        "Yeom, AUC media sui round": su.get("mean_auc_roc"),
+        "Shadow, AUC media sui round": su.get("mean_shadow_auc_roc"),
+        "LiRA composto, AUC": m.get("composed_lira_auc_roc"),
+        "LiRA composto, TPR a FPR 1%": m.get("composed_tpr_at_fpr_0.01"),
+    }
+
+
+def appaiato(a: list[float], b: list[float]) -> dict:
+    """Differenze b - a appaiate per posizione: media, deviazione standard, t con
+    n-1 gradi di liberta', quante differenze sono negative."""
+    d = [y - x for x, y in zip(a, b)]
+    n = len(d)
+    media = sum(d) / n
+    sd = (sum((x - media) ** 2 for x in d) / (n - 1)) ** 0.5 if n > 1 else None
+    t = media / (sd / n ** 0.5) if sd else None
+    return {"n": n, "media": media, "sd": sd, "t": t, "negative": sum(1 for x in d if x < 0)}
+
+
+def statistiche_rq2(rq2: dict) -> tuple[list[int], dict]:
+    seeds = sorted(set(rq2["rq2-per_site"]) & set(rq2["rq2-iid"]))
+    ps = {s: _metriche_rq2(rq2["rq2-per_site"][s]) for s in seeds}
+    ii = {s: _metriche_rq2(rq2["rq2-iid"][s]) for s in seeds}
+    stat = {}
+    for k in ps[seeds[0]]:
+        a = [ps[s][k] for s in seeds]; b = [ii[s][k] for s in seeds]
+        if any(v is None for v in a + b):
+            continue
+        stat[k] = {"per_site": a, "iid": b, **appaiato(a, b)}
+    return seeds, stat
+
+
+def scrivi_rq2():
+    rq2 = leggi_rq2()
+    if not rq2:
+        return 0
+    seeds, stat = statistiche_rq2(rq2)
+    nodp = {}
+    for f in composizione_celle().get("no-DP baseline", []):
+        j = json.load(open(f)); nodp[j["config"]["seed"]] = _metriche_rq2(j)
+    p = os.path.join(USCITA, "Matrice_sintesi.xlsx")
+    wb = openpyxl.load_workbook(p)
+    if "RQ2_partizione" in wb.sheetnames:
+        del wb["RQ2_partizione"]
+    ws = wb.create_sheet("RQ2_partizione")
+    ws.append(["metrica", f"per sito, media ({len(seeds)} seed)", "IID, media",
+               "differenza appaiata IID - per sito", "deviazione standard",
+               f"t ({len(seeds) - 1} gdl)", "seed con IID sotto per sito",
+               "nodp-sweep2, media (prima macchina, stesso config di per sito)", "lettura"])
+    for k, s in stat.items():
+        mps = sum(s["per_site"]) / len(seeds); mii = sum(s["iid"]) / len(seeds)
+        vnodp = [nodp[x][k] for x in seeds if x in nodp and nodp[x].get(k) is not None]
+        auc = "AUC" in k
+        sig = s["t"] is not None and abs(s["t"]) > T_CRITICO_4GDL
+        if auc:
+            let = ("entrambi i bracci al caso; " +
+                   ("differenza significativa a 5 seed" if sig else "nessuna differenza significativa a 5 seed"))
+        elif "TPR" in k:
+            let = ("il caso vale 0.01; " +
+                   ("differenza significativa" if sig else "nessuna differenza significativa"))
+        else:
+            let = ("differenza significativa a 5 seed" if sig else
+                   f"nessuna differenza significativa a 5 seed (|t| < {T_CRITICO_4GDL})")
+        ws.append([k, round(mps, 6), round(mii, 6), round(s["media"], 6),
+                   round(s["sd"], 6) if s["sd"] is not None else None,
+                   round(s["t"], 2) if s["t"] is not None else None,
+                   f"{s['negative']} su {s['n']}",
+                   round(sum(vnodp) / len(vnodp), 6) if len(vnodp) == len(seeds) else None, let])
+    ws.append([])
+    ws.append(["seed", "braccio"] + list(stat))
+    for x in seeds:
+        for b, lab in (("per_site", "per sito"), ("iid", "IID")):
+            ws.append([x, lab] + [round(stat[k][b][seeds.index(x)], 6) for k in stat])
+    commit = {j["config"].get("git_commit") for b in rq2.values() for j in b.values()}
+    ho = "loss holdout del modello rilasciato"
+    scarti = [abs(stat[ho]["per_site"][i] / nodp[x][ho] - 1) for i, x in enumerate(seeds)
+              if x in nodp and nodp[x].get(ho)]
+    ws.append([])
+    ws.append([f"Fonte: experiments_altre_macchine/rq2-per_site e rq2-iid (E-D, senza DP, seconda "
+               f"macchina, commit {', '.join(sorted(c[:7] for c in commit if c))}). I due bracci "
+               f"differiscono solo per partition.strategy e sono appaiati per seed. La partizione IID "
+               f"rimescola le sessioni fra i siti conservando le numerosita' per client: e' un "
+               f"riferimento sperimentale, non un deployment. nodp-sweep2 e' la stessa configurazione "
+               f"del braccio per sito su un'altra macchina e un altro commit: la loss sull'holdout "
+               f"differisce per seed fino al {100 * max(scarti):.0f}% (segnalazione 45), per questo "
+               f"il confronto di RQ2 non la usa." if scarti else
+               "Fonte: experiments_altre_macchine/ (E-D, seconda macchina)."])
+    stile(ws, [40, 16, 14, 18, 14, 10, 14, 22, 60], 40)
+    wb.save(p)
+    return len(stat)
+
+
 def scrivi_glossario():
     """Glossario delle metriche che compaiono nelle matrici.
 
@@ -920,6 +1092,7 @@ def main():
     n4 = scrivi_costo_per_sito()
     n5 = scrivi_utility_privacy()
     n6 = scrivi_worst_case()
+    n8 = scrivi_rq2()
     n7 = scrivi_glossario()
     print(f"registro run   : {n1} righe -> {p1}")
     print(f"confrontabilita: {n2} righe -> {p2}")
@@ -927,6 +1100,7 @@ def main():
     print(f"costo per sito : {n4} righe (foglio in Matrice_sintesi)")
     print(f"utility/privacy: {n5} righe (foglio in Matrice_sintesi)")
     print(f"worst-case     : {n6} righe (foglio in Matrice_sintesi)")
+    print(f"RQ2 partizione : {n8} metriche (foglio in Matrice_sintesi)")
     print(f"glossario      : {n7} voci (foglio in Matrice_sintesi)")
     stati = defaultdict(int)
     for r in righe:

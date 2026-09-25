@@ -124,6 +124,11 @@ del 2026-09-09 (dettagli nel commento in `Dockerfile.flare`).
 
 ## 9. Sistema operativo e hardware
 
+- Le run prodotte su macchine diverse da quella degli esperimenti stanno in
+  `experiments_altre_macchine/` (non versionata), con un file `PROVENIENZA.txt`: oggi
+  E-D dal secondo Mac (Python 3.13). Lo stesso config sui due Mac non da' numeri
+  identici sul percorso no-DP (segnalazione 55).
+
 - Sviluppo/esperimenti: macOS — gli sweep usano `caffeinate` (comando
   macOS-specifico) per impedire lo sleep durante run multi-ora.
 - Windows (PC con i9, 2026-09-24, E-E): la simulazione gira, ma con i thread di

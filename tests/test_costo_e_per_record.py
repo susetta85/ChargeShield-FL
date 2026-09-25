@@ -94,3 +94,32 @@ def test_main_con_piu_gruppi(tmp_path, monkeypatch, capsys):
     d = json.loads(out.read_text())
     assert set(d["gruppi"]) == {"a", "b"}
     assert "appaiato" in d["gruppi"]["a"]
+
+
+def test_appaiato_media_sd_t():
+    r = gm.appaiato([1.0, 2.0, 3.0], [2.0, 2.0, 5.0])
+    assert r["media"] == pytest.approx(1.0) and r["sd"] == pytest.approx(1.0)
+    assert r["t"] == pytest.approx(3 ** 0.5) and r["negative"] == 0 and r["n"] == 3
+
+
+def _rq2_json(strategia, seed, no_dp=True):
+    return {"config": {"seed": seed, "partition_strategy": strategia, "no_dp": no_dp},
+            "summary": {}, "per_round": {"10": {"fl": {"mean_loss": 0.001},
+                                               "mia": {"non_member_score_mean": -0.002,
+                                                       "member_score_mean": -0.0015}}}}
+
+
+def test_leggi_rq2_controlla_la_partizione(tmp_path, monkeypatch):
+    # segnalazione 45: i bracci di E-D si leggono da experiments_altre_macchine/
+    monkeypatch.setattr(gm, "ALTRE_MACCHINE", str(tmp_path))
+    assert gm.leggi_rq2() is None
+    for b, strat in (("rq2-per_site", "per_site"), ("rq2-iid", "iid")):
+        (tmp_path / b).mkdir()
+        (tmp_path / b / "experiment_20260923_000000.json").write_text(json.dumps(_rq2_json(strat, 42)))
+    r = gm.leggi_rq2()
+    assert set(r) == {"rq2-per_site", "rq2-iid"} and 42 in r["rq2-iid"]
+    seeds, st = gm.statistiche_rq2(r)
+    assert seeds == [42] and st["loss holdout del modello rilasciato"]["media"] == pytest.approx(0.0)
+    (tmp_path / "rq2-iid" / "experiment_20260924_000000.json").write_text(json.dumps(_rq2_json("per_site", 123)))
+    with pytest.raises(ValueError):
+        gm.leggi_rq2()

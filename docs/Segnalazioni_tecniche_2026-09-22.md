@@ -311,7 +311,10 @@ sono in `scripts/_applicati/`.*
     proprie. Resta vero per i bracci con il config della base (E-D `per_site`, E-E
     mu = 0.01): sono repliche di `nodp-sweep2` e, con la regola "la piu' recente", ne
     sostituirebbero i seed. Finche' la segnalazione 9 non e' decisa restano fuori da
-    `experiments/`.
+    `experiments/`. Dal 2026-09-24 E-D sta in `experiments_altre_macchine/` (non
+    versionata) e `genera_matrici_faseA.py` la legge a parte (foglio `RQ2_partizione`).
+    Le repliche non sono identiche (segnalazione 55): la regola "la piu' recente"
+    cambierebbe davvero i numeri del riferimento.
 
 ## M. Revisione del codice e dei numeri (2026-09-24)
 
@@ -431,3 +434,16 @@ sono in `scripts/_applicati/`.*
     paper. Nessuno script legge quelle righe: JSON e matrici non cambiano. **Corretto il
     2026-09-24**: le tre stringhe dicono Yeom. I log prodotti prima restano con la vecchia
     etichetta, comprese le prime due celle della griglia del punto operativo.
+55. **Stesso config su due Mac: la loss sull'holdout differisce fino al 23% per seed.**
+    Il braccio per sito di E-D (secondo Mac, Python 3.13, commit 3815da7) e `nodp-sweep2`
+    (Mac principale) hanno lo stesso config, ma la loss sull'holdout al round 10 differisce
+    per seed fino al 23% (seed 123: 0.00202 contro 0.00164) e la loss di addestramento fino
+    a 3e-4 in valore assoluto. Il codice di training e' lo stesso: `git diff 3815da7 HEAD`
+    su `src/ml` aggiunge solo l'accountant, le modifiche a `run_fl_rounds` non toccano il
+    percorso no-DP, e il controllo (a) riproduce `nodp-sweep2` alla sesta cifra sul Mac
+    principale. La differenza viene quindi dalla macchina, sul percorso no-DP con
+    BatchNorm; con la DP per record (GroupNorm) i due Mac coincidono alla sesta cifra. Da
+    confermare con il controllo (a) sul secondo Mac. Conseguenza: le celle vanno
+    confrontate sulla stessa macchina, e ogni confronto fra macchine va dichiarato; vale
+    per E-D, per E-E su Windows e per E-B sul secondo Mac contro il client-level del
+    principale. La differenza resta dentro la variabilita' fra seed (0.00070-0.00219).

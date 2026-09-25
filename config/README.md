@@ -17,6 +17,7 @@
 | `experiment_rq1_C{0.25,0.5}_eps{16,64,256}.yaml` | ε e `experiment.max_grad_norm` (C) | punto operativo client-level; un seed, sweep-dir `_op_*` |
 | `experiment_rq1_recorddp_nm{0.5,1,2,5}.yaml` | `record_dp` attivo con quel `noise_multiplier` | E-B, **sempre con `--no-dp`** |
 | `experiment_rq2_per_site.yaml`, `experiment_rq2_iid.yaml` | solo `partition.strategy` | E-D, RQ2 |
+| `experiment_rq2_{per_site,iid}_eps64.yaml` | `partition.strategy` ed ε = 64 (C = 1) | E-D, RQ2, braccio con DP al punto operativo |
 | `experiment_rq3_mu0.yaml` | solo `ml.proximal_mu: 0.0` (FedAvg) | E-E, RQ3, con `--no-dp` |
 | `experiment_ctrl_common_init.yaml` | solo `ml.common_init: true` | controllo del protocollo, segnalazione 48; no-DP, seed 42 |
 | `experiment_robustness_entity_split.yaml` | `split.strategy: entity_aware` | robustezza dello split, già eseguito a 5 seed |
