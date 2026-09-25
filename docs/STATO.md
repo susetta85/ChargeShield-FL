@@ -183,8 +183,9 @@ sull'holdout del modello rilasciato 0.006, simile alla loss locale). Un seed, ne
 braccio swap. L'ε di 7.15 è corretto sotto l'ipotesi di campionamento di Poisson (3
 round, n = 1924: segnalazione 4, rettifica); il training usa shuffle, e il limite valido
 con lo shuffle, adiacenza per sostituzione e senza amplificazione, è 343. Su dati
-naturali non esiste ancora nessuna run valida: la prova del 24 settembre è stata fermata
-perché gli attacchi saltavano (segnalazione 49).
+naturali: la prova del 24 settembre sul Mac principale è arrivata in fondo con gli
+attacchi saltati (segnalazione 49, JSON in `_prova_recorddp` da non usare); il rilancio
+`_prova_recorddp_v2` sul secondo Mac esegue tutti gli attacchi, esito in arrivo.
 
 ### 3.6 Infrastruttura
 

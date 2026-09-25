@@ -366,7 +366,10 @@ sono in `scripts/_applicati/`.*
     prova E-B del 2026-09-24, fermata (`logs/prova_recorddp_s42_attacchi_saltati.log`,
     nessun JSON). Le run canary record-DP non sono toccate: i loro config hanno
     `norm: group`. **Corretto il 2026-09-24**: `norm: group` nei quattro config e la
-    stessa regola del trainer in `_autoencoder_arch_kwargs`.
+    stessa regola del trainer in `_autoencoder_arch_kwargs`. **Verificato il 2026-09-24**
+    con la prova `_prova_recorddp_v2` sul secondo Mac: Yeom, Shadow e LiRA producono un
+    AUC in ogni round, nessun `skip` oltre al round 0; la loss di addestramento dei 10
+    round coincide alla sesta cifra con il primo tentativo.
 50. **Il TOST gira sul LiRA composto, la metrica primaria e' Yeom.**
     `check_significance.py` applica `tost_equivalence` a `composed_lira_auc_roc` (blocco
     TOST in `main`), mentre il §0 fissa la loss grezza (Yeom) come metrica primaria; l'IC
@@ -420,3 +423,11 @@ sono in `scripts/_applicati/`.*
     `genera_matrici_faseA.py` (test in `tests/test_etichetta_cella.py`). Una run con
     C = 0.25 va nella cella "dp-fedavg, eps=16.0, C=0.25"; `_ctrl_common_init` avrebbe
     "no-DP baseline, init comune" ed e' comunque esclusa come cartella `_*`.
+54. **Nei log l'attacco di Yeom si chiama ancora "FedMIA".** `run_yeom`
+    (`run_experiments.py`, righe 1978, 2013 e 2184 prima della correzione) scriveva
+    `FedMIA — members`, `FedMIA pool bilanciato` e `Round N — FedMIA AUC-ROC`: residuo del
+    nome `run_fedmia`, rinominato nello Sprint 10zz+107. Chi legge un log crede che giri
+    l'attacco FedMIA della letteratura, che non e' nel registro (Yeom, Shadow, LiRA) ne' nel
+    paper. Nessuno script legge quelle righe: JSON e matrici non cambiano. **Corretto il
+    2026-09-24**: le tre stringhe dicono Yeom. I log prodotti prima restano con la vecchia
+    etichetta, comprese le prime due celle della griglia del punto operativo.

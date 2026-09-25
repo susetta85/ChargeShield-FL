@@ -1975,7 +1975,7 @@ def run_yeom(
     """
     from sklearn.metrics import roc_auc_score
 
-    logger.info(f"FedMIA — members: {len(members)}, non-members: {len(non_members)}")
+    logger.info(f"Yeom — members: {len(members)}, non-members: {len(non_members)}")
 
     # Observation surface: global (default, invariato) vs client (Sprint 10zz+94,
     # 2026-09-15) — opt-in richiesto esplicitamente dall'utente per "chiudere il
@@ -2010,7 +2010,7 @@ def run_yeom(
     _n_bal           = min(len(members), len(non_members))
     members_balanced = _pool_rng.sample(members, _n_bal)
     logger.info(
-        f"FedMIA pool bilanciato — members: {len(members_balanced)}, "
+        f"Yeom pool bilanciato — members: {len(members_balanced)}, "
         f"non-members: {len(non_members)} "
         f"(members originali: {len(members)}, campionati con seed fisso)"
     )
@@ -2181,7 +2181,9 @@ def run_yeom(
         labels_arr = labels_arr[valid_mask]
         scores_arr = scores_arr[valid_mask]
         auc = roc_auc_score(labels_arr, scores_arr)
-        logger.info(f"Round {round_num} — FedMIA AUC-ROC: {auc:.4f}")
+        # Segnalazione 54 (2026-09-24): era "FedMIA AUC-ROC", residuo del vecchio
+        # nome run_fedmia. E' l'attacco di Yeom, non FedMIA.
+        logger.info(f"Round {round_num} — Yeom AUC-ROC: {auc:.4f}")
 
         # Sprint 10zz+28 (2026-09-03, task #53) — TPR@low-FPR/Advantage/
         # Confusion Matrix, finora cablati SOLO su LiRA (_tpr_at_fixed_fpr/
