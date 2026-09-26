@@ -23,6 +23,7 @@ from __future__ import annotations
 import glob
 import json
 import os
+import math
 import re
 from collections import defaultdict
 from datetime import datetime
@@ -444,9 +445,12 @@ def scrivi_confronti(righe):
             f"(experiments_altre_macchine/, commit {', '.join(_c)})",
             "una run per seed, la piu' recente",
             "confronto disponibile",
-            "Numeri nel foglio RQ2_partizione di Matrice_sintesi.xlsx. Manca il braccio "
-            "con DP: stessa coppia al punto operativo client-level.",
-            "Fase E — braccio senza DP eseguito, braccio con DP da eseguire",
+            "Numeri nel foglio RQ2_partizione di Matrice_sintesi.xlsx. " +
+            ("Braccio con DP (eps = 64, C = 1) eseguito sulla stessa macchina."
+             if leggi_rq2(con_dp=True) else
+             "Manca il braccio con DP: stessa coppia al punto operativo client-level."),
+            "Fase E — " + ("bracci senza DP e con DP eseguiti" if leggi_rq2(con_dp=True)
+                           else "braccio senza DP eseguito, braccio con DP da eseguire"),
         ])
     else:
         conf.append([
@@ -492,6 +496,18 @@ def scrivi_confronti(righe):
     return p, len(conf)
 
 
+def _testo_rq2_dp() -> str:
+    """Una frase sul braccio con DP di RQ2, dai dati se ci sono."""
+    d = leggi_rq2(con_dp=True)
+    if not d:
+        return "Manca il braccio con DP."
+    s, st = statistiche_rq2(d)
+    h = st["loss holdout del modello rilasciato"]; n = len(s)
+    return (f"Con DP (eps = {RQ2_EPS_DP:g}, C = 1): loss sull'holdout IID contro per sito "
+            f"{sum(h['iid']) / n:.6f} contro {sum(h['per_site']) / n:.6f} (t = {h['t']:.2f}); "
+            f"attacchi al caso in entrambi.")
+
+
 def riga_rq2_sintesi(n_tot: int) -> list:
     """Riga RQ2 della Matrice_sintesi, dai dati di E-D se ci sono."""
     rq2 = leggi_rq2()
@@ -509,9 +525,10 @@ def riga_rq2_sintesi(n_tot: int) -> list:
             f"Braccio senza DP eseguito. Loss sull'holdout del modello rilasciato, IID "
             f"contro per sito: {sum(h['iid']) / n:.6f} contro {sum(h['per_site']) / n:.6f} "
             f"(t = {h['t']:.2f}, {n - 1} gdl); Yeom {sum(y['iid']) / n:.4f} contro "
-            f"{sum(y['per_site']) / n:.4f}. Manca il braccio con DP.",
-            "IID e per sito al punto operativo client-level: 2 celle x 5 seed = 10 run; la "
-            "cella per sito coincide con quella di RQ1 al punto operativo.",
+            f"{sum(y['per_site']) / n:.4f}. " + _testo_rq2_dp(),
+            ("Nessuna run mancante per il confronto minimo della guida." if leggi_rq2(con_dp=True) else
+             "IID e per sito al punto operativo client-level: 2 celle x 5 seed = 10 run; la "
+             "cella per sito coincide con quella di RQ1 al punto operativo."),
             "media", "Partizione IID = riferimento sperimentale, non un deployment: va "
             "dichiarato. Macchina diversa da E-A: variabile da dichiarare.",
             "Fase E"]
@@ -861,16 +878,21 @@ def scrivi_worst_case():
 # experiments_altre_macchine/ (non versionato) e si confrontano fra loro, appaiati
 # per seed: stessa macchina, stesso commit, cambia solo partition.strategy.
 RQ2_BRACCI = {"rq2-per_site": "per_site", "rq2-iid": "iid"}
+# Braccio con DP (2026-09-26): la stessa coppia al punto operativo scelto prima di
+# vederla, dp-fedavg con eps = 64 e C = 1 (config experiment_rq2_*_eps64.yaml).
+RQ2_BRACCI_DP = {"rq2-per_site-eps64": "per_site", "rq2-iid-eps64": "iid"}
+RQ2_EPS_DP = 64.0
 T_CRITICO_4GDL = 2.776  # t di Student, 4 gradi di liberta', alpha = 0.05 bilaterale
 
 
-def leggi_rq2() -> dict | None:
+def leggi_rq2(con_dp: bool = False) -> dict | None:
     """{braccio: {seed: json}} per i due bracci di E-D; None se manca un braccio.
-    A parita' di seed vince il file piu' recente (nome col timestamp), come in
-    check_significance.py. Un JSON con partition_strategy diversa dal braccio e'
-    un errore di dati, non un caso da gestire in silenzio."""
+    Le chiavi sono sempre "rq2-per_site" e "rq2-iid"; con_dp=True legge la coppia
+    con DP (RQ2_BRACCI_DP). A parita' di seed vince il file piu' recente (nome col
+    timestamp), come in check_significance.py. Un JSON con partizione o regime
+    diversi dal braccio e' un errore di dati, non un caso da gestire in silenzio."""
     out = {}
-    for braccio, strategia in RQ2_BRACCI.items():
+    for braccio, strategia in (RQ2_BRACCI_DP if con_dp else RQ2_BRACCI).items():
         fs = sorted(glob.glob(os.path.join(ALTRE_MACCHINE, braccio, "experiment_*.json")))
         if not fs:
             return None
@@ -878,11 +900,16 @@ def leggi_rq2() -> dict | None:
         for f in fs:
             j = json.load(open(f))
             c = j.get("config") or {}
-            if c.get("partition_strategy") != strategia or not c.get("no_dp"):
-                raise ValueError(f"{f}: atteso partition_strategy={strategia} e no_dp, "
-                                 f"trovato {c.get('partition_strategy')}, no_dp={c.get('no_dp')}")
+            regime_ok = ((not c.get("no_dp") and c.get("epsilon") == RQ2_EPS_DP
+                          and c.get("max_grad_norm") == 1.0 and c.get("dp_mode") == "dp-fedavg")
+                         if con_dp else bool(c.get("no_dp")))
+            if c.get("partition_strategy") != strategia or not regime_ok:
+                raise ValueError(f"{f}: atteso partition_strategy={strategia} e "
+                                 f"{'dp-fedavg eps=' + str(RQ2_EPS_DP) + ' C=1' if con_dp else 'no_dp'}, "
+                                 f"trovato {c.get('partition_strategy')}, no_dp={c.get('no_dp')}, "
+                                 f"eps={c.get('epsilon')}, C={c.get('max_grad_norm')}")
             per_seed[c.get("seed")] = j
-        out[braccio] = per_seed
+        out[braccio.replace("-eps64", "")] = per_seed
     return out
 
 
@@ -930,6 +957,19 @@ def statistiche_rq2(rq2: dict) -> tuple[list[int], dict]:
     return seeds, stat
 
 
+def _lettura_rq2(k: str, s: dict) -> str:
+    """Lettura di una riga del foglio RQ2_partizione, uguale per i due regimi."""
+    sig = s["t"] is not None and abs(s["t"]) > T_CRITICO_4GDL
+    if "AUC" in k:
+        return ("entrambi i bracci al caso; " +
+                ("differenza significativa a 5 seed" if sig else "nessuna differenza significativa a 5 seed"))
+    if "TPR" in k:
+        return ("il caso vale 0.01; " +
+                ("differenza significativa" if sig else "nessuna differenza significativa"))
+    return ("differenza significativa a 5 seed" if sig else
+            f"nessuna differenza significativa a 5 seed (|t| < {T_CRITICO_4GDL})")
+
+
 def scrivi_rq2():
     rq2 = leggi_rq2()
     if not rq2:
@@ -950,17 +990,7 @@ def scrivi_rq2():
     for k, s in stat.items():
         mps = sum(s["per_site"]) / len(seeds); mii = sum(s["iid"]) / len(seeds)
         vnodp = [nodp[x][k] for x in seeds if x in nodp and nodp[x].get(k) is not None]
-        auc = "AUC" in k
-        sig = s["t"] is not None and abs(s["t"]) > T_CRITICO_4GDL
-        if auc:
-            let = ("entrambi i bracci al caso; " +
-                   ("differenza significativa a 5 seed" if sig else "nessuna differenza significativa a 5 seed"))
-        elif "TPR" in k:
-            let = ("il caso vale 0.01; " +
-                   ("differenza significativa" if sig else "nessuna differenza significativa"))
-        else:
-            let = ("differenza significativa a 5 seed" if sig else
-                   f"nessuna differenza significativa a 5 seed (|t| < {T_CRITICO_4GDL})")
+        let = _lettura_rq2(k, s)
         ws.append([k, round(mps, 6), round(mii, 6), round(s["media"], 6),
                    round(s["sd"], 6) if s["sd"] is not None else None,
                    round(s["t"], 2) if s["t"] is not None else None,
@@ -985,9 +1015,59 @@ def scrivi_rq2():
                f"differisce per seed fino al {100 * max(scarti):.0f}% (segnalazione 45), per questo "
                f"il confronto di RQ2 non la usa." if scarti else
                "Fonte: experiments_altre_macchine/ (E-D, seconda macchina)."])
+    rq2dp = leggi_rq2(con_dp=True)
+    n_dp = 0
+    if rq2dp:
+        sd_, st_dp = statistiche_rq2(rq2dp)
+        ws.append([])
+        ws.append([f"CON DP: dp-fedavg, eps = {RQ2_EPS_DP:g} per round, C = 1 (stesso punto per "
+                   f"le due partizioni, scelto prima di vederle), {len(sd_)} seed per braccio"])
+        ws.append(["metrica", "per sito, media", "IID, media", "differenza appaiata IID - per sito",
+                   "deviazione standard", f"t ({len(sd_) - 1} gdl)", "seed con IID sotto per sito",
+                   "", "lettura"])
+        for k, s in st_dp.items():
+            ws.append([k, round(sum(s["per_site"]) / len(sd_), 6), round(sum(s["iid"]) / len(sd_), 6),
+                       round(s["media"], 6), round(s["sd"], 6) if s["sd"] is not None else None,
+                       round(s["t"], 2) if s["t"] is not None else None,
+                       f"{s['negative']} su {s['n']}", None, _lettura_rq2(k, s)])
+        n_dp = len(st_dp)
+        ws.append([])
+        ws.append(["seed", "braccio (con DP)"] + list(st_dp))
+        for x in sd_:
+            for b, lab in (("per_site", "per sito"), ("iid", "IID")):
+                ws.append([x, lab] + [round(st_dp[k][b][sd_.index(x)], 6) for k in st_dp])
+        commit_dp = {j["config"].get("git_commit") for b in rq2dp.values() for j in b.values()}
+        n_sig = sum(1 for st in (stat, st_dp) for v in st.values()
+                    if v["t"] is not None and abs(v["t"]) > T_CRITICO_4GDL)
+        ws.append([f"Fonte: experiments_altre_macchine/rq2-per_site-eps64 e rq2-iid-eps64 (seconda "
+                   f"macchina, commit {', '.join(sorted(c[:7] for c in commit_dp if c))}). "
+                   f"Molteplicita': {len(stat) + len(st_dp)} test appaiati in questo foglio, "
+                   f"{n_sig} con |t| > {T_CRITICO_4GDL}; a alpha = 0.05 senza correzione ce ne si "
+                   f"attende circa {0.05 * (len(stat) + len(st_dp)):.1f} per caso. Metriche primarie "
+                   f"(ESPERIMENTI.md, sezione 0): loss sull'holdout per il costo, Yeom e test per "
+                   f"record (foglio Worst_case_per_record) per l'attacco; LiRA e Shadow sono "
+                   f"secondarie e la calibrazione di LiRA e' degenere (STATO.md 3.4)."])
+        # costo della DP per partizione: rapporto con DP / senza DP allo stesso seed
+        comuni = [x for x in sd_ if x in seeds]
+        if comuni:
+            rap = {b: [st_dp[ho][b][sd_.index(x)] / stat[ho][b][seeds.index(x)] for x in comuni]
+                   for b in ("per_site", "iid")}
+            geo = {b: math.exp(sum(math.log(v) for v in rap[b]) / len(comuni)) for b in rap}
+            inter = appaiato([math.log(v) for v in rap["per_site"]], [math.log(v) for v in rap["iid"]])
+            ws.append([])
+            ws.append(["COSTO DELLA DP PER PARTIZIONE: loss sull'holdout con DP / senza DP, stesso seed"])
+            ws.append(["seed"] + [str(x) for x in comuni] + ["media geometrica"])
+            for b, lab in (("per_site", "per sito"), ("iid", "IID")):
+                ws.append([lab] + [round(v, 2) for v in rap[b]] + [round(geo[b], 2)])
+            sig = inter["t"] is not None and abs(inter["t"]) > T_CRITICO_4GDL
+            ws.append([f"Interazione partizione x DP, sul logaritmo del rapporto (IID - per sito): "
+                       f"media {inter['media']:+.3f}, sd {inter['sd']:.3f}, t({inter['n'] - 1}) = "
+                       f"{inter['t']:.2f}; " + ("significativa" if sig else
+                       f"non significativa a {inter['n']} seed (|t| < {T_CRITICO_4GDL})") +
+                       f". Rapporto IID/per sito delle medie geometriche: {geo['iid'] / geo['per_site']:.2f}."])
     stile(ws, [40, 16, 14, 18, 14, 10, 14, 22, 60], 40)
     wb.save(p)
-    return len(stat)
+    return len(stat) + n_dp
 
 
 def scrivi_glossario():

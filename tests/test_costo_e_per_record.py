@@ -102,8 +102,11 @@ def test_appaiato_media_sd_t():
     assert r["t"] == pytest.approx(3 ** 0.5) and r["negative"] == 0 and r["n"] == 3
 
 
-def _rq2_json(strategia, seed, no_dp=True):
-    return {"config": {"seed": seed, "partition_strategy": strategia, "no_dp": no_dp},
+def _rq2_json(strategia, seed, no_dp=True, eps=None, C=None):
+    cfg = {"seed": seed, "partition_strategy": strategia, "no_dp": no_dp}
+    if not no_dp:
+        cfg.update({"epsilon": eps, "max_grad_norm": C, "dp_mode": "dp-fedavg"})
+    return {"config": cfg,
             "summary": {}, "per_round": {"10": {"fl": {"mean_loss": 0.001},
                                                "mia": {"non_member_score_mean": -0.002,
                                                        "member_score_mean": -0.0015}}}}
@@ -123,3 +126,25 @@ def test_leggi_rq2_controlla_la_partizione(tmp_path, monkeypatch):
     (tmp_path / "rq2-iid" / "experiment_20260924_000000.json").write_text(json.dumps(_rq2_json("per_site", 123)))
     with pytest.raises(ValueError):
         gm.leggi_rq2()
+
+
+def test_leggi_rq2_con_dp_controlla_regime_e_punto_operativo(tmp_path, monkeypatch):
+    # braccio con DP di E-D: dp-fedavg a eps = 64 e C = 1, chiavi uguali a quelle senza DP
+    monkeypatch.setattr(gm, "ALTRE_MACCHINE", str(tmp_path))
+    assert gm.leggi_rq2(con_dp=True) is None
+    for b, strat in (("rq2-per_site-eps64", "per_site"), ("rq2-iid-eps64", "iid")):
+        (tmp_path / b).mkdir()
+        (tmp_path / b / "experiment_20260925_000000.json").write_text(
+            json.dumps(_rq2_json(strat, 42, no_dp=False, eps=64.0, C=1.0)))
+    r = gm.leggi_rq2(con_dp=True)
+    assert set(r) == {"rq2-per_site", "rq2-iid"} and 42 in r["rq2-per_site"]
+    assert gm.leggi_rq2() is None  # i bracci senza DP non ci sono: nessuna confusione fra i due
+    # un JSON senza DP, o con un altro eps o un altro C, nel braccio con DP e' un errore
+    for cattivo in (_rq2_json("iid", 123),
+                    _rq2_json("iid", 123, no_dp=False, eps=16.0, C=1.0),
+                    _rq2_json("iid", 123, no_dp=False, eps=64.0, C=0.5)):
+        f = tmp_path / "rq2-iid-eps64" / "experiment_20260926_000000.json"
+        f.write_text(json.dumps(cattivo))
+        with pytest.raises(ValueError):
+            gm.leggi_rq2(con_dp=True)
+        f.unlink()

@@ -142,8 +142,8 @@ una cartella nuova. Gli shadow non usano DP-SGD (segnalazione 51): LiRA sotto
 record-level va letto con quella riserva.
 
 **Esito della prova, 2026-09-24** (`_prova_recorddp_v2`, secondo Mac, commit 2c4a0f0, σ = 1,
-seed 42; valori letti dal JSON sul secondo Mac e trascritti, da riverificare quando il JSON
-sarà in `experiments_altre_macchine/`). Tutti gli attacchi girano. Loss sull'holdout del
+seed 42; JSON in `experiments_altre_macchine/_prova_recorddp_v2`, valori riverificati sul
+JSON il 2026-09-26). Tutti gli attacchi girano. Loss sull'holdout del
 modello rilasciato 0.00240: 1.29 volte il braccio per sito di E-D allo stesso seed e sulla
 stessa macchina, 1.51 volte la media di `nodp-sweep2`. Attacchi al caso: Yeom 0.498, Shadow
 medio 0.497, LiRA composto 0.504, TPR a FPR 1% 0.0104. ε per record, Poisson: 30.2 per
@@ -156,6 +156,13 @@ già 30: σ = 0.5 aggiungerebbe poco, σ = 2 e 5 descrivono meglio il compromess
 (GroupNorm al posto di BatchNorm, clipping per esempio): il rapporto sul no-DP mescola
 l'effetto del rumore con quello della normalizzazione. Per separarli serve una cella
 no-DP con `ml.norm: group`, oggi assente. Entrambe le scelte sono da confermare.
+
+**Stato della campagna (2026-09-26).** σ = 1 in corso sul Mac principale, un seed alla
+volta, in `experiments/rq1-recorddp-nm1` (log `logs/rq1_recorddp_nm1.log`, circa 3 ore e 20
+minuti per seed). Seed 123 salvato alle 11:58: loss sull'holdout 1.51 volte la media di
+`nodp-sweep2`, attacchi al caso, ε per record di Poisson 30.4 a Office 1, numeri in
+`STATO.md` 3.5. I livelli successivi, {2, 5} oppure {0.5, 2}, e la cella no-DP con
+GroupNorm restano da decidere.
 
 ```bash
 python3 scripts/run_experiments.py \
@@ -191,7 +198,9 @@ sono unità diverse.
 
 **Stato (2026-09-24).** Eseguito sulle 8 celle esistenti (no-DP, dp-fedavg ε = 16, 8,
 4, 2, 1, central e local ε = 1) con il test corretto della segnalazione 47: nessun
-segnale di appartenenza per record, numeri in `STATO.md` 3.2. Le celle record-DP si
+segnale di appartenenza per record, numeri in `STATO.md` 3.2. Aggiunti poi ε = 64 e i
+quattro bracci di E-D (il 2026-09-26 i due con DP, con lo stesso comando ristretto ai due
+gruppi e unito al file: il test è deterministico per gruppo). Le celle record-DP si
 aggiungono dopo E-B. La segnalazione 6 riguarda ora solo il conteggio secondario.
 
 ```bash
@@ -279,8 +288,15 @@ nessuna differenza significativa, loss sull'holdout più bassa con IID ma non
 significativa. La macchina diversa è una variabile non registrata nei JSON e non è
 trascurabile (segnalazione 55): il confronto usa i due bracci della stessa macchina.
 
-**Braccio con DP.** Al punto operativo client-level scelto con la regola della griglia,
-prima di guardare RQ2 con DP: C = 1, ε = 64 (2.6 volte il no-DP, un seed). Config
+**Braccio con DP, eseguito e analizzato il 2026-09-26.** 10 run sul secondo Mac dal 25 al
+26 settembre (commit 3d4d318, zero righe `[ERROR]`), copiate in
+`experiments_altre_macchine/rq2-per_site-eps64` e `rq2-iid-eps64`; foglio `RQ2_partizione`
+(blocchi "CON DP" e "COSTO DELLA DP PER PARTIZIONE") e test per record in
+`livello_di_caso.json`. Esito in `STATO.md` 3.9: attacchi al caso in entrambi i bracci,
+nessun segnale per record, costo della DP più alto con IID (media geometrica 6.1 contro
+3.9) ma interazione non significativa a 5 seed. Il disegno, fissato prima: il punto
+operativo client-level scelto con la regola della griglia prima di guardare RQ2 con DP,
+C = 1, ε = 64 (2.6 volte il no-DP, un seed). Config
 `experiment_rq2_per_site_eps64.yaml` ed `experiment_rq2_iid_eps64.yaml`, 10 run, sulla
 seconda macchina come il braccio senza DP (segnalazione 55); poi in
 `experiments_altre_macchine/`. Da aggiungere: le statistiche delle feature per client

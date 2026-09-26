@@ -346,6 +346,68 @@
         "z": 0.695
       },
       "lettura": "nessun segnale di appartenenza per record (test appaiato)"
+    },
+    "rq2-per_site-eps64": {
+      "cartella": "experiments_altre_macchine/rq2-per_site-eps64",
+      "n_seed": 5,
+      "sessioni_multi_seed": 17561,
+      "osservati": 497,
+      "attesi_per_caso": 289.33,
+      "sd_nulla": 16.41,
+      "z": 12.653,
+      "eccesso_assoluto": 207.7,
+      "percentuale_osservata": 2.83,
+      "percentuale_attesa": 1.648,
+      "controllo_non_membri": {
+        "n_seed": 5,
+        "sessioni_multi_seed": 17517,
+        "osservati": 480,
+        "attesi_per_caso": 286.88,
+        "sd_nulla": 16.71,
+        "z": 11.557,
+        "eccesso_assoluto": 193.1,
+        "percentuale_osservata": 2.74,
+        "percentuale_attesa": 1.638
+      },
+      "z_eccesso_membri_meno_non_membri": 0.623,
+      "appaiato": {
+        "n_sessioni": 28129,
+        "differenza_media": 0.1803,
+        "errore_standard": 0.22,
+        "z": 0.82
+      },
+      "lettura": "nessun segnale di appartenenza per record (test appaiato)"
+    },
+    "rq2-iid-eps64": {
+      "cartella": "experiments_altre_macchine/rq2-iid-eps64",
+      "n_seed": 5,
+      "sessioni_multi_seed": 17561,
+      "osservati": 346,
+      "attesi_per_caso": 289.35,
+      "sd_nulla": 16.45,
+      "z": 3.444,
+      "eccesso_assoluto": 56.6,
+      "percentuale_osservata": 1.97,
+      "percentuale_attesa": 1.648,
+      "controllo_non_membri": {
+        "n_seed": 5,
+        "sessioni_multi_seed": 17517,
+        "osservati": 451,
+        "attesi_per_caso": 287.46,
+        "sd_nulla": 16.38,
+        "z": 9.985,
+        "eccesso_assoluto": 163.5,
+        "percentuale_osservata": 2.575,
+        "percentuale_attesa": 1.641
+      },
+      "z_eccesso_membri_meno_non_membri": -4.605,
+      "appaiato": {
+        "n_sessioni": 28132,
+        "differenza_media": 0.1919,
+        "errore_standard": 0.2226,
+        "z": 0.862
+      },
+      "lettura": "nessun segnale di appartenenza per record (test appaiato)"
     }
   }
 }

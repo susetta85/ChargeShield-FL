@@ -1,8 +1,8 @@
 # ChargeShield-FL — Stato del progetto
 
-> **Stato: documento CANONICO.** Aggiornato il 2026-09-24 (revisione: costo sul modello
+> **Stato: documento CANONICO.** Aggiornato il 2026-09-26 (revisione: costo sul modello
 > rilasciato, analisi per record corretta, E-C, segnalazioni 46-55, controlli del protocollo, celle delle matrici ricomposte, RQ2 senza DP,
-> punto operativo a 5 seed). Solo numeri
+> punto operativo a 5 seed, RQ2 con DP, primo seed della campagna E-B). Solo numeri
 > presenti in `risultati/` o letti dai JSON grezzi alla data, e lo dice dove.
 > Linea scientifica: la guida. Cosa fare: `ESPERIMENTI.md`. Cosa esiste nel codice:
 > `SISTEMA.md`. Questo file risponde a una sola domanda: a che punto siamo.
@@ -11,13 +11,14 @@
 
 Nel regime naturale non c'è un'esposizione misurabile da ridurre: in media nessun
 attacco distingue membri da non membri, con o senza DP, e il test appaiato per record
-non trova segnale in nessuna delle 8 celle analizzate (sezione 3.2). L'eccesso per
+non trova segnale in nessuna delle celle analizzate (sezioni 3.2 e 3.9). L'eccesso per
 record senza DP, letto finora come l'unico segnale, compare identico fra i non membri:
-è stabilità del ranking, non appartenenza (segnalazione 47). Il costo, misurato ora sul
+è stabilità del ranking, non appartenenza (segnalazione 47). Il costo, misurato sul
 modello globale rilasciato (segnalazione 46), supera la soglia di 3 volte in ogni cella
-client-level: a ε = 16 è 60 volte il no-DP appaiato. Per il client-level nessuna cella
-è un punto operativo; i prossimi passi sono E-B, la ricerca di un punto operativo con C
-più basso o ε più alti, e il canary su più siti (`ESPERIMENTI.md`).
+client-level: a ε = 16 è 60 volte il no-DP appaiato, e il punto operativo scelto con la
+griglia, C = 1 con ε = 64, vale 4.5 volte a 5 seed (sezione 3.1b). La partizione IID o per sito
+non cambia il successo degli attacchi, con o senza DP (sezione 3.9). I prossimi passi
+sono E-B (DP per record, in corso), E-E e il canary su più siti (`ESPERIMENTI.md`).
 
 ## 2. Glossario minimo
 
@@ -214,6 +215,13 @@ per record di Poisson è 30.2 (Office 1) e il limite con lo shuffle 1212 (valori
 dal secondo Mac, `ESPERIMENTI.md` E-B). Il confronto col no-DP mescola rumore e cambio di
 normalizzazione (GroupNorm).
 
+Campagna E-B in corso sul Mac principale, σ = 1, `experiments/rq1-recorddp-nm1`, un seed
+alla volta. Seed 123, JSON del 2026-09-26 letto lo stesso giorno (commit 0dedd34): loss
+sull'holdout del modello rilasciato 0.00239, 1.51 volte la media di `nodp-sweep2` e 1.46
+volte lo stesso seed; Yeom 0.503 all'ultimo round, Shadow 0.503, LiRA composto 0.498, TPR a
+FPR 1% 0.0100; ε per record di Poisson 30.4 a Office 1 (4.8 a JPL, 5.0 a Caltech), limite
+con lo shuffle 1212. Un seed: la cella entra nelle matrici con 5.
+
 ### 3.6 Infrastruttura
 
 Simulazione e deployment NVFlare a 5 container convergono sullo stesso nullo a
@@ -244,7 +252,7 @@ primaria per record, che va sostituita dal test appaiato (segnalazione 47): la s
 è una decisione del supervisore. Manca il braccio B1 della Fase B, clipping senza
 rumore, per cui non esiste un flag.
 
-### 3.9 RQ2: partizione IID contro per sito, senza DP (E-D)
+### 3.9 RQ2: partizione IID contro per sito (E-D)
 
 Fonte: foglio `RQ2_partizione` di `risultati/Matrice_sintesi.xlsx` e
 `risultati/worst_case/livello_di_caso.json`, dai JSON di
@@ -267,9 +275,43 @@ sito a una IID con le stesse numerosità non cambia il successo degli attacchi v
 al caso in entrambi, né il divario fra membri e non membri. Il modello IID ha la loss
 sull'holdout più bassa in 4 seed su 5, in media del 18%, non significativa a 5 seed. Nel
 regime naturale RQ2 non misura quindi un effetto dell'eterogeneità sulla membership,
-perché non c'è segnale da modulare; l'effetto sul costo della DP si misura solo col
-braccio con DP, ancora da eseguire. Mancano le statistiche delle feature per client nelle
-due partizioni, che la guida chiede per mostrare che il fattore è cambiato.
+perché non c'è segnale da modulare; l'effetto sul costo della DP si misura col braccio
+con DP, sotto. Mancano le statistiche delle feature per client nelle due partizioni, che
+la guida chiede per mostrare che il fattore è cambiato.
+
+**Con DP.** dp-fedavg, ε = 64 per round, C = 1: il punto operativo scelto con la regola
+della griglia prima di guardare RQ2 con DP. Stessi foglio e file, dai JSON di
+`experiments_altre_macchine/rq2-per_site-eps64` e `rq2-iid-eps64` (secondo Mac, commit
+3d4d318, zero righe `[ERROR]` nel log), letti il 2026-09-26.
+
+| metrica | per sito | IID | IID − per sito, appaiata (± sd) | t, 4 gdl |
+|---|---|---|---|---|
+| loss sull'holdout del modello rilasciato | 0.00633 | 0.00936 | +0.0030 ± 0.0066 | 1.03 |
+| divario holdout − membri | 0.000299 | 0.000311 | +0.000011 ± 0.000050 | 0.51 |
+| Yeom, ultimo round | 0.4990 | 0.5014 | +0.0023 ± 0.0048 | 1.08 |
+| Shadow, media sui round | 0.5014 | 0.5010 | −0.0003 ± 0.0012 | −0.64 |
+| LiRA composto | 0.5015 | 0.4997 | −0.0018 ± 0.0054 | −0.74 |
+| TPR a FPR 1% (LiRA composto) | 0.0109 | 0.0082 | −0.0027 ± 0.0015 | −3.88 |
+
+Costo della DP per partizione, come rapporto fra la loss sull'holdout con DP e senza DP
+allo stesso seed e sulla stessa macchina: per sito da 2.1 a 8.6, media geometrica 3.9;
+IID da 3.2 a 15.0, media geometrica 6.1. Il rapporto è più alto con IID in 4 seed su 5,
+di 1.57 volte in media geometrica, ma l'interazione partizione × DP, sul logaritmo del
+rapporto, non è significativa a 5 seed (+0.45 ± 0.45, t = 2.26 contro 2.776). Test
+appaiato per record: per sito +0.18 ± 0.22 (z = 0.82), IID +0.19 ± 0.22 (z = 0.86),
+nessun segnale. Sul rapporto delle medie anche questa macchina supera la soglia di costo
+al punto operativo: 3.9 volte per sito e 7.0 volte IID, coerente con la sezione 3.1b.
+
+Lettura. Con e senza DP la partizione non cambia il successo degli attacchi valutati,
+che resta al caso, né il divario fra membri e non membri; la DP tende a costare di più
+con la partizione IID, che senza DP partiva da una loss più bassa, ma a 5 seed la
+differenza non è distinguibile dalla variabilità fra seed. L'unico test del foglio sopra
+la soglia è la TPR del LiRA composto con DP (p = 0.018, per sito sopra il caso e IID
+sotto in tutti e 5 i seed): è una metrica secondaria con calibrazione degenere (3.4), i
+test appaiati del foglio sono 18 e a α = 0.05 senza correzione se ne attende circa uno
+per caso, quindi non lo leggiamo come effetto della partizione. RQ2 risponde così sul
+costo del modello, non su un beneficio di privacy, per la stessa ragione di RQ1: nel
+regime naturale non c'è un segnale da ridurre.
 
 Il braccio per sito ha lo stesso config di `nodp-sweep2` ma gira sull'altra macchina, e
 la loss sull'holdout differisce per seed fino al 23% (segnalazione 55, confermata: dipende
@@ -279,14 +321,13 @@ usa perciò i due bracci della stessa macchina, non `nodp-sweep2`.
 ## 4. Cosa manca
 
 L'elenco ordinato, con comandi e prerequisiti, è `ESPERIMENTI.md`. E-A è chiuso (sezione
-3.1b), E-C è eseguito sulle 8 celle esistenti (sezione 3.2). Il braccio no-DP di E-D
-(RQ2) è analizzato (sezione 3.9) e sta in `experiments_altre_macchine/`; quello di E-E
-(RQ3, in corso su una terza macchina) andrà nello stesso posto, non in `experiments/`
-(segnalazione 45). I controlli
-del protocollo sono eseguiti (sezione 3.1c). Restano: E-B record-level su dati naturali
-(prova da rifare dopo la segnalazione 49), la griglia del punto operativo client-level
-(8 run a un seed, config pronti), il canary su più siti, il braccio DP di E-D ed E-E, la
-rianalisi NVFlare. Da decidere col supervisore: la metrica primaria per record (segnalazione 47) e se
+3.1b), con la griglia del punto operativo e ε = 64 a 5 seed; E-C è eseguito sulle celle
+esistenti, ε = 64 compresa (sezione 3.2). E-D (RQ2) è analizzato con e senza DP (sezione
+3.9) e sta in `experiments_altre_macchine/`; E-E (RQ3, su una terza macchina) andrà nello
+stesso posto, non in `experiments/` (segnalazione 45). I controlli del protocollo sono
+eseguiti (sezione 3.1c). Restano: la campagna E-B record-level su dati naturali (in corso,
+sezione 3.5; livelli di σ da decidere), E-E con e senza DP, il canary su più siti, le
+statistiche delle feature per client di E-D, la rianalisi NVFlare. Da decidere col supervisore: la metrica primaria per record (segnalazione 47) e se
 le campagne future usano l'inizializzazione comune (segnalazione 48). I bug che toccano i numeri sono in
 `Segnalazioni_tecniche_2026-09-22.md`, punti 1, 5, 6, 9, 35, 36, 38, 45, 48, 50, 51, 55. Fuori dal paper, come infrastruttura o lavoro futuro: ML Plane,
 Privacy Auditor, PES, ByzantineDetector, FedMIA-gradient, secondo dataset. Per le
