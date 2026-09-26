@@ -1,6 +1,6 @@
 # Indice dei config
 
-> **Stato: documento OPERATIVO.** Una riga per file, aggiornato il 2026-09-24. Ogni
+> **Stato: documento OPERATIVO.** Una riga per file, aggiornato il 2026-09-26. Ogni
 > config è una cella: prima di crearne uno nuovo cercare qui se esiste già. La base
 > di tutti è `experiment.yaml`; le colonne dicono cosa cambia rispetto a quella base
 > (3 siti, 10 round, 50 epoche, 6 feature, ε = 1, n_shadow 16, FedProx mu 0.01).
@@ -19,6 +19,7 @@
 | `experiment_rq2_per_site.yaml`, `experiment_rq2_iid.yaml` | solo `partition.strategy` | E-D, RQ2 |
 | `experiment_rq2_{per_site,iid}_eps64.yaml` | `partition.strategy` ed ε = 64 (C = 1) | E-D, RQ2, braccio con DP al punto operativo |
 | `experiment_rq3_mu0.yaml` | solo `ml.proximal_mu: 0.0` (FedAvg) | E-E, RQ3, con `--no-dp` |
+| `experiment_rq3_mu0_eps64.yaml` | `ml.proximal_mu: 0.0` ed ε = 64 (C = 1) | E-E, RQ3, braccio con DP al punto operativo; il braccio FedProx appaiato è `experiment_rq1_eps64.yaml` |
 | `experiment_ctrl_common_init.yaml` | solo `ml.common_init: true` | controllo del protocollo, segnalazione 48; no-DP, seed 42 |
 | `experiment_robustness_entity_split.yaml` | `split.strategy: entity_aware` | robustezza dello split, già eseguito a 5 seed |
 | `experiment_chargeplace_scotland.yaml` | secondo dataset, 3 council area | futuro; una sola run di prova |

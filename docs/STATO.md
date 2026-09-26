@@ -326,7 +326,8 @@ esistenti, ε = 64 compresa (sezione 3.2). E-D (RQ2) è analizzato con e senza D
 3.9) e sta in `experiments_altre_macchine/`; E-E (RQ3, su una terza macchina) andrà nello
 stesso posto, non in `experiments/` (segnalazione 45). I controlli del protocollo sono
 eseguiti (sezione 3.1c). Restano: la campagna E-B record-level su dati naturali (in corso,
-sezione 3.5; livelli di σ da decidere), E-E con e senza DP, il canary su più siti, le
+sezione 3.5; livelli di σ da decidere), E-E con e senza DP (config del braccio con DP
+pronto, `ESPERIMENTI.md` E-E), il canary su più siti, le
 statistiche delle feature per client di E-D, la rianalisi NVFlare. Da decidere col supervisore: la metrica primaria per record (segnalazione 47) e se
 le campagne future usano l'inizializzazione comune (segnalazione 48). I bug che toccano i numeri sono in
 `Segnalazioni_tecniche_2026-09-22.md`, punti 1, 5, 6, 9, 35, 36, 38, 45, 48, 50, 51, 55. Fuori dal paper, come infrastruttura o lavoro futuro: ML Plane,

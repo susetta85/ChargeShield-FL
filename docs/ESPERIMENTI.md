@@ -1,6 +1,6 @@
 # ChargeShield-FL — Esperimenti da eseguire
 
-> **Stato: documento CANONICO.** Aggiornato il 2026-09-24 (revisione: costo, E-C, controlli (a) e (b) eseguiti, griglia del punto operativo, canary su più siti). Sostituisce,
+> **Stato: documento CANONICO.** Aggiornato il 2026-09-26 (revisione: costo, E-C, controlli (a) e (b) eseguiti, griglia del punto operativo, canary su più siti, E-D con DP, campagna E-B, braccio con DP di E-E). Sostituisce,
 > per gli esperimenti ancora da lanciare, il vecchio `TestRoadmap_DSN2027.md`, eliminato
 > il 2026-09-22 e recuperabile dalla storia git. Ogni
 > voce dice quale RQ serve, quale conclusione può cambiare, cosa deve essere vero
@@ -162,7 +162,25 @@ volta, in `experiments/rq1-recorddp-nm1` (log `logs/rq1_recorddp_nm1.log`, circa
 minuti per seed). Seed 123 salvato alle 11:58: loss sull'holdout 1.51 volte la media di
 `nodp-sweep2`, attacchi al caso, ε per record di Poisson 30.4 a Office 1, numeri in
 `STATO.md` 3.5. I livelli successivi, {2, 5} oppure {0.5, 2}, e la cella no-DP con
-GroupNorm restano da decidere.
+GroupNorm restano da decidere; σ = 2 sta in entrambe le proposte.
+
+Coda sul Mac principale, una run alla volta: σ = 2 parte da sola quando finisce il ciclo di
+σ = 1. Prima si legge il PID del ciclo in corso (deve uscire un solo numero), poi si lancia
+l'attesa, che controlla ogni 5 minuti se quel processo esiste ancora:
+
+```bash
+pgrep -f "caffeinate -ims bash"
+P=<PID letto sopra> nohup caffeinate -ims bash -c '
+while kill -0 $P 2>/dev/null; do sleep 300; done
+set -e
+for s in 42 123 456 789 1234; do
+  python3 scripts/run_experiments.py --config config/experiment_rq1_recorddp_nm2.yaml \
+    --rounds 10 --seed $s --no-dp --sweep-dir experiments/rq1-recorddp-nm2 \
+    --per-sample-dump experiments/rq1-recorddp-nm2/per_sample_seed$s.json
+done' > logs/rq1_recorddp_nm2.log 2>&1 & disown
+```
+
+Il `git_commit` si legge al salvataggio: l'albero va tenuto pulito anche durante la coda.
 
 ```bash
 python3 scripts/run_experiments.py \
@@ -222,8 +240,34 @@ subito, perché riusa la configurazione ordinaria: serve un config
 `experiment_rq3_mu0.yaml` identico a `config/experiment.yaml` con
 `ml.proximal_mu: 0.0` (il campo vive in `cfg["ml"]`: messo altrove viene ignorato
 in silenzio), 5 seed con `--no-dp`, confrontato con `nodp-sweep2`. Il braccio con
-DP attende il punto operativo indicato da E-A. Nessuna ipotesi che FedProx sia più
+DP usa il punto operativo scelto dopo E-A (sotto). Nessuna ipotesi che FedProx sia più
 privato; riportare insieme attacco e costo.
+
+**Braccio con DP, preparato il 2026-09-26.** Al punto operativo client-level scelto prima
+di vedere RQ3 con DP, lo stesso di E-D: dp-fedavg, ε = 64, C = 1. Config
+`experiment_rq3_mu0_eps64.yaml` (FedAvg, differisce da `experiment_rq1_eps64.yaml` solo per
+`ml.proximal_mu: 0.0`) ed `experiment_rq1_eps64.yaml` (FedProx), 10 run senza `--no-dp`,
+sulla stessa macchina dei due bracci senza DP (segnalazione 55), un braccio alla volta.
+Poi le cartelle vanno in `experiments_altre_macchine/` come quelle di E-D. Blocco per
+Windows, con `PYTHONUTF8`, `OMP_NUM_THREADS` e `MKL_NUM_THREADS` impostati nella finestra:
+
+```powershell
+& {
+  Add-Type -Namespace W -Name P -MemberDefinition '[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint f);'
+  [W.P]::SetThreadExecutionState(2147483649) | Out-Null
+  foreach ($b in @(@("mu0", "config\experiment_rq3_mu0_eps64.yaml"), @("mu0.01", "config\experiment_rq1_eps64.yaml"))) {
+    $n = $b[0]; $c = $b[1]; $dir = "experiments\rq3-$n-eps64"
+    foreach ($s in 42,123,456,789,1234) {
+      cmd /c ".venv\Scripts\python.exe scripts\run_experiments.py --config $c --rounds 10 --seed $s --sweep-dir $dir --per-sample-dump $dir\per_sample_seed$s.json >> logs\rq3_${n}_eps64.log 2>&1"
+      if ($LASTEXITCODE -ne 0 -or -not (Test-Path "$dir\per_sample_seed$s.json")) { return }
+    }
+  }
+}
+```
+
+**Lettura.** Come E-D: le due coppie appaiate per seed, attacchi e costo sul modello
+rilasciato, e il costo della DP per algoritmo come rapporto con DP / senza DP allo stesso
+seed e sulla stessa macchina.
 
 **Stato (2026-09-24).** `config/experiment_rq3_mu0.yaml` creato: differisce da
 `config/experiment.yaml` solo per `ml.proximal_mu: 0.0` e per il nome. Il braccio

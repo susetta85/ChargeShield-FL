@@ -32,8 +32,9 @@ carica da solo.
 I numeri vivono solo in `risultati/`: `Matrice_sintesi.xlsx`,
 `matrice_run_completati.xlsx`, `matrice_confronti.xlsx`,
 `decision_matrix_ACN_membership_DP.xlsx`, `worst_case/*.json`. Sono generati da
-`scripts/genera_matrici_faseA.py` dai JSON in `experiments/`, che non è
-versionato.
+`scripts/genera_matrici_faseA.py` dai JSON in `experiments/` e, per le run fatte su
+altre macchine (oggi E-D), in `experiments_altre_macchine/`; nessuna delle due cartelle
+è versionata.
 
 Il paper LaTeX vive su Overleaf; `docs/paper/latex_dsn2027/` è solo un mirror
 (regole in `CLAUDE.md`).
@@ -45,8 +46,8 @@ pip install -e ".[dev]"
 ```
 
 Dipendenze principali: torch, scikit-learn, numpy, pandas, scipy, openpyxl,
-pyyaml. Per il record-level DP serve anche `dp-accounting` (da dichiarare in
-`pyproject.toml`, segnalazione 4). NVFlare è opzionale: `pip install -e ".[flare]"`.
+pyyaml. Per il record-level DP serve anche `dp-accounting`, dichiarato in
+`pyproject.toml` dal 2026-09-24 (segnalazione 4). NVFlare è opzionale: `pip install -e ".[flare]"`.
 
 Dataset: `python3 scripts/download_acn_sessions.py` scarica i file ACN-Data per
 sito e anno in `datasets/acn/<sito>/`.
@@ -78,8 +79,9 @@ python3 scripts/genera_matrici_faseA.py
 python3 -m pytest tests/ -q --ignore=tests/test_privacy_auditor_subscriber.py --ignore=tests/test_run_experiments_integration.py --ignore=tests/test_sprint4.py --ignore=tests/test_sprint5.py
 ```
 
-Baseline attesa senza torch: 297 passed con `datasets/` presente, 264 senza (i 33
-restanti leggono i file reali dei dataset). Con torch e dati: `make test`.
+Baseline attesa senza torch: 324 passed con `datasets/` presente (2026-09-26); senza,
+33 test falliscono perché leggono i file reali dei dataset (`CLAUDE.md`, sezione 5). Con
+torch e dati: `make test`.
 
 ## Struttura
 
