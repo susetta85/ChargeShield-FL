@@ -129,6 +129,13 @@ def canary_dal_log(sweep: str, par: dict[str, dict]) -> dict | None:
 
 def superficie(cfg: dict) -> str:
     """Punto di osservazione dell'avversario (sezione 5 della guida)."""
+    rd = cfg.get("record_dp") or {}
+    if rd.get("enabled"):
+        # Segnalazione 56: una run record-DP ha no_dp=True (spegne il client-level) e
+        # finiva in A0, "nessun clipping, nessun rumore", mentre l'update viene da DP-SGD.
+        return (f"record-level — update da DP-SGD (clipping per esempio C = "
+                f"{rd.get('max_grad_norm')}, sigma = {rd.get('noise_multiplier')}), nessun "
+                f"meccanismo client-level")
     if cfg.get("no_dp"):
         return "A0 — update non privatizzato (nessun clipping, nessun rumore)"
     return {
@@ -142,8 +149,10 @@ def regime(cfg: dict, sweep: str) -> str:
     can = cfg.get("canary") or {}
     if can.get("enabled") or "canary" in sweep.lower():
         return "canary (indotto)"
-    if cfg.get("record_dp"):
-        return "naturale — record-DP (diagnostico)"
+    if (cfg.get("record_dp") or {}).get("enabled"):
+        # Fino al 2026-09-26 "(diagnostico)": le run record-DP erano solo prove. Con la
+        # campagna E-B sono celle di RQ1 (segnalazione 56).
+        return "naturale — record-DP"
     return "naturale"
 
 
@@ -218,6 +227,18 @@ def stato_validita(cfg: dict, sweep: str, reg: str, ts: datetime,
 
     if not mia:
         return ("incompleta", "nessuna metrica MIA nel JSON")
+    gc = cfg.get("git_commit")
+    if gc and gc.endswith("-dirty"):
+        # Segnalazione 57: il marcatore dice che al salvataggio l'albero aveva modifiche
+        # non committate, non quali. Si chiarisce con git diff fra quel commit e il successivo.
+        return ("completata da verificare",
+                f"commit {gc[:7]} con modifiche non committate al salvataggio (-dirty): "
+                f"verificare con git diff che non toccassero il codice eseguito; hash degli "
+                f"split non registrato")
+    if gc:
+        return ("completata da verificare",
+                f"nessun difetto noto; commit {gc[:7]} registrato, hash degli split non "
+                f"registrato")
     return ("completata da verificare",
             "nessun difetto noto, ma commit e hash degli split non sono registrati: "
             "la tracciabilita' completa richiesta dalla Fase A non e' ricostruibile")
@@ -227,13 +248,20 @@ def leggi_run() -> list[dict]:
     log_disp = mappa_log()
     par_canary = parametri_canary_dai_log()
     righe = []
-    for f in sorted(glob.glob(os.path.join(RADICE, "experiments", "*", "experiment_*.json"))):
+    # Segnalazione 56: fino al 2026-09-26 il registro leggeva solo experiments/ e le run
+    # di altre macchine (E-D, la prova E-B), usate nei fogli, non comparivano.
+    fs = [("experiments", f) for f in sorted(glob.glob(
+        os.path.join(RADICE, "experiments", "*", "experiment_*.json")))]
+    fs += [("experiments_altre_macchine", f) for f in sorted(glob.glob(
+        os.path.join(ALTRE_MACCHINE, "*", "experiment_*.json")))]
+    for radice_run, f in fs:
+        pref = "" if radice_run == "experiments" else "altre_macchine: "
         sweep = os.path.basename(os.path.dirname(f))
         base = os.path.basename(f)
         try:
             d = json.load(open(f))
         except Exception as e:
-            righe.append({"id": f"{sweep}/{base}", "errore": type(e).__name__})
+            righe.append({"id": f"{pref}{sweep}/{base}", "errore": type(e).__name__})
             continue
         cfg = d.get("config") or {}
         summ = d.get("summary") or {}
@@ -252,7 +280,7 @@ def leggi_run() -> list[dict]:
         discorde = seed_nome is not None and str(cfg.get("seed")) != seed_nome
         can = cfg.get("canary") or {}
         righe.append({
-            "id": f"{sweep}/{base}",
+            "id": f"{pref}{sweep}/{base}",
             "sweep": sweep,
             "rq": rq_di(cfg, sweep, reg),
             "commit": "",
@@ -281,15 +309,23 @@ def leggi_run() -> list[dict]:
             "seed": cfg.get("seed"),
             "seed_nome": seed_nome,
             "seed_discorde": discorde,
-            "algoritmo": f"FedProx, mu={cfg.get('proximal_mu')}"
-                         if cfg.get("proximal_mu") else "non registrato",
+            # Segnalazione 56: con mu = 0 (E-E) il test di verita' dava "non registrato".
+            "algoritmo": ("non registrato" if cfg.get("proximal_mu") is None else
+                          f"FedAvg, mu={cfg.get('proximal_mu')}" if cfg.get("proximal_mu") == 0
+                          else f"FedProx, mu={cfg.get('proximal_mu')}"),
             "regime": reg,
             "superficie": superficie(cfg),
             "dp_accounting": (
-                f"eps_naive={cfg.get('epsilon_cumulative_naive')}; "
-                f"eps_avanzata={cfg.get('epsilon_cumulative_advanced')}; "
-                f"eps_migliore={cfg.get('epsilon_cumulative_best_known')}; "
-                "nessun accountant RDP, nessun enforcement"
+                (f"record-DP, accountant RDP (dp-accounting): eps per record di Poisson, massimo "
+                 f"sui client = {cfg.get('epsilon_record_dp')}; per client "
+                 f"{cfg.get('epsilon_record_dp_per_client')}; limite con lo shuffle, "
+                 f"adiacenza per sostituzione = {cfg.get('epsilon_record_dp_shuffle_bound')}; "
+                 f"delta={cfg.get('delta')}; nessun enforcement")
+                if (cfg.get("record_dp") or {}).get("enabled") else
+                (f"eps_naive={cfg.get('epsilon_cumulative_naive')}; "
+                 f"eps_avanzata={cfg.get('epsilon_cumulative_advanced')}; "
+                 f"eps_migliore={cfg.get('epsilon_cumulative_best_known')}; "
+                 "nessun accountant RDP, nessun enforcement")
             ),
             "checkpoint": f"{len(pr)} round valutati",
             "metriche": (
@@ -301,7 +337,7 @@ def leggi_run() -> list[dict]:
                    if mia.get("canary_raw_mse_auc_roc") is not None else "")
             ),
             "log": trova_log(sweep, log_disp),
-            "artefatti": f"experiments/{sweep}/ (JSON + xlsx + history/)",
+            "artefatti": f"{radice_run}/{sweep}/ (JSON + xlsx + history/)",
             "stato": stato,
             "motivo": motivo,
             "ts": ts,

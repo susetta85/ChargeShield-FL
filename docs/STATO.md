@@ -1,8 +1,8 @@
 # ChargeShield-FL — Stato del progetto
 
 > **Stato: documento CANONICO.** Aggiornato il 2026-09-26 (revisione: costo sul modello
-> rilasciato, analisi per record corretta, E-C, segnalazioni 46-55, controlli del protocollo, celle delle matrici ricomposte, RQ2 senza DP,
-> punto operativo a 5 seed, RQ2 con DP, primo seed della campagna E-B). Solo numeri
+> rilasciato, analisi per record corretta, E-C, segnalazioni 46-57, controlli del protocollo, celle delle matrici ricomposte, RQ2 senza DP,
+> punto operativo a 5 seed, RQ2 con DP, due seed della campagna E-B). Solo numeri
 > presenti in `risultati/` o letti dai JSON grezzi alla data, e lo dice dove.
 > Linea scientifica: la guida. Cosa fare: `ESPERIMENTI.md`. Cosa esiste nel codice:
 > `SISTEMA.md`. Questo file risponde a una sola domanda: a che punto siamo.
@@ -220,7 +220,13 @@ alla volta. Seed 123, JSON del 2026-09-26 letto lo stesso giorno (commit 0dedd34
 sull'holdout del modello rilasciato 0.00239, 1.51 volte la media di `nodp-sweep2` e 1.46
 volte lo stesso seed; Yeom 0.503 all'ultimo round, Shadow 0.503, LiRA composto 0.498, TPR a
 FPR 1% 0.0100; ε per record di Poisson 30.4 a Office 1 (4.8 a JPL, 5.0 a Caltech), limite
-con lo shuffle 1212. Un seed: la cella entra nelle matrici con 5.
+con lo shuffle 1212. Seed 456, JSON delle 15:18 letto lo stesso giorno (commit 1519d16 con
+`-dirty`, dovuto solo a documenti: segnalazione 57): holdout 0.00130, 0.82 volte la media di
+`nodp-sweep2` e 1.86 volte lo stesso seed; Yeom 0.501, Shadow 0.503, LiRA composto 0.503, TPR
+0.0081; ε di Poisson 31.0 a Office 1, limite con lo shuffle 1212. Due seed su cinque: rapporto
+sullo stesso seed 1.46 e 1.86, sulla media del no-DP 1.51 e 0.82, attacchi al caso. La
+variabilità fra seed è più grande dell'effetto medio, e il rapporto mescola rumore e
+GroupNorm (sopra): la cella no-DP con GroupNorm serve a leggerlo.
 
 ### 3.6 Infrastruttura
 

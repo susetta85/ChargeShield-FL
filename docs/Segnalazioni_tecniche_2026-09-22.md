@@ -450,3 +450,36 @@ sono in `scripts/_applicati/`.*
     confrontate sulla stessa macchina, e ogni confronto fra macchine va dichiarato; vale
     per E-D, per E-E su Windows e per E-B sul secondo Mac contro il client-level del
     principale. La differenza resta dentro la variabilita' fra seed (0.00070-0.00219).
+
+## O. Trovato aggiornando il registro dopo il secondo seed di E-B (2026-09-26)
+
+56. **Il registro delle run descrive male le run record-DP e non vede le altre macchine.**
+    In `scripts/genera_matrici_faseA.py`, prima della correzione: `superficie` (riga 130)
+    metteva ogni run con `no_dp=True` in "A0 — update non privatizzato", comprese quelle
+    record-DP, che hanno `no_dp=True` solo per spegnere il client-level e osservano un
+    update da DP-SGD; `leggi_run` scriveva per tutte "nessun accountant RDP" anche quando il
+    JSON ha `epsilon_record_dp` dall'accountant (segnalazione 4); `regime` (riga 146) le
+    chiamava "diagnostico", che non vale piu' per la campagna E-B; `algoritmo` usava un test
+    di verita' su `proximal_mu`, quindi con mu = 0 (E-E) avrebbe scritto "non registrato";
+    il motivo dello stato diceva "commit non registrato" anche per le run che hanno
+    `git_commit`; e `leggi_run` leggeva solo `experiments/`, quindi le 21 run di
+    `experiments_altre_macchine/` (E-D e la prova E-B), usate nei fogli, mancavano dal
+    registro. Nessun numero dei fogli di sintesi cambia: tocca solo le colonne descrittive di
+    `matrice_run_completati.xlsx`. **Corretto il 2026-09-26** (test in
+    `tests/test_costo_e_per_record.py`): il registro passa da 276 a 297 righe. Restano in A0
+    le run canary record-DP del 16-17 settembre, che non hanno il blocco `record_dp` nel
+    JSON: dal file non si ricostruisce.
+57. **Una modifica ai documenti durante una campagna marca la run come `-dirty`.**
+    `_git_commit_corrente` (`scripts/run_experiments.py`, righe 333-358) legge
+    `git status --porcelain` al salvataggio: qualunque file modificato o non tracciato, anche
+    un documento, aggiunge `-dirty`. E-B σ = 1, seed 456, salvato alle 15:18 del 2026-09-26,
+    ha `1519d16...-dirty`: la stima di salvataggio data in chat (15:35-15:40) era in ritardo,
+    e le modifiche a README, `CLAUDE.md`, `config/README.md`, `docs/` e il nuovo
+    `config/experiment_rq3_mu0_eps64.yaml` sono state committate dopo, in a93feca. `git diff
+    1519d16 a93feca` tocca solo quei file e nessuno e' letto dalla run: il codice eseguito e'
+    quello di 1519d16, e il training e gli attacchi sono gli stessi di 0dedd34 (seed 123;
+    fra i due commit cambiano solo `genera_matrici_faseA.py` e i test). **Regola di lavoro da
+    oggi**: modifiche al repository solo lontano da un salvataggio, con margine di un'ora
+    sull'ora stimata. Da valutare a campagna chiusa, perche' tocca `run_experiments.py`:
+    registrare nel JSON anche l'elenco dei file modificati, cosi' il `-dirty` si verifica
+    dal file.

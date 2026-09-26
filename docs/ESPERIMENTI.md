@@ -159,9 +159,10 @@ no-DP con `ml.norm: group`, oggi assente. Entrambe le scelte sono da confermare.
 
 **Stato della campagna (2026-09-26).** σ = 1 in corso sul Mac principale, un seed alla
 volta, in `experiments/rq1-recorddp-nm1` (log `logs/rq1_recorddp_nm1.log`, circa 3 ore e 20
-minuti per seed). Seed 123 salvato alle 11:58: loss sull'holdout 1.51 volte la media di
-`nodp-sweep2`, attacchi al caso, ε per record di Poisson 30.4 a Office 1, numeri in
-`STATO.md` 3.5. I livelli successivi, {2, 5} oppure {0.5, 2}, e la cella no-DP con
+minuti per seed). Seed 123 salvato alle 11:58 e seed 456 alle 15:18: loss sull'holdout 1.51 e 0.82 volte la media di `nodp-sweep2`, attacchi al
+caso, ε per record di Poisson 30.4 e 31.0 a Office 1, numeri in `STATO.md` 3.5. Il seed 456
+ha `-dirty` per documenti modificati durante la run (segnalazione 57): le modifiche al
+repository vanno fatte con almeno un'ora di margine sul salvataggio stimato. I livelli successivi, {2, 5} oppure {0.5, 2}, e la cella no-DP con
 GroupNorm restano da decidere; σ = 2 sta in entrambe le proposte.
 
 Coda sul Mac principale, una run alla volta: σ = 2 parte da sola quando finisce il ciclo di

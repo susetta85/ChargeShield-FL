@@ -148,3 +148,18 @@ def test_leggi_rq2_con_dp_controlla_regime_e_punto_operativo(tmp_path, monkeypat
         with pytest.raises(ValueError):
             gm.leggi_rq2(con_dp=True)
         f.unlink()
+
+
+def test_registro_riconosce_le_run_record_dp_e_il_commit():
+    # segnalazioni 56 e 57: superficie, regime e motivo delle run record-DP e -dirty
+    rd = {"no_dp": True, "dp_mode": "dp-fedavg",
+          "record_dp": {"enabled": True, "max_grad_norm": 1.0, "noise_multiplier": 2.0}}
+    assert gm.superficie(rd).startswith("record-level")
+    assert gm.superficie({"no_dp": True}).startswith("A0")
+    assert gm.regime(rd, "rq1-recorddp-nm2") == "naturale — record-DP"
+    assert gm.regime({"no_dp": True}, "nodp-sweep2") == "naturale"
+    mia = {"auc_roc": 0.5}
+    st, mot = gm.stato_validita({"git_commit": "abc1234def-dirty"}, "x", "naturale", None, mia)
+    assert st == "completata da verificare" and "-dirty" in mot and "abc1234" in mot
+    st, mot = gm.stato_validita({"git_commit": "abc1234def"}, "x", "naturale", None, mia)
+    assert "commit abc1234 registrato" in mot
