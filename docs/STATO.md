@@ -1,7 +1,8 @@
 # ChargeShield-FL — Stato del progetto
 
 > **Stato: documento CANONICO.** Aggiornato il 2026-09-24 (revisione: costo sul modello
-> rilasciato, analisi per record corretta, E-C, segnalazioni 46-55, controlli del protocollo, celle delle matrici ricomposte, RQ2 senza DP). Solo numeri
+> rilasciato, analisi per record corretta, E-C, segnalazioni 46-55, controlli del protocollo, celle delle matrici ricomposte, RQ2 senza DP,
+> punto operativo a 5 seed). Solo numeri
 > presenti in `risultati/` o letti dai JSON grezzi alla data, e lo dice dove.
 > Linea scientifica: la guida. Cosa fare: `ESPERIMENTI.md`. Cosa esiste nel codice:
 > `SISTEMA.md`. Questo file risponde a una sola domanda: a che punto siamo.
@@ -50,6 +51,7 @@ sulla loss locale (diagnostica).
 | cella | n | costo: holdout del modello rilasciato | loss locale (diagnostica) | LiRA composto | Yeom | Shadow | TPR a FPR 1% |
 |---|---|---|---|---|---|---|---|
 | no-DP (A0) | 5 | 1 | 1 | 0.5004 | 0.5003 | 0.5016 | 0.0105 |
+| dp-fedavg ε=64 (punto operativo) | 5 | 4.5 | 1.6 | 0.5011 | 0.5004 | 0.5013 | 0.0105 |
 | dp-fedavg ε=16 (A1) | 5 | 59.7 | 3.7 | 0.4992 | 0.5015 | 0.5011 | 0.0097 |
 | dp-fedavg ε=8 | 5 | 119.9 | 39.1 | 0.4978 | 0.5001 | 0.5002 | 0.0101 |
 | dp-fedavg ε=4 | 5 | 188.4 | 76.2 | 0.4959 | 0.4999 | 0.5002 | 0.0092 |
@@ -65,8 +67,9 @@ sulla loss locale (diagnostica).
 | local ε=0.1 | 5 | 266.8 | 251.9 | 0.4986 | 0.4995 | 0.4994 | 0.0092 |
 
 Tre cose da tenere insieme leggendo la tabella. Il nullo aggregato vale anche
-senza DP. In ogni cella client-level il modello rilasciato costa almeno 60 volte il
-riferimento, quindi il nullo sotto DP non distingue "la DP protegge" da "non c'è nulla
+senza DP. Nelle celle di E-A (ε ≤ 16 per round) il modello rilasciato costa almeno 60 volte il
+riferimento, e al punto operativo ε = 64 in media 4.5 volte, sopra la soglia di 3 (sezione 3.1b):
+il nullo sotto DP non distingue "la DP protegge" da "non c'è nulla
 da proteggere"; fino al 2026-09-24 la colonna di costo usava la loss locale e faceva
 sembrare ε = 16 e 8 celle con utility residua. Nota storica che
 conta per la Tabella 2 del paper: dp-fedavg e local hanno coinciso bit a bit fino
@@ -111,8 +114,13 @@ in volte `nodp-sweep2`:
 | 1 | 41.6 (E-A) | 2.6 | 2.9 |
 
 A parità di rumore C più grande costa meno: domina la distorsione del clipping. Tre celle
-sotto 3 volte; il punto operativo per la regola è C = 1, ε = 64, da confermare su 5 seed.
-Attacchi al caso in tutte le celle.
+sotto 3 volte a un seed; il punto operativo per la regola era C = 1, ε = 64. **Su 5 seed non
+regge**: cella `rq1-eps64` (commit 8d44ae3, nelle matrici), holdout 0.00712, 4.5 volte la media
+del no-DP; per seed, rispetto al no-DP dello stesso seed, da 1.9 a 14.7 volte. Il seed 42 della
+griglia era il più favorevole. ε = 32, seed 42: 7.3 volte. Attacchi al caso in tutte le celle,
+test per record senza segnale anche a ε = 64 (sezione 3.2). È la terza riga della tabella di
+lettura di `ESPERIMENTI.md`: nessun punto operativo utile per il client-level in questo regime,
+con tre client.
 
 ### 3.1c Controlli del protocollo (segnalazione 48)
 
@@ -151,6 +159,7 @@ membro in un seed e non membro in un altro.
 | dp-fedavg ε=1 | 290 | 289.8 | 0.02 | 0.60 | −0.21 ± 0.22 | −0.94 |
 | central ε=1 | 299 | 289.9 | 0.62 | 1.91 | +0.20 ± 0.22 | 0.91 |
 | local ε=1 | 291 | 289.8 | 0.07 | 1.53 | −0.29 ± 0.22 | −1.32 |
+| dp-fedavg ε=64 | 473 | 290.3 | 11.61 | 10.35 | +0.15 ± 0.22 | 0.69 |
 
 Il conteggio sui membri, letto fino al 2026-09-24 come "l'unico segnale su dati
 naturali", compare quasi uguale fra i non membri: senza DP 406 segnalati contro 412.

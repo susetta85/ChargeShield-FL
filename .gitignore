@@ -84,6 +84,9 @@ experiments/
 # E-D (RQ2) dal secondo Mac. Lette da genera_matrici_faseA.py, foglio RQ2_partizione.
 experiments_altre_macchine/
 
+# Cartella creata dall'app Claude (Cowork) per i file consegnati in chat, 2026-09-25.
+Claude outputs/
+
 # Metadata locale di Claude Code / Cowork — mai da versionare.
 .claude/
 

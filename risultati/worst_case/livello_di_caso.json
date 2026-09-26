@@ -315,6 +315,37 @@
         "z": -0.153
       },
       "lettura": "nessun segnale di appartenenza per record (test appaiato)"
+    },
+    "dp-fedavg_eps64": {
+      "cartella": "experiments/rq1-eps64",
+      "n_seed": 5,
+      "sessioni_multi_seed": 17561,
+      "osservati": 473,
+      "attesi_per_caso": 290.31,
+      "sd_nulla": 15.74,
+      "z": 11.607,
+      "eccesso_assoluto": 182.7,
+      "percentuale_osservata": 2.693,
+      "percentuale_attesa": 1.653,
+      "controllo_non_membri": {
+        "n_seed": 5,
+        "sessioni_multi_seed": 17517,
+        "osservati": 454,
+        "attesi_per_caso": 287.79,
+        "sd_nulla": 16.05,
+        "z": 10.354,
+        "eccesso_assoluto": 166.2,
+        "percentuale_osservata": 2.592,
+        "percentuale_attesa": 1.643
+      },
+      "z_eccesso_membri_meno_non_membri": 0.734,
+      "appaiato": {
+        "n_sessioni": 28129,
+        "differenza_media": 0.153,
+        "errore_standard": 0.2201,
+        "z": 0.695
+      },
+      "lettura": "nessun segnale di appartenenza per record (test appaiato)"
     }
   }
 }

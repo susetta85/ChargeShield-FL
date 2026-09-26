@@ -420,6 +420,14 @@ python3 scripts/run_experiments.py --config config/experiment_rq1_eps32.yaml --r
   --seed 42 --sweep-dir experiments/_op_eps32' > logs/rq1_eps64.log 2>&1 & disown
 ```
 
+**Esito dei 5 seed, 2026-09-26.** `rq1-eps64` (commit 8d44ae3): holdout 0.00712, 4.5 volte la
+media del no-DP (per seed 2.6, 3.1, 6.5, 7.0, 3.2; rispetto al no-DP dello stesso seed da 1.9 a
+14.7). Sopra la soglia: vale la terza riga della tabella di lettura, nessun punto operativo
+utile per il client-level in questo regime, e si passa a E-B. ε = 32, seed 42: 7.3 volte.
+Attacchi al caso (Yeom 0.492-0.508), test per record z = 0.69. E-D ed E-E con DP restano a
+ε = 64, scelto prima di vederli: il loro confronto è fra partizioni e fra algoritmi a parità
+di configurazione DP, non richiede che la configurazione sia sotto la soglia.
+
 ## Canary su più siti
 
 **Validazione dello strumento in federazione, prerequisito per leggere la DP
