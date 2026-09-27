@@ -354,8 +354,9 @@ usa perciò i due bracci della stessa macchina, non `nodp-sweep2`.
 
 Fonte: JSON di `experiments_altre_macchine/rq3-mu0` e `rq3-mu0.01` (Windows, commit 478d471,
 i due bracci in parallelo), letti il 2026-09-27; 5 seed per braccio appaiati per seed, zero
-righe `[ERROR]`, round 1 identico nei due bracci per ogni seed. Il foglio delle matrici non c'è
-ancora.
+righe `[ERROR]`, round 1 identico nei due bracci per ogni seed. Foglio `RQ3_algoritmo` di
+`risultati/Matrice_sintesi.xlsx` (con la curva della loss sull'holdout per round) e confronto
+C-RQ3 di `matrice_confronti.xlsx`, dal 2026-09-27.
 
 | metrica | FedProx mu = 0.01 | FedAvg mu = 0 | FedAvg − FedProx, appaiata (± sd) | t, 4 gdl |
 |---|---|---|---|---|

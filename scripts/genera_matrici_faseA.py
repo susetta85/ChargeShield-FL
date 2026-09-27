@@ -513,19 +513,44 @@ def scrivi_confronti(righe):
         if "errore" not in r:
             _mu[r["algoritmo"]] += 1
     _n_mu0 = sum(v for k, v in _mu.items() if k.startswith("FedAvg"))
-    conf.append([
-        "C-RQ3", "RQ3", "FedAvg (mu=0)", "FedProx (mu=0.01)",
-        "no", "—",
-        ("il braccio mu=0 non e' in questo checkout (E-E gira su un'altra macchina e "
-         "andra' in experiments_altre_macchine/)" if not _n_mu0 else
-         f"{_n_mu0} run con mu = 0 nel registro: confronto da costruire"),
-        "algoritmo registrato nel registro run: " +
-        "; ".join(f"{k}: {v}" for k, v in sorted(_mu.items())),
-        "—", "confronto non costruibile" if not _n_mu0 else "confronto da costruire",
-        "Da eseguire da zero riusando split, candidati, checkpoint e condizioni DP "
-        "della Fase B (guida Fase D).",
-        "Fase A — lacuna rilevata (si esegue in Fase D)",
-    ])
+    _rq3 = leggi_rq3()
+    if _rq3:
+        _s3, _st3 = statistiche_rq3(_rq3)
+        _c3 = sorted({j["config"].get("git_commit", "")[:7] for b in _rq3.values() for j in b.values()})
+        _h3 = _st3["loss holdout del modello rilasciato"]
+        conf.append([
+            "C-RQ3", "RQ3", "FedAvg (mu=0)", "FedProx (mu=0.01)",
+            "si, appaiati per seed",
+            "dati, split, partizione, architettura, round, epoche, macchina e commit identici: "
+            "cambia solo ml.proximal_mu",
+            "i due bracci senza DP hanno girato in parallelo sulla stessa macchina; la loss di "
+            "addestramento locale di FedProx include il termine prossimale (segnalazione 59)",
+            f"{len(_s3)} seed per braccio, senza DP, terza macchina (experiments_altre_macchine/, "
+            f"commit {', '.join(_c3)})",
+            "una run per seed, la piu' recente",
+            "confronto disponibile",
+            f"Numeri nel foglio RQ3_algoritmo di Matrice_sintesi.xlsx. Loss sull'holdout FedAvg "
+            f"contro FedProx {sum(_h3['fedavg']) / len(_s3):.6f} contro "
+            f"{sum(_h3['fedprox']) / len(_s3):.6f} (t = {_h3['t']:.2f}). " +
+            ("Braccio con DP eseguito." if leggi_rq3(con_dp=True) else
+             "Braccio con DP (eps = 64, C = 1) in corso o da eseguire."),
+            "Fase D — " + ("bracci senza DP e con DP eseguiti" if leggi_rq3(con_dp=True)
+                           else "braccio senza DP eseguito"),
+        ])
+    else:
+        conf.append([
+            "C-RQ3", "RQ3", "FedAvg (mu=0)", "FedProx (mu=0.01)",
+            "no", "—",
+            ("il braccio mu=0 non e' in questo checkout (E-E gira su un'altra macchina e "
+             "andra' in experiments_altre_macchine/)" if not _n_mu0 else
+             f"{_n_mu0} run con mu = 0 nel registro: confronto da costruire"),
+            "algoritmo registrato nel registro run: " +
+            "; ".join(f"{k}: {v}" for k, v in sorted(_mu.items())),
+            "—", "confronto non costruibile" if not _n_mu0 else "confronto da costruire",
+            "Da eseguire da zero riusando split, candidati, checkpoint e condizioni DP "
+            "della Fase B (guida Fase D).",
+            "Fase A — lacuna rilevata (si esegue in Fase D)",
+        ])
 
     for i, riga in enumerate(conf, start=2):
         for c, v in enumerate(riga, start=1):
@@ -592,6 +617,30 @@ def riga_rq2_sintesi(n_tot: int) -> list:
             "Fase E"]
 
 
+def riga_rq3_sintesi(n_tot: int) -> list:
+    """Riga RQ3 della Matrice_sintesi, dai dati di E-E."""
+    d = leggi_rq3()
+    s, st = statistiche_rq3(d)
+    n = len(s)
+    h = st["loss holdout del modello rilasciato"]; y = st["Yeom, AUC all'ultimo round"]
+    ddp = leggi_rq3(con_dp=True)
+    return [f"{2 * n} run E-E senza DP (terza macchina)" +
+            (f", {2 * len(statistiche_rq3(ddp)[0])} con DP" if ddp else ""),
+            "RQ3", "completata da verificare", "C-RQ3", "si, appaiando per seed",
+            f"Senza DP, loss sull'holdout del modello rilasciato, FedAvg contro FedProx: "
+            f"{sum(h['fedavg']) / n:.6f} contro {sum(h['fedprox']) / n:.6f} (t = {h['t']:.2f}, "
+            f"{n - 1} gdl); Yeom {sum(y['fedavg']) / n:.4f} contro {sum(y['fedprox']) / n:.4f}. " +
+            ("Braccio con DP eseguito (foglio RQ3_algoritmo)." if ddp else
+             "Braccio con DP (eps = 64, C = 1) in corso."),
+            ("Nessuna run mancante per il confronto minimo." if ddp else
+             "Braccio con DP: 2 algoritmi x 5 seed = 10 run sulla stessa macchina. Prove su mu "
+             "a un seed (ESPERIMENTI.md, E-E)."),
+            "alta", "Tutta la campagna usa FedProx mu = 0.01 come base: se cambiarla e' una "
+            "decisione del supervisore. La loss locale di FedProx include il termine prossimale "
+            "(segnalazione 59).",
+            "Fase A -> D"]
+
+
 def scrivi_sintesi(righe):
     p = os.path.join(USCITA, "Matrice_sintesi.xlsx")
     wb = openpyxl.load_workbook(p)
@@ -641,6 +690,7 @@ def scrivi_sintesi(righe):
          "anche A2 e A3.",
          "Fase A -> B"],
         riga_rq2_sintesi(n_tot),
+        riga_rq3_sintesi(n_tot) if leggi_rq3() else
         [f"{n_tot} run totali", "RQ3",
          "lacuna da colmare con E-E" if not n_mu0 else "completata da verificare",
          "C-RQ3", "no" if not n_mu0 else "da costruire",
@@ -1170,6 +1220,160 @@ def scrivi_rq2():
     return len(stat) + n_dp
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# RQ3 (E-E): FedAvg (mu = 0) contro FedProx (mu = 0.01), 2026-09-27
+# ─────────────────────────────────────────────────────────────────────────────
+# Come RQ2: i bracci girano su un'altra macchina (Windows) e stanno in
+# experiments_altre_macchine/; il braccio FedProx ha il config della base e in
+# experiments/ sostituirebbe i seed di nodp-sweep2 (segnalazione 45). Il confronto e'
+# fra i due bracci della stessa macchina, appaiati per seed.
+RQ3_BRACCI = {"rq3-mu0.01": 0.01, "rq3-mu0": 0.0}
+RQ3_BRACCI_DP = {"rq3-mu0.01-eps64": 0.01, "rq3-mu0-eps64": 0.0}
+RQ3_NOMI = {"rq3-mu0.01": "FedProx mu = 0.01", "rq3-mu0": "FedAvg mu = 0"}
+
+
+def leggi_rq3(con_dp: bool = False) -> dict | None:
+    """{braccio: {seed: json}} per i due bracci di E-E; None se manca un braccio. Chiavi
+    sempre "rq3-mu0.01" e "rq3-mu0". Un JSON con mu, regime o partizione diversi dal
+    braccio e' un errore di dati."""
+    out = {}
+    for braccio, mu in (RQ3_BRACCI_DP if con_dp else RQ3_BRACCI).items():
+        fs = sorted(glob.glob(os.path.join(ALTRE_MACCHINE, braccio, "experiment_*.json")))
+        if not fs:
+            return None
+        per_seed = {}
+        for f in fs:
+            j = json.load(open(f))
+            c = j.get("config") or {}
+            regime_ok = ((not c.get("no_dp") and c.get("epsilon") == RQ2_EPS_DP
+                          and c.get("max_grad_norm") == 1.0 and c.get("dp_mode") == "dp-fedavg")
+                         if con_dp else bool(c.get("no_dp")))
+            mu_ok = c.get("proximal_mu") is not None and float(c["proximal_mu"]) == mu
+            if not (mu_ok and regime_ok and c.get("partition_strategy", "per_site") == "per_site"):
+                raise ValueError(f"{f}: atteso proximal_mu={mu}, "
+                                 f"{'dp-fedavg eps=64 C=1' if con_dp else 'no_dp'}, per_site; "
+                                 f"trovato mu={c.get('proximal_mu')}, no_dp={c.get('no_dp')}, "
+                                 f"eps={c.get('epsilon')}, C={c.get('max_grad_norm')}, "
+                                 f"partizione={c.get('partition_strategy')}")
+            per_seed[c.get("seed")] = j
+        out[braccio.replace("-eps64", "")] = per_seed
+    return out
+
+
+def statistiche_rq3(d: dict) -> tuple[list[int], dict]:
+    """Differenze FedAvg - FedProx appaiate per seed, per ogni metrica di _metriche_rq2."""
+    seeds = sorted(set(d["rq3-mu0.01"]) & set(d["rq3-mu0"]))
+    fp = {s: _metriche_rq2(d["rq3-mu0.01"][s]) for s in seeds}
+    fa = {s: _metriche_rq2(d["rq3-mu0"][s]) for s in seeds}
+    stat = {}
+    for k in fp[seeds[0]]:
+        a = [fp[s][k] for s in seeds]; b = [fa[s][k] for s in seeds]
+        if any(v is None for v in a + b):
+            continue
+        stat[k] = {"fedprox": a, "fedavg": b, **appaiato(a, b)}
+    return seeds, stat
+
+
+def _curva_holdout(js: dict, seeds: list[int]) -> list[float | None]:
+    """Loss sull'holdout del modello globale a ogni round, media sui seed."""
+    n_r = min(len(js[s].get("per_round") or {}) for s in seeds)
+    out = []
+    for r in range(1, n_r + 1):
+        v = [-(js[s]["per_round"][str(r)].get("mia") or {}).get("non_member_score_mean", float("nan"))
+             for s in seeds]
+        v = [x for x in v if x == x]
+        out.append(sum(v) / len(v) if v else None)
+    return out
+
+
+def _lettura_rq3(k: str, s: dict) -> str:
+    if k.startswith("loss addestramento locale"):
+        return ("non confrontabile fra i bracci: con FedProx include il termine prossimale "
+                "(segnalazione 59)")
+    return _lettura_rq2(k, s)
+
+
+def scrivi_rq3():
+    d = leggi_rq3()
+    if not d:
+        return 0
+    seeds, stat = statistiche_rq3(d)
+    n = len(seeds)
+    p = os.path.join(USCITA, "Matrice_sintesi.xlsx")
+    wb = openpyxl.load_workbook(p)
+    if "RQ3_algoritmo" in wb.sheetnames:
+        del wb["RQ3_algoritmo"]
+    ws = wb.create_sheet("RQ3_algoritmo")
+    ws.append(["metrica", f"FedProx mu = 0.01, media ({n} seed)", "FedAvg mu = 0, media",
+               "differenza appaiata FedAvg - FedProx", "deviazione standard", f"t ({n - 1} gdl)",
+               "seed con FedAvg sotto FedProx", "lettura"])
+    for k, st in stat.items():
+        ws.append([k, round(sum(st["fedprox"]) / n, 6), round(sum(st["fedavg"]) / n, 6),
+                   round(st["media"], 6), round(st["sd"], 6) if st["sd"] is not None else None,
+                   round(st["t"], 2) if st["t"] is not None else None,
+                   f"{st['negative']} su {st['n']}", _lettura_rq3(k, st)])
+    ho = "loss holdout del modello rilasciato"
+    rap = [stat[ho]["fedprox"][i] / stat[ho]["fedavg"][i] for i in range(n)]
+    geo = math.exp(sum(math.log(x) for x in rap) / n)
+    ws.append([f"Rapporto FedProx / FedAvg sulla loss sull'holdout per seed: "
+               f"{', '.join(f'{x:.2f}' for x in rap)}; media geometrica {geo:.2f}."])
+    ws.append([])
+    ws.append(["seed", "braccio"] + list(stat))
+    for x in seeds:
+        for b, lab in (("fedprox", "FedProx"), ("fedavg", "FedAvg")):
+            ws.append([x, lab] + [round(stat[k][b][seeds.index(x)], 6) for k in stat])
+    ws.append([])
+    ws.append(["round", "loss sull'holdout del modello globale, FedProx (media sui seed)",
+               "idem, FedAvg"])
+    cfp = _curva_holdout(d["rq3-mu0.01"], seeds); cfa = _curva_holdout(d["rq3-mu0"], seeds)
+    for r, (a, b) in enumerate(zip(cfp, cfa), start=1):
+        ws.append([r, round(a, 6) if a is not None else None, round(b, 6) if b is not None else None])
+    commit = sorted({j["config"].get("git_commit", "")[:7] for b in d.values() for j in b.values()})
+    ws.append([])
+    ws.append([f"Fonte: experiments_altre_macchine/rq3-mu0.01 e rq3-mu0 (E-E, senza DP, terza "
+               f"macchina, commit {', '.join(commit)}; i due bracci hanno girato in parallelo). "
+               f"Differiscono solo per ml.proximal_mu e sono appaiati per seed; il round 1 e' "
+               f"identico nei due bracci, perche' il termine prossimale entra dal round 2. Il "
+               f"braccio FedProx ha il config di nodp-sweep2 ma gira su un'altra macchina "
+               f"(segnalazione 55): il confronto usa i due bracci della stessa macchina."])
+    n_dp = 0
+    ddp = leggi_rq3(con_dp=True)
+    if ddp:
+        sd_, st_dp = statistiche_rq3(ddp)
+        ws.append([])
+        ws.append([f"CON DP: dp-fedavg, eps = {RQ2_EPS_DP:g} per round, C = 1 (punto scelto prima "
+                   f"di vedere RQ3 con DP), {len(sd_)} seed per braccio"])
+        ws.append(["metrica", "FedProx, media", "FedAvg, media", "differenza appaiata FedAvg - FedProx",
+                   "deviazione standard", f"t ({len(sd_) - 1} gdl)", "seed con FedAvg sotto FedProx",
+                   "lettura"])
+        for k, st in st_dp.items():
+            ws.append([k, round(sum(st["fedprox"]) / len(sd_), 6), round(sum(st["fedavg"]) / len(sd_), 6),
+                       round(st["media"], 6), round(st["sd"], 6) if st["sd"] is not None else None,
+                       round(st["t"], 2) if st["t"] is not None else None,
+                       f"{st['negative']} su {st['n']}", _lettura_rq3(k, st)])
+        n_dp = len(st_dp)
+        comuni = [x for x in sd_ if x in seeds]
+        if comuni:
+            rr = {b: [st_dp[ho][b][sd_.index(x)] / stat[ho][b][seeds.index(x)] for x in comuni]
+                  for b in ("fedprox", "fedavg")}
+            gg = {b: math.exp(sum(math.log(v) for v in rr[b]) / len(comuni)) for b in rr}
+            inter = appaiato([math.log(v) for v in rr["fedprox"]], [math.log(v) for v in rr["fedavg"]])
+            ws.append([])
+            ws.append(["COSTO DELLA DP PER ALGORITMO: loss sull'holdout con DP / senza DP, stesso seed"])
+            ws.append(["seed"] + [str(x) for x in comuni] + ["media geometrica"])
+            for b, lab in (("fedprox", "FedProx"), ("fedavg", "FedAvg")):
+                ws.append([lab] + [round(v, 2) for v in rr[b]] + [round(gg[b], 2)])
+            if inter["t"] is not None:
+                sig = abs(inter["t"]) > T_CRITICO_4GDL
+                ws.append([f"Interazione algoritmo x DP, sul logaritmo del rapporto (FedAvg - FedProx): "
+                           f"media {inter['media']:+.3f}, sd {inter['sd']:.3f}, t({inter['n'] - 1}) = "
+                           f"{inter['t']:.2f}; " + ("significativa" if sig else
+                           f"non significativa a {inter['n']} seed (|t| < {T_CRITICO_4GDL})") + "."])
+    stile(ws, [40, 18, 16, 20, 14, 10, 16, 60], 40)
+    wb.save(p)
+    return len(stat) + n_dp
+
+
 def scrivi_glossario():
     """Glossario delle metriche che compaiono nelle matrici.
 
@@ -1235,7 +1439,9 @@ def scrivi_glossario():
          "NON e' la qualita' del modello rilasciato. Senza DP coincide quasi con la "
          "loss sull'holdout; con DP client-level misura quanto bene un client "
          "riadatta localmente il modello rumoroso che riceve, e la distanza dalla "
-         "loss sull'holdout misura il danno del rumore aggiunto all'aggregazione.",
+         "loss sull'holdout misura il danno del rumore aggiunto all'aggregazione. Con "
+         "FedProx (mu > 0) include il termine prossimale (mu/2)||w - w_globale||^2: fra "
+         "celle con mu diversi non si confronta (segnalazione 59).",
          "fogli Utility_privacy_limite e Costo_per_sito", "segnalazione 46"),
         ("A0 / A1 / A2 / A3",
          "Punti di osservazione dell'avversario sulla stessa pipeline di "
@@ -1273,6 +1479,7 @@ def main():
     n5 = scrivi_utility_privacy()
     n6 = scrivi_worst_case()
     n8 = scrivi_rq2()
+    n9 = scrivi_rq3()
     n7 = scrivi_glossario()
     print(f"registro run   : {n1} righe -> {p1}")
     print(f"confrontabilita: {n2} righe -> {p2}")
@@ -1281,6 +1488,7 @@ def main():
     print(f"utility/privacy: {n5} righe (foglio in Matrice_sintesi)")
     print(f"worst-case     : {n6} righe (foglio in Matrice_sintesi)")
     print(f"RQ2 partizione : {n8} metriche (foglio in Matrice_sintesi)")
+    print(f"RQ3 algoritmo  : {n9} metriche (foglio in Matrice_sintesi)")
     print(f"glossario      : {n7} voci (foglio in Matrice_sintesi)")
     stati = defaultdict(int)
     for r in righe:

@@ -163,3 +163,22 @@ def test_registro_riconosce_le_run_record_dp_e_il_commit():
     assert st == "completata da verificare" and "-dirty" in mot and "abc1234" in mot
     st, mot = gm.stato_validita({"git_commit": "abc1234def"}, "x", "naturale", None, mia)
     assert "commit abc1234 registrato" in mot
+
+
+def test_leggi_rq3_controlla_mu_e_regime(tmp_path, monkeypatch):
+    # E-E (RQ3): bracci FedProx mu = 0.01 e FedAvg mu = 0 in experiments_altre_macchine/
+    monkeypatch.setattr(gm, "ALTRE_MACCHINE", str(tmp_path))
+    assert gm.leggi_rq3() is None
+    for b, mu in (("rq3-mu0.01", 0.01), ("rq3-mu0", 0.0)):
+        (tmp_path / b).mkdir()
+        j = _rq2_json("per_site", 42); j["config"]["proximal_mu"] = mu
+        (tmp_path / b / "experiment_20260925_000000.json").write_text(json.dumps(j))
+    r = gm.leggi_rq3()
+    assert set(r) == {"rq3-mu0.01", "rq3-mu0"} and 42 in r["rq3-mu0"]
+    seeds, st = gm.statistiche_rq3(r)
+    assert seeds == [42] and st["loss holdout del modello rilasciato"]["media"] == pytest.approx(0.0)
+    assert gm.leggi_rq3(con_dp=True) is None
+    cattivo = _rq2_json("per_site", 123); cattivo["config"]["proximal_mu"] = 0.01
+    (tmp_path / "rq3-mu0" / "experiment_20260926_000000.json").write_text(json.dumps(cattivo))
+    with pytest.raises(ValueError):
+        gm.leggi_rq3()
