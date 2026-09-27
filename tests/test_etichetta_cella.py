@@ -85,16 +85,3 @@ def test_varianti_no_dp_non_sostituiscono_il_riferimento(tmp_path):
     assert g["no-DP baseline"] == [str(tmp_path / "nodp-sweep2" / "experiment_20260908_121719.json")]
     assert set(g) == {"no-DP baseline", "no-DP baseline, mu=0.0",
                       "no-DP baseline, partizione=iid", "no-DP baseline, init comune"}
-
-
-def test_groupnorm_senza_dp_ha_una_cella_propria(tmp_path):
-    # 2026-09-27: riferimento no-DP con GroupNorm per E-B; con record_dp nessun suffisso
-    assert etichetta_cella(_cfg(norm="group")) == "no-DP baseline, norm=group"
-    assert etichetta_cella(_cfg(norm="batch")) == "no-DP baseline"
-    rdp = _cfg(norm="group", record_dp={"enabled": True, "noise_multiplier": 2.0})
-    assert etichetta_cella(rdp) == "record-DP, nm=2.0"
-    _scrivi(tmp_path / "nodp-sweep2" / "experiment_20260908_121719.json", _cfg())
-    _scrivi(tmp_path / "rq1-nodp-groupnorm" / "experiment_20260928_120000.json", _cfg(norm="group"))
-    g = cs.discover_groups(pattern=str(tmp_path / "*/experiment_*.json"))
-    assert len(g["no-DP baseline"]) == 1 and "nodp-sweep2" in g["no-DP baseline"][0]
-    assert len(g["no-DP baseline, norm=group"]) == 1

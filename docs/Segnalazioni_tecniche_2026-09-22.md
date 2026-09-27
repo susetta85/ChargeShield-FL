@@ -426,12 +426,6 @@ sono in `scripts/_applicati/`.*
     `genera_matrici_faseA.py` (test in `tests/test_etichetta_cella.py`). Una run con
     C = 0.25 va nella cella "dp-fedavg, eps=16.0, C=0.25"; `_ctrl_common_init` avrebbe
     "no-DP baseline, init comune" ed e' comunque esclusa come cartella `_*`.
-    **Stessa classe, 2026-09-27, prima che capitasse**: `norm` non era fra i campi
-    dell'etichetta, e la cella no-DP con GroupNorm di E-B sarebbe finita in "no-DP baseline"
-    sostituendo i seed di `nodp-sweep2`. Aggiunto a `BASE` in `scripts/etichetta_cella.py`
-    (non conta con record_dp, dove e' sempre group); nessuna cella esistente cambia
-    etichetta, solo sette run di cartelle `_*` gia' escluse. Test in
-    `tests/test_etichetta_cella.py`.
 54. **Nei log l'attacco di Yeom si chiama ancora "FedMIA".** `run_yeom`
     (`run_experiments.py`, righe 1978, 2013 e 2184 prima della correzione) scriveva
     `FedMIA — members`, `FedMIA pool bilanciato` e `Round N — FedMIA AUC-ROC`: residuo del

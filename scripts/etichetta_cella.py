@@ -42,11 +42,6 @@ BASE: dict[str, Any] = {
     "feature_names": None,        # None = le 6 feature storiche
     "partition_strategy": "per_site",
     "split_strategy": "random",
-    # 2026-09-27: la cella no-DP con GroupNorm (riferimento di E-B) ha lo stesso
-    # (dp_mode, epsilon, no_dp) della base e senza questo campo sostituirebbe i seed di
-    # nodp-sweep2, come nella segnalazione 45. Con record_dp la normalizzazione e'
-    # sempre group ed e' parte del trattamento: li' non aggiunge suffisso.
-    "norm": "batch",
 }
 
 # campo -> come compare nel suffisso
@@ -62,7 +57,6 @@ _NOMI = {
     "feature_names": "feature",
     "partition_strategy": "partizione",
     "split_strategy": "split",
-    "norm": "norm",
 }
 
 
@@ -105,8 +99,6 @@ def scostamenti(cfg: dict) -> list[tuple[str, Any]]:
             continue                      # registrato vuoto: come non registrato
         if campo == "max_grad_norm" and not client_level:
             continue                      # C conta solo col clipping client-level
-        if campo == "norm" and (cfg.get("record_dp") or {}).get("enabled"):
-            continue                      # con record_dp e' sempre group
         try:
             v, b = _normalizza(campo, cfg[campo]), _normalizza(campo, base)
         except (TypeError, ValueError):
