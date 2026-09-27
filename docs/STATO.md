@@ -1,8 +1,8 @@
 # ChargeShield-FL — Stato del progetto
 
-> **Stato: documento CANONICO.** Aggiornato il 2026-09-26 (revisione: costo sul modello
-> rilasciato, analisi per record corretta, E-C, segnalazioni 46-57, controlli del protocollo, celle delle matrici ricomposte, RQ2 senza DP,
-> punto operativo a 5 seed, RQ2 con DP, due seed della campagna E-B). Solo numeri
+> **Stato: documento CANONICO.** Aggiornato il 2026-09-27 (revisione: costo sul modello
+> rilasciato, analisi per record corretta, E-C, segnalazioni 46-58, controlli del protocollo, celle delle matrici ricomposte, RQ2 senza DP,
+> punto operativo a 5 seed, RQ2 con DP, E-B a σ = 1 su 5 seed). Solo numeri
 > presenti in `risultati/` o letti dai JSON grezzi alla data, e lo dice dove.
 > Linea scientifica: la guida. Cosa fare: `ESPERIMENTI.md`. Cosa esiste nel codice:
 > `SISTEMA.md`. Questo file risponde a una sola domanda: a che punto siamo.
@@ -16,9 +16,11 @@ record senza DP, letto finora come l'unico segnale, compare identico fra i non m
 è stabilità del ranking, non appartenenza (segnalazione 47). Il costo, misurato sul
 modello globale rilasciato (segnalazione 46), supera la soglia di 3 volte in ogni cella
 client-level: a ε = 16 è 60 volte il no-DP appaiato, e il punto operativo scelto con la
-griglia, C = 1 con ε = 64, vale 4.5 volte a 5 seed (sezione 3.1b). La partizione IID o per sito
-non cambia il successo degli attacchi, con o senza DP (sezione 3.9). I prossimi passi
-sono E-B (DP per record, in corso), E-E e il canary su più siti (`ESPERIMENTI.md`).
+griglia, C = 1 con ε = 64, vale 4.5 volte a 5 seed (sezione 3.1b). La DP per record a σ = 1
+costa 1.4 volte, sotto la soglia, ma con un ε per record di circa 30 e senza separare il
+rumore dal passaggio a GroupNorm (sezione 3.5). La partizione IID o per sito non cambia il
+successo degli attacchi, con o senza DP (sezione 3.9). I prossimi passi sono la cella no-DP
+con GroupNorm, gli altri livelli di σ, E-E e il canary su più siti (`ESPERIMENTI.md`).
 
 ## 2. Glossario minimo
 
@@ -161,6 +163,11 @@ membro in un seed e non membro in un altro.
 | central ε=1 | 299 | 289.9 | 0.62 | 1.91 | +0.20 ± 0.22 | 0.91 |
 | local ε=1 | 291 | 289.8 | 0.07 | 1.53 | −0.29 ± 0.22 | −1.32 |
 | dp-fedavg ε=64 | 473 | 290.3 | 11.61 | 10.35 | +0.15 ± 0.22 | 0.69 |
+| record-DP σ=1 | 415 | 289.0 | 7.21 | 9.39 | +0.04 ± 0.22 | 0.18 |
+
+Nella cella record-DP le sessioni sono 17 389 e 27 877 invece di 17 561 e 28 129: il dump
+per campione contiene i record che LiRA punteggia, e con record-DP sono circa 60 in meno per
+seed (segnalazione 58).
 
 Il conteggio sui membri, letto fino al 2026-09-24 come "l'unico segnale su dati
 naturali", compare quasi uguale fra i non membri: senza DP 406 segnalati contro 412.
@@ -211,22 +218,41 @@ naturali: la prova del 24 settembre sul Mac principale è arrivata in fondo con 
 attacchi saltati (segnalazione 49, JSON in `_prova_recorddp` da non usare); il rilancio
 `_prova_recorddp_v2` sul secondo Mac esegue tutti gli attacchi. A σ = 1, seed 42, la loss
 sull'holdout è 1.29 volte il no-DP della stessa macchina, gli attacchi sono al caso, l'ε
-per record di Poisson è 30.2 (Office 1) e il limite con lo shuffle 1212 (valori trascritti
-dal secondo Mac, `ESPERIMENTI.md` E-B). Il confronto col no-DP mescola rumore e cambio di
+per record di Poisson è 30.2 (Office 1) e il limite con lo shuffle 1212 (JSON in
+`experiments_altre_macchine/_prova_recorddp_v2`, riverificato il 2026-09-26). Il confronto col no-DP mescola rumore e cambio di
 normalizzazione (GroupNorm).
 
-Campagna E-B in corso sul Mac principale, σ = 1, `experiments/rq1-recorddp-nm1`, un seed
-alla volta. Seed 123, JSON del 2026-09-26 letto lo stesso giorno (commit 0dedd34): loss
-sull'holdout del modello rilasciato 0.00239, 1.51 volte la media di `nodp-sweep2` e 1.46
-volte lo stesso seed; Yeom 0.503 all'ultimo round, Shadow 0.503, LiRA composto 0.498, TPR a
-FPR 1% 0.0100; ε per record di Poisson 30.4 a Office 1 (4.8 a JPL, 5.0 a Caltech), limite
-con lo shuffle 1212. Seed 456, JSON delle 15:18 letto lo stesso giorno (commit 1519d16 con
-`-dirty`, dovuto solo a documenti: segnalazione 57): holdout 0.00130, 0.82 volte la media di
-`nodp-sweep2` e 1.86 volte lo stesso seed; Yeom 0.501, Shadow 0.503, LiRA composto 0.503, TPR
-0.0081; ε di Poisson 31.0 a Office 1, limite con lo shuffle 1212. Due seed su cinque: rapporto
-sullo stesso seed 1.46 e 1.86, sulla media del no-DP 1.51 e 0.82, attacchi al caso. La
-variabilità fra seed è più grande dell'effetto medio, e il rapporto mescola rumore e
-GroupNorm (sopra): la cella no-DP con GroupNorm serve a leggerlo.
+**Campagna E-B, σ = 1, completa** (`experiments/rq1-recorddp-nm1`, Mac principale, 5 seed
+dal 26 al 27 settembre, zero righe `[ERROR]` nel log; JSON letti il 2026-09-27; cella
+"record-DP, nm=1.0" nei fogli `Utility_privacy_limite` e `Worst_case_per_record`, confronto
+C15). Commit 0dedd34 (seed 123), 1519d16 con `-dirty` dovuto solo a documenti (seed 456,
+segnalazione 57), 943c795 (789, 1234, 42): il codice di training e attacco è lo stesso.
+
+| seed | holdout | volte lo stesso seed no-DP | Yeom, ultimo round | Shadow, media | LiRA composto | TPR a FPR 1% | ε Poisson, Office 1 |
+|---|---|---|---|---|---|---|---|
+| 42 | 0.00240 | 1.10 | 0.498 | 0.497 | 0.502 | 0.0104 | 30.2 |
+| 123 | 0.00239 | 1.46 | 0.503 | 0.503 | 0.498 | 0.0100 | 30.4 |
+| 456 | 0.00130 | 1.86 | 0.501 | 0.503 | 0.503 | 0.0081 | 31.0 |
+| 789 | 0.00233 | 1.48 | 0.503 | 0.504 | 0.497 | 0.0085 | 30.4 |
+| 1234 | 0.00247 | 1.35 | 0.501 | 0.504 | 0.503 | 0.0110 | 30.4 |
+
+Loss sull'holdout media 0.00218, 1.4 volte la media di `nodp-sweep2` (1.43 in media
+geometrica dei rapporti per seed, tutti sopra 1): sotto la soglia di 3 volte, dove nessuna
+cella client-level arriva (la migliore, ε = 64, vale 4.5). Attacchi al caso, LiRA composto
+equivalente a 0.5 col TOST (`check_significance.py`), test appaiato per record +0.04 ± 0.22,
+z = 0.18 (sezione 3.2). ε per record di Poisson fra 30.2 e 31.0 a Office 1, 4.8 a JPL e 5.0 a
+Caltech; con lo shuffle il limite valido è 1212, cioè nessuna garanzia formale utile. Tre
+riserve: il rapporto mescola il rumore con il passaggio a GroupNorm e al clipping per
+esempio, e la cella no-DP con GroupNorm, che li separa, non c'è ancora; gli shadow di LiRA
+non usano DP-SGD (segnalazione 51); il confronto con il client-level è fra unità protette
+diverse a costo comparabile, non allo stesso ε. Lettura per RQ1: al livello di rumore σ = 1
+la DP per record ha un costo accettabile e la DP per client no; in nessuna delle due il
+regime naturale offre un segnale che la DP possa ridurre.
+
+Il seed 42 riproduce la prova `_prova_recorddp_v2` del secondo Mac (commit 2c4a0f0): loss di
+addestramento per round e holdout coincidono (0.00239868088 contro 0.00239868097), Yeom alla
+settima cifra; LiRA composto no (0.5025 contro 0.5043), come atteso (sezione 3.4). Con
+GroupNorm il risultato non dipende dalla macchina (segnalazione 55).
 
 ### 3.6 Infrastruttura
 
@@ -331,8 +357,8 @@ L'elenco ordinato, con comandi e prerequisiti, è `ESPERIMENTI.md`. E-A è chius
 esistenti, ε = 64 compresa (sezione 3.2). E-D (RQ2) è analizzato con e senza DP (sezione
 3.9) e sta in `experiments_altre_macchine/`; E-E (RQ3, su una terza macchina) andrà nello
 stesso posto, non in `experiments/` (segnalazione 45). I controlli del protocollo sono
-eseguiti (sezione 3.1c). Restano: la campagna E-B record-level su dati naturali (in corso,
-sezione 3.5; livelli di σ da decidere), E-E con e senza DP (config del braccio con DP
+eseguiti (sezione 3.1c). E-B a σ = 1 è completa (sezione 3.5). Restano: la cella no-DP
+con GroupNorm e gli altri livelli di σ di E-B (da decidere), E-E con e senza DP (config del braccio con DP
 pronto, `ESPERIMENTI.md` E-E), il canary su più siti, le
 statistiche delle feature per client di E-D, la rianalisi NVFlare. Da decidere col supervisore: la metrica primaria per record (segnalazione 47) e se
 le campagne future usano l'inizializzazione comune (segnalazione 48). I bug che toccano i numeri sono in

@@ -436,7 +436,9 @@ def scrivi_confronti(righe):
     for et, files in composizione_celle().items():
         for f in files:
             r = per_id.get(f"{os.path.basename(os.path.dirname(f))}/{os.path.basename(f)}")
-            if r and r["regime"] == "naturale" and r["rq"] == "RQ1":
+            # 2026-09-27: anche le celle record-DP di E-B (regime "naturale — record-DP"),
+            # escluse finche' erano prove a un seed.
+            if r and r["regime"] in ("naturale", "naturale — record-DP") and r["rq"] == "RQ1":
                 celle[et].append(r)
 
     conf = []
@@ -449,11 +451,18 @@ def scrivi_confronti(righe):
         seed_dp = {str(r["seed_nome"] or r["seed"]) for r in rs}
         seed_nodp = {str(r["seed_nome"] or r["seed"]) for r in nodp}
         appaiati = sorted(seed_dp & seed_nodp)
+        rec = chiave.startswith("record-DP")
         conf.append([
             f"C{n:02d}", "RQ1", "no-DP (regime naturale)", chiave,
             "si, se appaiati per seed" if appaiati else "no: nessun seed in comune",
-            "dati, split, architettura, algoritmo, round, epoche, batch: identici",
-            ("nessuna differenza non controllata individuata oltre al fattore DP"
+            ("dati, split, algoritmo, round, epoche, batch: identici; l'architettura no "
+             "(GroupNorm al posto di BatchNorm, segnalazione 49)" if rec else
+             "dati, split, architettura, algoritmo, round, epoche, batch: identici"),
+            ("normalizzazione GroupNorm e clipping per esempio: il rapporto sul no-DP "
+             "mescola rumore e architettura finche' manca una cella no-DP con GroupNorm; "
+             "unita' protetta record, da confrontare col client-level a costo comparabile, "
+             "non allo stesso eps (ESPERIMENTI.md, E-B)" if rec and appaiati else
+             "nessuna differenza non controllata individuata oltre al fattore DP"
              if appaiati else "manca il riferimento appaiato"),
             f"{len(rs)} run nella cella DP, {len(nodp)} nella cella no-DP; "
             f"seed appaiabili: {appaiati or 'nessuno'}",
@@ -497,13 +506,22 @@ def scrivi_confronti(righe):
             "Copiare E-D in experiments_altre_macchine/ (ESPERIMENTI.md, E-D).",
             "Fase E",
         ])
+    # 2026-09-27: conteggi dal registro, non piu' il testo fisso del 2026-09-21
+    # ("0.01 su 235 run su 235"), rimasto invariato mentre le run crescevano.
+    _mu = defaultdict(int)
+    for r in righe:
+        if "errore" not in r:
+            _mu[r["algoritmo"]] += 1
+    _n_mu0 = sum(v for k, v in _mu.items() if k.startswith("FedAvg"))
     conf.append([
         "C-RQ3", "RQ3", "FedAvg (mu=0)", "FedProx (mu=0.01)",
         "no", "—",
-        "il braccio mu=0 non esiste",
-        "proximal_mu = 0.01 su 235 run su 235, verificato con "
-        "scripts/build_run_registry.py il 2026-09-21",
-        "—", "confronto non costruibile",
+        ("il braccio mu=0 non e' in questo checkout (E-E gira su un'altra macchina e "
+         "andra' in experiments_altre_macchine/)" if not _n_mu0 else
+         f"{_n_mu0} run con mu = 0 nel registro: confronto da costruire"),
+        "algoritmo registrato nel registro run: " +
+        "; ".join(f"{k}: {v}" for k, v in sorted(_mu.items())),
+        "—", "confronto non costruibile" if not _n_mu0 else "confronto da costruire",
         "Da eseguire da zero riusando split, candidati, checkpoint e condizioni DP "
         "della Fase B (guida Fase D).",
         "Fase A — lacuna rilevata (si esegue in Fase D)",
@@ -556,9 +574,13 @@ def riga_rq2_sintesi(n_tot: int) -> list:
     s, st = statistiche_rq2(rq2)
     h = st["loss holdout del modello rilasciato"]; y = st["Yeom, AUC all'ultimo round"]
     n = len(s)
-    return [f"{2 * n} run E-D senza DP (seconda macchina)", "RQ2", "completata da verificare",
+    _dp = leggi_rq2(con_dp=True)
+    _ndp = 2 * len(statistiche_rq2(_dp)[0]) if _dp else 0
+    return [(f"{2 * n + _ndp} run E-D, senza DP e con DP (seconda macchina)" if _ndp else
+             f"{2 * n} run E-D senza DP (seconda macchina)"), "RQ2", "completata da verificare",
             "C-RQ2", "si, appaiando per seed",
-            f"Braccio senza DP eseguito. Loss sull'holdout del modello rilasciato, IID "
+            ("Bracci senza DP e con DP eseguiti. " if _ndp else "Braccio senza DP eseguito. ") +
+            f"Senza DP, loss sull'holdout del modello rilasciato, IID "
             f"contro per sito: {sum(h['iid']) / n:.6f} contro {sum(h['per_site']) / n:.6f} "
             f"(t = {h['t']:.2f}, {n - 1} gdl); Yeom {sum(y['iid']) / n:.4f} contro "
             f"{sum(y['per_site']) / n:.4f}. " + _testo_rq2_dp(),
@@ -583,24 +605,51 @@ def scrivi_sintesi(righe):
     n_ver = sum(1 for r in righe if r["stato"] == "verificata")
     n_incompl = sum(1 for r in righe if r["stato"] == "incompleta")
 
+    # 2026-09-27: righe RQ1 e RQ3 dai dati. Prima il testo era fisso al 2026-09-21
+    # ("C01..C11", "0.01 su 235 run su 235") e non diceva nulla di E-A, della griglia
+    # e di E-B.
+    comp = composizione_celle()
+    _ho = {et: [loss_holdout_modello_rilasciato(json.load(open(f))) for f in fs]
+           for et, fs in comp.items()}
+    _ho = {et: [x for x in v if x is not None] for et, v in _ho.items()}
+    _base = (sum(_ho["no-DP baseline"]) / len(_ho["no-DP baseline"])
+             if _ho.get("no-DP baseline") else None)
+    _rap = {et: sum(v) / len(v) / _base for et, v in _ho.items()
+            if v and _base and et != "no-DP baseline"}
+    _cl = {et: x for et, x in _rap.items() if not et.startswith("record-DP") and len(_ho[et]) >= 5}
+    _rec = {et: x for et, x in _rap.items() if et.startswith("record-DP")}
+    _best = min(_cl, key=_cl.get) if _cl else None
+    n_mu0 = sum(1 for r in righe if str(r.get("algoritmo", "")).startswith("FedAvg"))
     S = [
-        [f"{n_nat} run in regime naturale", "RQ1", "completata da verificare",
-         "C01..C11", "si, appaiando per seed",
-         "Nessuna lacuna sul fattore DP. Manca il braccio B1 'clipping senza "
-         "rumore' (sigma=0), che la guida chiede in Fase B per separare "
-         "l'effetto del clipping da quello del rumore.",
-         "1 cella B1: clipping attivo, sigma=0, stessi 5 seed della cella di "
-         "riferimento. Riusa i config esistenti cambiando un solo parametro.",
+        [f"{n_nat} run in regime naturale, {sum(len(comp[e]) for e in _rec)} record-DP",
+         "RQ1", "completata da verificare",
+         f"C01..C{len([e for e in comp if e != 'no-DP baseline']):02d}", "si, appaiando per seed",
+         (f"Client-level: nessuna cella a 5 seed sotto 3 volte il no-DP sull'holdout del "
+          f"modello rilasciato; la migliore e' {_best}, {_cl[_best]:.1f} volte. " if _best and
+          _cl[_best] > 3 else
+          f"Client-level: la migliore cella a 5 seed e' {_best}, {_cl[_best]:.1f} volte. "
+          if _best else "") +
+         ("Record-level: " + "; ".join(f"{e}, {len(_ho[e])} seed, {x:.1f} volte" for e, x in
+                                       sorted(_rec.items())) + ". " if _rec else
+          "Record-level: nessuna cella. ") +
+         "Mancano il braccio B1 'clipping senza rumore' (sigma=0, segnalazione 38) e la "
+         "cella no-DP con GroupNorm, che separa rumore e architettura nelle celle record-DP.",
+         "B1: 1 cella x 5 seed, dopo il flag --clip-only. Cella no-DP con GroupNorm: 5 seed. "
+         "Altri livelli di sigma per E-B (ESPERIMENTI.md).",
          "alta", "Da decidere in Fase B: quale superficie e' primaria. "
          "Raccomandazione motivata: A1/dp-fedavg, perche' un nullo li' limita "
          "anche A2 e A3.",
          "Fase A -> B"],
         riga_rq2_sintesi(n_tot),
-        [f"{n_tot} run totali", "RQ3", "lacuna strutturale", "C-RQ3", "no",
-         "proximal_mu = 0.01 su 235 run su 235. Nessuna esecuzione con mu=0, quindi "
-         "il confronto FedAvg/FedProx non e' recuperabile dai dati esistenti.",
-         "Ripetere la configurazione di Fase B con mu=0, appaiata per split e seed: "
-         "1 algoritmo x 2 livelli di protezione x 5 seed = 10 run.",
+        [f"{n_tot} run totali", "RQ3",
+         "lacuna da colmare con E-E" if not n_mu0 else "completata da verificare",
+         "C-RQ3", "no" if not n_mu0 else "da costruire",
+         (f"Nessuna run con mu = 0 in questo checkout ({n_tot} run nel registro). E-E gira "
+          f"su un'altra macchina (ESPERIMENTI.md); il config del braccio con DP, "
+          f"experiment_rq3_mu0_eps64.yaml, e' pronto." if not n_mu0 else
+          f"{n_mu0} run con mu = 0 nel registro."),
+         "E-E: mu = 0 e mu = 0.01, senza DP e a eps = 64 con C = 1, 5 seed, tutte sulla "
+         "stessa macchina (segnalazione 55): 20 run.",
          "alta", "Attenzione: proximal_mu vive in cfg['ml'], non in "
          "cfg['experiment']. Impostarlo nel posto sbagliato verrebbe ignorato in "
          "silenzio.",
@@ -775,8 +824,8 @@ def scrivi_utility_privacy():
     # check_significance.py (composizione_celle). Chiave = (etichetta, epsilon).
     celle = defaultdict(list)
     for et, files in sorted(composizione_celle().items()):
-        if et.startswith("record-DP"):
-            continue
+        # Fino al 2026-09-27 le celle record-DP erano escluse: c'era solo la prova a un
+        # seed. Con E-B entrano, con l'eps per record al posto di quello per round.
         for f in sorted(files):
             sw = os.path.basename(os.path.dirname(f))
             j = json.load(open(f)); c = j.get("config") or {}
@@ -786,12 +835,13 @@ def scrivi_utility_privacy():
             if not pr:
                 continue
             ult = max(pr, key=int)
-            k = (et, None if et.startswith("no-DP") else c.get("epsilon"))
+            k = (et, None if et.startswith(("no-DP", "record-DP")) else c.get("epsilon"))
             celle[k].append((loss_holdout_modello_rilasciato(j), su.get("mean_auc_roc"),
                              su.get("mean_shadow_auc_roc"), su.get("mean_lira_auc_roc"),
                              pr[ult].get("mia", {}).get("composed_lira_auc_roc"),
                              pr[ult].get("mia", {}).get("composed_tpr_at_fpr_0.01"),
-                             loss_addestramento_locale(j)))
+                             loss_addestramento_locale(j),
+                             c.get("epsilon_record_dp"), c.get("epsilon_record_dp_shuffle_bound")))
 
     def med(v, i):
         x = [t[i] for t in v if t[i] is not None]
@@ -804,7 +854,21 @@ def scrivi_utility_privacy():
         lf = med(v, 0)
         ll = med(v, 6)
         eps = k[1]
-        if eps:
+        if k[0].startswith("record-DP"):
+            er, esh = med(v, 7), med(v, 8)
+            adv = (math.exp(er) - 1) / (math.exp(er) + 1) if er is not None else None
+            teo = [None, round(er, 2) if er is not None else None,
+                   round(adv, 6) if adv is not None else None,
+                   round(0.5 + adv / 2, 6) if adv is not None else None]
+            lettura = (f"UNITA' PROTETTA RECORD: al posto di eps_tot c'e' l'eps per record "
+                       f"di Poisson, massimo sui client e gia' composto sui round, in media "
+                       f"{er:.1f}; con lo shuffle il limite valido e' {esh:.0f}. Non e' "
+                       f"confrontabile con l'eps per round del client-level. Il rapporto di "
+                       f"costo mescola rumore e GroupNorm (manca la cella no-DP con "
+                       f"GroupNorm). Bound VACUO come nelle celle client-level."
+                       if er is not None and esh is not None else
+                       "UNITA' PROTETTA RECORD: eps per record non registrato nel JSON")
+        elif eps:
             et = 10 * eps
             adv = (math.exp(et) - 1) / (math.exp(et) + 1)
             teo = [eps, et, round(adv, 6), round(0.5 + adv / 2, 6)]

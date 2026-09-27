@@ -1,6 +1,6 @@
 # ChargeShield-FL — Esperimenti da eseguire
 
-> **Stato: documento CANONICO.** Aggiornato il 2026-09-26 (revisione: costo, E-C, controlli (a) e (b) eseguiti, griglia del punto operativo, canary su più siti, E-D con DP, campagna E-B, braccio con DP di E-E). Sostituisce,
+> **Stato: documento CANONICO.** Aggiornato il 2026-09-27 (revisione: costo, E-C, controlli (a) e (b) eseguiti, griglia del punto operativo, canary su più siti, E-D con DP, campagna E-B, braccio con DP di E-E). Sostituisce,
 > per gli esperimenti ancora da lanciare, il vecchio `TestRoadmap_DSN2027.md`, eliminato
 > il 2026-09-22 e recuperabile dalla storia git. Ogni
 > voce dice quale RQ serve, quale conclusione può cambiare, cosa deve essere vero
@@ -157,17 +157,21 @@ già 30: σ = 0.5 aggiungerebbe poco, σ = 2 e 5 descrivono meglio il compromess
 l'effetto del rumore con quello della normalizzazione. Per separarli serve una cella
 no-DP con `ml.norm: group`, oggi assente. Entrambe le scelte sono da confermare.
 
-**Stato della campagna (2026-09-26).** σ = 1 in corso sul Mac principale, un seed alla
-volta, in `experiments/rq1-recorddp-nm1` (log `logs/rq1_recorddp_nm1.log`, circa 3 ore e 20
-minuti per seed). Seed 123 salvato alle 11:58 e seed 456 alle 15:18: loss sull'holdout 1.51 e 0.82 volte la media di `nodp-sweep2`, attacchi al
-caso, ε per record di Poisson 30.4 e 31.0 a Office 1, numeri in `STATO.md` 3.5. Il seed 456
-ha `-dirty` per documenti modificati durante la run (segnalazione 57): le modifiche al
-repository vanno fatte con almeno un'ora di margine sul salvataggio stimato. I livelli successivi, {2, 5} oppure {0.5, 2}, e la cella no-DP con
-GroupNorm restano da decidere; σ = 2 sta in entrambe le proposte.
+**Stato della campagna (2026-09-27).** σ = 1 completa sul Mac principale, 5 seed in
+`experiments/rq1-recorddp-nm1` (log `logs/rq1_recorddp_nm1.log`, circa 3 ore e 20 minuti per
+seed, ultimo salvataggio il 27 settembre alle 01:12, zero righe `[ERROR]`). Loss sull'holdout
+1.4 volte la media di `nodp-sweep2`, sotto la soglia; attacchi al caso; test per record senza
+segnale (z = 0.18); ε per record di Poisson circa 30 a Office 1, limite con lo shuffle 1212.
+Numeri in `STATO.md` 3.5. Il seed 456 ha `-dirty` per documenti modificati durante la run
+(segnalazione 57): le modifiche al repository vanno fatte con almeno un'ora di margine sul
+salvataggio stimato. Da decidere: i livelli successivi, {2, 5} oppure {0.5, 2} (σ = 2 sta in
+entrambe le proposte), e la cella no-DP con GroupNorm, senza la quale il rapporto di costo
+mescola rumore e architettura.
 
-Coda sul Mac principale, una run alla volta: σ = 2 parte da sola quando finisce il ciclo di
-σ = 1. Prima si legge il PID del ciclo in corso (deve uscire un solo numero), poi si lancia
-l'attesa, che controlla ogni 5 minuti se quel processo esiste ancora:
+Coda sul Mac principale, una run alla volta: σ = 2 parte da sola quando finisce il ciclo in
+corso. Prima si legge il PID del ciclo (deve uscire un solo numero), poi si lancia l'attesa,
+che controlla ogni 5 minuti se quel processo esiste ancora. Con la macchina libera basta il
+ciclo `for`, senza l'attesa:
 
 ```bash
 pgrep -f "caffeinate -ims bash"
@@ -219,8 +223,8 @@ sono unità diverse.
 4, 2, 1, central e local ε = 1) con il test corretto della segnalazione 47: nessun
 segnale di appartenenza per record, numeri in `STATO.md` 3.2. Aggiunti poi ε = 64 e i
 quattro bracci di E-D (il 2026-09-26 i due con DP, con lo stesso comando ristretto ai due
-gruppi e unito al file: il test è deterministico per gruppo). Le celle record-DP si
-aggiungono dopo E-B. La segnalazione 6 riguarda ora solo il conteggio secondario.
+gruppi e unito al file: il test è deterministico per gruppo) e, il 2026-09-27, la cella
+record-DP a σ = 1 (`recordDP_nm1`), allo stesso modo. La segnalazione 6 riguarda ora solo il conteggio secondario.
 
 ```bash
 python3 scripts/worst_case_livello_di_caso.py \

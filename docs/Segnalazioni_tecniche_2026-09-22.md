@@ -450,6 +450,11 @@ sono in `scripts/_applicati/`.*
     confrontate sulla stessa macchina, e ogni confronto fra macchine va dichiarato; vale
     per E-D, per E-E su Windows e per E-B sul secondo Mac contro il client-level del
     principale. La differenza resta dentro la variabilita' fra seed (0.00070-0.00219).
+    **Riscontro del 2026-09-27 con GroupNorm**: E-B σ = 1, seed 42, sul Mac principale
+    (commit 943c795) e `_prova_recorddp_v2` sul secondo Mac (2c4a0f0) hanno loss di
+    addestramento per round identiche, holdout 0.00239868088 contro 0.00239868097 e Yeom
+    uguale alla settima cifra; LiRA composto no (0.5025 contro 0.5043), come nello stesso
+    Mac (`STATO.md` 3.4). L'effetto macchina riguarda il percorso con BatchNorm.
 
 ## O. Trovato aggiornando il registro dopo il secondo seed di E-B (2026-09-26)
 
@@ -468,7 +473,16 @@ sono in `scripts/_applicati/`.*
     `matrice_run_completati.xlsx`. **Corretto il 2026-09-26** (test in
     `tests/test_costo_e_per_record.py`): il registro passa da 276 a 297 righe. Restano in A0
     le run canary record-DP del 16-17 settembre, che non hanno il blocco `record_dp` nel
-    JSON: dal file non si ricostruisce.
+    JSON: dal file non si ricostruisce. **Stessa classe, trovato il 2026-09-27** a E-B
+    completa: `scrivi_utility_privacy` saltava le celle record-DP (`if
+    et.startswith("record-DP"): continue`, dal commit 2c4a0f0, quando c'era solo la prova a
+    un seed) e `scrivi_confronti` le escludeva perche' il loro regime non e' "naturale"; in
+    `scrivi_sintesi` le righe RQ1 e RQ3 e in `scrivi_confronti` la riga C-RQ3 avevano testo
+    fisso del 2026-09-21 ("C01..C11", "proximal_mu = 0.01 su 235 run su 235"). **Corretto
+    il 2026-09-27**: la cella "record-DP, nm=1.0" entra in `Utility_privacy_limite` con l'ε
+    per record al posto di eps_tot e la sua lettura, e in `matrice_confronti.xlsx` come C15
+    con le differenze non controllate dichiarate (GroupNorm, clipping per esempio); le righe
+    RQ1 e RQ3 e C-RQ3 si calcolano dal registro e dalle celle.
 57. **Una modifica ai documenti durante una campagna marca la run come `-dirty`.**
     `_git_commit_corrente` (`scripts/run_experiments.py`, righe 333-358) legge
     `git status --porcelain` al salvataggio: qualunque file modificato o non tracciato, anche
@@ -483,3 +497,12 @@ sono in `scripts/_applicati/`.*
     sull'ora stimata. Da valutare a campagna chiusa, perche' tocca `run_experiments.py`:
     registrare nel JSON anche l'elenco dei file modificati, cosi' il `-dirty` si verifica
     dal file.
+58. **Il dump per campione contiene solo i record che LiRA punteggia, e con record-DP sono
+    meno.** Il dump (`scripts/run_experiments.py`, righe 5449-5460) si costruisce da
+    `_cumulative_scores` di LiRA, non dall'elenco dei membri e non membri bilanciati. A
+    seed 42: 26 678 record in `nodp-sweep2` e in `rq1-eps64`, 26 616 in
+    `rq1-recorddp-nm1` (13 313 membri contro 13 340). Il test per record della cella
+    record-DP gira quindi su 27 877 sessioni invece di 28 129, e il conteggio su 17 389
+    invece di 17 561. Quale passo di LiRA escluda i record in piu' e' da verificare; la
+    differenza e' dello 0.9% e non cambia la lettura (z appaiato 0.18). Non si tocca durante
+    le campagne: e' codice di scoring.

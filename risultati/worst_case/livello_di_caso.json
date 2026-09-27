@@ -408,6 +408,37 @@
         "z": 0.862
       },
       "lettura": "nessun segnale di appartenenza per record (test appaiato)"
+    },
+    "recordDP_nm1": {
+      "cartella": "experiments/rq1-recorddp-nm1",
+      "n_seed": 5,
+      "sessioni_multi_seed": 17389,
+      "osservati": 415,
+      "attesi_per_caso": 288.95,
+      "sd_nulla": 17.49,
+      "z": 7.207,
+      "eccesso_assoluto": 126.0,
+      "percentuale_osservata": 2.387,
+      "percentuale_attesa": 1.662,
+      "controllo_non_membri": {
+        "n_seed": 5,
+        "sessioni_multi_seed": 17335,
+        "osservati": 438,
+        "attesi_per_caso": 285.65,
+        "sd_nulla": 16.23,
+        "z": 9.388,
+        "eccesso_assoluto": 152.3,
+        "percentuale_osservata": 2.527,
+        "percentuale_attesa": 1.648
+      },
+      "z_eccesso_membri_meno_non_membri": -1.102,
+      "appaiato": {
+        "n_sessioni": 27877,
+        "differenza_media": 0.0406,
+        "errore_standard": 0.2215,
+        "z": 0.183
+      },
+      "lettura": "nessun segnale di appartenenza per record (test appaiato)"
     }
   }
 }
