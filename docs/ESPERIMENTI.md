@@ -325,6 +325,48 @@ braccio (`$n = "mu0"; $c = "config\experiment_rq3_mu0.yaml"` oppure
 Al rientro delle cartelle vale la segnalazione 45: tenerle fuori da `experiments/`
 finche' non e' corretta.
 
+**Esito dei bracci senza DP (2026-09-27).** 10 run completate il 25 settembre, copiate in
+`experiments_altre_macchine/rq3-mu0` e `rq3-mu0.01`, zero errori. FedAvg ha la loss
+sull'holdout 3.9 volte piu' bassa di FedProx (5 seed su 5), attacchi al caso in entrambi
+(`STATO.md` 3.10). Braccio con DP lanciato su Windows il 27 settembre alle 16:20.
+
+**Prove su mu, decise il 2026-09-27.** Verificano l'ipotesi che con mu = 0.01 il termine
+prossimale limiti lo spostamento per round e dieci round non bastino. Seed 42, senza DP, sulla
+macchina del riferimento FedAvg (Windows), dopo il braccio con DP, una run alla volta:
+
+| prova | config | round | cosa dice |
+|---|---|---|---|
+| FedAvg, ripetuta | `experiment_rq3_mu0.yaml` | 10 | norme degli update di FedAvg, che la run del 24 non registra; riproduzione del codice attuale (478d471 contro l'attuale: il percorso di training non cambia) |
+| mu = 0.001 | `experiment_rq3_mu0.001.yaml` | 10 | dose-risposta |
+| mu = 0.1 | `experiment_rq3_mu0.1.yaml` | 10 | dose-risposta |
+| mu = 0.01, 30 round | `experiment_rq3_mu0.01_r30.yaml` | 30 | se FedProx arriva vicino a FedAvg e' solo piu' lento, non converge a un modello peggiore |
+
+Lettura: loss sull'holdout per round e norme degli update per round. Se la loss al round 10
+cresce con mu e le norme calano con mu, e se a 30 round FedProx si avvicina a FedAvg, l'ipotesi
+regge. Round 1 identico in tutte le run: controllo che cambia solo mu o il numero di round.
+Cartelle `_rq3_*`: prove a un seed, fuori dalle celle. In una seconda finestra PowerShell, con
+le stesse variabili d'ambiente del braccio con DP; parte da sola quando il braccio con DP ha
+salvato i suoi 10 JSON:
+
+```powershell
+$env:PYTHONUTF8 = "1"; $env:OMP_NUM_THREADS = "1"; $env:MKL_NUM_THREADS = "1"
+& {
+  Add-Type -Namespace W2 -Name P -MemberDefinition '[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint f);'
+  [W2.P]::SetThreadExecutionState(2147483649) | Out-Null
+  while (@(Select-String -Path logs\rq3_mu0.01_eps64.log -Pattern "Esperimento completato" -ErrorAction SilentlyContinue).Count -lt 5) { Start-Sleep 300 }
+  $prove = @(
+    @("mu0_s42_v2",     "config\experiment_rq3_mu0.yaml",        10),
+    @("mu0.001_s42",    "config\experiment_rq3_mu0.001.yaml",    10),
+    @("mu0.1_s42",      "config\experiment_rq3_mu0.1.yaml",      10),
+    @("mu0.01_r30_s42", "config\experiment_rq3_mu0.01_r30.yaml", 30))
+  foreach ($p in $prove) {
+    $n = $p[0]; $c = $p[1]; $r = $p[2]; $dir = "experiments\_rq3_$n"
+    cmd /c ".venv\Scripts\python.exe scripts\run_experiments.py --config $c --rounds $r --seed 42 --no-dp --sweep-dir $dir --per-sample-dump $dir\per_sample_seed42.json >> logs\rq3_prove_mu.log 2>&1"
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path "$dir\per_sample_seed42.json")) { return }
+  }
+}
+```
+
 ## E-D — RQ2, partizione IID contro per sito
 
 **Fase E della guida, terza priorità.** Config appaiati pronti, differiscono per il

@@ -512,3 +512,13 @@ sono in `scripts/_applicati/`.*
     invece di 17 561. Quale passo di LiRA escluda i record in piu' e' da verificare; la
     differenza e' dello 0.9% e non cambia la lettura (z appaiato 0.18). Non si tocca durante
     le campagne: e' codice di scoring.
+59. **La loss di addestramento locale di FedProx include il termine prossimale.**
+    `train_step` (`src/ml/autoencoder_trainer.py`, righe 221-229) aggiunge
+    (mu/2)||w − w_global||² alla loss e restituisce la somma, e `per_round[r].fl.mean_loss` e'
+    la media di quei valori. Con mu > 0 la colonna "loss addestramento locale (diagnostica)"
+    delle matrici non e' quindi solo ricostruzione: in E-E senza DP, al round 2, FedProx
+    registra 0.0057-0.0073 contro 0.0004-0.0006 di FedAvg, in parte per il termine stesso.
+    Fra mu diversi quella colonna non si confronta; si confronta la loss sull'holdout del
+    modello rilasciato, che e' solo ricostruzione. Fra celle con lo stesso mu (tutta RQ1) la
+    colonna resta coerente. Non si tocca durante le campagne: e' codice di training; il
+    glossario delle matrici va aggiornato.

@@ -1,8 +1,8 @@
 # ChargeShield-FL — Stato del progetto
 
 > **Stato: documento CANONICO.** Aggiornato il 2026-09-27 (revisione: costo sul modello
-> rilasciato, analisi per record corretta, E-C, segnalazioni 46-58, controlli del protocollo, celle delle matrici ricomposte, RQ2 senza DP,
-> punto operativo a 5 seed, RQ2 con DP, E-B a σ = 1 su 5 seed). Solo numeri
+> rilasciato, analisi per record corretta, E-C, segnalazioni 46-59, controlli del protocollo, celle delle matrici ricomposte, RQ2 senza DP,
+> punto operativo a 5 seed, RQ2 con DP, E-B a σ = 1 su 5 seed, RQ3 senza DP). Solo numeri
 > presenti in `risultati/` o letti dai JSON grezzi alla data, e lo dice dove.
 > Linea scientifica: la guida. Cosa fare: `ESPERIMENTI.md`. Cosa esiste nel codice:
 > `SISTEMA.md`. Questo file risponde a una sola domanda: a che punto siamo.
@@ -350,6 +350,36 @@ la loss sull'holdout differisce per seed fino al 23% (segnalazione 55, confermat
 dalla macchina, non dal codice): il confronto di RQ2
 usa perciò i due bracci della stessa macchina, non `nodp-sweep2`.
 
+### 3.10 RQ3: FedAvg contro FedProx, senza DP (E-E)
+
+Fonte: JSON di `experiments_altre_macchine/rq3-mu0` e `rq3-mu0.01` (Windows, commit 478d471,
+i due bracci in parallelo), letti il 2026-09-27; 5 seed per braccio appaiati per seed, zero
+righe `[ERROR]`, round 1 identico nei due bracci per ogni seed. Il foglio delle matrici non c'è
+ancora.
+
+| metrica | FedProx mu = 0.01 | FedAvg mu = 0 | FedAvg − FedProx, appaiata (± sd) | t, 4 gdl |
+|---|---|---|---|---|
+| loss sull'holdout del modello rilasciato | 0.00156 | 0.00040 | −0.00117 ± 0.00039 | −6.63 |
+| divario holdout − membri | 0.000265 | 0.000213 | −0.000052 ± 0.000072 | −1.64 |
+| Yeom, ultimo round | 0.5000 | 0.5011 | +0.0011 ± 0.0025 | 1.01 |
+| Shadow, media sui round | 0.5014 | 0.4995 | −0.0019 ± 0.0035 | −1.22 |
+| LiRA composto | 0.5015 | 0.5008 | −0.0007 ± 0.0039 | −0.39 |
+| TPR a FPR 1% (LiRA composto) | 0.0103 | 0.0105 | +0.0002 ± 0.0014 | 0.34 |
+
+Con FedAvg il modello rilasciato ha la loss sull'holdout 3.9 volte più bassa in media
+geometrica (da 3.7 a 4.5 per seed, 5 su 5); attacchi al caso in entrambi, divario membri −
+non membri non diverso. Le curve per round: FedAvg si ferma a 0.0004-0.0005 dal round 4-6,
+FedProx scende ancora al round 10 in tutti i seed (seed 42: 0.0041 al round 2, 0.0018 al
+round 10). Con l'inizializzazione comune (sezione 3.1c, seed 42, Mac principale) FedProx
+arriva a 0.0011: metà del divario viene dal round 1 (segnalazione 48), il resto no, a meno
+dell'effetto macchina (fino al 23%, segnalazione 55). Nei round 3-10 di FedProx gli update
+di Caltech e JPL hanno norma 0.16-0.29 (controllo (a)) e il termine prossimale a fine round
+vale il 5-15% della loss locale: non domina la loss, limita lo spostamento per round.
+Ipotesi, da verificare con le prove su mu (`ESPERIMENTI.md` E-E): con mu = 0.01 dieci round
+non bastano a FedProx. La loss di addestramento locale registrata include il termine
+prossimale e non è confrontabile fra i due bracci (segnalazione 59). Tutta la campagna usa
+FedProx mu = 0.01 come base: se cambiarla è una decisione del supervisore.
+
 ## 4. Cosa manca
 
 L'elenco ordinato, con comandi e prerequisiti, è `ESPERIMENTI.md`. E-A è chiuso (sezione
@@ -359,8 +389,8 @@ esistenti, ε = 64 compresa (sezione 3.2). E-D (RQ2) è analizzato con e senza D
 stesso posto, non in `experiments/` (segnalazione 45). I controlli del protocollo sono
 eseguiti (sezione 3.1c). E-B a σ = 1 è completa (sezione 3.5), σ = 2 è in corso dal 27
 settembre. Restano: la cella no-DP con GroupNorm (config pronto) e gli altri livelli di σ di
-E-B (da decidere), E-E con e senza DP (config del braccio con DP
-pronto, `ESPERIMENTI.md` E-E), il canary su più siti, le
+E-B (da decidere), E-E con DP (in corso su Windows) e le prove su mu dopo di esso
+(`ESPERIMENTI.md` E-E; E-E senza DP in sezione 3.10), il canary su più siti, le
 statistiche delle feature per client di E-D, la rianalisi NVFlare. Da decidere col supervisore: la metrica primaria per record (segnalazione 47) e se
 le campagne future usano l'inizializzazione comune (segnalazione 48). I bug che toccano i numeri sono in
 `Segnalazioni_tecniche_2026-09-22.md`, punti 1, 5, 6, 9, 35, 36, 38, 45, 48, 50, 51, 55. Fuori dal paper, come infrastruttura o lavoro futuro: ML Plane,
