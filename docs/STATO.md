@@ -357,8 +357,9 @@ L'elenco ordinato, con comandi e prerequisiti, è `ESPERIMENTI.md`. E-A è chius
 esistenti, ε = 64 compresa (sezione 3.2). E-D (RQ2) è analizzato con e senza DP (sezione
 3.9) e sta in `experiments_altre_macchine/`; E-E (RQ3, su una terza macchina) andrà nello
 stesso posto, non in `experiments/` (segnalazione 45). I controlli del protocollo sono
-eseguiti (sezione 3.1c). E-B a σ = 1 è completa (sezione 3.5). Restano: la cella no-DP
-con GroupNorm e gli altri livelli di σ di E-B (da decidere), E-E con e senza DP (config del braccio con DP
+eseguiti (sezione 3.1c). E-B a σ = 1 è completa (sezione 3.5), σ = 2 è in corso dal 27
+settembre. Restano: la cella no-DP con GroupNorm (config pronto) e gli altri livelli di σ di
+E-B (da decidere), E-E con e senza DP (config del braccio con DP
 pronto, `ESPERIMENTI.md` E-E), il canary su più siti, le
 statistiche delle feature per client di E-D, la rianalisi NVFlare. Da decidere col supervisore: la metrica primaria per record (segnalazione 47) e se
 le campagne future usano l'inizializzazione comune (segnalazione 48). I bug che toccano i numeri sono in

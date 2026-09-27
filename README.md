@@ -79,7 +79,7 @@ python3 scripts/genera_matrici_faseA.py
 python3 -m pytest tests/ -q --ignore=tests/test_privacy_auditor_subscriber.py --ignore=tests/test_run_experiments_integration.py --ignore=tests/test_sprint4.py --ignore=tests/test_sprint5.py
 ```
 
-Baseline attesa senza torch: 325 passed con `datasets/` presente (2026-09-26); senza,
+Baseline attesa senza torch: 326 passed con `datasets/` presente (2026-09-26); senza,
 33 test falliscono perché leggono i file reali dei dataset (`CLAUDE.md`, sezione 5). Con
 torch e dati: `make test`.
 

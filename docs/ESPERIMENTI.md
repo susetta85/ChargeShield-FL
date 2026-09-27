@@ -185,7 +185,26 @@ for s in 42 123 456 789 1234; do
 done' > logs/rq1_recorddp_nm2.log 2>&1 & disown
 ```
 
-Il `git_commit` si legge al salvataggio: l'albero va tenuto pulito anche durante la coda.
+Il `git_commit` si legge al salvataggio: l'albero va tenuto pulito anche durante la coda. σ = 2 lanciato il 2026-09-27 alle 09:32, con la macchina libera.
+
+**Cella no-DP con GroupNorm, preparata il 2026-09-27.** Riferimento per leggere il costo delle
+celle record-DP: `config/experiment_rq1_nodp_groupnorm.yaml` differisce da `experiment.yaml`
+solo per `ml.norm: group`. Costo della DP per record = holdout record-DP / holdout di questa
+cella, stesso seed; costo della normalizzazione = questa cella / `nodp-sweep2`. Etichetta
+"no-DP baseline, norm=group": `scripts/etichetta_cella.py` registra ora `norm` fra i campi
+del trattamento, altrimenti la cella avrebbe sostituito i seed di `nodp-sweep2` (stessa classe
+della segnalazione 45). Sul Mac principale, dopo σ = 2, circa 2 ore per seed come
+`nodp-sweep2`:
+
+```bash
+nohup caffeinate -ims bash -c '
+set -e
+for s in 42 123 456 789 1234; do
+  python3 scripts/run_experiments.py --config config/experiment_rq1_nodp_groupnorm.yaml \
+    --rounds 10 --seed $s --no-dp --sweep-dir experiments/rq1-nodp-groupnorm \
+    --per-sample-dump experiments/rq1-nodp-groupnorm/per_sample_seed$s.json
+done' > logs/rq1_nodp_groupnorm.log 2>&1 & disown
+```
 
 ```bash
 python3 scripts/run_experiments.py \
