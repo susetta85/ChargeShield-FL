@@ -439,6 +439,68 @@
         "z": 0.183
       },
       "lettura": "nessun segnale di appartenenza per record (test appaiato)"
+    },
+    "recordDP_nm2": {
+      "cartella": "experiments/rq1-recorddp-nm2",
+      "n_seed": 5,
+      "sessioni_multi_seed": 17346,
+      "osservati": 455,
+      "attesi_per_caso": 286.01,
+      "sd_nulla": 15.85,
+      "z": 10.664,
+      "eccesso_assoluto": 169.0,
+      "percentuale_osservata": 2.623,
+      "percentuale_attesa": 1.649,
+      "controllo_non_membri": {
+        "n_seed": 5,
+        "sessioni_multi_seed": 17269,
+        "osservati": 458,
+        "attesi_per_caso": 283.66,
+        "sd_nulla": 14.98,
+        "z": 11.64,
+        "eccesso_assoluto": 174.3,
+        "percentuale_osservata": 2.652,
+        "percentuale_attesa": 1.643
+      },
+      "z_eccesso_membri_meno_non_membri": -0.243,
+      "appaiato": {
+        "n_sessioni": 27778,
+        "differenza_media": -0.1114,
+        "errore_standard": 0.2222,
+        "z": -0.501
+      },
+      "lettura": "nessun segnale di appartenenza per record (test appaiato)"
+    },
+    "no-DP_groupnorm": {
+      "cartella": "experiments/rq1-nodp-groupnorm",
+      "n_seed": 5,
+      "sessioni_multi_seed": 17561,
+      "osservati": 458,
+      "attesi_per_caso": 289.94,
+      "sd_nulla": 16.61,
+      "z": 10.116,
+      "eccesso_assoluto": 168.1,
+      "percentuale_osservata": 2.608,
+      "percentuale_attesa": 1.651,
+      "controllo_non_membri": {
+        "n_seed": 5,
+        "sessioni_multi_seed": 17517,
+        "osservati": 431,
+        "attesi_per_caso": 289.97,
+        "sd_nulla": 15.7,
+        "z": 8.98,
+        "eccesso_assoluto": 141.0,
+        "percentuale_osservata": 2.46,
+        "percentuale_attesa": 1.655
+      },
+      "z_eccesso_membri_meno_non_membri": 1.186,
+      "appaiato": {
+        "n_sessioni": 28129,
+        "differenza_media": -0.1998,
+        "errore_standard": 0.2206,
+        "z": -0.906
+      },
+      "lettura": "nessun segnale di appartenenza per record (test appaiato)"
     }
   }
 }

@@ -452,11 +452,12 @@ def scrivi_confronti(righe):
         seed_nodp = {str(r["seed_nome"] or r["seed"]) for r in nodp}
         appaiati = sorted(seed_dp & seed_nodp)
         rec = chiave.startswith("record-DP")
+        norm_ref = chiave.startswith("no-DP") and "norm=group" in chiave
         conf.append([
             f"C{n:02d}", "RQ1", "no-DP (regime naturale)", chiave,
             "si, se appaiati per seed" if appaiati else "no: nessun seed in comune",
             ("dati, split, algoritmo, round, epoche, batch: identici; l'architettura no "
-             "(GroupNorm al posto di BatchNorm, segnalazione 49)" if rec else
+             "(GroupNorm al posto di BatchNorm, segnalazione 49)" if (rec or norm_ref) else
              "dati, split, architettura, algoritmo, round, epoche, batch: identici"),
             ("normalizzazione GroupNorm e clipping per esempio: il rapporto sul no-DP "
              "mescola rumore e architettura finche' manca una cella no-DP con GroupNorm; "
@@ -470,8 +471,10 @@ def scrivi_confronti(righe):
             "(segnalazioni 44, 45, 53); la cella puo' unire sweep diversi con lo stesso "
             "trattamento registrato",
             "confronto disponibile" if appaiati else "confronto non costruibile",
-            "Il contrasto B0/B2 della guida (sez. 8) e' questo. Manca invece il "
-            "braccio B1 'clipping senza rumore', mai eseguito.",
+            ("Nessuna DP: e' il riferimento con la normalizzazione delle celle record-DP "
+             "(E-B), non un contrasto della guida." if norm_ref else
+             "Il contrasto B0/B2 della guida (sez. 8) e' questo. Manca invece il "
+             "braccio B1 'clipping senza rumore', mai eseguito."),
             "Fase A — confrontabilita' (il confronto si esegue in Fase B)",
         ])
 
@@ -899,6 +902,10 @@ def scrivi_utility_privacy():
 
     base = med(celle.get(("no-DP baseline", None), []), 0)
     base_loc = med(celle.get(("no-DP baseline", None), []), 6)
+    # 2026-09-28: riferimento con la stessa normalizzazione delle celle record-DP
+    # (GroupNorm, experiment_rq1_nodp_groupnorm.yaml). Il rapporto di colonna resta sul
+    # no-DP della campagna; quello sul riferimento GroupNorm va nella lettura.
+    base_gn = med(celle.get(("no-DP baseline, norm=group", None), []), 0)
     for k in sorted(celle, key=lambda t: (str(t[0]), -(t[1] or 0))):
         v = celle[k]
         lf = med(v, 0)
@@ -910,12 +917,15 @@ def scrivi_utility_privacy():
             teo = [None, round(er, 2) if er is not None else None,
                    round(adv, 6) if adv is not None else None,
                    round(0.5 + adv / 2, 6) if adv is not None else None]
-            lettura = (f"UNITA' PROTETTA RECORD: al posto di eps_tot c'e' l'eps per record "
+            lettura = ((f"{lf / base_gn:.2f} volte il no-DP con GroupNorm, il riferimento con la "
+                        f"stessa normalizzazione. " if (lf and base_gn) else "") +
+                       f"UNITA' PROTETTA RECORD: al posto di eps_tot c'e' l'eps per record "
                        f"di Poisson, massimo sui client e gia' composto sui round, in media "
                        f"{er:.1f}; con lo shuffle il limite valido e' {esh:.0f}. Non e' "
-                       f"confrontabile con l'eps per round del client-level. Il rapporto di "
-                       f"costo mescola rumore e GroupNorm (manca la cella no-DP con "
-                       f"GroupNorm). Bound VACUO come nelle celle client-level."
+                       f"confrontabile con l'eps per round del client-level. "
+                       + ("Bound VACUO come nelle celle client-level." if base_gn else
+                          "Il rapporto di costo mescola rumore e GroupNorm (manca la cella no-DP con "
+                          "GroupNorm). Bound VACUO come nelle celle client-level.")
                        if er is not None and esh is not None else
                        "UNITA' PROTETTA RECORD: eps per record non registrato nel JSON")
         elif eps:

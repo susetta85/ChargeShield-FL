@@ -1,6 +1,6 @@
 # ChargeShield-FL — Esperimenti da eseguire
 
-> **Stato: documento CANONICO.** Aggiornato il 2026-09-27 (revisione: costo, E-C, controlli (a) e (b) eseguiti, griglia del punto operativo, canary su più siti, E-D con DP, campagna E-B, braccio con DP di E-E). Sostituisce,
+> **Stato: documento CANONICO.** Aggiornato il 2026-09-28 (revisione: costo, E-C, controlli (a) e (b) eseguiti, griglia del punto operativo, canary su più siti, E-D con DP, campagna E-B, braccio con DP di E-E). Sostituisce,
 > per gli esperimenti ancora da lanciare, il vecchio `TestRoadmap_DSN2027.md`, eliminato
 > il 2026-09-22 e recuperabile dalla storia git. Ogni
 > voce dice quale RQ serve, quale conclusione può cambiare, cosa deve essere vero
@@ -164,9 +164,16 @@ seed, ultimo salvataggio il 27 settembre alle 01:12, zero righe `[ERROR]`). Loss
 segnale (z = 0.18); ε per record di Poisson circa 30 a Office 1, limite con lo shuffle 1212.
 Numeri in `STATO.md` 3.5. Il seed 456 ha `-dirty` per documenti modificati durante la run
 (segnalazione 57): le modifiche al repository vanno fatte con almeno un'ora di margine sul
-salvataggio stimato. Da decidere: i livelli successivi, {2, 5} oppure {0.5, 2} (σ = 2 sta in
-entrambe le proposte), e la cella no-DP con GroupNorm, senza la quale il rapporto di costo
-mescola rumore e architettura.
+salvataggio stimato.
+
+**σ = 2 e cella no-DP con GroupNorm, completi il 2026-09-28** (Mac principale, 5 seed ciascuna,
+`experiments/rq1-recorddp-nm2` e `rq1-nodp-groupnorm`). GroupNorm senza DP non costa (0.73
+volte BatchNorm, non significativo): il costo della DP per record si legge su quel riferimento
+ed è 1.87 volte a σ = 1 e 2.10 a σ = 2, sotto la soglia; da σ = 1 a 2 cresce di 1.12 volte
+mentre l'ε per record scende da 30 a 9.7. Attacchi al caso, test per record senza segnale
+(`STATO.md` 3.5). Da decidere: σ = 5, che dice quanto pesa il rumore, e una cella con clipping
+per esempio e σ = 0, che isolerebbe il clipping (richiede di verificare che il codice accetti
+`noise_multiplier: 0` con `record_dp` attivo).
 
 Coda sul Mac principale, una run alla volta: σ = 2 parte da sola quando finisce il ciclo in
 corso. Prima si legge il PID del ciclo (deve uscire un solo numero), poi si lancia l'attesa,
@@ -324,6 +331,34 @@ braccio (`$n = "mu0"; $c = "config\experiment_rq3_mu0.yaml"` oppure
 
 Al rientro delle cartelle vale la segnalazione 45: tenerle fuori da `experiments/`
 finche' non e' corretta.
+
+**Cambio di piano, 2026-09-28: E-E completo sul Mac principale.** Su Windows una run con DP dura
+5-6 ore, quasi tutte di attacchi, e le prove su mu sarebbero partite dopo 9 run. Sul Mac
+principale E-E ha gia' meta' dei bracci sulla stessa macchina: FedProx senza DP e' `nodp-sweep2`
+(riprodotto alla sesta cifra dal codice attuale, controllo (a)), FedProx a eps = 64 e'
+`rq1-eps64`. Mancano i due bracci FedAvg, in coda dietro la cella GroupNorm dal 28 settembre
+alle 10:03 (log `logs/rq3_mac.log`), una run alla volta: FedAvg senza DP seed 42 (riferimento
+delle prove e primo seed del braccio), prove su mu (0.001 e 0.1 a 10 round, 0.01 a 30 round,
+seed 42, cartelle `_rq3_*`), FedAvg senza DP seed 123-1234 (`experiments/rq3-mu0`), FedAvg a
+eps = 64, 5 seed (`experiments/rq3-mu0-eps64`). Le etichette di cella ("no-DP baseline,
+mu=0.0", "dp-fedavg, eps=64.0, mu=0.0") non si sovrappongono a quelle di RQ1. Windows continua
+E-E con DP come replica su un'altra macchina; il blocco delle prove su mu, se attivo, la
+estende dopo i 10 JSON.
+
+```bash
+P=<PID del ciclo precedente> nohup caffeinate -ims bash -c '
+while kill -0 $P 2>/dev/null; do sleep 300; done
+set -e
+corri() { python3 scripts/run_experiments.py --config config/$1 --rounds $2 --seed $3 $4 \
+  --sweep-dir experiments/$5 --per-sample-dump experiments/$5/per_sample_seed$3.json; }
+corri experiment_rq3_mu0.yaml 10 42 --no-dp rq3-mu0
+corri experiment_rq3_mu0.001.yaml 10 42 --no-dp _rq3_mu0.001_s42
+corri experiment_rq3_mu0.1.yaml 10 42 --no-dp _rq3_mu0.1_s42
+corri experiment_rq3_mu0.01_r30.yaml 30 42 --no-dp _rq3_mu0.01_r30_s42
+for s in 123 456 789 1234; do corri experiment_rq3_mu0.yaml 10 $s --no-dp rq3-mu0; done
+for s in 42 123 456 789 1234; do corri experiment_rq3_mu0_eps64.yaml 10 $s "" rq3-mu0-eps64; done
+' > logs/rq3_mac.log 2>&1 & disown
+```
 
 **Esito dei bracci senza DP (2026-09-27).** 10 run completate il 25 settembre, copiate in
 `experiments_altre_macchine/rq3-mu0` e `rq3-mu0.01`, zero errori. FedAvg ha la loss
