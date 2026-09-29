@@ -115,6 +115,13 @@ Serve un `--clip-only` (segnalazione 38), poi una cella a 5 seed sulla
 configurazione ordinaria. Se il tempo non basta, dichiarare il braccio non
 eseguito e attribuire l'effetto a "clipping più rumore" insieme.
 
+**Stato (2026-09-29).** Per il record-level il braccio non richiede un flag:
+`noise_multiplier: 0` con `record_dp` attivo fa solo clipping per esempio (trainer,
+`src/ml/autoencoder_trainer.py` righe 300-301: rumore solo se σ > 0; accountant,
+`src/ml/record_dp_accounting.py` righe 156-171: ε `None` con la nota "nessuna garanzia").
+Cella `config/experiment_rq1_recorddp_nm0.yaml` (commit 8dceb39) in corso sulla quarta
+macchina (sezione E-B). Per il client-level il flag manca ancora (segnalazione 38).
+
 ## E-B — record-level DP su dati naturali
 
 **RQ1, fattore unità protetta.** Le dieci run record-DP esistenti sono tutte in
@@ -193,6 +200,34 @@ done' > logs/rq1_recorddp_nm2.log 2>&1 & disown
 ```
 
 Il `git_commit` si legge al salvataggio: l'albero va tenuto pulito anche durante la coda. σ = 2 lanciato il 2026-09-27 alle 09:32, con la macchina libera.
+
+**σ = 5, completo il 2026-09-29** (quarta macchina, Mac di Domenico, 5 seed, commit 64757fd,
+circa 3 ore e mezza per seed; copiato in `experiments_altre_macchine/rq1-recorddp-nm5`, con il
+controllo `_ctrl_recorddp_nm1_s42_r2`). 2.32 volte il riferimento GroupNorm, ε per record di
+Poisson 3.1 (shuffle 81), attacchi al caso: numeri in `STATO.md` 3.5.
+
+**Solo clipping (σ = 0), lanciato il 2026-09-29** sulla quarta macchina, 5 seed, una run alla
+volta, dopo `git fetch susetta && git merge --ff-only susetta/master` (commit 8dceb39):
+
+```bash
+cd ~/ChargeShield-FL && source .venv/bin/activate && nohup caffeinate -ims bash -c 'for s in 42 123 456 789 1234; do python3 scripts/run_experiments.py --config config/experiment_rq1_recorddp_nm0.yaml --rounds 10 --seed $s --no-dp --sweep-dir experiments/rq1-recorddp-nm0 --per-sample-dump experiments/rq1-recorddp-nm0/per_sample_seed$s.json; done' >> logs/rq1_recorddp_nm0.log 2>&1 &
+```
+
+Lanciato dal terminale di VS Code, il ciclo ha perso lo standard input quando VS Code e' stato
+chiuso: il seed 42 era gia' in corso e ha salvato alle 12:35, i seed 123-1234 sono falliti
+all'avvio nello stesso secondo (`Fatal Python error: init_sys_streams`, `Errno 9`, segnalazione
+62). Rilancio del 2026-09-29, dall'app Terminale, con lo standard input da `/dev/null` e i seed
+gia' salvati saltati:
+
+```bash
+cd ~/ChargeShield-FL && source .venv/bin/activate && echo "=== rilancio $(date) ===" >> logs/rq1_recorddp_nm0.log && nohup caffeinate -ims bash -c 'for s in 42 123 456 789 1234; do [ -e experiments/rq1-recorddp-nm0/per_sample_seed$s.json ] && continue; python3 scripts/run_experiments.py --config config/experiment_rq1_recorddp_nm0.yaml --rounds 10 --seed $s --no-dp --sweep-dir experiments/rq1-recorddp-nm0 --per-sample-dump experiments/rq1-recorddp-nm0/per_sample_seed$s.json; done' < /dev/null >> logs/rq1_recorddp_nm0.log 2>&1 &
+disown
+```
+
+Con σ = 0 l'analisi IDS a fine run segnala GRADIENT_EXPLOSION, perché la soglia scende a C: è
+un'analisi a posteriori, non tocca addestramento né attacchi. Il JSON ha `epsilon_record_dp`
+`None`: la cella è diagnostica, non di privacy. Lettura: il costo sul riferimento GroupNorm
+separa il contributo del clipping da quello del rumore (σ = 1, 2, 5).
 
 **Cella no-DP con GroupNorm, preparata il 2026-09-27.** Riferimento per leggere il costo delle
 celle record-DP: `config/experiment_rq1_nodp_groupnorm.yaml` differisce da `experiment.yaml`
@@ -401,6 +436,43 @@ $env:PYTHONUTF8 = "1"; $env:OMP_NUM_THREADS = "1"; $env:MKL_NUM_THREADS = "1"
   }
 }
 ```
+
+**Esito sul Mac principale, 2026-09-29.** La coda è finita alle 15:44 del 29 settembre: 13 run,
+zero errori, commit 64757fd e 8dceb39. FedAvg senza DP a 5 seed, prove su mu, run a 30 round,
+FedAvg con DP a 5 seed: numeri in `STATO.md` 3.10.
+
+**Screening di C per FedAvg con DP, lanciato il 2026-09-29 alle 16:28** (Mac principale,
+commit 7a21bb0). Motivo: C = 1 è stato scelto sulla griglia di FedProx (C in {0.25, 0.5, 1});
+con DP gli update di FedAvg hanno norma 2.5-8.5 e C = 1 li taglia a ogni round, quelli di
+FedProx no. Config `experiment_rq3_mu0_eps64_C{2,4,8}.yaml`, solo seed 42, circa 2 ore per run:
+
+```bash
+cd ~/Documents/ChargeShield-FL && nohup caffeinate -ims bash -c '
+set -e
+for C in 2 4 8; do
+  d=_rq3_mu0_eps64_C${C}_s42
+  python3 scripts/run_experiments.py --config config/experiment_rq3_mu0_eps64_C$C.yaml --rounds 10 --seed 42 --sweep-dir experiments/$d --per-sample-dump experiments/$d/per_sample_seed42.json
+done
+' > logs/rq3_screening_C.log 2>&1 & disown
+```
+
+Lanciato senza `< /dev/null`: la finestra del Terminale da cui e' partito va lasciata aperta
+fino all'avvio dell'ultima run (segnalazione 62).
+
+Lettura: loss sull'holdout contro C = 1 (0.01298 al seed 42). Il rumore è calibrato su C,
+quindi a parità di ε un C più grande porta più rumore. Se un C batte C = 1, 5 seed a quel C e,
+per simmetria, FedProx allo stesso C; la scelta sull'holdout è ottimistica come per FedProx e
+va dichiarata.
+
+**Windows: standby e `-dirty` (2026-09-29).** (1) Con lo schermo che si spegne per inattività
+il portatile entra in Modern Standby (S0 low power idle) e mette in pausa i processi, anche in
+carica e con il coperchio aperto: il 28 settembre dalle 17:01 alle 20:38 (eventi Kernel-Power
+506/507). `SetThreadExecutionState(2147483649)` dei blocchi sopra tiene sveglio il sistema ma
+non lo schermo: nei prossimi lanci usare 2147483651 (anche lo schermo), oppure un ciclo in una
+finestra separata con `SetThreadExecutionState(3)` ogni 30 secondi. La pausa non cambia i
+risultati, solo i tempi. (2) Il clone Windows aveva due voci non tracciate (`logs/` con file
+diversi da `*.log` e uno zip nella radice), che marcano le run `-dirty`; escluse con
+`.git/info/exclude`, locale e non versionato (segnalazione 61).
 
 ## E-D — RQ2, partizione IID contro per sito
 

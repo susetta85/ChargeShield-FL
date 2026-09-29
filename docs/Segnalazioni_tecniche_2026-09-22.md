@@ -522,3 +522,33 @@ sono in `scripts/_applicati/`.*
     modello rilasciato, che e' solo ricostruzione. Fra celle con lo stesso mu (tutta RQ1) la
     colonna resta coerente. Non si tocca durante le campagne: e' codice di training; il
     glossario delle matrici va aggiornato.
+
+## P. Trovato importando le run di Windows e della quarta macchina (2026-09-29)
+
+60. **Con DP l'effetto macchina è più grande che senza.** FedAvg a ε = 64, C = 1, stessi
+    seed e config: la loss sull'holdout su Windows (`experiments_altre_macchine/rq3-mu0-eps64`,
+    fe22124) è 1.61 volte quella del Mac principale (`experiments/rq3-mu0-eps64`) in media
+    geometrica, da 1.00 a 2.45 per seed; senza DP lo stesso rapporto vale 0.94 (da 0.81 a
+    1.05). Le versioni differiscono: Windows Python 3.13.14, torch 2.14.0, numpy 2.5.3; Mac
+    principale Python 3.14.4, torch 2.11.0, numpy 1.26.4. Estende la segnalazione 55: i
+    confronti con DP client-level si fanno solo sulla stessa macchina. Con GroupNorm e DP per
+    record il controllo a 2 round sulla quarta macchina (torch 2.11, numpy 1.26.4) riproduce
+    il Mac principale.
+61. **Sul clone Windows `logs/` non è ignorato e marca le run `-dirty`.** `.gitignore` (riga
+    19) esclude `*.log`, non la cartella: `logs/` conteneva file con altra estensione e, con
+    uno zip nella radice, `git status --porcelain` in `_git_commit_corrente`
+    (`scripts/run_experiments.py`, righe 333-358) non era vuoto. Le 5 run FedAvg con DP di
+    Windows hanno `fe22124-dirty` con codice identico a fe22124 (`PROVENIENZA.txt`): valide
+    come nella segnalazione 57. Rimedio applicato: `logs/` in `.git/info/exclude` sul clone
+    Windows. Da fare a campagna chiusa: `logs/` in `.gitignore`.
+62. **Su macOS `nohup` non stacca lo standard input dal terminale.** Un ciclo lanciato con
+    `nohup caffeinate ... bash -c 'for s in ...; do python3 ...; done' &` da un terminale
+    che poi si chiude (qui VS Code, 2026-09-29, quarta macchina) sopravvive, ma ogni nuovo
+    `python3` fallisce all'avvio con `Fatal Python error: init_sys_streams`, `Errno 9 Bad
+    file descriptor`: la run gia' partita finisce, le successive no, senza Traceback e senza
+    righe `[ERROR]` (`logs/rq1_recorddp_nm0.log`, righe 508-530). Il `nohup` di macOS
+    reindirizza solo standard output ed errore. Rimedio: aggiungere `< /dev/null` al comando
+    di lancio e usare l'app Terminale; per i cicli gia' partiti senza, non chiudere la
+    finestra da cui sono stati lanciati. Controllo utile: contare anche "Fatal Python error"
+    nei log, non solo "Traceback".
+

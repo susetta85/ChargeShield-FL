@@ -1,8 +1,8 @@
 # ChargeShield-FL — Stato del progetto
 
-> **Stato: documento CANONICO.** Aggiornato il 2026-09-28 (revisione: costo sul modello
+> **Stato: documento CANONICO.** Aggiornato il 2026-09-29 (revisione: costo sul modello
 > rilasciato, analisi per record corretta, E-C, segnalazioni 46-59, controlli del protocollo, celle delle matrici ricomposte, RQ2 senza DP,
-> punto operativo a 5 seed, RQ2 con DP, E-B a σ = 1 e 2 con il riferimento GroupNorm, RQ3 senza DP). Solo numeri
+> punto operativo a 5 seed, RQ2 con DP, E-B a σ = 1 e 2 con il riferimento GroupNorm, RQ3 senza DP; il 2026-09-29 E-B a σ = 5, RQ3 sul Mac principale con e senza DP, prove su mu e FedAvg con DP su Windows, dai JSON e non ancora nelle matrici). Solo numeri
 > presenti in `risultati/` o letti dai JSON grezzi alla data, e lo dice dove.
 > Linea scientifica: la guida. Cosa fare: `ESPERIMENTI.md`. Cosa esiste nel codice:
 > `SISTEMA.md`. Questo file risponde a una sola domanda: a che punto siamo.
@@ -18,9 +18,13 @@ modello globale rilasciato (segnalazione 46), supera la soglia di 3 volte in ogn
 client-level: a ε = 16 è 60 volte il no-DP appaiato, e il punto operativo scelto con la
 griglia, C = 1 con ε = 64, vale 4.5 volte a 5 seed (sezione 3.1b). La DP per record costa
 1.9 volte a σ = 1 e 2.1 volte a σ = 2 rispetto al no-DP con la stessa normalizzazione
-(GroupNorm), sotto la soglia, con un ε per record di circa 30 e 10 (sezione 3.5). La partizione IID o per sito non cambia il
-successo degli attacchi, con o senza DP (sezione 3.9). I prossimi passi sono la cella no-DP
-con GroupNorm, gli altri livelli di σ, E-E e il canary su più siti (`ESPERIMENTI.md`).
+(GroupNorm), sotto la soglia, con un ε per record di circa 30 e 10, e 2.3 volte a σ = 5 con
+ε di circa 3 (sezione 3.5). La partizione IID o per sito non cambia il
+successo degli attacchi, con o senza DP (sezione 3.9). Senza DP FedAvg ha la loss
+sull'holdout circa 3.7-3.9 volte più bassa di FedProx su due macchine; con DP a C = 1 l'ordine
+si inverte in 4 seed su 5, non in modo significativo (sezione 3.10). I prossimi passi sono la
+cella di solo clipping, lo screening di C per FedAvg con DP e il canary su più siti
+(`ESPERIMENTI.md`).
 
 ## 2. Glossario minimo
 
@@ -267,12 +271,25 @@ sul logaritmo), ancora sotto la soglia di 3 volte con entrambi i riferimenti. Da
 σ = 2 il costo cresce di 1.12 volte, mentre l'ε per record di Poisson scende da circa 30 a
 circa 9.7 a Office 1 (1.8 a JPL e Caltech; con lo shuffle 355). Attacchi al caso in tutte e
 tre le celle, test per record senza segnale (sezione 3.2). Che il costo quasi non cambi col
-rumore fa pensare che venga soprattutto dal clipping per esempio (C = 1); per separarlo
-servirebbe una cella con clipping e σ = 0, oggi assente. Riserve: gli shadow di LiRA non usano
+rumore faceva pensare che venisse soprattutto dal clipping per esempio (C = 1); la cella con
+clipping e σ = 0, in corso dal 2026-09-29, lo verifica. Riserve: gli shadow di LiRA non usano
 DP-SGD (segnalazione 51); il confronto con il client-level è fra unità protette diverse a
 costo comparabile, non allo stesso ε. Lettura per RQ1: a σ = 1 e 2 la DP per record ha un
 costo accettabile e la DP per client no; in nessuna delle due il regime naturale offre un
 segnale che la DP possa ridurre.
+
+**σ = 5 e solo clipping, 2026-09-29.** σ = 5 è completo (quarta macchina, 5 seed, commit
+64757fd pulito, `experiments_altre_macchine/rq1-recorddp-nm5`, JSON letti il 2026-09-29):
+2.32 volte il riferimento GroupNorm in media geometrica dei rapporti per seed (da 1.82 a
+3.27; t = 7.74 sul logaritmo) e 1.10 volte σ = 2 (da 1.01 a 1.22; t = 2.44, non
+significativo a 4 gdl). L'ε per record di Poisson scende a 3.1 (massimo sui client, Office 1;
+0.6 a Caltech e JPL), il limite valido con lo shuffle a 81. Yeom al caso (0.497-0.503). Il
+seed 789 supera la soglia di 3 volte già a σ = 2 (3.07) e a σ = 5 (3.27): ha il riferimento
+GroupNorm più basso dei cinque. Lettura: da σ = 1 a σ = 5 l'ε per record di Poisson scende
+di circa dieci volte e il costo passa da 1.87 a 2.32 volte; la media resta sotto la soglia,
+non tutti i seed. Il controllo a 2 round sulla quarta macchina riproduce il Mac principale
+(`PROVENIENZA.txt`). La cella di solo clipping (σ = 0, `config/experiment_rq1_recorddp_nm0.yaml`)
+è in corso sulla stessa macchina (seed 42 salvato; gli altri rilanciati il 2026-09-29, segnalazione 62); i suoi numeri entrano qui dai JSON quando è importata.
 
 Il seed 42 riproduce la prova `_prova_recorddp_v2` del secondo Mac (commit 2c4a0f0): loss di
 addestramento per round e holdout coincidono (0.00239868088 contro 0.00239868097), Yeom alla
@@ -375,7 +392,7 @@ la loss sull'holdout differisce per seed fino al 23% (segnalazione 55, confermat
 dalla macchina, non dal codice): il confronto di RQ2
 usa perciò i due bracci della stessa macchina, non `nodp-sweep2`.
 
-### 3.10 RQ3: FedAvg contro FedProx, senza DP (E-E)
+### 3.10 RQ3: FedAvg contro FedProx (E-E)
 
 Fonte: JSON di `experiments_altre_macchine/rq3-mu0` e `rq3-mu0.01` (Windows, commit 478d471,
 i due bracci in parallelo), letti il 2026-09-27; 5 seed per braccio appaiati per seed, zero
@@ -406,6 +423,40 @@ non bastano a FedProx. La loss di addestramento locale registrata include il ter
 prossimale e non è confrontabile fra i due bracci (segnalazione 59). Tutta la campagna usa
 FedProx mu = 0.01 come base: se cambiarla è una decisione del supervisore.
 
+**Mac principale, senza DP, 2026-09-29** (JSON di `experiments/rq3-mu0`, commit 64757fd,
+contro `nodp-sweep2`; non ancora nelle matrici). FedProx ha la loss sull'holdout 3.69 volte
+quella di FedAvg in media geometrica (da 2.74 a 4.31, 5 seed su 5), coerente con Windows
+(3.90). Il round 10 della run a 30 round (seed 42, commit 64757fd) riproduce `nodp-sweep2`
+(0.002186): il confronto regge fra i due commit. Attacchi al caso.
+
+**Prove su mu** (seed 42, Mac principale, loss sull'holdout al round 10): mu = 0: 0.000508;
+0.001: 0.000536; 0.01: 0.002186; 0.1: 0.003791. Il costo cresce con mu e il salto sta fra
+0.001 e 0.01. Con mu = 0.001 gli update hanno norma 0.23-0.52 al round 10 (FedAvg 2.2-6.8) e
+la qualità di FedAvg: la dimensione del passo da sola non spiega il costo. A 30 round FedProx
+mu = 0.01 scende a 0.00127 al round 20 e a 0.00094 al round 30, ancora in discesa: 1.85 volte
+FedAvg a 10 round. FedProx è soprattutto più lento; se raggiunga il livello di FedAvg non è
+stabilito.
+
+**Con DP, Mac principale** (ε = 64, C = 1, dp-fedavg; `experiments/rq3-mu0-eps64`, commit
+64757fd e 8dceb39, contro `rq1-eps64`, commit 8d44ae3; fra 8d44ae3 e 8dceb39 `src/` e
+`run_experiments.py` non cambiano). FedProx ha la loss sull'holdout 0.53 volte quella di
+FedAvg in media geometrica (da 0.28 a 1.62; 4 seed su 5 sotto 1; t = −1.93 sul logaritmo,
+non significativo a 4 gdl). La DP costa a FedAvg 30.4 volte (da 20 a 42) e a FedProx 4.4
+volte (da 1.9 a 14.7). Norme degli update: FedAvg fra 2.5 e 8.5 in tutti i round, quindi
+tagliate da C = 1 a ogni round; FedProx fra 0.2 e 0.5 dal round 5, sotto C (tagliate solo al
+round 1, quando il termine prossimale non è attivo). Lettura, preliminare: sotto DP l'ordine
+fra i due algoritmi dipende dal clipping, e C = 1 è stato scelto sulla griglia di FedProx.
+Lo screening di C per FedAvg (C = 2, 4, 8, seed 42) è in corso dal 2026-09-29
+(`ESPERIMENTI.md` E-E). Yeom al caso in tutte le celle.
+
+**Con DP, Windows** (FedAvg, `experiments_altre_macchine/rq3-mu0-eps64`, 5 seed, fe22124
+con `-dirty` da file non tracciati e codice identico, `PROVENIENZA.txt`). La DP costa a
+FedAvg 52 volte (da 34 a 83) sul riferimento Windows senza DP a 478d471 (percorso di
+training identico: loss del round 1 uguale a 12 cifre). Con stesso seed e stesso config la
+loss con DP su Windows è 1.61 volte quella del Mac (da 1.00 a 2.45), contro 0.94 senza DP:
+sotto DP l'effetto macchina è più grande (segnalazione 60), quindi i confronti con DP si
+fanno solo sulla stessa macchina. Il braccio FedProx con DP su Windows è in corso.
+
 ## 4. Cosa manca
 
 L'elenco ordinato, con comandi e prerequisiti, è `ESPERIMENTI.md`. E-A è chiuso (sezione
@@ -413,10 +464,11 @@ L'elenco ordinato, con comandi e prerequisiti, è `ESPERIMENTI.md`. E-A è chius
 esistenti, ε = 64 compresa (sezione 3.2). E-D (RQ2) è analizzato con e senza DP (sezione
 3.9) e sta in `experiments_altre_macchine/`, come E-E senza DP di Windows (sezione 3.10,
 segnalazione 45). I controlli del protocollo sono
-eseguiti (sezione 3.1c). E-B a σ = 1 e 2 e il riferimento GroupNorm sono completi (sezione
-3.5). Restano: il livello σ = 5 di E-B (da decidere) e una cella di solo clipping per
-esempio, E-E completo sul Mac principale con le prove su mu (in corso dal 28 settembre,
-`ESPERIMENTI.md` E-E) e la sua replica con DP su Windows, il canary su più siti, le
+eseguiti (sezione 3.1c). E-B a σ = 1, 2 e 5 e il riferimento GroupNorm sono completi (sezione
+3.5); E-E sul Mac principale, con e senza DP, e le prove su mu sono complete (sezione 3.10).
+Restano: la cella di solo clipping di E-B (in corso), lo screening di C per FedAvg con DP
+(in corso) e, se lo indica, un braccio a 5 seed, il braccio FedProx con DP su Windows,
+l'aggiornamento delle matrici con le celle del 2026-09-29, il canary su più siti, le
 statistiche delle feature per client di E-D, la rianalisi NVFlare. Da decidere col supervisore: la metrica primaria per record (segnalazione 47) e se
 le campagne future usano l'inizializzazione comune (segnalazione 48). I bug che toccano i numeri sono in
 `Segnalazioni_tecniche_2026-09-22.md`, punti 1, 5, 6, 9, 35, 36, 38, 45, 48, 50, 51, 55. Fuori dal paper, come infrastruttura o lavoro futuro: ML Plane,
