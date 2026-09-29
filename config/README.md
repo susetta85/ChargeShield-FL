@@ -21,6 +21,7 @@
 | `experiment_rq2_{per_site,iid}_eps64.yaml` | `partition.strategy` ed ε = 64 (C = 1) | E-D, RQ2, braccio con DP al punto operativo |
 | `experiment_rq3_mu0.yaml` | solo `ml.proximal_mu: 0.0` (FedAvg) | E-E, RQ3, con `--no-dp` |
 | `experiment_rq3_mu0_eps64.yaml` | `ml.proximal_mu: 0.0` ed ε = 64 (C = 1) | E-E, RQ3, braccio con DP al punto operativo; il braccio FedProx appaiato è `experiment_rq1_eps64.yaml` |
+| `experiment_rq3_mu0_eps64_C{2,4,8}.yaml` | come `experiment_rq3_mu0_eps64.yaml` con `max_grad_norm` = 2, 4, 8 | E-E, RQ3, screening del limite di clipping per FedAvg con DP (seed 42): C = 1 era stato scelto sulla griglia di FedProx |
 | `experiment_rq3_mu0.001.yaml`, `experiment_rq3_mu0.1.yaml` | solo `ml.proximal_mu` (0.001, 0.1) | E-E, prove su mu: dose-risposta a 10 round, seed 42, `--no-dp`, sweep-dir `_rq3_*` |
 | `experiment_rq3_mu0.01_r30.yaml` | solo `experiment.fl_rounds: 30` | E-E, prove su mu: FedProx a 30 round, seed 42, `--rounds 30 --no-dp`, sweep-dir `_rq3_*` |
 | `experiment_ctrl_common_init.yaml` | solo `ml.common_init: true` | controllo del protocollo, segnalazione 48; no-DP, seed 42 |
