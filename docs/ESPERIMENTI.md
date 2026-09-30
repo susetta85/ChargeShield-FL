@@ -729,6 +729,30 @@ Office 1: misurare prima con un seed. Procedura identica alla sezione 10 di
 `CanaryPositiveControl.md`, bracci A e B con lo stesso seed, baseline con
 `check_canary_init_confound.py --seed`.
 
+**Config e run di prova (2026-09-30).** `config/experiment_canary_balanced_caltech.yaml` e
+`_swap.yaml`: il riferimento `experiment_canary_balanced.yaml` con solo Caltech,
+`canary.site: caltech` e `n_duplicates: 561`; con k = 20 coincidono con Office 1 sia
+l'amplificazione per record (2.23% del pool di training) sia la densità aggregata (44.7%
+contro 44.6%). Run di prova sulla quarta macchina, seed 42, senza DP, braccio A, con le
+baseline dei due bracci nello stesso log, dopo `git fetch susetta && git merge --ff-only
+susetta/master`:
+
+```bash
+cd ~/ChargeShield-FL && source .venv/bin/activate && nohup caffeinate -ims bash -c '
+set -e
+for c in experiment_canary_balanced_caltech experiment_canary_balanced_caltech_swap; do
+  python3 scripts/check_canary_init_confound.py --config config/$c.yaml --seed 42
+done
+python3 scripts/run_experiments.py --config config/experiment_canary_balanced_caltech.yaml --no-dp --seed 42 --sweep-dir experiments/_canary_balanced_caltech_s42
+' < /dev/null > logs/canary_balanced_caltech_s42.log 2>&1 & disown
+```
+
+Tempo stimato dal canary su più siti in corso (1000 epoche: circa 25 minuti per round di FL
+su circa 54000 sessioni, circa 97 minuti per round di LiRA con tre cluster), scalato su circa
+36300 sessioni di training: 4-5 ore. Verifiche nel log: `pool unificato: 40 template estratti
+da site_train_sessions(caltech)`; `Iniettati 20 template × 561 duplicati`; `Client attivi
+(1)`; `DISTINTI 20x20` nelle righe `[CANARY] AUC` di LiRA.
+
 ## Rianalisi NVFlare
 
 I 25 dump a ε ≤ 1 (`experiments/_dump_nvflare_provenienza.csv`) sono nel regime

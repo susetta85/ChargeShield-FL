@@ -1,0 +1,91 @@
+# ChargeShield-FL — Canary bilanciato su Caltech, braccio A (2026-09-30)
+#
+# SCOPO: validazione dello strumento su un secondo sito, non una RQ
+# (docs/ESPERIMENTI.md, "Canary bilanciato su un secondo sito"). Il protocollo
+# bilanciato che regge (k = 20, scambio dei ruoli, baseline a init casuale,
+# 5 seed) esiste solo su Office 1.
+#
+# Identico a experiment_canary_balanced.yaml (k = 20 template per lato,
+# paired_split, 7 feature, hidden_dims (32, 16), latent 8, 1000 epoche,
+# 3 round, LiRA n_shadow 8 con shadow cold) tranne:
+#   - sites: solo Caltech (i quattro anni, come i config RQ);
+#   - canary.site: caltech;
+#   - canary.n_duplicates: 561 invece di 30;
+#   - experiment.name.
+#
+# n_duplicates = 561 riproduce l'amplificazione per record di Office 1, come
+# experiment_canary_positive_control_caltech_amplification_matched.yaml:
+# 30 duplicati su un pool di training di 1344 sessioni (2.23%) diventano
+# 2.23% di 25123 sessioni di training di Caltech (31404 x 0.8), cioè 560.85,
+# arrotondato a 561. Con k = 20 anche la densità aggregata coincide con il
+# canary bilanciato di Office 1: 20 x 561 / 25123 = 44.7% contro
+# 20 x 30 / 1344 = 44.6%. Si iniettano 11220 duplicati: training di circa
+# 36300 sessioni, tempo per run molto più lungo di Office 1.
+#
+# Prima run: seed 42, senza DP, braccio A con le baseline dei due bracci, per
+# verificare iniezione e punteggi e misurare il tempo.
+
+experiment:
+  name: chargeshield_canary_balanced_caltech
+  fl_rounds: 3
+  seed: 42
+  epsilon: 1.0
+  delta: 1.0e-5
+  max_grad_norm: 1.0
+
+sites:
+  caltech:
+    - datasets/acn/caltech/acndata_sessions_2018.json
+    - datasets/acn/caltech/acndata_sessions_2019.json
+    - datasets/acn/caltech/acndata_sessions_2020.json
+    - datasets/acn/caltech/acndata_sessions_2021.json
+
+ml:
+  input_dim: 7
+  lr: 0.001
+  epochs: 1000
+  batch_size: 32
+  proximal_mu: 0.01
+  hidden_dims: [32, 16]
+  latent_dim: 8
+  feature_names:
+    - total_energy_kwh
+    - max_power_kw
+    - kwh_requested
+    - minutes_available
+    - hour_of_day
+    - duration_hours
+    - start_time_epoch
+
+canary:
+  enabled: true
+  site: caltech
+  nonmember_source: paired_split
+  swap_assignment: false      # braccio A
+  n_templates: 20             # == n_nonmember_templates: condizione dello scambio
+  n_duplicates: 561          # 30 / 1344 di Office 1 riportato su 25123 (vedi header)
+  n_nonmember_templates: 20
+
+output:
+  experiments_dir: experiments
+
+lira:
+  n_shadow: 8
+  # shadow_init: cold (aggiunto 2026-09-16, dopo lo smoke test s42).
+  # OMESSO per errore nella prima stesura di questi config: i config
+  # _canary_maxmemo{,_swap} da cui questo design deriva lo impostano a
+  # "cold", mentre il default del codice e' "warm" (run_experiments.py:3250,
+  # _warm_start attivo dal round 2). Lo smoke test s42 ha quindi girato con
+  # gli shadow warm-start mentre la campagna a 5 seed di riferimento girava
+  # cold: una variabile non controllata fra le due campagne, che tocca la
+  # calibrazione shadow e quindi canary_auc_roc (NON canary_raw_mse_auc_roc,
+  # che e' calcolata sulla loss del modello target e non vede gli shadow).
+  # Vedi anche Blocker 1 / Sprint 10zz+91: warm e cold non sono equivalenti
+  # in questo regime.
+  shadow_init: cold
+
+byzantine_attack:
+  enabled: false
+  attack_type: gradient_scaling
+  byzantine_node: synthetic_1
+  scale_factor: 10

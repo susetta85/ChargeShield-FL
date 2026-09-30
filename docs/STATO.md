@@ -494,7 +494,7 @@ eseguiti (sezione 3.1c). E-B a σ = 0, 1, 2 e 5 e il riferimento GroupNorm sono 
 (sezione 3.10). Restano: il braccio FedProx con DP su Windows, l'aggiornamento delle matrici
 con le celle del 2026-09-29, dello screening e del solo clipping, il canary su più siti (run
 di prova a un seed in corso dal 2026-09-30), il canary bilanciato su
-Caltech, le
+Caltech (config pronti, run di prova a un seed), le
 statistiche delle feature per client di E-D, la rianalisi NVFlare. Da decidere col supervisore: la metrica primaria per record (segnalazione 47) e se
 le campagne future usano l'inizializzazione comune (segnalazione 48). I bug che toccano i numeri sono in
 `Segnalazioni_tecniche_2026-09-22.md`, punti 1, 5, 6, 9, 35, 36, 38, 45, 48, 50, 51, 55. Fuori dal paper, come infrastruttura o lavoro futuro: ML Plane,

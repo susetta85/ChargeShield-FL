@@ -60,6 +60,7 @@ Office 1. LiRA legge l'update di Office 1, Yeom e Shadow il modello globale.
 | file | cosa cambia |
 |---|---|
 | `experiment_canary_multisite.yaml`, `_swap.yaml` | solo `sites` (caltech, jpl, office1, come i config RQ) e `experiment.name`; prima run: seed 42, `--no-dp`, per verifica e tempi |
+| `experiment_canary_balanced_caltech.yaml`, `_swap.yaml` | canary bilanciato su un secondo sito: solo Caltech, `canary.site: caltech`, `n_duplicates: 561` (amplificazione per record di Office 1); prima run: seed 42, `--no-dp`, per verifica e tempi |
 
 ## Canary con DP record-level (regime canary, `--no-dp` per il client-level)
 
