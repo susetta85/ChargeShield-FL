@@ -2,7 +2,7 @@
 
 > **Stato: documento CANONICO.** Aggiornato il 2026-09-30 (revisione: costo sul modello
 > rilasciato, analisi per record corretta, E-C, segnalazioni 46-59, controlli del protocollo, celle delle matrici ricomposte, RQ2 senza DP,
-> punto operativo a 5 seed, RQ2 con DP, E-B a σ = 1 e 2 con il riferimento GroupNorm, RQ3 senza DP; il 2026-09-29 E-B a σ = 5, RQ3 sul Mac principale con e senza DP, prove su mu e FedAvg con DP su Windows; il 2026-09-30 lo screening di C per FedAvg con DP; dai JSON e non ancora nelle matrici). Solo numeri
+> punto operativo a 5 seed, RQ2 con DP, E-B a σ = 1 e 2 con il riferimento GroupNorm, RQ3 senza DP; il 2026-09-29 E-B a σ = 5, RQ3 sul Mac principale con e senza DP, prove su mu e FedAvg con DP su Windows; il 2026-09-30 lo screening di C per FedAvg con DP e il solo clipping di E-B; dai JSON e non ancora nelle matrici). Solo numeri
 > presenti in `risultati/` o letti dai JSON grezzi alla data, e lo dice dove.
 > Linea scientifica: la guida. Cosa fare: `ESPERIMENTI.md`. Cosa esiste nel codice:
 > `SISTEMA.md`. Questo file risponde a una sola domanda: a che punto siamo.
@@ -19,12 +19,13 @@ client-level: a ε = 16 è 60 volte il no-DP appaiato, e il punto operativo scel
 griglia, C = 1 con ε = 64, vale 4.5 volte a 5 seed (sezione 3.1b). La DP per record costa
 1.9 volte a σ = 1 e 2.1 volte a σ = 2 rispetto al no-DP con la stessa normalizzazione
 (GroupNorm), sotto la soglia, con un ε per record di circa 30 e 10, e 2.3 volte a σ = 5 con
-ε di circa 3 (sezione 3.5). La partizione IID o per sito non cambia il
+ε di circa 3; il solo clipping per esempio non ha un costo misurabile (1.04 volte), quindi il
+costo viene dal rumore (sezione 3.5). La partizione IID o per sito non cambia il
 successo degli attacchi, con o senza DP (sezione 3.9). Senza DP FedAvg ha la loss
 sull'holdout circa 3.7-3.9 volte più bassa di FedProx su due macchine; con DP a C = 1 l'ordine
 si inverte in 4 seed su 5, non in modo significativo, e alzare C fino a 8 non aiuta FedAvg
-(seed 42, sezione 3.10). I prossimi passi sono la cella di solo clipping (in corso), il canary
-su più siti e poi il canary bilanciato su Caltech (`ESPERIMENTI.md`).
+(seed 42, sezione 3.10). I prossimi passi sono il canary su più siti (run di prova in corso) e
+poi il canary bilanciato su Caltech (`ESPERIMENTI.md`).
 
 ## 2. Glossario minimo
 
@@ -272,7 +273,7 @@ sul logaritmo), ancora sotto la soglia di 3 volte con entrambi i riferimenti. Da
 circa 9.7 a Office 1 (1.8 a JPL e Caltech; con lo shuffle 355). Attacchi al caso in tutte e
 tre le celle, test per record senza segnale (sezione 3.2). Che il costo quasi non cambi col
 rumore faceva pensare che venisse soprattutto dal clipping per esempio (C = 1); la cella con
-clipping e σ = 0, in corso dal 2026-09-29, lo verifica. Riserve: gli shadow di LiRA non usano
+clipping e σ = 0 lo smentisce (paragrafo «Solo clipping» sotto). Riserve: gli shadow di LiRA non usano
 DP-SGD (segnalazione 51); il confronto con il client-level è fra unità protette diverse a
 costo comparabile, non allo stesso ε. Lettura per RQ1: a σ = 1 e 2 la DP per record ha un
 costo accettabile e la DP per client no; in nessuna delle due il regime naturale offre un
@@ -288,8 +289,19 @@ seed 789 supera la soglia di 3 volte già a σ = 2 (3.07) e a σ = 5 (3.27): ha 
 GroupNorm più basso dei cinque. Lettura: da σ = 1 a σ = 5 l'ε per record di Poisson scende
 di circa dieci volte e il costo passa da 1.87 a 2.32 volte; la media resta sotto la soglia,
 non tutti i seed. Il controllo a 2 round sulla quarta macchina riproduce il Mac principale
-(`PROVENIENZA.txt`). La cella di solo clipping (σ = 0, `config/experiment_rq1_recorddp_nm0.yaml`)
-è in corso sulla stessa macchina (seed 42 salvato; gli altri rilanciati il 2026-09-29, segnalazione 62); i suoi numeri entrano qui dai JSON quando è importata.
+(`PROVENIENZA.txt`).
+
+**Solo clipping (σ = 0), 2026-09-30.** Completo (quarta macchina, 5 seed, commit 8dceb39
+pulito, `config/experiment_rq1_recorddp_nm0.yaml`, `experiments_altre_macchine/rq1-recorddp-nm0`,
+JSON letti il 2026-09-30): 1.04 volte il riferimento GroupNorm in media geometrica dei rapporti
+per seed (da 0.72 a 1.40; 3 seed su 5 sopra 1; t = 0.35 sul logaritmo, nessuna differenza).
+Sugli stessi seed, rispetto al solo clipping, il rumore costa 1.80 volte a σ = 1 (da 1.45 a
+2.18, t = 8.60, 5 seed su 5), 2.02 a σ = 2 e 2.23 a σ = 5. Il costo della DP per record viene
+quindi dal rumore e non dal clipping per esempio a C = 1: l'ipotesi formulata con σ = 1 e 2
+non regge. Il costo si concentra nel passaggio da σ = 0 a σ = 1 e poi cresce poco (1.24 volte da
+σ = 1 a σ = 5). ε per record `None`: la cella è diagnostica, senza garanzia. Attacchi al caso
+(Yeom, Shadow e LiRA fra 0.496 e 0.509 al round 10); test per record non eseguito su questa
+cella.
 
 Il seed 42 riproduce la prova `_prova_recorddp_v2` del secondo Mac (commit 2c4a0f0): loss di
 addestramento per round e holdout coincidono (0.00239868088 contro 0.00239868097), Yeom alla
@@ -323,8 +335,9 @@ rilasciato ε = 16 sta a 47 volte il primo e 60 volte il secondo (segnalazione 4
 punti del §0 sono cambiati il 2026-09-24 e sono documentati lì come deviazioni: il
 costo, per un errore di implementazione (la definizione era giusta), e la metrica
 primaria per record, che va sostituita dal test appaiato (segnalazione 47): la seconda
-è una decisione del supervisore. Manca il braccio B1 della Fase B, clipping senza
-rumore, per cui non esiste un flag.
+è una decisione del supervisore. Il braccio B1 della Fase B, clipping senza rumore, è
+eseguito per il record-level (σ = 0, sezione 3.5); per il client-level manca il flag
+(segnalazione 38).
 
 ### 3.9 RQ2: partizione IID contro per sito (E-D)
 
@@ -476,11 +489,11 @@ L'elenco ordinato, con comandi e prerequisiti, è `ESPERIMENTI.md`. E-A è chius
 esistenti, ε = 64 compresa (sezione 3.2). E-D (RQ2) è analizzato con e senza DP (sezione
 3.9) e sta in `experiments_altre_macchine/`, come E-E senza DP di Windows (sezione 3.10,
 segnalazione 45). I controlli del protocollo sono
-eseguiti (sezione 3.1c). E-B a σ = 1, 2 e 5 e il riferimento GroupNorm sono completi (sezione
+eseguiti (sezione 3.1c). E-B a σ = 0, 1, 2 e 5 e il riferimento GroupNorm sono completi (sezione
 3.5); E-E sul Mac principale, con e senza DP, le prove su mu e lo screening di C sono completi
-(sezione 3.10). Restano: la cella di solo clipping di E-B (in corso), il braccio FedProx con DP
-su Windows, l'aggiornamento delle matrici con le celle del 2026-09-29 e dello screening, il
-canary su più siti (config pronti, prima una run di prova a un seed), il canary bilanciato su
+(sezione 3.10). Restano: il braccio FedProx con DP su Windows, l'aggiornamento delle matrici
+con le celle del 2026-09-29, dello screening e del solo clipping, il canary su più siti (run
+di prova a un seed in corso dal 2026-09-30), il canary bilanciato su
 Caltech, le
 statistiche delle feature per client di E-D, la rianalisi NVFlare. Da decidere col supervisore: la metrica primaria per record (segnalazione 47) e se
 le campagne future usano l'inizializzazione comune (segnalazione 48). I bug che toccano i numeri sono in

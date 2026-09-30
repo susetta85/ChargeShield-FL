@@ -1,6 +1,6 @@
 # ChargeShield-FL — Esperimenti da eseguire
 
-> **Stato: documento CANONICO.** Aggiornato il 2026-09-30 (revisione: costo, E-C, controlli (a) e (b) eseguiti, griglia del punto operativo, canary su più siti, E-D con DP, campagna E-B, braccio con DP di E-E; il 2026-09-30 esito dello screening di C, config e run di prova del canary su più siti). Sostituisce,
+> **Stato: documento CANONICO.** Aggiornato il 2026-09-30 (revisione: costo, E-C, controlli (a) e (b) eseguiti, griglia del punto operativo, canary su più siti, E-D con DP, campagna E-B, braccio con DP di E-E; il 2026-09-30 esito dello screening di C e del solo clipping, config e run di prova del canary su più siti). Sostituisce,
 > per gli esperimenti ancora da lanciare, il vecchio `TestRoadmap_DSN2027.md`, eliminato
 > il 2026-09-22 e recuperabile dalla storia git. Ogni
 > voce dice quale RQ serve, quale conclusione può cambiare, cosa deve essere vero
@@ -52,7 +52,7 @@ conteggio come risultato secondario. Entrambi i risultati sono riportati in `STA
 | **E-B, bloccante** | `check_significance.py` e `genera_matrici_faseA.py` devono distinguere le celle record-DP: oggi raggruppano per `(dp_mode, epsilon, no_dp, seed)` e una run record-DP lanciata con `--no-dp` finisce nel gruppo "no-DP baseline", dove, essendo più recente, **sostituisce** il seed corrispondente di `nodp-sweep2` | 37 |
 | E-B | ~~accountant record-DP: `fl_rounds` e `delta` da `cfg["experiment"]`, n per client, dichiarare Poisson vs shuffle, `dp-accounting` in `pyproject.toml`~~ corretto il 2026-09-24 | 4 |
 | E-B | il warning `[NO-DP BASELINE]` deve controllare `record_dp.enabled` | 5 |
-| B1 | manca un flag clip-only (clipping attivo, σ = 0); va aggiunto o il braccio va dichiarato non eseguito | 38 |
+| B1 | manca un flag clip-only per il client-level (per il record-level basta σ = 0, eseguito il 2026-09-30); va aggiunto o il braccio client-level va dichiarato non eseguito | 38 |
 | rianalisi NVFlare | `--client-config` con lo snapshot del seed, già nello script rigenerato | 1 |
 
 ## E-A — sweep di ε nella zona del ginocchio. PRIORITÀ MASSIMA
@@ -119,8 +119,9 @@ eseguito e attribuire l'effetto a "clipping più rumore" insieme.
 `noise_multiplier: 0` con `record_dp` attivo fa solo clipping per esempio (trainer,
 `src/ml/autoencoder_trainer.py` righe 300-301: rumore solo se σ > 0; accountant,
 `src/ml/record_dp_accounting.py` righe 156-171: ε `None` con la nota "nessuna garanzia").
-Cella `config/experiment_rq1_recorddp_nm0.yaml` (commit 8dceb39) in corso sulla quarta
-macchina (sezione E-B). Per il client-level il flag manca ancora (segnalazione 38).
+Cella `config/experiment_rq1_recorddp_nm0.yaml` (commit 8dceb39) completa il 2026-09-30 a 5
+seed sulla quarta macchina: 1.04 volte il riferimento GroupNorm, quindi il costo della DP per
+record viene dal rumore (sezione E-B, `STATO.md` 3.5). Per il client-level il flag manca ancora (segnalazione 38).
 
 ## E-B — record-level DP su dati naturali
 
@@ -228,6 +229,10 @@ Con σ = 0 l'analisi IDS a fine run segnala GRADIENT_EXPLOSION, perché la sogli
 un'analisi a posteriori, non tocca addestramento né attacchi. Il JSON ha `epsilon_record_dp`
 `None`: la cella è diagnostica, non di privacy. Lettura: il costo sul riferimento GroupNorm
 separa il contributo del clipping da quello del rumore (σ = 1, 2, 5).
+
+**Esito, 2026-09-30** (5 seed, 0 errori, importati in `experiments_altre_macchine/rq1-recorddp-nm0`
+con provenienza): 1.04 volte il riferimento GroupNorm (da 0.72 a 1.40, t = 0.35); rispetto al
+solo clipping il rumore costa 1.80 volte a σ = 1. Numeri in `STATO.md` 3.5.
 
 **Cella no-DP con GroupNorm, preparata il 2026-09-27.** Riferimento per leggere il costo delle
 celle record-DP: `config/experiment_rq1_nodp_groupnorm.yaml` differisce da `experiment.yaml`
