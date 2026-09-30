@@ -1,6 +1,6 @@
 # Indice dei config
 
-> **Stato: documento OPERATIVO.** Una riga per file, aggiornato il 2026-09-27. Ogni
+> **Stato: documento OPERATIVO.** Una riga per file, aggiornato il 2026-09-30. Ogni
 > config è una cella: prima di crearne uno nuovo cercare qui se esiste già. La base
 > di tutti è `experiment.yaml`; le colonne dicono cosa cambia rispetto a quella base
 > (3 siti, 10 round, 50 epoche, 6 feature, ε = 1, n_shadow 16, FedProx mu 0.01).
@@ -51,6 +51,15 @@ sempre la coppia base e swap con lo stesso seed.
 | `experiment_canary_e10_group.yaml` | 10 epoche, GroupNorm |
 | `experiment_canary_balanced_nshadow32.yaml`, `_swap.yaml` | n_shadow 32, ablation |
 | `experiment_canary_balanced_indepfloor.yaml` | floor indipendente, ablation |
+
+## Canary su più siti (`docs/ESPERIMENTI.md`)
+
+Stesso protocollo del canary bilanciato, con i tre siti reali; canary iniettati solo in
+Office 1. LiRA legge l'update di Office 1, Yeom e Shadow il modello globale.
+
+| file | cosa cambia |
+|---|---|
+| `experiment_canary_multisite.yaml`, `_swap.yaml` | solo `sites` (caltech, jpl, office1, come i config RQ) e `experiment.name`; prima run: seed 42, `--no-dp`, per verifica e tempi |
 
 ## Canary con DP record-level (regime canary, `--no-dp` per il client-level)
 

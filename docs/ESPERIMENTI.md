@@ -1,6 +1,6 @@
 # ChargeShield-FL — Esperimenti da eseguire
 
-> **Stato: documento CANONICO.** Aggiornato il 2026-09-28 (revisione: costo, E-C, controlli (a) e (b) eseguiti, griglia del punto operativo, canary su più siti, E-D con DP, campagna E-B, braccio con DP di E-E). Sostituisce,
+> **Stato: documento CANONICO.** Aggiornato il 2026-09-30 (revisione: costo, E-C, controlli (a) e (b) eseguiti, griglia del punto operativo, canary su più siti, E-D con DP, campagna E-B, braccio con DP di E-E; il 2026-09-30 esito dello screening di C, config e run di prova del canary su più siti). Sostituisce,
 > per gli esperimenti ancora da lanciare, il vecchio `TestRoadmap_DSN2027.md`, eliminato
 > il 2026-09-22 e recuperabile dalla storia git. Ogni
 > voce dice quale RQ serve, quale conclusione può cambiare, cosa deve essere vero
@@ -464,6 +464,10 @@ quindi a parità di ε un C più grande porta più rumore. Se un C batte C = 1, 
 per simmetria, FedProx allo stesso C; la scelta sull'holdout è ottimistica come per FedProx e
 va dichiarata.
 
+**Esito, 2026-09-30** (dai JSON, numeri in `STATO.md` 3.10): nessun C batte C = 1 (C = 2: 1.01
+volte, C = 4: 3.8, C = 8: 18.7, seed 42). Per la regola sopra niente 5 seed a un altro C né
+FedProx allo stesso C: lo screening è chiuso e il braccio con DP di E-E resta a C = 1.
+
 **Windows: standby e `-dirty` (2026-09-29).** (1) Con lo schermo che si spegne per inattività
 il portatile entra in Modern Standby (S0 low power idle) e mette in pausa i processi, anche in
 carica e con il coperchio aperto: il 28 settembre dalle 17:01 alle 20:38 (eventi Kernel-Power
@@ -673,6 +677,38 @@ client-level al punto operativo, record-level. Serve un config nuovo, mai esegui
 questa combinazione: prima una run di prova a un seed per verificare che iniezione e
 punteggi funzionino con tre client e per misurare il tempo (1000 epoche su tre siti).
 Da definire col supervisore: numero di epoche, LiRA completo o solo loss grezza.
+
+**Config e run di prova (2026-09-30).** `config/experiment_canary_multisite.yaml` (braccio A) e
+`config/experiment_canary_multisite_swap.yaml` (braccio B): `experiment_canary_balanced.yaml`
+con i tre siti reali, nient'altro cambia (header del file). LiRA legge il modello di ciascun
+client (`lira.observation_surface` "client", default), quindi l'update di Office 1; Yeom e
+Shadow valutano i canary solo sul modello globale ("global", default): la diluizione si legge
+dal confronto fra le due superfici nello stesso JSON. Min e max della normalizzazione vengono
+dal training dei tre siti, quindi le baseline a init casuale vanno rifatte con questi config.
+Run di prova sul Mac principale: seed 42, senza DP, braccio A, precedute dalle baseline dei due
+bracci nello stesso log (`set -e`: se la baseline non trova canary la run non parte).
+
+```bash
+cd ~/Documents/ChargeShield-FL && nohup caffeinate -ims bash -c '
+set -e
+for c in experiment_canary_multisite experiment_canary_multisite_swap; do
+  python3 scripts/check_canary_init_confound.py --config config/$c.yaml --seed 42
+done
+python3 scripts/run_experiments.py --config config/experiment_canary_multisite.yaml --no-dp --seed 42 --sweep-dir experiments/_canary_multisite_s42
+' < /dev/null > logs/canary_multisite_s42.log 2>&1 & disown
+```
+
+Tempo stimato dai log di `canary_balanced_s42` (Office 1: 44 s per 1000 epoche su 1924
+sessioni, 3 min 19 s per gli 8 shadow di un round), scalato sulle dimensioni dei cluster: circa
+20 minuti per round di FL, circa 90 per round di LiRA, circa 6 ore in tutto. Verifiche nel log:
+`[CANARY] pool unificato: 40 template estratti da site_train_sessions(office1)`; `Client attivi
+(3)`; `Cluster office1:` circa 1921 sessioni; nelle righe `[CANARY] AUC` di LiRA `DISTINTI 20x20`
+(o 20x19, 20x18: `CanaryPositiveControl.md` 6.5); nel JSON `yeom_canary_auc_roc` e
+`canary_raw_mse_auc_roc` per round. Se il tempo misurato conferma la stima, la campagna completa
+(5 seed per 2 bracci per 3 condizioni) vale circa 30 run da 6 ore senza contare il costo in più
+della DP per record: epoche e LiRA completo o solo loss grezza si decidono col supervisore con
+il tempo misurato. Ordine deciso il 2026-09-30: questa prova, poi il canary bilanciato su
+Caltech.
 
 ## Canary bilanciato su un secondo sito
 

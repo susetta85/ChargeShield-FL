@@ -1,8 +1,8 @@
 # ChargeShield-FL — Stato del progetto
 
-> **Stato: documento CANONICO.** Aggiornato il 2026-09-29 (revisione: costo sul modello
+> **Stato: documento CANONICO.** Aggiornato il 2026-09-30 (revisione: costo sul modello
 > rilasciato, analisi per record corretta, E-C, segnalazioni 46-59, controlli del protocollo, celle delle matrici ricomposte, RQ2 senza DP,
-> punto operativo a 5 seed, RQ2 con DP, E-B a σ = 1 e 2 con il riferimento GroupNorm, RQ3 senza DP; il 2026-09-29 E-B a σ = 5, RQ3 sul Mac principale con e senza DP, prove su mu e FedAvg con DP su Windows, dai JSON e non ancora nelle matrici). Solo numeri
+> punto operativo a 5 seed, RQ2 con DP, E-B a σ = 1 e 2 con il riferimento GroupNorm, RQ3 senza DP; il 2026-09-29 E-B a σ = 5, RQ3 sul Mac principale con e senza DP, prove su mu e FedAvg con DP su Windows; il 2026-09-30 lo screening di C per FedAvg con DP; dai JSON e non ancora nelle matrici). Solo numeri
 > presenti in `risultati/` o letti dai JSON grezzi alla data, e lo dice dove.
 > Linea scientifica: la guida. Cosa fare: `ESPERIMENTI.md`. Cosa esiste nel codice:
 > `SISTEMA.md`. Questo file risponde a una sola domanda: a che punto siamo.
@@ -22,9 +22,9 @@ griglia, C = 1 con ε = 64, vale 4.5 volte a 5 seed (sezione 3.1b). La DP per re
 ε di circa 3 (sezione 3.5). La partizione IID o per sito non cambia il
 successo degli attacchi, con o senza DP (sezione 3.9). Senza DP FedAvg ha la loss
 sull'holdout circa 3.7-3.9 volte più bassa di FedProx su due macchine; con DP a C = 1 l'ordine
-si inverte in 4 seed su 5, non in modo significativo (sezione 3.10). I prossimi passi sono la
-cella di solo clipping, lo screening di C per FedAvg con DP e il canary su più siti
-(`ESPERIMENTI.md`).
+si inverte in 4 seed su 5, non in modo significativo, e alzare C fino a 8 non aiuta FedAvg
+(seed 42, sezione 3.10). I prossimi passi sono la cella di solo clipping (in corso), il canary
+su più siti e poi il canary bilanciato su Caltech (`ESPERIMENTI.md`).
 
 ## 2. Glossario minimo
 
@@ -444,10 +444,22 @@ FedAvg in media geometrica (da 0.28 a 1.62; 4 seed su 5 sotto 1; t = −1.93 sul
 non significativo a 4 gdl). La DP costa a FedAvg 30.4 volte (da 20 a 42) e a FedProx 4.4
 volte (da 1.9 a 14.7). Norme degli update: FedAvg fra 2.5 e 8.5 in tutti i round, quindi
 tagliate da C = 1 a ogni round; FedProx fra 0.2 e 0.5 dal round 5, sotto C (tagliate solo al
-round 1, quando il termine prossimale non è attivo). Lettura, preliminare: sotto DP l'ordine
-fra i due algoritmi dipende dal clipping, e C = 1 è stato scelto sulla griglia di FedProx.
-Lo screening di C per FedAvg (C = 2, 4, 8, seed 42) è in corso dal 2026-09-29
-(`ESPERIMENTI.md` E-E). Yeom al caso in tutte le celle.
+round 1, quando il termine prossimale non è attivo). Yeom al caso in tutte le celle.
+
+**Screening di C per FedAvg con DP** (seed 42, ε = 64, `experiments/_rq3_mu0_eps64_C{2,4,8}_s42`,
+completo il 2026-09-29; lanciate a 7a21bb0, commit 98589f1 nei JSON, fra i due cambiano solo
+documenti). C = 1 era stato scelto sulla griglia di FedProx; non è quella scelta a penalizzare
+FedAvg. Loss sull'holdout al round 10: C = 1: 0.01298; C = 2: 0.01308 (1.01 volte C = 1);
+C = 4: 0.04888 (3.8); C = 8: 0.24306 (18.7). A ε fisso il rumore cresce con C (σ = C √(2 ln(1.25/δ)) / ε dal
+config: 0.151, 0.303, 0.606 per C = 2, 4, 8) e gli update di Caltech e JPL restano sopra C anche a C = 8
+(fino a 15.4): alzare C non migliora il rapporto fra update tagliato e rumore, e sposta di più
+il modello a ogni round. Con C = 2 la loss scende più in fretta nei round 2-9 (0.0081 al round 8
+contro 0.0304) e al round 10 torna allo stesso livello; con C = 4 e 8 l'andamento è instabile
+(C = 8: 0.553 al round 3). Per la regola scritta prima dei risultati (`ESPERIMENTI.md` E-E)
+nessun C batte C = 1: niente 5 seed a un altro C, niente FedProx allo stesso C. Un seed solo: a
+C = 1 la loss varia fra seed di un fattore 2.9 (0.00634-0.01816), quindi il 3.8 di C = 4 è
+appena sopra quella variabilità, il 18.7 di C = 8 ben oltre. Attacchi al caso (Yeom, Shadow e
+LiRA fra 0.49 e 0.51 in tutti i round).
 
 **Con DP, Windows** (FedAvg, `experiments_altre_macchine/rq3-mu0-eps64`, 5 seed, fe22124
 con `-dirty` da file non tracciati e codice identico, `PROVENIENZA.txt`). La DP costa a
@@ -465,10 +477,11 @@ esistenti, ε = 64 compresa (sezione 3.2). E-D (RQ2) è analizzato con e senza D
 3.9) e sta in `experiments_altre_macchine/`, come E-E senza DP di Windows (sezione 3.10,
 segnalazione 45). I controlli del protocollo sono
 eseguiti (sezione 3.1c). E-B a σ = 1, 2 e 5 e il riferimento GroupNorm sono completi (sezione
-3.5); E-E sul Mac principale, con e senza DP, e le prove su mu sono complete (sezione 3.10).
-Restano: la cella di solo clipping di E-B (in corso), lo screening di C per FedAvg con DP
-(in corso) e, se lo indica, un braccio a 5 seed, il braccio FedProx con DP su Windows,
-l'aggiornamento delle matrici con le celle del 2026-09-29, il canary su più siti, le
+3.5); E-E sul Mac principale, con e senza DP, le prove su mu e lo screening di C sono completi
+(sezione 3.10). Restano: la cella di solo clipping di E-B (in corso), il braccio FedProx con DP
+su Windows, l'aggiornamento delle matrici con le celle del 2026-09-29 e dello screening, il
+canary su più siti (config pronti, prima una run di prova a un seed), il canary bilanciato su
+Caltech, le
 statistiche delle feature per client di E-D, la rianalisi NVFlare. Da decidere col supervisore: la metrica primaria per record (segnalazione 47) e se
 le campagne future usano l'inizializzazione comune (segnalazione 48). I bug che toccano i numeri sono in
 `Segnalazioni_tecniche_2026-09-22.md`, punti 1, 5, 6, 9, 35, 36, 38, 45, 48, 50, 51, 55. Fuori dal paper, come infrastruttura o lavoro futuro: ML Plane,
