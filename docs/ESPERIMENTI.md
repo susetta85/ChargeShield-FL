@@ -715,6 +715,23 @@ della DP per record: epoche e LiRA completo o solo loss grezza si decidono col s
 il tempo misurato. Ordine deciso il 2026-09-30: questa prova, poi il canary bilanciato su
 Caltech.
 
+**Esito della prova, braccio A (2026-09-30, JSON `experiments/_canary_multisite_s42`, commit
+b3feee4 pulito).** 6 ore e 5 minuti (07:25-13:30 sull'orologio del Mac), come stimato. Loss
+grezza sull'update di Office 1 (20 x 20 coppie): 0.79, 0.5775, 0.65 nei tre round, contro una
+baseline a init casuale di 0.7255 per il braccio A (0.2745 per il B, dal log della run). Al
+round 1 il modello locale di Office 1 memorizza i canary; dal round 2 riparte dal modello
+globale e la differenza sparisce (loss media dei membri 0.00452 contro 0.00443 dei non membri
+al round 2, dal log). LiRA sull'update: 0.65, 0.3231, 0.4208, ma dal round 2 su pool ridotti
+e non interpretabile (segnalazione 63). Modello globale, Yeom: 0.4625, 0.3825, 0.39; Shadow
+identico (segnalazione 64). Da solo il braccio A non dice se il segnale è appartenenza: serve
+la somma con il braccio B allo stesso seed.
+
+**Braccio B, seed 42, lanciato il 2026-09-30 alle 16:27 (orologio del Mac)** sul Mac principale:
+
+```bash
+cd ~/Documents/ChargeShield-FL && nohup caffeinate -ims python3 scripts/run_experiments.py --config config/experiment_canary_multisite_swap.yaml --no-dp --seed 42 --sweep-dir experiments/_canary_multisite_swap_s42 < /dev/null > logs/canary_multisite_swap_s42.log 2>&1 & disown
+```
+
 ## Canary bilanciato su un secondo sito
 
 **Validazione dello strumento, non una RQ.** Il protocollo che regge (k = 20,
@@ -749,7 +766,9 @@ python3 scripts/run_experiments.py --config config/experiment_canary_balanced_ca
 
 Tempo stimato dal canary su più siti in corso (1000 epoche: circa 25 minuti per round di FL
 su circa 54000 sessioni, circa 97 minuti per round di LiRA con tre cluster), scalato su circa
-36300 sessioni di training: 4-5 ore. Verifiche nel log: `pool unificato: 40 template estratti
+36300 sessioni di training: 4-5 ore. Correzione del 2026-09-30, dal log della run: sulla quarta
+macchina un round di FL dura circa 40 minuti, circa tre volte il Mac principale a parità di
+sessioni, quindi la run completa dura circa 12 ore (partita alle 10:44, LiRA dalle 13:50). Verifiche nel log: `pool unificato: 40 template estratti
 da site_train_sessions(caltech)`; `Iniettati 20 template × 561 duplicati`; `Client attivi
 (1)`; `DISTINTI 20x20` nelle righe `[CANARY] AUC` di LiRA.
 
@@ -760,6 +779,57 @@ con utility distrutta e confermerebbero il nullo già noto in simulazione. Si
 rianalizzano dopo E-A, solo 2-3 celle al punto operativo indicato, e per quelle
 servono prima job NVFlare nuovi a quell'ε. Lo script `analizza_dump_nvflare.sh`
 passa già lo snapshot del seed; senza, l'AUC tende a 0.5 per costruzione.
+
+## Validazione sul deployment (NVFLARE e Containerlab)
+
+**Scopo.** Mostrare che la simulazione (`scripts/run_experiments.py`) misura lo stesso sistema
+del deployment reale e che l'auditor funziona nel punto di osservazione del ML Plane. Non si
+replica ogni campagna: un gruppo minimo di celle, confrontato con le stesse celle in
+simulazione. Deciso il 2026-09-30.
+
+**Cosa esiste** (`NVFlareIntegration.md`). Deployment Containerlab a cinque nodi (server,
+caltech, jpl, office1, fl-admin), riverificato il 2026-09-09 con un job pulito di 10 round e
+una campagna a 5 seed con dp-fedavg a ε = 1, più una run central al seed 42. L'analisi degli
+attacchi è offline, sui dump dell'aggregatore, con `scripts/run_nvflare_mia.py`; al 2026-09-10
+era fatta solo sul seed 42. Il job (`nvflare/jobs/chargeshield_poc/app/custom/`) supporta la
+DP per record (`record_dp` passato ad `AutoencoderTrainer`) e l'iniezione dei canary nel sito
+indicato (`_inject_canary_members` in `chargeshield_executor.py`).
+
+**Prerequisiti di codice, a campagne chiuse (codice DP).**
+- Modalità senza DP: oggi `dp_mode` è sempre `dp-fedavg`, `central` o `local`
+  (`chargeshield_aggregator.py` del job, riga 129). Senza di essa nel deployment manca il
+  riferimento non protetto.
+- Seed dell'aggregatore uguale a quello dei client (campo `seed` di `config_fed_server.json`,
+  dal 2026-09-10, senza controllo automatico): da verificare in ogni job.
+
+**Divergenze note dalla simulazione, da allineare o dichiarare.**
+- Inizializzazione: nel deployment tutti i client ricevono lo stesso modello iniziale dal
+  server, in simulazione ogni client parte dalla propria (segnalazione 48). Il riferimento in
+  simulazione per questo confronto è quindi con `ml.common_init: true`.
+- Normalizzazione min-max per sito sul client contro statistiche globali in simulazione.
+- Clipping assoluto al round 1 in dp-fedavg (nessun modello di riferimento al primo round).
+- In central gli update esportati come grezzi sono già clippati dal client.
+
+**Celle, con gli stessi 5 seed della simulazione.**
+1. Senza DP, dopo il prerequisito.
+2. dp-fedavg al punto operativo (ε = 64, C = 1), più central al seed 42.
+3. Facoltativa: DP per record a σ = 1, se il job lo regge.
+4. Canary su più siti, solo dopo aver fissato il protocollo in simulazione (segnalazioni 63 e
+   64).
+
+Riferimento in simulazione: le stesse celle con inizializzazione comune; per la 1 esiste solo
+il controllo a seed 42 (`experiment_ctrl_common_init.yaml`), per la 2 serve un config nuovo.
+
+**Confronto, criterio fissato prima.** Per seed: loss sull'holdout del modello rilasciato e
+AUC di Yeom, Shadow e LiRA. Tolleranza sul rapporto delle loss deployment/simulazione da
+fissare tenendo conto dell'effetto macchina già misurato (segnalazioni 55 e 60); per gli AUC,
+equivalenza a 0.5 con lo stesso margine della simulazione.
+
+**Macchina e tempi.** Mac principale (Docker e Containerlab): il deployment occupa la macchina
+e non va in parallelo con altre run. Tempo di un job da misurare al primo lancio.
+
+**Dove va.** Tesi: Fase 1 e capitolo sul metodo, dove sono elencate le differenze fra
+simulazione e deployment. Paper: una breve sottosezione di verifica.
 
 ## Rinviato o escluso
 

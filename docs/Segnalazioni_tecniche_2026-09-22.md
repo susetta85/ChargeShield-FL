@@ -552,3 +552,32 @@ sono in `scripts/_applicati/`.*
     finestra da cui sono stati lanciati. Controllo utile: contare anche "Fatal Python error"
     nei log, non solo "Traceback".
 
+## Q. Trovato con la run di prova del canary su più siti (2026-09-30)
+
+63. **Con più client gli shadow di LiRA non riproducono il modello del client dal round 2.**
+    Nella run `experiments/_canary_multisite_s42` (tre siti, canary in Office 1, shadow cold)
+    gli shadow partono da pesi casuali e si allenano solo sul cluster, mentre dal round 2 il
+    client riparte dal modello globale e FedProx lo trattiene vicino. Le loss vere finiscono
+    oltre 8 sigma da entrambe le distribuzioni degli shadow e il campione viene scartato
+    (`scripts/run_experiments.py`, righe 4688-4693, `_UNCALIBRATED_Z_THRESHOLD = 8.0` alla
+    riga 4348): `lira_debug_uncalibrated_skip_rate` vale 0.0, 0.092 e 0.031 nei tre round
+    (2419 e 816 campioni ai round 2 e 3), contro 0 in `_canary_balanced_s42` (un solo sito).
+    Fra i canary lo scarto è molto più forte: al round 2 entrano nell'AUC di LiRA 403 record
+    membro su 620 e 20 non membro su 40, 13 x 10 gruppi distinti invece di 20 x 20. Lo scarto
+    non compare in `_diag_canary_skip_reason` (riga 4229), che conta solo
+    `tensor_extraction`, `cross_cluster_guard` e `insufficient_calibration` e riporta 0
+    salti: la riga `[CANARY DIAG]` del log sottostima i canary esclusi. La loss grezza
+    (`canary_raw_mse_auc_roc`) è raccolta prima dello scarto e usa sempre 20 x 20 coppie.
+    Conseguenza: con più client `canary_auc_roc` dal round 2 non è interpretabile e la
+    metrica del canary è la loss grezza. Non corretto: codice di scoring, campagna in corso.
+    Da decidere dopo la campagna: contare lo scarto nella diagnostica dei canary e, per la
+    superficie del client, shadow che ripartono dal modello globale del round.
+64. **Con più client la calibrazione di Shadow sui canary è inerte.** Nella stessa run
+    `shadow_canary_auc_roc` coincide con `yeom_canary_auc_roc` in tutti e tre i round
+    (0.4625, 0.3825, 0.39). Il punteggio calibrato è `shadow_mse - target_mse`
+    (`scripts/run_experiments.py`, righe 2754-2755): lo shadow model, centralizzato e
+    addestrato 500 epoche, ha sui canary loss di 1e-5 - 1e-4, il modello globale federato di
+    3e-3 - 8e-2 (`shadow_canary_debug_group_raw` nel JSON), quindi la differenza ordina come
+    la sola loss del target. Non è un errore di codice ma la stessa discrepanza fra shadow e
+    target della segnalazione 63; su un solo sito i due valori differiscono. Da riportare se
+    si usa Shadow sui canary con più client.

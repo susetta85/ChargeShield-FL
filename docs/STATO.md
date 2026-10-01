@@ -205,6 +205,14 @@ il protocollo bilanciato; il config per ChargePlace Scotland non è mai stato
 eseguito. Il paper riporta ancora i numeri precedenti alla correzione
 (segnalazione 35).
 
+**Canary su più siti, prova a un seed (2026-09-30, braccio A, `experiments/_canary_multisite_s42`,
+commit b3feee4).** Tre siti, canary solo in Office 1, senza DP. La loss grezza sull'update di
+Office 1 vale 0.79 al round 1 e 0.5775 e 0.65 ai round 2 e 3, contro una baseline a init casuale
+di 0.7255: la memorizzazione del round 1 non sopravvive all'aggregazione, in cui Office 1 pesa
+circa il 3.6%. Sul modello globale i canary restano sotto 0.5 (Yeom 0.39-0.46). Con più client
+LiRA e Shadow sui canary non sono interpretabili (segnalazioni 63 e 64). Il braccio B, necessario
+per il test sulla somma, è in corso.
+
 ### 3.4 LiRA è degenere
 
 Il floor di varianza è colpito nel 97-99% dei record, il controllo di simmetria
@@ -492,9 +500,10 @@ segnalazione 45). I controlli del protocollo sono
 eseguiti (sezione 3.1c). E-B a σ = 0, 1, 2 e 5 e il riferimento GroupNorm sono completi (sezione
 3.5); E-E sul Mac principale, con e senza DP, le prove su mu e lo screening di C sono completi
 (sezione 3.10). Restano: il braccio FedProx con DP su Windows, l'aggiornamento delle matrici
-con le celle del 2026-09-29, dello screening e del solo clipping, il canary su più siti (run
-di prova a un seed in corso dal 2026-09-30), il canary bilanciato su
-Caltech (config pronti, run di prova a un seed), le
+con le celle del 2026-09-29, dello screening e del solo clipping, il canary su più siti (braccio A
+della prova completo, braccio B in corso), il canary bilanciato su
+Caltech (run di prova in corso sulla quarta macchina), la validazione sul deployment NVFLARE e
+Containerlab (`ESPERIMENTI.md`, gruppo minimo di celle, a campagne chiuse), le
 statistiche delle feature per client di E-D, la rianalisi NVFlare. Da decidere col supervisore: la metrica primaria per record (segnalazione 47) e se
 le campagne future usano l'inizializzazione comune (segnalazione 48). I bug che toccano i numeri sono in
 `Segnalazioni_tecniche_2026-09-22.md`, punti 1, 5, 6, 9, 35, 36, 38, 45, 48, 50, 51, 55. Fuori dal paper, come infrastruttura o lavoro futuro: ML Plane,
