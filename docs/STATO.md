@@ -2,7 +2,7 @@
 
 > **Stato: documento CANONICO.** Aggiornato il 2026-10-01 (revisione: costo sul modello
 > rilasciato, analisi per record corretta, E-C, segnalazioni 46-59, controlli del protocollo, celle delle matrici ricomposte, RQ2 senza DP,
-> punto operativo a 5 seed, RQ2 con DP, E-B a σ = 1 e 2 con il riferimento GroupNorm, RQ3 senza DP; il 2026-09-29 E-B a σ = 5, RQ3 sul Mac principale con e senza DP, prove su mu e FedAvg con DP su Windows; il 2026-09-30 lo screening di C per FedAvg con DP e il solo clipping di E-B; il 2026-10-01 il braccio B del canary su più siti, il braccio FedProx con DP di Windows e il braccio A del canary su Caltech della quarta macchina, il test appaiato per record su tutte le 24 celle a 5 seed; dai JSON e non ancora nelle matrici). Solo numeri
+> punto operativo a 5 seed, RQ2 con DP, E-B a σ = 1 e 2 con il riferimento GroupNorm, RQ3 senza DP; il 2026-09-29 E-B a σ = 5, RQ3 sul Mac principale con e senza DP, prove su mu e FedAvg con DP su Windows; il 2026-09-30 lo screening di C per FedAvg con DP e il solo clipping di E-B; il 2026-10-01 il braccio B del canary su più siti, il braccio FedProx con DP di Windows e il braccio A del canary su Caltech della quarta macchina, il test appaiato per record su tutte le 24 celle a 5 seed, il seed 42 del canary su Caltech; dai JSON e non ancora nelle matrici). Solo numeri
 > presenti in `risultati/` o letti dai JSON grezzi alla data, e lo dice dove.
 > Linea scientifica: la guida. Cosa fare: `ESPERIMENTI.md`. Cosa esiste nel codice:
 > `SISTEMA.md`. Questo file risponde a una sola domanda: a che punto siamo.
@@ -27,7 +27,8 @@ si inverte: su Windows FedProx ha 0.34 volte la loss di FedAvg, 5 seed su 5 (t =
 logaritmo, p = 0.0099), sul Mac principale 0.53, 4 seed su 5, non significativo; alzare C fino
 a 8 non aiuta FedAvg (seed 42, sezione 3.10). Il canary su più siti, a un seed, vede l'appartenenza sull'update di
 Office 1 al round 1 e nessun segnale sul modello globale (sezione 3.3); il canary bilanciato su
-Caltech è in corso (`ESPERIMENTI.md`).
+Caltech al seed 42 vede l'appartenenza in tutti e tre i round (somme A+B fra 1.57 e 1.65
+contro 1.00, sezione 3.3); gli altri 4 seed sono in corso (`ESPERIMENTI.md`).
 
 ## 2. Glossario minimo
 
@@ -204,7 +205,7 @@ effetto dell'appartenenza in nessuna cella. La segnalazione 6 (percentile dei du
 script, 411 contro 412) riguarda ora solo il conteggio, che non è più la lettura
 primaria.
 
-### 3.3 Lo strumento è validato, ma su un sito
+### 3.3 Lo strumento è validato a Office 1; Caltech a un seed
 
 Fonte: `CanaryPositiveControl.md`, sezione 6, campagna bilanciata dopo la
 correzione del 16 settembre. Office 1, 20 template membro e 20 non membro, 30
@@ -236,6 +237,17 @@ contro 1.46 del sito singolo. Sul modello globale le somme di Yeom sono 1.0025, 
 nessun segnale, e i valori sotto 0.5 del braccio A erano l'effetto dei template. Con più client
 LiRA e Shadow sui canary non sono interpretabili (segnalazioni 63 e 64): le somme di LiRA ai
 round 2 e 3 sono 0.49 e 0.70, sotto 1.
+
+**Canary bilanciato su Caltech, seed 42 (2026-10-01, Mac principale,
+`experiments/_canary_balanced_caltech_s42` e `_canary_balanced_caltech_swap_s42`, commit 11c7fdf e
+1c0d0c0 con `-dirty` dovuto solo a documenti).** Un client, 561 duplicati per template (la stessa
+amplificazione per record di Office 1), senza DP. Loss grezza: braccio A 0.80, 0.7875, 0.6925,
+braccio B 0.7725, 0.865, 0.8925; somme A+B 1.5725, 1.6525 e 1.585 contro 1.00 delle baseline a
+init casuale (0.4616 e 0.5384): appartenenza in tutti e tre i round. Media sui 3 round 0.76 e
+0.8433, somma 1.60 contro 1.46 di Office 1. Con un solo client LiRA lavora su tutte le 20 x 20
+coppie e dà somme 1.415, 1.54 e 1.5075. Il braccio A della quarta macchina ha la stessa media
+(0.7608 contro 0.7600) con scarti per round fino a 0.08. Altri 4 seed in corso: 123 su Windows,
+456, 789 e 1234 sul Mac principale.
 
 ### 3.4 LiRA è degenere
 
@@ -535,7 +547,7 @@ eseguiti (sezione 3.1c). E-B a σ = 0, 1, 2 e 5 e il riferimento GroupNorm sono 
 (sezione 3.10). Il braccio FedProx con DP di Windows è completo e analizzato (sezione 3.10). Restano: l'aggiornamento delle matrici
 con le celle del 2026-09-29, dello screening e del solo clipping, il canary su più siti (prova a un seed completa nei due bracci, campagna
 da decidere col supervisore), il canary bilanciato su
-Caltech (braccio A finito e importato dalla quarta macchina; bracci B e A in coda sul Mac principale), la validazione sul deployment NVFLARE e
+Caltech (seed 42 completo sul Mac principale, sezione 3.3; seed 123 su Windows e 456, 789, 1234 sul Mac principale in corso), la validazione sul deployment NVFLARE e
 Containerlab (`ESPERIMENTI.md`, gruppo minimo di celle, a campagne chiuse), le
 statistiche delle feature per client di E-D, la rianalisi NVFlare. Deciso col supervisore il 2026-10-01: il test appaiato è la metrica primaria per record
 (segnalazione 47). Da decidere col supervisore: se le campagne future usano

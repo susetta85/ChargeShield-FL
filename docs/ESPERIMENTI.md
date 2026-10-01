@@ -827,7 +827,32 @@ sui canary 0.7725, 0.865, 0.8925 contro la baseline B di 0.5384; LiRA su 20 x 20
 round, 0.6175, 0.76, 0.7975. Con un solo client la loss grezza e Yeom coincidono. La somma A+B
 si legge col braccio A della stessa macchina, in corso. **Seed 123 su Windows**, lanciato il 1
 ottobre verso le 07:30 EDT a 1c0d0c0, lo stesso commit: baseline, braccio B e poi braccio A in
-`logs/canary_balanced_caltech_s123.log`, tempi da misurare.
+`logs/canary_balanced_caltech_s123.log`: un round di FL dura circa 1 ora e 17 minuti, circa 4
+volte il Mac principale, quindi circa 16 ore per braccio.
+
+**Seed 42 completo sul Mac principale (2026-10-01).** Braccio A salvato alle 13:51 (orologio del
+Mac), JSON `experiments/_canary_balanced_caltech_s42`, commit 11c7fdf pulito, circa 3 ore e 50
+minuti come il braccio B. Loss grezza: A 0.80, 0.7875, 0.6925; B 0.7725, 0.865, 0.8925; somme
+A+B 1.5725, 1.6525, 1.585 contro 1.00 delle baseline: appartenenza in tutti i round. LiRA su 20 x
+20 coppie in ogni round, somme 1.415, 1.54, 1.5075. Il braccio A della quarta macchina
+(`experiments_altre_macchine/_canary_balanced_caltech_s42`) ha la stessa media sui 3 round
+(0.7608 contro 0.7600), con scarti per round fino a 0.08 (`STATO.md` 3.3). **Coda dei seed 456,
+789 e 1234** lanciata il 1 ottobre alle 14:51 sul Mac principale, una run alla volta, baseline
+prima di ogni seed (seed 456: 0.4707 e 0.5292), circa 8 ore per seed:
+
+```bash
+cd ~/Documents/ChargeShield-FL && nohup caffeinate -ims bash -c '
+until [ "$(grep -c "Esperimento completato" logs/canary_balanced_caltech_mac_s42.log)" -ge 2 ]; do sleep 300; done
+set -e
+for s in 456 789 1234; do
+  for c in experiment_canary_balanced_caltech experiment_canary_balanced_caltech_swap; do
+    python3 scripts/check_canary_init_confound.py --config config/$c.yaml --seed $s
+  done
+  python3 scripts/run_experiments.py --config config/experiment_canary_balanced_caltech_swap.yaml --no-dp --seed $s --sweep-dir experiments/_canary_balanced_caltech_swap_s$s
+  python3 scripts/run_experiments.py --config config/experiment_canary_balanced_caltech.yaml --no-dp --seed $s --sweep-dir experiments/_canary_balanced_caltech_s$s
+done
+' < /dev/null > logs/canary_balanced_caltech_mac_s456-1234.log 2>&1 & disown
+```
 
 ## Rianalisi NVFlare
 
