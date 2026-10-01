@@ -2,7 +2,7 @@
 
 > **Stato: documento CANONICO.** Aggiornato il 2026-10-01 (revisione: costo sul modello
 > rilasciato, analisi per record corretta, E-C, segnalazioni 46-59, controlli del protocollo, celle delle matrici ricomposte, RQ2 senza DP,
-> punto operativo a 5 seed, RQ2 con DP, E-B a σ = 1 e 2 con il riferimento GroupNorm, RQ3 senza DP; il 2026-09-29 E-B a σ = 5, RQ3 sul Mac principale con e senza DP, prove su mu e FedAvg con DP su Windows; il 2026-09-30 lo screening di C per FedAvg con DP e il solo clipping di E-B; il 2026-10-01 il braccio B del canary su più siti; dai JSON e non ancora nelle matrici). Solo numeri
+> punto operativo a 5 seed, RQ2 con DP, E-B a σ = 1 e 2 con il riferimento GroupNorm, RQ3 senza DP; il 2026-09-29 E-B a σ = 5, RQ3 sul Mac principale con e senza DP, prove su mu e FedAvg con DP su Windows; il 2026-09-30 lo screening di C per FedAvg con DP e il solo clipping di E-B; il 2026-10-01 il braccio B del canary su più siti, il braccio FedProx con DP di Windows e il braccio A del canary su Caltech della quarta macchina; dai JSON e non ancora nelle matrici). Solo numeri
 > presenti in `risultati/` o letti dai JSON grezzi alla data, e lo dice dove.
 > Linea scientifica: la guida. Cosa fare: `ESPERIMENTI.md`. Cosa esiste nel codice:
 > `SISTEMA.md`. Questo file risponde a una sola domanda: a che punto siamo.
@@ -23,8 +23,9 @@ griglia, C = 1 con ε = 64, vale 4.5 volte a 5 seed (sezione 3.1b). La DP per re
 costo viene dal rumore (sezione 3.5). La partizione IID o per sito non cambia il
 successo degli attacchi, con o senza DP (sezione 3.9). Senza DP FedAvg ha la loss
 sull'holdout circa 3.7-3.9 volte più bassa di FedProx su due macchine; con DP a C = 1 l'ordine
-si inverte in 4 seed su 5, non in modo significativo, e alzare C fino a 8 non aiuta FedAvg
-(seed 42, sezione 3.10). Il canary su più siti, a un seed, vede l'appartenenza sull'update di
+si inverte: su Windows FedProx ha 0.34 volte la loss di FedAvg, 5 seed su 5 (t = −4.62 sul
+logaritmo, p = 0.0099), sul Mac principale 0.53, 4 seed su 5, non significativo; alzare C fino
+a 8 non aiuta FedAvg (seed 42, sezione 3.10). Il canary su più siti, a un seed, vede l'appartenenza sull'update di
 Office 1 al round 1 e nessun segnale sul modello globale (sezione 3.3); il canary bilanciato su
 Caltech è in corso (`ESPERIMENTI.md`).
 
@@ -493,7 +494,16 @@ FedAvg 52 volte (da 34 a 83) sul riferimento Windows senza DP a 478d471 (percors
 training identico: loss del round 1 uguale a 12 cifre). Con stesso seed e stesso config la
 loss con DP su Windows è 1.61 volte quella del Mac (da 1.00 a 2.45), contro 0.94 senza DP:
 sotto DP l'effetto macchina è più grande (segnalazione 60), quindi i confronti con DP si
-fanno solo sulla stessa macchina. Il braccio FedProx con DP su Windows è in corso.
+fanno solo sulla stessa macchina.
+
+**FedProx con DP su Windows, 2026-10-01** (`experiments_altre_macchine/rq3-mu0.01-eps64`, 5
+seed, commit fe22124 pulito, stesso codice e stessa macchina del braccio FedAvg). FedProx ha la
+loss sull'holdout 0.34 volte quella di FedAvg in media geometrica (da 0.18 a 0.75, 5 seed su 5
+sotto 1; t = −4.62 sul logaritmo, 4 gdl, p = 0.0099): stesso verso del Mac principale (0.53, 4
+seed su 5, non significativo), qui netto. La DP costa a FedProx 4.6 volte (da 2.2 a 17.0, contro
+`rq3-mu0.01` a 478d471), come sul Mac principale (4.4), e a FedAvg 52. Attacchi al caso in
+entrambi i bracci: Yeom all'ultimo round 0.501 (FedAvg) e 0.499 (FedProx), LiRA composto 0.501
+in entrambi, TPR a FPR 1% 0.010.
 
 ## 4. Cosa manca
 
@@ -504,10 +514,10 @@ esistenti, ε = 64 compresa (sezione 3.2). E-D (RQ2) è analizzato con e senza D
 segnalazione 45). I controlli del protocollo sono
 eseguiti (sezione 3.1c). E-B a σ = 0, 1, 2 e 5 e il riferimento GroupNorm sono completi (sezione
 3.5); E-E sul Mac principale, con e senza DP, le prove su mu e lo screening di C sono completi
-(sezione 3.10). Restano: l'importazione e l'analisi del braccio FedProx con DP di Windows (5 seed finiti), l'aggiornamento delle matrici
+(sezione 3.10). Il braccio FedProx con DP di Windows è completo e analizzato (sezione 3.10). Restano: l'aggiornamento delle matrici
 con le celle del 2026-09-29, dello screening e del solo clipping, il canary su più siti (prova a un seed completa nei due bracci, campagna
 da decidere col supervisore), il canary bilanciato su
-Caltech (braccio A finito sulla quarta macchina; bracci B e A in coda sul Mac principale), la validazione sul deployment NVFLARE e
+Caltech (braccio A finito e importato dalla quarta macchina; bracci B e A in coda sul Mac principale), la validazione sul deployment NVFLARE e
 Containerlab (`ESPERIMENTI.md`, gruppo minimo di celle, a campagne chiuse), le
 statistiche delle feature per client di E-D, la rianalisi NVFlare. Da decidere col supervisore: la metrica primaria per record (segnalazione 47) e se
 le campagne future usano l'inizializzazione comune (segnalazione 48). I bug che toccano i numeri sono in

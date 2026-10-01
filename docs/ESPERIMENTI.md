@@ -483,6 +483,14 @@ risultati, solo i tempi. (2) Il clone Windows aveva due voci non tracciate (`log
 diversi da `*.log` e uno zip nella radice), che marcano le run `-dirty`; escluse con
 `.git/info/exclude`, locale e non versionato (segnalazione 61).
 
+**Esito del braccio FedProx con DP su Windows (2026-10-01).** 5 seed finiti il 30 settembre
+alle 22:14 (orologio di Windows), commit fe22124 pulito, 5 "Esperimento completato", zero righe
+`[ERROR]`; in `experiments_altre_macchine/rq3-mu0.01-eps64`, zip con SHA256 verificato
+(`PROVENIENZA.txt`). Stessa macchina e stesso codice del braccio FedAvg: FedProx ha la loss
+sull'holdout 0.34 volte quella di FedAvg (5 seed su 5, t = −4.62 sul logaritmo, p = 0.0099);
+la DP costa 4.6 volte a FedProx e 52 a FedAvg; attacchi al caso (`STATO.md` 3.10). Windows è
+libero.
+
 ## E-D — RQ2, partizione IID contro per sito
 
 **Fase E della guida, terza priorità.** Config appaiati pronti, differiscono per il
