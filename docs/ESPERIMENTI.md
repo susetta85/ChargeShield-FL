@@ -786,6 +786,27 @@ sessioni, quindi la run completa dura circa 12 ore (partita alle 10:44, LiRA dal
 da site_train_sessions(caltech)`; `Iniettati 20 template × 561 duplicati`; `Client attivi
 (1)`; `DISTINTI 20x20` nelle righe `[CANARY] AUC` di LiRA.
 
+**Braccio A finito sulla quarta macchina, bracci spostati sul Mac principale (2026-10-01).** Il
+braccio A è finito il 30 settembre alle 22:26 (orologio della quarta macchina), senza errori, in
+circa 11 ore e 40 minuti. Il braccio B non può girare lì perché la macchina serve a Domenico, e
+i due bracci si confrontano solo sulla stessa macchina (segnalazione 55). Sul Mac principale
+girano quindi, uno alla volta, le baseline a init casuale dei due config, il braccio B e poi il
+braccio A: circa 4 ore per braccio, stimate dal rapporto di 3 a 1 fra le due macchine. Il
+braccio B va per primo, così è pronto anche se la coda si interrompe. Il braccio A della quarta
+macchina va in `experiments_altre_macchine/` come controllo di riproducibilità fra macchine; se
+le baseline dei due Mac coincidono, l'inizializzazione non dipende dalla macchina.
+
+```bash
+cd ~/Documents/ChargeShield-FL && nohup caffeinate -ims bash -c '
+set -e
+for c in experiment_canary_balanced_caltech experiment_canary_balanced_caltech_swap; do
+  python3 scripts/check_canary_init_confound.py --config config/$c.yaml --seed 42
+done
+python3 scripts/run_experiments.py --config config/experiment_canary_balanced_caltech_swap.yaml --no-dp --seed 42 --sweep-dir experiments/_canary_balanced_caltech_swap_s42
+python3 scripts/run_experiments.py --config config/experiment_canary_balanced_caltech.yaml --no-dp --seed 42 --sweep-dir experiments/_canary_balanced_caltech_s42
+' < /dev/null > logs/canary_balanced_caltech_mac_s42.log 2>&1 & disown
+```
+
 ## Rianalisi NVFlare
 
 I 25 dump a ε ≤ 1 (`experiments/_dump_nvflare_provenienza.csv`) sono nel regime

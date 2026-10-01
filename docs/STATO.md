@@ -504,10 +504,10 @@ esistenti, ε = 64 compresa (sezione 3.2). E-D (RQ2) è analizzato con e senza D
 segnalazione 45). I controlli del protocollo sono
 eseguiti (sezione 3.1c). E-B a σ = 0, 1, 2 e 5 e il riferimento GroupNorm sono completi (sezione
 3.5); E-E sul Mac principale, con e senza DP, le prove su mu e lo screening di C sono completi
-(sezione 3.10). Restano: il braccio FedProx con DP su Windows, l'aggiornamento delle matrici
+(sezione 3.10). Restano: l'importazione e l'analisi del braccio FedProx con DP di Windows (5 seed finiti), l'aggiornamento delle matrici
 con le celle del 2026-09-29, dello screening e del solo clipping, il canary su più siti (prova a un seed completa nei due bracci, campagna
 da decidere col supervisore), il canary bilanciato su
-Caltech (run di prova in corso sulla quarta macchina), la validazione sul deployment NVFLARE e
+Caltech (braccio A finito sulla quarta macchina; bracci B e A in coda sul Mac principale), la validazione sul deployment NVFLARE e
 Containerlab (`ESPERIMENTI.md`, gruppo minimo di celle, a campagne chiuse), le
 statistiche delle feature per client di E-D, la rianalisi NVFlare. Da decidere col supervisore: la metrica primaria per record (segnalazione 47) e se
 le campagne future usano l'inizializzazione comune (segnalazione 48). I bug che toccano i numeri sono in
