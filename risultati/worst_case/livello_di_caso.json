@@ -501,6 +501,254 @@
         "z": -0.906
       },
       "lettura": "nessun segnale di appartenenza per record (test appaiato)"
+    },
+    "recordDP_nm5": {
+      "cartella": "experiments_altre_macchine/rq1-recorddp-nm5",
+      "n_seed": 5,
+      "sessioni_multi_seed": 17279,
+      "osservati": 431,
+      "attesi_per_caso": 286.19,
+      "sd_nulla": 16.6,
+      "z": 8.723,
+      "eccesso_assoluto": 144.8,
+      "percentuale_osservata": 2.494,
+      "percentuale_attesa": 1.656,
+      "controllo_non_membri": {
+        "n_seed": 5,
+        "sessioni_multi_seed": 17203,
+        "osservati": 404,
+        "attesi_per_caso": 285.1,
+        "sd_nulla": 15.38,
+        "z": 7.73,
+        "eccesso_assoluto": 118.9,
+        "percentuale_osservata": 2.348,
+        "percentuale_attesa": 1.657
+      },
+      "z_eccesso_membri_meno_non_membri": 1.145,
+      "appaiato": {
+        "n_sessioni": 27679,
+        "differenza_media": -0.061,
+        "errore_standard": 0.2231,
+        "z": -0.273
+      },
+      "lettura": "nessun segnale di appartenenza per record (test appaiato)"
+    },
+    "recordDP_nm0": {
+      "cartella": "experiments_altre_macchine/rq1-recorddp-nm0",
+      "n_seed": 5,
+      "sessioni_multi_seed": 17561,
+      "osservati": 435,
+      "attesi_per_caso": 290.19,
+      "sd_nulla": 16.76,
+      "z": 8.64,
+      "eccesso_assoluto": 144.8,
+      "percentuale_osservata": 2.477,
+      "percentuale_attesa": 1.652,
+      "controllo_non_membri": {
+        "n_seed": 5,
+        "sessioni_multi_seed": 17517,
+        "osservati": 443,
+        "attesi_per_caso": 288.49,
+        "sd_nulla": 16.16,
+        "z": 9.561,
+        "eccesso_assoluto": 154.5,
+        "percentuale_osservata": 2.529,
+        "percentuale_attesa": 1.647
+      },
+      "z_eccesso_membri_meno_non_membri": -0.417,
+      "appaiato": {
+        "n_sessioni": 28129,
+        "differenza_media": 0.3482,
+        "errore_standard": 0.2194,
+        "z": 1.587
+      },
+      "lettura": "nessun segnale di appartenenza per record (test appaiato)"
+    },
+    "rq3-mu0_mac": {
+      "cartella": "experiments/rq3-mu0",
+      "n_seed": 5,
+      "sessioni_multi_seed": 17561,
+      "osservati": 516,
+      "attesi_per_caso": 290.07,
+      "sd_nulla": 15.53,
+      "z": 14.546,
+      "eccesso_assoluto": 225.9,
+      "percentuale_osservata": 2.938,
+      "percentuale_attesa": 1.652,
+      "controllo_non_membri": {
+        "n_seed": 5,
+        "sessioni_multi_seed": 17517,
+        "osservati": 491,
+        "attesi_per_caso": 288.85,
+        "sd_nulla": 15.99,
+        "z": 12.641,
+        "eccesso_assoluto": 202.1,
+        "percentuale_osservata": 2.803,
+        "percentuale_attesa": 1.649
+      },
+      "z_eccesso_membri_meno_non_membri": 1.068,
+      "appaiato": {
+        "n_sessioni": 28129,
+        "differenza_media": 0.1902,
+        "errore_standard": 0.2205,
+        "z": 0.863
+      },
+      "lettura": "nessun segnale di appartenenza per record (test appaiato)"
+    },
+    "rq3-mu0-eps64_mac": {
+      "cartella": "experiments/rq3-mu0-eps64",
+      "n_seed": 5,
+      "sessioni_multi_seed": 17561,
+      "osservati": 441,
+      "attesi_per_caso": 290.35,
+      "sd_nulla": 16.69,
+      "z": 9.028,
+      "eccesso_assoluto": 150.6,
+      "percentuale_osservata": 2.511,
+      "percentuale_attesa": 1.653,
+      "controllo_non_membri": {
+        "n_seed": 5,
+        "sessioni_multi_seed": 17517,
+        "osservati": 448,
+        "attesi_per_caso": 288.12,
+        "sd_nulla": 16.31,
+        "z": 9.805,
+        "eccesso_assoluto": 159.9,
+        "percentuale_osservata": 2.558,
+        "percentuale_attesa": 1.645
+      },
+      "z_eccesso_membri_meno_non_membri": -0.399,
+      "appaiato": {
+        "n_sessioni": 28129,
+        "differenza_media": 0.2282,
+        "errore_standard": 0.2204,
+        "z": 1.035
+      },
+      "lettura": "nessun segnale di appartenenza per record (test appaiato)"
+    },
+    "rq3-mu0_win": {
+      "cartella": "experiments_altre_macchine/rq3-mu0",
+      "n_seed": 5,
+      "sessioni_multi_seed": 17561,
+      "osservati": 508,
+      "attesi_per_caso": 289.64,
+      "sd_nulla": 14.27,
+      "z": 15.305,
+      "eccesso_assoluto": 218.4,
+      "percentuale_osservata": 2.893,
+      "percentuale_attesa": 1.649,
+      "controllo_non_membri": {
+        "n_seed": 5,
+        "sessioni_multi_seed": 17517,
+        "osservati": 433,
+        "attesi_per_caso": 288.12,
+        "sd_nulla": 15.97,
+        "z": 9.072,
+        "eccesso_assoluto": 144.9,
+        "percentuale_osservata": 2.472,
+        "percentuale_attesa": 1.645
+      },
+      "z_eccesso_membri_meno_non_membri": 3.432,
+      "appaiato": {
+        "n_sessioni": 28129,
+        "differenza_media": 0.1136,
+        "errore_standard": 0.2217,
+        "z": 0.512
+      },
+      "lettura": "nessun segnale di appartenenza per record (test appaiato)"
+    },
+    "rq3-mu0.01_win": {
+      "cartella": "experiments_altre_macchine/rq3-mu0.01",
+      "n_seed": 5,
+      "sessioni_multi_seed": 17561,
+      "osservati": 422,
+      "attesi_per_caso": 290.19,
+      "sd_nulla": 15.65,
+      "z": 8.424,
+      "eccesso_assoluto": 131.8,
+      "percentuale_osservata": 2.403,
+      "percentuale_attesa": 1.652,
+      "controllo_non_membri": {
+        "n_seed": 5,
+        "sessioni_multi_seed": 17517,
+        "osservati": 378,
+        "attesi_per_caso": 288.61,
+        "sd_nulla": 15.62,
+        "z": 5.724,
+        "eccesso_assoluto": 89.4,
+        "percentuale_osservata": 2.158,
+        "percentuale_attesa": 1.648
+      },
+      "z_eccesso_membri_meno_non_membri": 1.918,
+      "appaiato": {
+        "n_sessioni": 28129,
+        "differenza_media": 0.1368,
+        "errore_standard": 0.2195,
+        "z": 0.623
+      },
+      "lettura": "nessun segnale di appartenenza per record (test appaiato)"
+    },
+    "rq3-mu0-eps64_win": {
+      "cartella": "experiments_altre_macchine/rq3-mu0-eps64",
+      "n_seed": 5,
+      "sessioni_multi_seed": 17561,
+      "osservati": 483,
+      "attesi_per_caso": 291.25,
+      "sd_nulla": 15.39,
+      "z": 12.457,
+      "eccesso_assoluto": 191.7,
+      "percentuale_osservata": 2.75,
+      "percentuale_attesa": 1.659,
+      "controllo_non_membri": {
+        "n_seed": 5,
+        "sessioni_multi_seed": 17517,
+        "osservati": 451,
+        "attesi_per_caso": 288.38,
+        "sd_nulla": 16.67,
+        "z": 9.757,
+        "eccesso_assoluto": 162.6,
+        "percentuale_osservata": 2.575,
+        "percentuale_attesa": 1.646
+      },
+      "z_eccesso_membri_meno_non_membri": 1.283,
+      "appaiato": {
+        "n_sessioni": 28129,
+        "differenza_media": 0.2274,
+        "errore_standard": 0.2197,
+        "z": 1.035
+      },
+      "lettura": "nessun segnale di appartenenza per record (test appaiato)"
+    },
+    "rq3-mu0.01-eps64_win": {
+      "cartella": "experiments_altre_macchine/rq3-mu0.01-eps64",
+      "n_seed": 5,
+      "sessioni_multi_seed": 17561,
+      "osservati": 461,
+      "attesi_per_caso": 290.18,
+      "sd_nulla": 14.93,
+      "z": 11.442,
+      "eccesso_assoluto": 170.8,
+      "percentuale_osservata": 2.625,
+      "percentuale_attesa": 1.652,
+      "controllo_non_membri": {
+        "n_seed": 5,
+        "sessioni_multi_seed": 17517,
+        "osservati": 462,
+        "attesi_per_caso": 288.63,
+        "sd_nulla": 17.37,
+        "z": 9.982,
+        "eccesso_assoluto": 173.4,
+        "percentuale_osservata": 2.637,
+        "percentuale_attesa": 1.648
+      },
+      "z_eccesso_membri_meno_non_membri": -0.114,
+      "appaiato": {
+        "n_sessioni": 28129,
+        "differenza_media": 0.1522,
+        "errore_standard": 0.2205,
+        "z": 0.69
+      },
+      "lettura": "nessun segnale di appartenenza per record (test appaiato)"
     }
   }
 }

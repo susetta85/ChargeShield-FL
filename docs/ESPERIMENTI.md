@@ -30,7 +30,10 @@ rilasciato; `genera_matrici_faseA.py` usava invece la loss di addestramento loca
 record: il "conteggio per record con z" misura la stabilità del ranking e non
 l'appartenenza (segnalazione 47). Proposta: sostituirlo con il test appaiato, tenendo il
 conteggio come risultato secondario. Entrambi i risultati sono riportati in `STATO.md`
-3.2. **Da confermare con il supervisore.**
+3.2. **Deciso col supervisore il 2026-10-01**: il test appaiato è la metrica primaria per
+record, il conteggio resta secondario accanto al controllo sui non membri, e il test si
+calcola su tutti gli esperimenti fatti (24 celle a 5 seed, `STATO.md` 3.2). Nel paper le
+metriche si presentano e si motivano, senza raccontare il cambio.
 
 ## Regole che valgono per tutti
 
@@ -814,6 +817,17 @@ python3 scripts/run_experiments.py --config config/experiment_canary_balanced_ca
 python3 scripts/run_experiments.py --config config/experiment_canary_balanced_caltech.yaml --no-dp --seed 42 --sweep-dir experiments/_canary_balanced_caltech_s42
 ' < /dev/null > logs/canary_balanced_caltech_mac_s42.log 2>&1 & disown
 ```
+
+**Braccio B sul Mac principale, esito (2026-10-01, JSON `experiments/_canary_balanced_caltech_swap_s42`,
+commit 1c0d0c0 con `-dirty` dovuto solo a documenti e a `risultati/worst_case/livello_di_caso.json`,
+codice identico).** Baseline a init casuale identiche a quelle della quarta macchina (0.4616 e
+0.5384, std 0.0114). FL dalle 05:58 alle 06:48, LiRA dalle 06:50 alle 09:50, circa un'ora per
+round: circa 3 ore e 50 minuti in tutto, contro le 11 ore e 40 della quarta macchina. Loss grezza
+sui canary 0.7725, 0.865, 0.8925 contro la baseline B di 0.5384; LiRA su 20 x 20 coppie in ogni
+round, 0.6175, 0.76, 0.7975. Con un solo client la loss grezza e Yeom coincidono. La somma A+B
+si legge col braccio A della stessa macchina, in corso. **Seed 123 su Windows**, lanciato il 1
+ottobre verso le 07:30 EDT a 1c0d0c0, lo stesso commit: baseline, braccio B e poi braccio A in
+`logs/canary_balanced_caltech_s123.log`, tempi da misurare.
 
 ## Rianalisi NVFlare
 

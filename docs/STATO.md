@@ -2,7 +2,7 @@
 
 > **Stato: documento CANONICO.** Aggiornato il 2026-10-01 (revisione: costo sul modello
 > rilasciato, analisi per record corretta, E-C, segnalazioni 46-59, controlli del protocollo, celle delle matrici ricomposte, RQ2 senza DP,
-> punto operativo a 5 seed, RQ2 con DP, E-B a σ = 1 e 2 con il riferimento GroupNorm, RQ3 senza DP; il 2026-09-29 E-B a σ = 5, RQ3 sul Mac principale con e senza DP, prove su mu e FedAvg con DP su Windows; il 2026-09-30 lo screening di C per FedAvg con DP e il solo clipping di E-B; il 2026-10-01 il braccio B del canary su più siti, il braccio FedProx con DP di Windows e il braccio A del canary su Caltech della quarta macchina; dai JSON e non ancora nelle matrici). Solo numeri
+> punto operativo a 5 seed, RQ2 con DP, E-B a σ = 1 e 2 con il riferimento GroupNorm, RQ3 senza DP; il 2026-09-29 E-B a σ = 5, RQ3 sul Mac principale con e senza DP, prove su mu e FedAvg con DP su Windows; il 2026-09-30 lo screening di C per FedAvg con DP e il solo clipping di E-B; il 2026-10-01 il braccio B del canary su più siti, il braccio FedProx con DP di Windows e il braccio A del canary su Caltech della quarta macchina, il test appaiato per record su tutte le 24 celle a 5 seed; dai JSON e non ancora nelle matrici). Solo numeri
 > presenti in `risultati/` o letti dai JSON grezzi alla data, e lo dice dove.
 > Linea scientifica: la guida. Cosa fare: `ESPERIMENTI.md`. Cosa esiste nel codice:
 > `SISTEMA.md`. Questo file risponde a una sola domanda: a che punto siamo.
@@ -173,6 +173,24 @@ membro in un seed e non membro in un altro.
 | record-DP σ=1 | 415 | 289.0 | 7.21 | 9.39 | +0.04 ± 0.22 | 0.18 |
 | record-DP σ=2 | 455 | 286.0 | 10.66 | 11.64 | −0.11 ± 0.22 | −0.50 |
 | no-DP, GroupNorm | 458 | 289.9 | 10.12 | 8.98 | −0.20 ± 0.22 | −0.91 |
+| record-DP σ=5 | 431 | 286.2 | 8.72 | 7.73 | −0.06 ± 0.22 | −0.27 |
+| record-DP σ=0 (solo clipping) | 435 | 290.2 | 8.64 | 9.56 | +0.35 ± 0.22 | 1.59 |
+| FedAvg no-DP, Mac (`rq3-mu0`) | 516 | 290.1 | 14.55 | 12.64 | +0.19 ± 0.22 | 0.86 |
+| FedAvg ε=64, Mac | 441 | 290.4 | 9.03 | 9.81 | +0.23 ± 0.22 | 1.04 |
+| FedAvg no-DP, Windows | 508 | 289.6 | 15.31 | 9.07 | +0.11 ± 0.22 | 0.51 |
+| FedProx no-DP, Windows | 422 | 290.2 | 8.42 | 5.72 | +0.14 ± 0.22 | 0.62 |
+| FedAvg ε=64, Windows | 483 | 291.3 | 12.46 | 9.76 | +0.23 ± 0.22 | 1.04 |
+| FedProx ε=64, Windows | 461 | 290.2 | 11.44 | 9.98 | +0.15 ± 0.22 | 0.69 |
+
+**Celle aggiunte il 2026-10-01** (le ultime otto righe; stesso script e stessi parametri, 200
+permutazioni a seme fisso per cella; ricalcolata la cella no-DP, i valori salvati sono riprodotti
+identici). Il test appaiato è ora calcolato su tutte le 24 celle a 5 seed di
+`livello_di_caso.json`, comprese le quattro di RQ2 (sezione 3.9): z appaiato fra −1.49 (RQ2
+per sito) e +1.59 (solo clipping), nessun segnale di appartenenza per record. Nel FedAvg
+senza DP di Windows l'eccesso dei membri sui non membri ha z = 3.43, l'unico sopra 3 fra le 24
+celle, mentre il test appaiato della stessa cella è nullo (z = 0.51). Le run a un seed
+(screening di C, griglia del punto operativo, prove su mu) e le run canary non hanno il test:
+richiede la stessa sessione membro in un seed e non membro in un altro.
 
 Nella cella record-DP le sessioni sono 17 389 e 27 877 invece di 17 561 e 28 129: il dump
 per campione contiene i record che LiRA punteggia, e con record-DP sono circa 60 in meno per
@@ -349,7 +367,7 @@ rilasciato ε = 16 sta a 47 volte il primo e 60 volte il secondo (segnalazione 4
 punti del §0 sono cambiati il 2026-09-24 e sono documentati lì come deviazioni: il
 costo, per un errore di implementazione (la definizione era giusta), e la metrica
 primaria per record, che va sostituita dal test appaiato (segnalazione 47): la seconda
-è una decisione del supervisore. Il braccio B1 della Fase B, clipping senza rumore, è
+è decisa col supervisore il 2026-10-01 (test appaiato primario). Il braccio B1 della Fase B, clipping senza rumore, è
 eseguito per il record-level (σ = 0, sezione 3.5); per il client-level manca il flag
 (segnalazione 38).
 
@@ -519,8 +537,9 @@ con le celle del 2026-09-29, dello screening e del solo clipping, il canary su p
 da decidere col supervisore), il canary bilanciato su
 Caltech (braccio A finito e importato dalla quarta macchina; bracci B e A in coda sul Mac principale), la validazione sul deployment NVFLARE e
 Containerlab (`ESPERIMENTI.md`, gruppo minimo di celle, a campagne chiuse), le
-statistiche delle feature per client di E-D, la rianalisi NVFlare. Da decidere col supervisore: la metrica primaria per record (segnalazione 47) e se
-le campagne future usano l'inizializzazione comune (segnalazione 48). I bug che toccano i numeri sono in
+statistiche delle feature per client di E-D, la rianalisi NVFlare. Deciso col supervisore il 2026-10-01: il test appaiato è la metrica primaria per record
+(segnalazione 47). Da decidere col supervisore: se le campagne future usano
+l'inizializzazione comune (segnalazione 48). I bug che toccano i numeri sono in
 `Segnalazioni_tecniche_2026-09-22.md`, punti 1, 5, 6, 9, 35, 36, 38, 45, 48, 50, 51, 55. Fuori dal paper, come infrastruttura o lavoro futuro: ML Plane,
 Privacy Auditor, PES, ByzantineDetector, FedMIA-gradient, secondo dataset. Per le
 frasi da non scrivere senza evidenza: guida, sezione 11.

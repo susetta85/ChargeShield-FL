@@ -344,7 +344,9 @@ sono in `scripts/_applicati/`.*
     appaiato, che e' la lettura primaria; aggiornati `scrivi_worst_case` e
     `analyze_worst_case_vulnerability.py`. E-C ricalcolato su 8 celle: nessun segnale di
     appartenenza per record (z appaiato fra -1.38 e +0.91). La metrica primaria per
-    record del §0 va sostituita: decisione del supervisore.
+    record del §0 va sostituita: decisione del supervisore. **Decisa il 2026-10-01**: test
+    appaiato primario, conteggio secondario col controllo sui non membri; calcolato su tutte
+    le 24 celle a 5 seed (z appaiato fra -1.49 e +1.59).
 48. **I client non partono dallo stesso modello iniziale.**
     `run_experiments.py::run_fl_rounds` crea i trainer uno dopo l'altro (righe 1211-1219
     prima della correzione) senza distribuire un modello comune: nel round 1 FedAvg media
