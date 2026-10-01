@@ -732,6 +732,20 @@ la somma con il braccio B allo stesso seed.
 cd ~/Documents/ChargeShield-FL && nohup caffeinate -ims python3 scripts/run_experiments.py --config config/experiment_canary_multisite_swap.yaml --no-dp --seed 42 --sweep-dir experiments/_canary_multisite_swap_s42 < /dev/null > logs/canary_multisite_swap_s42.log 2>&1 & disown
 ```
 
+**Esito del braccio B e somma (2026-10-01, JSON `experiments/_canary_multisite_swap_s42`, commit
+567d32e, che rispetto a b3feee4 cambia solo `docs/`).** 6 ore (16:27-22:27 sull'orologio del
+Mac). Loss grezza sull'update di Office 1: 0.7925, 0.5025, 0.5475. Somme A+B: 1.5825, 1.08,
+1.1975, contro 1.00 delle baseline a init casuale. Al round 1 è appartenenza; ai round 2 e 3 il
+segnale si riduce molto e con un solo seed non si separa dal rumore: la frase del braccio A "la
+differenza sparisce" va letta come "si riduce". Media sui 3 round 0.6725 (A) e 0.6142 (B),
+somma 1.29 contro 1.46 del sito singolo (`STATO.md` 3.3). Modello globale, Yeom: 0.54, 0.63,
+0.605, somme 1.0025, 1.0125, 0.995, nessun segnale; Shadow quasi identico (0.54, 0.6325,
+0.6075; segnalazione 64). LiRA sull'update: 0.6975, 0.1667, 0.2768, dal round 2 su pool 12x13 e
+16x14; somme 1.3475, 0.49, 0.70, sotto 1 dal round 2, coerente con la segnalazione 63.
+**Prossimo passo:** decidere col supervisore se fare la campagna (5 seed per 2 bracci per 3
+condizioni, circa 30 run da 6 ore) e con quali epoche e metrica; per dire se il segnale
+sopravvive all'aggregazione servono più seed.
+
 ## Canary bilanciato su un secondo sito
 
 **Validazione dello strumento, non una RQ.** Il protocollo che regge (k = 20,

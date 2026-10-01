@@ -1,8 +1,8 @@
 # ChargeShield-FL — Stato del progetto
 
-> **Stato: documento CANONICO.** Aggiornato il 2026-09-30 (revisione: costo sul modello
+> **Stato: documento CANONICO.** Aggiornato il 2026-10-01 (revisione: costo sul modello
 > rilasciato, analisi per record corretta, E-C, segnalazioni 46-59, controlli del protocollo, celle delle matrici ricomposte, RQ2 senza DP,
-> punto operativo a 5 seed, RQ2 con DP, E-B a σ = 1 e 2 con il riferimento GroupNorm, RQ3 senza DP; il 2026-09-29 E-B a σ = 5, RQ3 sul Mac principale con e senza DP, prove su mu e FedAvg con DP su Windows; il 2026-09-30 lo screening di C per FedAvg con DP e il solo clipping di E-B; dai JSON e non ancora nelle matrici). Solo numeri
+> punto operativo a 5 seed, RQ2 con DP, E-B a σ = 1 e 2 con il riferimento GroupNorm, RQ3 senza DP; il 2026-09-29 E-B a σ = 5, RQ3 sul Mac principale con e senza DP, prove su mu e FedAvg con DP su Windows; il 2026-09-30 lo screening di C per FedAvg con DP e il solo clipping di E-B; il 2026-10-01 il braccio B del canary su più siti; dai JSON e non ancora nelle matrici). Solo numeri
 > presenti in `risultati/` o letti dai JSON grezzi alla data, e lo dice dove.
 > Linea scientifica: la guida. Cosa fare: `ESPERIMENTI.md`. Cosa esiste nel codice:
 > `SISTEMA.md`. Questo file risponde a una sola domanda: a che punto siamo.
@@ -24,8 +24,9 @@ costo viene dal rumore (sezione 3.5). La partizione IID o per sito non cambia il
 successo degli attacchi, con o senza DP (sezione 3.9). Senza DP FedAvg ha la loss
 sull'holdout circa 3.7-3.9 volte più bassa di FedProx su due macchine; con DP a C = 1 l'ordine
 si inverte in 4 seed su 5, non in modo significativo, e alzare C fino a 8 non aiuta FedAvg
-(seed 42, sezione 3.10). I prossimi passi sono il canary su più siti (run di prova in corso) e
-poi il canary bilanciato su Caltech (`ESPERIMENTI.md`).
+(seed 42, sezione 3.10). Il canary su più siti, a un seed, vede l'appartenenza sull'update di
+Office 1 al round 1 e nessun segnale sul modello globale (sezione 3.3); il canary bilanciato su
+Caltech è in corso (`ESPERIMENTI.md`).
 
 ## 2. Glossario minimo
 
@@ -205,13 +206,17 @@ il protocollo bilanciato; il config per ChargePlace Scotland non è mai stato
 eseguito. Il paper riporta ancora i numeri precedenti alla correzione
 (segnalazione 35).
 
-**Canary su più siti, prova a un seed (2026-09-30, braccio A, `experiments/_canary_multisite_s42`,
-commit b3feee4).** Tre siti, canary solo in Office 1, senza DP. La loss grezza sull'update di
-Office 1 vale 0.79 al round 1 e 0.5775 e 0.65 ai round 2 e 3, contro una baseline a init casuale
-di 0.7255: la memorizzazione del round 1 non sopravvive all'aggregazione, in cui Office 1 pesa
-circa il 3.6%. Sul modello globale i canary restano sotto 0.5 (Yeom 0.39-0.46). Con più client
-LiRA e Shadow sui canary non sono interpretabili (segnalazioni 63 e 64). Il braccio B, necessario
-per il test sulla somma, è in corso.
+**Canary su più siti, prova a un seed (2026-09-30, bracci A e B, `experiments/_canary_multisite_s42`
+e `_canary_multisite_swap_s42`, commit b3feee4 e 567d32e, che differiscono solo in `docs/`).** Tre
+siti, canary solo in Office 1, senza DP. Loss grezza sull'update di Office 1: braccio A 0.79,
+0.5775, 0.65, braccio B 0.7925, 0.5025, 0.5475 nei tre round; somme A+B 1.5825, 1.08 e 1.1975,
+contro 1.00 delle baseline a init casuale (0.7255 e 0.2745, dal log). Al round 1 il segnale è
+appartenenza; dopo l'aggregazione, in cui Office 1 pesa circa il 3.6%, si riduce molto e con un
+solo seed non si può dire se resta sopra il rumore. Media sui 3 round 0.6725 e 0.6142, somma 1.29
+contro 1.46 del sito singolo. Sul modello globale le somme di Yeom sono 1.0025, 1.0125 e 0.995:
+nessun segnale, e i valori sotto 0.5 del braccio A erano l'effetto dei template. Con più client
+LiRA e Shadow sui canary non sono interpretabili (segnalazioni 63 e 64): le somme di LiRA ai
+round 2 e 3 sono 0.49 e 0.70, sotto 1.
 
 ### 3.4 LiRA è degenere
 
@@ -500,8 +505,8 @@ segnalazione 45). I controlli del protocollo sono
 eseguiti (sezione 3.1c). E-B a σ = 0, 1, 2 e 5 e il riferimento GroupNorm sono completi (sezione
 3.5); E-E sul Mac principale, con e senza DP, le prove su mu e lo screening di C sono completi
 (sezione 3.10). Restano: il braccio FedProx con DP su Windows, l'aggiornamento delle matrici
-con le celle del 2026-09-29, dello screening e del solo clipping, il canary su più siti (braccio A
-della prova completo, braccio B in corso), il canary bilanciato su
+con le celle del 2026-09-29, dello screening e del solo clipping, il canary su più siti (prova a un seed completa nei due bracci, campagna
+da decidere col supervisore), il canary bilanciato su
 Caltech (run di prova in corso sulla quarta macchina), la validazione sul deployment NVFLARE e
 Containerlab (`ESPERIMENTI.md`, gruppo minimo di celle, a campagne chiuse), le
 statistiche delle feature per client di E-D, la rianalisi NVFlare. Da decidere col supervisore: la metrica primaria per record (segnalazione 47) e se
