@@ -548,11 +548,12 @@ round 9, 0.013 al round 10). Messa contro la quota cumulata di soluzione locale 
 col solo taglio (`ESPERIMENTI.md`, linea per il paper DSN). A seed 42 FedAvg ha 0.01298 a C = 1 e 0.01308 a
 C = 2. Figure di lavoro in `Claude outputs/` (`fig_rq3_v2_*`).
 
-**Clipping su tutti i JSON con le norme (2026-10-02; esplorativa, uso nel paper da decidere).** Stessa analisi
+**Clipping su tutti i JSON con le norme (2026-10-02; per il paper, a supporto di RQ3).** Stessa analisi
 su tutte le run con DP per client che hanno `delta_norm_per_client` nel JSON: 18 impostazioni, 6 a 5 seed (C = 1,
 ε = 64: FedAvg e FedProx su Mac principale e Windows, FedProx con partizione per sito e IID sul secondo Mac), le
 altre al solo seed 42 (FedProx con C = 0.25, 0.5, 1 e ε da 16 a 256; FedAvg con C = 2, 4, 8 a ε = 64). La griglia
-di ε da 2 a 16 a 5 seed non ha le norme nel JSON né nel log ed è esclusa. (1) A parità di rumore aggregato
+di ε da 2 a 16 a 5 seed non ha le norme nel JSON né nel log (il campo `sensitivity` dell'IDS è un rapporto fra
+le dimensioni dei dati, non una norma) ed è esclusa. (1) A parità di rumore aggregato
 (C/ε = 1/64) le sette impostazioni seguono la stessa curva fino a una quota cumulata di circa 1.5: loss sull'holdout
 0.057-0.072 a quota 0.65 e 0.014-0.018 a quota 1.5. (2) FedProx con C = 0.25 a ε = 16 (stesso C/ε, un seed)
 trattiene quanto FedAvg (13% contro 12% al round 2) e sta sulla curva di FedAvg (0.067 contro 0.067 a quota 0.65,
@@ -567,8 +568,12 @@ C = 2 coincidono al round 10 per motivi diversi: C = 2 arriva prima a quota 1.3 
 poi resta sul suo pavimento più alto, C = 1 sta ancora scendendo. Limiti: un solo seed fuori da C = 1, ε = 64; a un
 seed i confronti fra ε muovono la stessa direzione di rumore scalata e non si leggono (a 5 seed più rumore costa di
 più: ε = 16 contro 64 al round 3, 0.13 contro 0.016); associazione, la causa resta all'esperimento con solo taglio.
-Script, tabelle per round e per run e figura in `Claude outputs/clipping_tutti_json/`. Previsione per la prova a
-30 round in `ESPERIMENTI.md` (linea per il paper DSN).
+Fonte: `risultati/clipping/` (`per_round.csv`, `per_run.csv`), rigenerabile con `scripts/analisi_clipping_json.py`;
+figura di lavoro in `Claude outputs/clipping_tutti_json/`. Uso nel paper: il punto (1) è già a 5 seed per sei
+impostazioni e si può usare così; il punto (2), che è la frase più forte (il vantaggio di FedProx sta nel fatto
+che i suoi aggiornamenti passano il taglio, non nell'algoritmo in sé), e il pavimento del punto (3) aspettano i
+seed mancanti (`ESPERIMENTI.md`, norme della griglia di ε e seed di FedProx a C = 0.25). Previsione per la prova
+a 30 round in `ESPERIMENTI.md` (linea per il paper DSN).
 
 ## 4. Cosa manca
 
