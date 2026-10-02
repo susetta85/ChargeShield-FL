@@ -1037,6 +1037,57 @@ due regimi è confermata a 5 seed. Se le norme restano sopra C, perché il rumor
 aggiornamenti successivi devono correggerlo, la quota resta bassa e anche lì il costo passa dal taglio: la lettura
 in due regimi va riscritta, con il rumore che agisce anche attraverso il taglio.
 
+**Inizializzazione comune su Windows (punto 4 della coda, lanciata il 2026-10-02).** Su Windows ci sono
+già le quattro celle RQ3 a init casuale a 5 seed (`experiments_altre_macchine/rq3-mu0`, `rq3-mu0.01`,
+`rq3-mu0-eps64`, `rq3-mu0.01-eps64`), quindi il confronto init comune contro init casuale resta sulla stessa
+macchina (segnalazione 55). FedProx: `experiment_ctrl_common_init.yaml` (mu = 0.01), LiRA completa e
+`--per-sample-dump`, anche come riferimento in simulazione per la validazione sul deployment (con la
+tolleranza per l'effetto macchina già prevista). FedAvg: `experiment_rq3_mu0_common_init.yaml` (mu = 0),
+LiRA ridotta come nelle prove (numeri di LiRA e test appaiato non disponibili per FedAvg). Con DP:
+`--epsilon 64`, C = 1, `dp-fedavg`. Due finestre PowerShell in parallelo, prima con DP e poi senza.
+Tempi dai log di Windows: circa 6.5 ore per run con LiRA completa, quindi circa 65 ore per FedProx e circa
+15 ore per FedAvg. Dopo `git pull`, finestra 1 (FedProx):
+
+```powershell
+$env:PYTHONUTF8 = "1"; $env:OMP_NUM_THREADS = "1"; $env:MKL_NUM_THREADS = "1"
+& {
+  Add-Type -Namespace W3 -Name P -MemberDefinition '[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint f);'
+  [W3.P]::SetThreadExecutionState(2147483649) | Out-Null
+  foreach ($a in @(@("rq3-ci-mu0.01-eps64", "--epsilon 64"), @("rq3-ci-mu0.01", "--no-dp"))) {
+    foreach ($s in 42, 123, 456, 789, 1234) {
+      $dir = "experiments\" + $a[0]
+      cmd /c ".venv\Scripts\python.exe scripts\run_experiments.py --config config\experiment_ctrl_common_init.yaml --rounds 10 --seed $s $($a[1]) --sweep-dir $dir --per-sample-dump $dir\per_sample_seed$s.json >> logs\rq3_ci_fedprox.log 2>&1"
+      if ($LASTEXITCODE -ne 0 -or -not (Test-Path "$dir\per_sample_seed$s.json")) { return }
+    }
+  }
+}
+```
+
+Finestra 2 (FedAvg):
+
+```powershell
+$env:PYTHONUTF8 = "1"; $env:OMP_NUM_THREADS = "1"; $env:MKL_NUM_THREADS = "1"
+& {
+  Add-Type -Namespace W4 -Name P -MemberDefinition '[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint f);'
+  [W4.P]::SetThreadExecutionState(2147483649) | Out-Null
+  foreach ($a in @(@("rq3-ci-mu0-eps64", "--epsilon 64"), @("rq3-ci-mu0", "--no-dp"))) {
+    foreach ($s in 42, 123, 456, 789, 1234) {
+      $dir = "experiments\" + $a[0]
+      cmd /c ".venv\Scripts\python.exe scripts\run_experiments.py --config config\experiment_rq3_mu0_common_init.yaml --rounds 10 --seed $s $($a[1]) --n-shadow 2 --shadow-epochs-cap 20 --sweep-dir $dir >> logs\rq3_ci_fedavg.log 2>&1"
+      if ($LASTEXITCODE -ne 0) { return }
+    }
+  }
+}
+```
+
+Previsione, scritta prima (oltre a quella della linea). Con l'inizializzazione comune il modello globale dopo il
+round 1 non è più la media di tre reti indipendenti. Se le norme di FedAvg scendono verso C, la sua quota
+trattenuta sale e l'inversione con DP si riduce o sparisce; se le norme restano sopra C come a init casuale,
+l'inversione resta. In tutti e due i casi le quattro serie con DP devono cadere sulla curva comune contro la
+quota cumulata (`STATO.md` 3.10). Se l'inversione sparisce ma i punti restano sulla curva, RQ3 si riformula:
+il vantaggio di FedProx sotto DP dipende da quanto sono grandi gli aggiornamenti, e l'inizializzazione è uno
+dei fattori che li rende grandi.
+
 **Non previsto.** FedProx sulla DP per record, sull'intera griglia di ε o nelle campagne canary; superficie A2.
 
 ## Rinviato o escluso
