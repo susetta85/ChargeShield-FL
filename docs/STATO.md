@@ -258,10 +258,10 @@ trenta sopra 0.5 (minimo 0.6625), tutte le 15 somme A+B per round sopra 1 (da 1.
 Δ medio per seed (media dei due bracci, come per Office 1): 0.302, 0.267, 0.310, 0.324, 0.242;
 media +0.289, sd 0.034, t(4) = 19.3, p < 0.001; test dei segni 5 su 5, p = 0.031. Office 1 dava
 +0.23 con t(4) = 9.9, alla stessa amplificazione per record. LiRA sui canary, medie sui 3 round:
-0.694 e 0.738, 29 round su 30 sopra 0.5 (sotto: seed 789, braccio B, round 3, 0.437). Le baseline
-del seed 123 sono nel log di Windows, non ancora importato: il Δ del seed non ne dipende, perché
-le baseline dei due bracci sommano a 1 (`CanaryPositiveControl.md` 5.2), ma i Δ dei singoli bracci
-sì. Lo strumento è validato su due siti con un solo client; su più client resta la prova a un seed
+0.694 e 0.738, 29 round su 30 sopra 0.5 (sotto: seed 789, braccio B, round 3, 0.437). Δ dei
+singoli bracci tutti positivi, da +0.13 a +0.40 (seed 123: baseline 0.4271 e 0.5729 dal log di
+Windows, Δ +0.335 e +0.200); come a Office 1, dove la baseline parte molto bassa (seed 123 e
+1234) il Δ di quel braccio è più grande. Lo strumento è validato su due siti con un solo client; su più client resta la prova a un seed
 qui sopra.
 
 ### 3.4 LiRA è degenere
