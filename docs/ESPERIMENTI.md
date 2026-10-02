@@ -854,6 +854,13 @@ done
 ' < /dev/null > logs/canary_balanced_caltech_mac_s456-1234.log 2>&1 & disown
 ```
 
+**Esito a 5 seed (2026-10-02).** Coda del Mac principale finita il 2 ottobre alle 14:17, sei
+"Esperimento completato", zero errori; seed 123 finito su Windows il 2 ottobre alle 03:33 (ora di
+Windows), importato in `experiments_altre_macchine` (PROVENIENZA). Appartenenza a tutti i seed:
+30 round su 30 sopra 0.5 sulla loss grezza, 15 somme A+B su 15 sopra 1, Δ medio per seed +0.289,
+t(4) = 19.3 (`STATO.md` 3.3). Il canary bilanciato su un secondo sito è chiuso; la coda passa alla
+linea per il paper DSN (norme della griglia di ε e seed di FedProx a C = 0.25, poi i flag).
+
 ## Rianalisi NVFlare
 
 I 25 dump a ε ≤ 1 (`experiments/_dump_nvflare_provenienza.csv`) sono nel regime

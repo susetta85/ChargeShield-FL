@@ -205,7 +205,7 @@ effetto dell'appartenenza in nessuna cella. La segnalazione 6 (percentile dei du
 script, 411 contro 412) riguarda ora solo il conteggio, che non è più la lettura
 primaria.
 
-### 3.3 Lo strumento è validato a Office 1; Caltech a un seed
+### 3.3 Lo strumento è validato a Office 1 e a Caltech (5 seed ciascuno)
 
 Fonte: `CanaryPositiveControl.md`, sezione 6, campagna bilanciata dopo la
 correzione del 16 settembre. Office 1, 20 template membro e 20 non membro, 30
@@ -246,8 +246,23 @@ braccio B 0.7725, 0.865, 0.8925; somme A+B 1.5725, 1.6525 e 1.585 contro 1.00 de
 init casuale (0.4616 e 0.5384): appartenenza in tutti e tre i round. Media sui 3 round 0.76 e
 0.8433, somma 1.60 contro 1.46 di Office 1. Con un solo client LiRA lavora su tutte le 20 x 20
 coppie e dà somme 1.415, 1.54 e 1.5075. Il braccio A della quarta macchina ha la stessa media
-(0.7608 contro 0.7600) con scarti per round fino a 0.08. Altri 4 seed in corso: 123 su Windows,
-456, 789 e 1234 sul Mac principale.
+(0.7608 contro 0.7600) con scarti per round fino a 0.08.
+
+**Canary bilanciato su Caltech, 5 seed (2026-10-02).** Seed 42, 456, 789 e 1234 sul Mac principale
+(`experiments/_canary_balanced_caltech{,_swap}_s*`), seed 123 su Windows
+(`experiments_altre_macchine/_canary_balanced_caltech{,_swap}_s123`, commit 1c0d0c0 pulito); i due
+bracci di ogni seed sulla stessa macchina. Commit: 456 e 789 a 316cbf8 pulito; 1234 a 316cbf8-dirty
+(braccio B) e ae8b9c9-dirty (braccio A), con modifiche aperte solo a documenti e file di analisi,
+codice identico. Loss grezza, media sui 3 round: braccio A 0.770, braccio B 0.808. Trenta round su
+trenta sopra 0.5 (minimo 0.6625), tutte le 15 somme A+B per round sopra 1 (da 1.42 a 1.74).
+Δ medio per seed (media dei due bracci, come per Office 1): 0.302, 0.267, 0.310, 0.324, 0.242;
+media +0.289, sd 0.034, t(4) = 19.3, p < 0.001; test dei segni 5 su 5, p = 0.031. Office 1 dava
++0.23 con t(4) = 9.9, alla stessa amplificazione per record. LiRA sui canary, medie sui 3 round:
+0.694 e 0.738, 29 round su 30 sopra 0.5 (sotto: seed 789, braccio B, round 3, 0.437). Le baseline
+del seed 123 sono nel log di Windows, non ancora importato: il Δ del seed non ne dipende, perché
+le baseline dei due bracci sommano a 1 (`CanaryPositiveControl.md` 5.2), ma i Δ dei singoli bracci
+sì. Lo strumento è validato su due siti con un solo client; su più client resta la prova a un seed
+qui sopra.
 
 ### 3.4 LiRA è degenere
 
