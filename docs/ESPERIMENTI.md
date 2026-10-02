@@ -913,6 +913,88 @@ e non va in parallelo con altre run. Tempo di un job da misurare al primo lancio
 **Dove va.** Tesi: Fase 1 e capitolo sul metodo, dove sono elencate le differenze fra
 simulazione e deployment. Paper: una breve sottosezione di verifica.
 
+## Linea per il paper DSN (decisa il 2026-10-02)
+
+**Fonte.** Discussione col supervisore del 1 e 2 ottobre, dopo la review del report di stato; testo completo
+in `Claude outputs/DSN_linea_paper_2026-10-02.md` (fuori dal repository). Qui RQ, decisioni e coda.
+
+**Domande di ricerca.**
+- RQ1. *Under what conditions is membership leakage empirically detectable, and when does differential
+  privacy reduce it at an acceptable utility cost?* Quattro passi: regime naturale, controllo positivo,
+  superficie protetta, utilità.
+- RQ2. *How does client data heterogeneity affect detectable membership leakage and the utility cost of
+  differential privacy?*
+- RQ3. *How do FedAvg and FedProx differ in their utility degradation under client-level DP, and to what
+  extent is this difference associated with clipping of client updates?* Domanda di utilità e meccanismo;
+  gli attacchi si riportano ma non sono il centro. "Perché" solo dopo l'esperimento con solo clipping.
+  FedProx non si estende al resto della campagna.
+
+**Superfici e meccanismi.** A1 aggiornamento grezzo, A2 dopo il taglio, A3 dopo taglio e rumore, B modello
+rilasciato. Rumore lato client: `dp-fedavg` (attaccante su A1) e `local` (attaccante su A3) fanno lo stesso
+calcolo (`GradientManager.privatize`, rumore σ per client, circa 0.69σ sull'aggregato con i pesi dei siti).
+Rumore lato server: `central`, una gaussiana σ·max(n_k/N) = 0.50σ sull'aggregato (attaccante su A2). Tutti i
+numeri client-level di RQ1-RQ3 sono con rumore lato client; `central` esiste solo a ε ≤ 1.
+
+**Canary con DP per client.** Con `dp-fedavg` l'attaccante osserva a monte del meccanismo e su B non c'è
+segnale nemmeno senza DP: l'esperimento si fa su A3 (`local`), A2 è escluso. I canary con DP per record
+restano misure di sensibilità (canary duplicati, privacy di gruppo).
+
+**Coda dopo il canary su Caltech, in ordine.**
+1. Flag "solo taglio", "solo rumore" e "salta LiRA" (segnalazione 38 per il solo taglio).
+2. Solo taglio e solo rumore a C = 1, FedAvg e FedProx, 5 seed; per FedAvg anche C = 0.5, 2, 4, 8 al seed
+   42, più la DP completa a C = 0.5. Mac principale, dove ci sono `rq3-mu0-eps64` e lo screening di C.
+3. `central` al punto operativo, FedProx, 5 seed, Mac principale.
+4. Inizializzazione comune: FedAvg e FedProx, senza DP e con DP per client, 5 seed, stessa macchina; LiRA
+   solo per FedProx (run condivise con la validazione sul deployment).
+5. FedAvg con DP a 30 round, seed 42 (prova di meccanismo; garanzia composta più debole). Anticipata il
+   2026-10-02 sulla quarta macchina, con il braccio FedProx (sotto).
+6. Pilota canary su A3: tre siti, canary a Office 1, punto operativo, 1-2 seed con scambio dei ruoli, letto
+   per round e composto.
+7. Campionamento di Poisson per la DP per record: 3 seed a σ = 1, 2, 5 sul Mac principale; altrimenti i due
+   limiti.
+8. Facoltativo: prova su μ.
+
+**Previsioni scritte prima.** Inizializzazione comune: se l'inversione con DP resta, RQ3 è solida. Solo
+taglio e solo rumore: costo del taglio che scende con C e del rumore che sale, incrocio fra C = 1 e 2. FedAvg
+a 30 round: (a) raggiunge FedProx lungo la curva cumulata, solo velocità; (b) si ferma sopra, limite da
+taglio; (c) scende sotto, limite di rumore per FedProx. Pilota A3: esito aperto. `central`: probabile
+differenza piccola (27% di rumore in meno), decide la formulazione della frase sul costo.
+
+**Prova a 30 round con DP sulla quarta macchina (2026-10-02, finestra fino alle 19:00 EDT).** Anticipa il punto 5
+della coda e aggiunge il braccio FedProx sulla stessa macchina (segnalazione 55). Nessuna modifica al codice: config
+esistenti con `--rounds 30`; LiRA ridotta con i parametri dello smoke test del Makefile (`--n-shadow 2
+--shadow-epochs-cap 20`), quindi i numeri di LiRA di queste due run non sono validi e non si riportano.
+Addestramento, norme e loss sull'holdout non dipendono da LiRA, che gira dopo il training. Cartelle con "_" davanti,
+fuori dalle matrici. Dall'app Terminale, dopo il push dei documenti:
+
+```bash
+cd ~/ChargeShield-FL && source .venv/bin/activate && git fetch susetta && git merge --ff-only susetta/master && git status --porcelain && git log --oneline -1 && nohup caffeinate -ims bash -c '
+set -e
+for p in rq3_mu0_eps64:_rq3_mu0_eps64_r30_s42 rq1_eps64:_rq3_mu0.01_eps64_r30_s42; do
+  c=${p%%:*}; d=${p##*:}
+  python3 scripts/run_experiments.py --config config/experiment_$c.yaml --rounds 30 --seed 42 --n-shadow 2 --shadow-epochs-cap 20 --sweep-dir experiments/$d
+done
+' < /dev/null > logs/rq3_dp_r30_s42.log 2>&1 & disown
+```
+
+Controlli. I round 1-10 devono coincidere con le run a 10 round del Mac principale (`rq3-mu0-eps64` e `rq1-eps64`,
+seed 42; codice invariato da 8d44ae3; l'addestramento non dipende dal numero totale di round): round 1 norme 8.8392,
+8.4689, 4.6367 e loss globale 0.001200 per tutti e due; round 2 loss globale 0.000966 per FedAvg e 0.026267 per
+FedProx; loss sull'holdout al round 10 0.01298 per FedAvg e 0.00409 per FedProx. Se coincidono, la quarta macchina
+è intercambiabile con il Mac principale per il resto della coda. Tempo stimato 2-3 ore per run (un round di FL dura
+circa tre volte il Mac principale, LiRA ridotta circa un ventesimo); se alle 19:00 la seconda run non è finita si
+ferma, la prima è già salvata.
+
+Previsione, scritta prima (dalla curva su tutti i JSON, `STATO.md` 3.10). Statistica: media geometrica della loss
+sull'holdout ai round 26-30, perché i singoli round oscillano di un fattore 2. FedAvg al seed 42 trattiene 0.12-0.17
+per round: al round 30 la quota cumulata sarà circa 5-6. FedProx allo stesso rumore, a quota 4.6-6.6, sta a
+0.006-0.011 (5 seed; il suo seed 42 a 0.008-0.011). (a) FedAvg in quella fascia: solo velocità. (b) Sopra 0.015:
+limite da taglio (fra 0.011 e 0.015 non decide). (c) Sotto FedProx a 30 round: il vantaggio di FedProx si inverte. Per FedProx: se il pavimento è
+fissato dal rumore, ai round 26-30 resta fra 0.004 e 0.011; se scende chiaramente sotto 0.004, il pavimento non è di
+rumore e la lettura in due regimi va rivista.
+
+**Non previsto.** FedProx sulla DP per record, sull'intera griglia di ε o nelle campagne canary; superficie A2.
+
 ## Rinviato o escluso
 
 RQ4 (rilevamento della MIA passiva) esclusa per threat model. ByzantineDetector

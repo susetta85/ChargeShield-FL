@@ -1,8 +1,8 @@
 # ChargeShield-FL — Stato del progetto
 
-> **Stato: documento CANONICO.** Aggiornato il 2026-10-01 (revisione: costo sul modello
+> **Stato: documento CANONICO.** Aggiornato il 2026-10-02 (revisione: costo sul modello
 > rilasciato, analisi per record corretta, E-C, segnalazioni 46-59, controlli del protocollo, celle delle matrici ricomposte, RQ2 senza DP,
-> punto operativo a 5 seed, RQ2 con DP, E-B a σ = 1 e 2 con il riferimento GroupNorm, RQ3 senza DP; il 2026-09-29 E-B a σ = 5, RQ3 sul Mac principale con e senza DP, prove su mu e FedAvg con DP su Windows; il 2026-09-30 lo screening di C per FedAvg con DP e il solo clipping di E-B; il 2026-10-01 il braccio B del canary su più siti, il braccio FedProx con DP di Windows e il braccio A del canary su Caltech della quarta macchina, il test appaiato per record su tutte le 24 celle a 5 seed, il seed 42 del canary su Caltech; dai JSON e non ancora nelle matrici). Solo numeri
+> punto operativo a 5 seed, RQ2 con DP, E-B a σ = 1 e 2 con il riferimento GroupNorm, RQ3 senza DP; il 2026-09-29 E-B a σ = 5, RQ3 sul Mac principale con e senza DP, prove su mu e FedAvg con DP su Windows; il 2026-09-30 lo screening di C per FedAvg con DP e il solo clipping di E-B; il 2026-10-01 il braccio B del canary su più siti, il braccio FedProx con DP di Windows e il braccio A del canary su Caltech della quarta macchina, il test appaiato per record su tutte le 24 celle a 5 seed, il seed 42 del canary su Caltech; il 2026-10-02 la linea per il paper DSN e l'analisi per round di RQ3; dai JSON e non ancora nelle matrici). Solo numeri
 > presenti in `risultati/` o letti dai JSON grezzi alla data, e lo dice dove.
 > Linea scientifica: la guida. Cosa fare: `ESPERIMENTI.md`. Cosa esiste nel codice:
 > `SISTEMA.md`. Questo file risponde a una sola domanda: a che punto siamo.
@@ -535,6 +535,41 @@ seed su 5, non significativo), qui netto. La DP costa a FedProx 4.6 volte (da 2.
 entrambi i bracci: Yeom all'ultimo round 0.501 (FedAvg) e 0.499 (FedProx), LiRA composto 0.501
 in entrambi, TPR a FPR 1% 0.010.
 
+**Analisi per round con DP (2026-10-02, dai JSON: `delta_norm_per_client`, `n_train_per_client`,
+loss sull'holdout per round; Mac principale e Windows, 5 seed).** Al round 1 i due algoritmi sono identici
+(norme 4.2-9.4, fattore di taglio circa 0.12, loss 0.157). Gli aggiornamenti di FedProx scendono a 1.7-2.0 al
+round 2, 0.9-1.3 al round 3 e sotto C = 1 dal round 4; quelli di FedAvg restano fra 2.5 e 11 in tutti i
+round. Al round 2 FedProx trattiene il 55% dell'aggiornamento e FedAvg il 13%, e le loss con DP si separano
+già lì (0.059 contro 0.133); dopo il round 1 il modello globale è lo stesso per i due algoritmi, quindi il
+confronto dal round 2 non dipende dall'inizializzazione. FedAvg con DP scende ancora al round 10 (0.026 al
+round 9, 0.013 al round 10). Messa contro la quota cumulata di soluzione locale trattenuta,
+Σ_t min(1, C/‖Δ_t‖), la loss con DP dei due algoritmi cade su una curva sola su tutte e due le macchine
+(FedAvg al round 10, 1.48, 0.013; FedProx al round 3, 1.58, 0.017). È un'associazione: la causa si verifica
+col solo taglio (`ESPERIMENTI.md`, linea per il paper DSN). A seed 42 FedAvg ha 0.01298 a C = 1 e 0.01308 a
+C = 2. Figure di lavoro in `Claude outputs/` (`fig_rq3_v2_*`).
+
+**Clipping su tutti i JSON con le norme (2026-10-02; esplorativa, uso nel paper da decidere).** Stessa analisi
+su tutte le run con DP per client che hanno `delta_norm_per_client` nel JSON: 18 impostazioni, 6 a 5 seed (C = 1,
+ε = 64: FedAvg e FedProx su Mac principale e Windows, FedProx con partizione per sito e IID sul secondo Mac), le
+altre al solo seed 42 (FedProx con C = 0.25, 0.5, 1 e ε da 16 a 256; FedAvg con C = 2, 4, 8 a ε = 64). La griglia
+di ε da 2 a 16 a 5 seed non ha le norme nel JSON né nel log ed è esclusa. (1) A parità di rumore aggregato
+(C/ε = 1/64) le sette impostazioni seguono la stessa curva fino a una quota cumulata di circa 1.5: loss sull'holdout
+0.057-0.072 a quota 0.65 e 0.014-0.018 a quota 1.5. (2) FedProx con C = 0.25 a ε = 16 (stesso C/ε, un seed)
+trattiene quanto FedAvg (13% contro 12% al round 2) e sta sulla curva di FedAvg (0.067 contro 0.067 a quota 0.65,
+0.014 contro 0.014 a 1.5) con passi applicati quattro volte più piccoli: conta la quota di soluzione locale
+trattenuta, non il motivo del taglio né l'algoritmo. (3) Sotto quota circa 1 il rumore conta poco (FedAvg seed 42 a
+quota 1.0: 0.033 a C = 1, 0.044 a C = 2, 0.030 a C = 4; solo C = 8 sta sopra, 0.139); oltre quota 2 la curva si
+appiattisce su un pavimento che sale col rumore (mediane per round a quota ≥ 2: 0.004-0.011 con meno rumore del punto
+operativo, a un seed; 0.010 al punto operativo, 0.018 a rumore doppio, 0.058 a quadruplo, 0.24 a otto volte). Lettura in due
+regimi: fino a quota circa 1.5 la loss segue la quota trattenuta, da quota 2 la fissa il rumore. FedAvg al punto
+operativo è ancora nel primo regime al round 10 (quota 1.36 al seed 42, 1.48 in media), FedProx è nel secondo dal round 4-5. C = 1 e
+C = 2 coincidono al round 10 per motivi diversi: C = 2 arriva prima a quota 1.3 (stessa loss, 0.017 contro 0.018) e
+poi resta sul suo pavimento più alto, C = 1 sta ancora scendendo. Limiti: un solo seed fuori da C = 1, ε = 64; a un
+seed i confronti fra ε muovono la stessa direzione di rumore scalata e non si leggono (a 5 seed più rumore costa di
+più: ε = 16 contro 64 al round 3, 0.13 contro 0.016); associazione, la causa resta all'esperimento con solo taglio.
+Script, tabelle per round e per run e figura in `Claude outputs/clipping_tutti_json/`. Previsione per la prova a
+30 round in `ESPERIMENTI.md` (linea per il paper DSN).
+
 ## 4. Cosa manca
 
 L'elenco ordinato, con comandi e prerequisiti, è `ESPERIMENTI.md`. E-A è chiuso (sezione
@@ -550,8 +585,12 @@ da decidere col supervisore), il canary bilanciato su
 Caltech (seed 42 completo sul Mac principale, sezione 3.3; seed 123 su Windows e 456, 789, 1234 sul Mac principale in corso), la validazione sul deployment NVFLARE e
 Containerlab (`ESPERIMENTI.md`, gruppo minimo di celle, a campagne chiuse), le
 statistiche delle feature per client di E-D, la rianalisi NVFlare. Deciso col supervisore il 2026-10-01: il test appaiato è la metrica primaria per record
-(segnalazione 47). Da decidere col supervisore: se le campagne future usano
-l'inizializzazione comune (segnalazione 48). I bug che toccano i numeri sono in
+(segnalazione 47). Deciso il 2026-10-02 (linea per il paper DSN, `ESPERIMENTI.md`): RQ riformulate,
+inizializzazione comune solo per il rerun controllato e la validazione sul deployment, FedProx μ = 0.01
+come base con i costi anche rispetto al miglior modello non protetto, solo clipping come esperimento
+centrale di RQ3, TOST su Yeom, `central` al punto operativo, superficie A3 per i canary con DP per client.
+Da decidere: quanto è centrale l'ε formale per record (Poisson), il perimetro della campagna canary sui
+tre siti dopo il pilota A3. I bug che toccano i numeri sono in
 `Segnalazioni_tecniche_2026-09-22.md`, punti 1, 5, 6, 9, 35, 36, 38, 45, 48, 50, 51, 55. Fuori dal paper, come infrastruttura o lavoro futuro: ML Plane,
 Privacy Auditor, PES, ByzantineDetector, FedMIA-gradient, secondo dataset. Per le
 frasi da non scrivere senza evidenza: guida, sezione 11.
