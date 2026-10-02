@@ -993,6 +993,43 @@ limite da taglio (fra 0.011 e 0.015 non decide). (c) Sotto FedProx a 30 round: i
 fissato dal rumore, ai round 26-30 resta fra 0.004 e 0.011; se scende chiaramente sotto 0.004, il pavimento non è di
 rumore e la lettura in due regimi va rivista.
 
+**Norme della griglia di ε e seed di FedProx a C = 0.25 (proposta del 2026-10-02, per `STATO.md` 3.10).** Le
+run di `rq1-eps{2,4,8,16}` (5 seed, Mac principale, commit f145b79 ed ed0e1f9) non hanno salvato le norme dei delta.
+Da allora il percorso di training con DP per client non è cambiato (diff su `src/ml` e `run_experiments.py`: solo
+log, contabilità per record, `common_init` spento di default), quindi rifacendo le stesse run sullo stesso Mac si
+ottiene la stessa traiettoria con le norme registrate. Controllo: la `loss globale` per round deve coincidere con
+`per_round[r].fl.mean_loss` dei JSON originali; se coincide, le norme sono quelle delle run originali, altrimenti la
+nuova run vale da sola (norme e loss dalla stessa run) ma non sostituisce la cella di RQ1. LiRA ridotta come nella
+prova a 30 round (numeri di LiRA non validi). Prima i 4 seed mancanti di FedProx a C = 0.25, ε = 16 (prova del
+punto 2), poi ε = 16 e 8 (rumore quadruplo e otto volte, pavimento a 5 seed); ε = 4 e 2 dopo, se servono. Circa
+25 minuti per run sul Mac principale, 14 run circa 6 ore. Parte da sola quando il log del canary su Caltech
+(seed 456-1234) ha sei "Esperimento completato", cioè alla fine del braccio A del seed 1234:
+
+```bash
+cd ~/Documents/ChargeShield-FL && nohup caffeinate -ims bash -c '
+until [ "$(grep -c "Esperimento completato" logs/canary_balanced_caltech_mac_s456-1234.log)" -ge 6 ]; do sleep 300; done
+set -e
+for s in 123 456 789 1234; do
+  python3 scripts/run_experiments.py --config config/experiment_rq1_C0.25_eps16.yaml --rounds 10 --seed $s --n-shadow 2 --shadow-epochs-cap 20 --sweep-dir experiments/_op_C0.25_eps16_seed
+done
+for e in 16 8; do
+  for s in 42 123 456 789 1234; do
+    python3 scripts/run_experiments.py --config config/experiment_rq1_eps$e.yaml --rounds 10 --seed $s --n-shadow 2 --shadow-epochs-cap 20 --sweep-dir experiments/_rq1_eps${e}_norme
+  done
+done
+' < /dev/null > logs/norme_eps_C025.log 2>&1 & disown
+```
+
+Previsione, scritta prima. FedProx a C = 0.25, ε = 16 (stesso rumore del punto operativo): perde il vantaggio di
+FedProx round per round (al round 2 vicino a FedAvg, circa 0.13, invece di 0.056 di FedProx a C = 1, medie a 5
+seed) e contro la quota cumulata sta sulla curva comune (0.06-0.07 a quota 0.65, circa 0.014 a quota 1.5). Se a 5
+seed resta vicino a FedProx a C = 1 round per round, il punto (2) cade. ε = 16 e 8: la loss finale è già nota
+(0.086 e 0.176, media geometrica a 5 seed); le norme dicono perché. Se FedProx arriva comunque a quota 2 o più
+(aggiornamenti sotto C dal round 4-5, come a ε = 64), il costo in più viene dal pavimento di rumore e la lettura in
+due regimi è confermata a 5 seed. Se le norme restano sopra C, perché il rumore sposta il modello e gli
+aggiornamenti successivi devono correggerlo, la quota resta bassa e anche lì il costo passa dal taglio: la lettura
+in due regimi va riscritta, con il rumore che agisce anche attraverso il taglio.
+
 **Non previsto.** FedProx sulla DP per record, sull'intera griglia di ε o nelle campagne canary; superficie A2.
 
 ## Rinviato o escluso
