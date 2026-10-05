@@ -613,6 +613,30 @@ C = 8). Uso nel paper: il punto (1) così com'è; il punto (2) nella forma rivis
 il vantaggio, 5 seed), non nella forma "conta solo la quota"; il punto (3) a 5 seed per FedProx. Resta
 un'associazione: la causa si prova con le run a solo taglio e solo rumore.
 
+**Prova a 30 round con DP, seed 42 (2026-10-05; quarta macchina, `experiments_altre_macchine/_rq3_mu0_eps64_r30_s42`
+e `_rq3_mu0.01_eps64_r30_s42`, commit 2341da6 pulito, LiRA ridotta).** FedAvg al round 30 ha una quota cumulata di
+5.38 (prevista fra 5 e 6) e ai round 26-30 vale 0.0102 (media geometrica), dentro la fascia di FedProx allo stesso
+rumore (0.006-0.011): a 10 round gran parte del costo di FedAvg è velocità. FedProx ai round 26-30 vale 0.0142, più di
+FedAvg, e la sua loss sale piano dopo il round 10 (0.0075 ai round 6-10, 0.0087 agli 11-15, 0.0129 ai 21-25), con
+aggiornamenti fra 0.19 e 0.29 contro un rumore aggregato di norma circa 1.25 per round: è il segnale che il pavimento di
+FedProx è di rumore e che con abbastanza round FedAvg lo supera. Un seed solo, con oscillazioni per round fino a un
+fattore 4 (FedProx 0.046 al round 25): l'inversione è un'ipotesi da verificare a 5 seed (`ESPERIMENTI.md`). Per il paper
+RQ3 va detta a budget fisso di round: a 10 round FedProx costa circa un terzo di FedAvg; con più round il vantaggio si
+riduce e può invertirsi. La quarta macchina non riproduce il Mac principale cifra per cifra (round 1: norme 8.8969,
+8.4754, 4.6364 contro 8.8392, 8.4689, 4.6367; round 10 FedAvg 0.0198 contro 0.0130): vale il confronto fra bracci
+della stessa macchina, non lo scambio di numeri fra macchine.
+
+**Inizializzazione comune, con DP (2026-10-05; Windows, `experiments_altre_macchine/rq3-ci-*`, commit ff23a1c pulito, 5
+seed per condizione con DP e per FedAvg senza DP, 1 seed per FedProx senza DP).** Con tutti i client che partono dagli
+stessi pesi, FedProx con DP batte ancora FedAvg in 5 seed su 5: loss al round 10 0.0081 contro 0.0166 (medie
+geometriche; a init casuale sulla stessa macchina 0.0068 contro 0.0196), rapporto 0.49 contro 0.34, t(4) = -4.3 sul
+logaritmo del rapporto. Il regime del taglio non cambia: FedAvg ha aggiornamenti fra 8 e 6 per tutto il training
+(quota cumulata 1.42 contro 1.46), FedProx scende sotto C dal round 3 (8.72 contro 8.58). Le norme grandi di FedAvg
+non vengono quindi dalla media di tre reti indipendenti al round 1, ma dall'addestramento locale (50 epoche) che porta
+ogni client lontano dal modello globale; il termine prossimale le tiene piccole. Senza DP FedAvg non cambia (0.00041
+contro 0.00038). Costo di FedAvg con DP rispetto al proprio modello senza DP: 40 volte (52 a init casuale). RQ3 regge
+all'inizializzazione; il riferimento in simulazione per la validazione sul deployment ha ora le celle con DP a 5 seed.
+
 ## 4. Cosa manca
 
 L'elenco ordinato, con comandi e prerequisiti, è `ESPERIMENTI.md`. E-A è chiuso (sezione

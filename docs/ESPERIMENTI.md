@@ -1000,6 +1000,46 @@ limite da taglio (fra 0.011 e 0.015 non decide). (c) Sotto FedProx a 30 round: i
 fissato dal rumore, ai round 26-30 resta fra 0.004 e 0.011; se scende chiaramente sotto 0.004, il pavimento non è di
 rumore e la lettura in due regimi va rivista.
 
+**Esito della prova a 30 round (2026-10-05).** Le due run sono finite il 2 ottobre (FedAvg alle 12:34, FedProx alle
+13:56, ora del Mac di Domenico), commit 2341da6 pulito, 2 "Esperimento completato", zero errori; circa 75 minuti per
+run, molto meno della stima. Importate in `experiments_altre_macchine` (PROVENIENZA). Il controllo fra macchine non è
+superato: i round 1-10 non coincidono con il Mac principale (round 1: norme 8.8969, 8.4754, 4.6364 e loss globale
+0.001195, contro 8.8392, 8.4689, 4.6367 e 0.001200). La quarta macchina non è intercambiabile cifra per cifra; il
+confronto resta fra i due bracci sulla stessa macchina. Statistica fissata prima (media geometrica della loss
+sull'holdout ai round 26-30): FedAvg 0.0102 con quota cumulata 5.38, dentro la fascia 0.006-0.011, esito (a); FedProx
+0.0142, sopra FedAvg e in salita dal round 10, quindi è vera anche la condizione dell'esito (c). FedProx non scende sotto
+0.004. Un seed solo: lettura in `STATO.md` 3.10.
+
+**FedAvg e FedProx con DP a 30 round, 5 seed, sul Mac principale (proposta del 2026-10-05).** Stessi config e flag
+della prova (LiRA ridotta, numeri di LiRA non validi), seed 42-1234, i due bracci di ogni seed uno dopo l'altro. Sul Mac
+principale i round 1-10 devono coincidere in ogni cifra con `rq3-mu0-eps64` e `rq1-eps64` (stessa macchina, codice di
+training invariato da 8d44ae3): le run a 30 round sono un'estensione di quelle a 10. Circa un'ora per run (dai tempi delle
+run per le norme). Il 5 ottobre il Mac serve libero alle 18:00: un seed nuovo parte solo prima delle 15:45, così la coppia
+finisce in tempo; i seed rimasti si fanno dopo, nello stesso ordine.
+
+```bash
+cd ~/Documents/ChargeShield-FL && nohup caffeinate -ims bash -c '
+set -e
+for s in 123 456 789 1234 42; do
+  [ -e experiments/_rq3_mu0.01_eps64_r30/.fatto_s$s ] && continue
+  [ "$(date +%H%M)" -lt 1545 ] || break
+  for p in rq3_mu0_eps64:_rq3_mu0_eps64_r30 rq1_eps64:_rq3_mu0.01_eps64_r30; do
+    c=${p%%:*}; d=${p##*:}
+    python3 scripts/run_experiments.py --config config/experiment_$c.yaml --rounds 30 --seed $s --n-shadow 2 --shadow-epochs-cap 20 --sweep-dir experiments/$d
+  done
+  touch experiments/_rq3_mu0.01_eps64_r30/.fatto_s$s
+done
+' < /dev/null >> logs/rq3_dp_r30_mac.log 2>&1 & disown
+```
+
+Previsione, scritta prima (dal seed 42 della quarta macchina). Statistica per seed: media geometrica della loss
+sull'holdout ai round 26-30. (a) FedAvg nella fascia di FedProx allo stesso rumore (0.006-0.011) in almeno 4 seed su 5:
+a 10 round il costo di FedAvg è soprattutto velocità. (c) FedAvg sotto FedProx in almeno 4 seed su 5: con abbastanza
+round il vantaggio di FedProx si inverte; se FedProx resta sotto o pari in 3 seed o più, il seed 42 era rumore e la
+lettura è "FedAvg raggiunge FedProx ma non lo supera". Deriva di FedProx: media ai round 26-30 sopra quella ai round
+6-10 in almeno 4 seed su 5, segno che con aggiornamenti piccoli il rumore si accumula. Si riporta anche il rapporto
+FedAvg/FedProx ai round 26-30 per seed, con la dispersione.
+
 **Norme della griglia di ε e seed di FedProx a C = 0.25 (proposta del 2026-10-02, per `STATO.md` 3.10).** Le
 run di `rq1-eps{2,4,8,16}` (5 seed, Mac principale, commit f145b79 ed ed0e1f9) non hanno salvato le norme dei delta.
 Da allora il percorso di training con DP per client non è cambiato (diff su `src/ml` e `run_experiments.py`: solo
@@ -1097,6 +1137,16 @@ l'inversione resta. In tutti e due i casi le quattro serie con DP devono cadere 
 quota cumulata (`STATO.md` 3.10). Se l'inversione sparisce ma i punti restano sulla curva, RQ3 si riformula:
 il vantaggio di FedProx sotto DP dipende da quanto sono grandi gli aggiornamenti, e l'inizializzazione è uno
 dei fattori che li rende grandi.
+
+**Esito parziale (2026-10-05, 16 run su 20).** Finite su Windows le due condizioni con DP (5 seed ciascuna) e FedAvg
+senza DP (5 seed), commit ff23a1c pulito; di FedProx senza DP c'è solo il seed 42. La finestra di FedProx ha smesso di
+scrivere nel log il 3 ottobre alle 17:09 (ora di Windows), a metà del seed 123 senza DP, senza errori nel log: processo
+fermo o chiuso, da verificare e rilanciare dai seed mancanti. Importate da `rq3_ci_windows.zip` (PROVENIENZA). La
+previsione regge nel ramo "le norme restano sopra C": con l'inizializzazione comune FedAvg ha ancora aggiornamenti fra 8
+e 6 (quota per round 0.12-0.17, quota cumulata 1.42 contro 1.46 a init casuale) e FedProx scende sotto C dal round 3
+(quota cumulata 8.72 contro 8.58). Con DP FedProx batte FedAvg in 5 seed su 5 (rapporto delle loss al round 10, media
+geometrica 0.49, t(4) = -4.3 sul logaritmo; a init casuale 0.34): l'inversione resta e RQ3 regge all'inizializzazione.
+Dettagli in `STATO.md` 3.10.
 
 **Non previsto.** FedProx sulla DP per record, sull'intera griglia di ε o nelle campagne canary; superficie A2.
 
