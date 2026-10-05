@@ -570,7 +570,8 @@ altre al solo seed 42 (FedProx con C = 0.25, 0.5, 1 e ε da 16 a 256; FedAvg con
 di ε da 2 a 16 a 5 seed non ha le norme nel JSON né nel log (il campo `sensitivity` dell'IDS è un rapporto fra
 le dimensioni dei dati, non una norma) ed è esclusa. (1) A parità di rumore aggregato
 (C/ε = 1/64) le sette impostazioni seguono la stessa curva fino a una quota cumulata di circa 1.5: loss sull'holdout
-0.057-0.072 a quota 0.65 e 0.014-0.018 a quota 1.5. (2) FedProx con C = 0.25 a ε = 16 (stesso C/ε, un seed)
+0.057-0.072 a quota 0.65 e 0.014-0.018 a quota 1.5. (2) FedProx con C = 0.25 a ε = 16 (stesso C/ε, un seed; rivisto a 5
+seed nel paragrafo successivo)
 trattiene quanto FedAvg (13% contro 12% al round 2) e sta sulla curva di FedAvg (0.067 contro 0.067 a quota 0.65,
 0.014 contro 0.014 a 1.5) con passi applicati quattro volte più piccoli: conta la quota di soluzione locale
 trattenuta, non il motivo del taglio né l'algoritmo. (3) Sotto quota circa 1 il rumore conta poco (FedAvg seed 42 a
@@ -589,6 +590,28 @@ impostazioni e si può usare così; il punto (2), che è la frase più forte (il
 che i suoi aggiornamenti passano il taglio, non nell'algoritmo in sé), e il pavimento del punto (3) aspettano i
 seed mancanti (`ESPERIMENTI.md`, norme della griglia di ε e seed di FedProx a C = 0.25). Previsione per la prova
 a 30 round in `ESPERIMENTI.md` (linea per il paper DSN).
+
+**Aggiornamento a 5 seed (2026-10-05).** Rifatte sul Mac principale, con LiRA ridotta, le run di `rq1-eps16` e
+`rq1-eps8` (5 seed ciascuna) e i 4 seed mancanti di FedProx a C = 0.25, ε = 16 (`experiments/_rq1_eps16_norme`,
+`_rq1_eps8_norme`, `_op_C0.25_eps16_seed`; commit 0b1d8a9 e ff23a1c puliti). Per ε = 16 e 8 la loss globale e la
+loss sull'holdout per round coincidono in ogni cifra con i JSON originali: le norme sono quelle delle run originali.
+Punto (2) rivisto. FedProx tagliato quanto FedAvg perde il vantaggio di FedProx round per round: al round 2 vale
+0.153 (FedAvg 0.132, FedProx a C = 1 0.056), al round 10 0.0142 (FedAvg 0.0122, FedProx a C = 1 0.0065), cioè 9.6
+volte FedProx senza DP contro 4.4. Il vantaggio di FedProx viene dal fatto che i suoi aggiornamenti passano il
+taglio, non dall'algoritmo in sé: questa frase regge a 5 seed. Non regge invece la coincidenza esatta con la curva
+comune vista a un seed: a 5 seed FedProx a C = 0.25 sta sopra (0.076 contro 0.057-0.072 a quota 0.65, 0.029 contro
+0.014-0.018 a quota 1.5). Con lo stesso rumore e passi quattro volte più piccoli conta anche il passo applicato
+rispetto al rumore: la quota trattenuta spiega la differenza fra i due algoritmi, ma a rumore fisso un C più piccolo
+costa di più. Punto (3) confermato a 5 seed per FedProx a C = 1. A ε = 16 (rumore quadruplo) gli aggiornamenti
+scendono sotto C dal round 4 (norma mediana circa 0.75, contro circa 0.27 a ε = 64) e la quota cumulata arriva a
+8.7 come a ε = 64: il costo in più non passa dal taglio, è il pavimento del rumore (mediana per round a quota ≥ 2
+0.080, contro 0.010). A ε = 8 (otto volte) gli aggiornamenti restano intorno a C (quota per round 0.72-0.93) e la
+loss resta fra 0.15 e 0.30 in tutti i round (mediana 0.23): il modello quasi non impara, il rumore domina e passa
+anche un po' dal taglio. Il pavimento dipende dal livello di rumore e non da come lo si alza: a rumore quadruplo
+0.080 (FedProx, ε = 16, 5 seed) e 0.058 (FedAvg, C = 4, un seed), a otto volte 0.23 (FedProx, ε = 8) e 0.24 (FedAvg,
+C = 8). Uso nel paper: il punto (1) così com'è; il punto (2) nella forma rivista (FedProx tagliato come FedAvg perde
+il vantaggio, 5 seed), non nella forma "conta solo la quota"; il punto (3) a 5 seed per FedProx. Resta
+un'associazione: la causa si prova con le run a solo taglio e solo rumore.
 
 ## 4. Cosa manca
 

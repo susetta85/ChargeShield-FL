@@ -1037,6 +1037,16 @@ due regimi è confermata a 5 seed. Se le norme restano sopra C, perché il rumor
 aggiornamenti successivi devono correggerlo, la quota resta bassa e anche lì il costo passa dal taglio: la lettura
 in due regimi va riscritta, con il rumore che agisce anche attraverso il taglio.
 
+**Esito (2026-10-05).** Le 14 run sono finite il 2 ottobre alle 20:05, zero errori, commit 0b1d8a9 (la prima) e
+ff23a1c (le altre), puliti. Riproduzione: per i 10 seed di ε = 16 e 8 la loss globale e la loss sull'holdout per
+round coincidono in ogni cifra con i JSON originali (f145b79 ed ed0e1f9). FedProx a C = 0.25, ε = 16: regge la
+prima parte della previsione (al round 2 0.153, vicino a FedAvg, 0.132, e lontano da FedProx a C = 1, 0.056), non
+la seconda (sta sopra la curva comune: 0.076 a quota 0.65, 0.029 a quota 1.5). ε = 16: aggiornamenti sotto C dal
+round 4, quota cumulata 8.7, pavimento di rumore: lettura in due regimi confermata. ε = 8: aggiornamenti intorno a C
+(quota per round 0.72-0.93), il rumore passa anche un po' dal taglio, ma il modello quasi non impara. Dettagli in
+`STATO.md` 3.10. ε = 4 e 2 non aggiungono niente alla lettura (ancora più rumore, modello che non impara) e non si
+rifanno, salvo decisione diversa.
+
 **Inizializzazione comune su Windows (punto 4 della coda, lanciata il 2026-10-02).** Su Windows ci sono
 già le quattro celle RQ3 a init casuale a 5 seed (`experiments_altre_macchine/rq3-mu0`, `rq3-mu0.01`,
 `rq3-mu0-eps64`, `rq3-mu0.01-eps64`), quindi il confronto init comune contro init casuale resta sulla stessa

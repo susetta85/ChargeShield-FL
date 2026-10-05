@@ -4,7 +4,7 @@ Per ogni run e round: quota trattenuta f = sum_k w_k min(1, C/||Delta_k||) con w
 (n_train_per_client), quota cumulata S = sum_t f_t, loss sull'holdout del modello rilasciato
 (-per_round[r].mia.non_member_score_mean). Scrive risultati/clipping/per_round.csv e per_run.csv
 e stampa la tabella per impostazione. Non tocca esperimenti ne' codice di training.
-Uso: python3 scripts/analisi_clipping_json.py  (dalla radice del repository). 2026-10-02.
+Uso: python3 scripts/analisi_clipping_json.py  (dalla radice del repository). 2026-10-02, esteso il 2026-10-05.
 """
 import json, glob, math, statistics as st, csv, os
 OUT = "risultati/clipping"
@@ -19,7 +19,7 @@ SETS = [
  ("FedProx C1 e64 (Win)",     f"{EA}/rq3-mu0.01-eps64",              f"{EA}/rq3-mu0.01",          "Windows",    "FedProx"),
  ("FedProx C1 e64 per_site (Mac2)", f"{EA}/rq2-per_site-eps64",      f"{EA}/rq2-per_site",        "secondo Mac","FedProx"),
  ("FedProx C1 e64 iid (Mac2)",      f"{EA}/rq2-iid-eps64",           f"{EA}/rq2-iid",             "secondo Mac","FedProx"),
- ("FedProx C0.25 e16",  "experiments/_op_C0.25_eps16",  "experiments/nodp-sweep2", "Mac princ.", "FedProx"),
+ ("FedProx C0.25 e16",  ["experiments/_op_C0.25_eps16", "experiments/_op_C0.25_eps16_seed"], "experiments/nodp-sweep2", "Mac princ.", "FedProx"),
  ("FedProx C0.25 e64",  "experiments/_op_C0.25_eps64",  "experiments/nodp-sweep2", "Mac princ.", "FedProx"),
  ("FedProx C0.25 e256", "experiments/_op_C0.25_eps256", "experiments/nodp-sweep2", "Mac princ.", "FedProx"),
  ("FedProx C0.5 e16",   "experiments/_op_C0.5_eps16",   "experiments/nodp-sweep2", "Mac princ.", "FedProx"),
@@ -31,10 +31,14 @@ SETS = [
  ("FedAvg C2 e64",      "experiments/_rq3_mu0_eps64_C2_s42", "experiments/rq3-mu0",  "Mac princ.", "FedAvg"),
  ("FedAvg C4 e64",      "experiments/_rq3_mu0_eps64_C4_s42", "experiments/rq3-mu0",  "Mac princ.", "FedAvg"),
  ("FedAvg C8 e64",      "experiments/_rq3_mu0_eps64_C8_s42", "experiments/rq3-mu0",  "Mac princ.", "FedAvg"),
+ # 2026-10-05: run di rq1-eps16 e rq1-eps8 rifatte per le norme (identiche alle originali, ESPERIMENTI)
+ ("FedProx C1 e16",     "experiments/_rq1_eps16_norme", "experiments/nodp-sweep2", "Mac princ.", "FedProx"),
+ ("FedProx C1 e8",      "experiments/_rq1_eps8_norme",  "experiments/nodp-sweep2", "Mac princ.", "FedProx"),
 ]
 def load(d):
     out = {}
-    for f in glob.glob(d + "/experiment_*.json"):
+    dirs = d if isinstance(d, (list, tuple)) else [d]
+    for f in [f for x in dirs for f in glob.glob(x + "/experiment_*.json")]:
         j = json.load(open(f)); out[j["config"]["seed"]] = j
     return out
 def hold(j, r): return -j["per_round"][str(r)]["mia"]["non_member_score_mean"]
