@@ -1040,6 +1040,20 @@ lettura è "FedAvg raggiunge FedProx ma non lo supera". Deriva di FedProx: media
 6-10 in almeno 4 seed su 5, segno che con aggiornamenti piccoli il rumore si accumula. Si riporta anche il rapporto
 FedAvg/FedProx ai round 26-30 per seed, con la dispersione.
 
+**Esito parziale, 4 seed (2026-10-05).** Sul Mac principale finiti i seed 123, 456, 789 e 1234 (8 run, dalle 9:28 alle
+17:13, commit b4285e9 pulito, zero errori); il seed 42 non è partito per il limite orario e resta da fare. In tutte le
+8 run i round 1-10 coincidono in ogni cifra con `rq3-mu0-eps64` e `rq1-eps64`. Media geometrica della loss sull'holdout
+ai round 26-30: FedAvg 0.0075, 0.0050, 0.0069, 0.0067 (quota cumulata al round 30 fra 5.0 e 5.7); FedProx 0.0146,
+0.0051, 0.0080, 0.0071. (a) regge: FedAvg è nella fascia 0.006-0.011 in 3 seed su 4 e nel quarto sta sotto (0.0050).
+(c): FedAvg sta sotto FedProx in 4 seed su 4, e anche nel seed 42 della quarta macchina, quindi la soglia fissata prima
+(almeno 4 su 5) è raggiunta; ma i rapporti FedAvg/FedProx sono 0.52, 0.98, 0.87, 0.95 (0.71 al seed 42 della quarta
+macchina), media geometrica 0.78, t(4) = -2.1, p = 0.11: un vantaggio piccolo, dentro la variabilità fra seed. Deriva di
+FedProx non confermata: la media ai round 26-30 supera quella ai round 6-10 solo nei seed 123 e 42, contro i 4 su 5
+richiesti. Medie per blocchi di 5 round sui 4 seed: FedAvg 0.110, 0.028, 0.011, 0.0087, 0.0081, 0.0065; FedProx 0.032,
+0.0085, 0.012, 0.0091, 0.0101, 0.0081. Lettura: dal round 11-15 i due algoritmi stanno sullo stesso pavimento di rumore;
+il vantaggio di FedProx con DP è un vantaggio di velocità a budget fisso di round, non un modello finale migliore, e
+con 30 round FedAvg lo raggiunge e forse lo supera di poco.
+
 **Norme della griglia di ε e seed di FedProx a C = 0.25 (proposta del 2026-10-02, per `STATO.md` 3.10).** Le
 run di `rq1-eps{2,4,8,16}` (5 seed, Mac principale, commit f145b79 ed ed0e1f9) non hanno salvato le norme dei delta.
 Da allora il percorso di training con DP per client non è cambiato (diff su `src/ml` e `run_experiments.py`: solo
@@ -1147,6 +1161,118 @@ e 6 (quota per round 0.12-0.17, quota cumulata 1.42 contro 1.46 a init casuale) 
 (quota cumulata 8.72 contro 8.58). Con DP FedProx batte FedAvg in 5 seed su 5 (rapporto delle loss al round 10, media
 geometrica 0.49, t(4) = -4.3 sul logaritmo; a init casuale 0.34): l'inversione resta e RQ3 regge all'inizializzazione.
 Dettagli in `STATO.md` 3.10.
+
+**Flag per le ablazioni (punto 1 della coda, scritti il 2026-10-05).** In `scripts/run_experiments.py`
+`--dp-ablation {full, clip-only, noise-only}` e `--skip-attacks`; in `GradientManager` i metodi `clip_no_noise()` e
+`noise_no_clip()`. `clip-only` taglia il delta a C come la DP completa e non aggiunge rumore; `noise-only` aggiunge lo
+stesso rumore della DP completa (σ tarato su C) senza tagliare. Valgono solo con dp-fedavg o local e senza `--no-dp`;
+gli shadow di LiRA usano lo stesso meccanismo dei client. Nel JSON: `dp_ablation` e `skipped_attacks`; con le
+ablazioni `epsilon_cumulative_*` restano None (nessuna garanzia, segnalazione 38). `--skip-attacks lira,shadow` salta
+gli attacchi indicati; la loss sull'holdout viene da Yeom, che resta. Con `full`, il default, il codice fa quello di
+prima. Config nuovo `experiment_rq3_mu0_eps64_C0.5.yaml` (FedAvg, C = 0.5). Test nuovi in `tests/test_dp_ablation.py`
+(18): con il solo taglio l'update inviato è esattamente il grezzo tagliato; con il solo rumore la differenza dal grezzo
+ha deviazione standard σ; a parità di seed `privatize()` è il taglio più lo stesso rumore; le combinazioni non valide
+escono prima di caricare i dati. Suite completa: 423 passati e 5 falliti, gli stessi 5 che falliscono senza la modifica
+(dataset ChargePlace assente, segnalazione 39). Prova end-to-end su dati sintetici: con il taglio inattivo
+`noise-only` dà gli stessi numeri di `full`, come deve. Prova sui dati reali prima del commit, sul Mac principale:
+
+```bash
+cd ~/Documents/ChargeShield-FL && for a in full clip-only noise-only; do python3 scripts/run_experiments.py --config config/experiment_rq3_mu0_eps64.yaml --rounds 2 --seed 42 --dp-ablation $a --skip-attacks lira,shadow --sweep-dir experiments/_smoke_ablation_$a < /dev/null >> logs/smoke_ablation.log 2>&1; done
+```
+
+Criterio: `full` a 2 round coincide in ogni cifra con i round 1 e 2 di `rq3-mu0-eps64` seed 42 (norme, loss globale,
+loss sull'holdout); `clip-only` e `noise-only` hanno le stesse norme del round 1 (il round 1 non dipende dal
+meccanismo) e loss diverse dal round 2.
+
+**Esito della prova (2026-10-05, 18:10-18:17).** Tre run, zero errori, JSON con `b4285e9-dirty` (patch non ancora
+committata, atteso). `full`: norme, loss globale e loss sull'holdout dei round 1 e 2 identiche in ogni cifra a
+`rq3-mu0-eps64` seed 42 (0.14190 e 0.11174): con il default il codice fa quello di prima. `clip-only` e `noise-only`:
+norme del round 1 identiche, loss diverse dal round 1 (il meccanismo agisce già sul primo aggregato), `dp_ablation` e
+`skipped_attacks` nel JSON, `epsilon_cumulative_*` a None, nome con il suffisso dell'ablazione. Primo segnale, a un seed e
+2 round, da non leggere ancora: FedAvg con il solo rumore ha 0.0073 al round 2, contro 0.112 con la DP completa e 0.131
+con il solo taglio.
+
+**Lancio effettivo (2026-10-05 sera), dopo il commit dei flag.** Il seed 42 dei 30 round (rimasto fuori per il limite
+orario) e poi le 29 run di solo taglio e solo rumore, in un'unica coda sul Mac principale; ogni run scrive nel log della
+sua campagna.
+
+```bash
+cd ~/Documents/ChargeShield-FL && nohup caffeinate -ims bash -c '
+set -e
+if [ ! -e experiments/_rq3_mu0.01_eps64_r30/.fatto_s42 ]; then
+  for p in rq3_mu0_eps64:_rq3_mu0_eps64_r30 rq1_eps64:_rq3_mu0.01_eps64_r30; do
+    c=${p%%:*}; d=${p##*:}
+    python3 scripts/run_experiments.py --config config/experiment_$c.yaml --rounds 30 --seed 42 --n-shadow 2 --shadow-epochs-cap 20 --sweep-dir experiments/$d >> logs/rq3_dp_r30_mac.log 2>&1
+  done
+  touch experiments/_rq3_mu0.01_eps64_r30/.fatto_s42
+fi
+for s in 42 123 456 789 1234; do
+  for p in rq3_mu0_eps64:_rq3_mu0_eps64 rq1_eps64:_rq3_mu0.01_eps64; do
+    c=${p%%:*}; b=${p##*:}
+    for a in clip-only noise-only; do
+      d=${b}_${a}
+      [ -e experiments/$d/.fatto_s$s ] && continue
+      python3 scripts/run_experiments.py --config config/experiment_$c.yaml --rounds 10 --seed $s --dp-ablation $a --skip-attacks lira,shadow --sweep-dir experiments/$d >> logs/ablazioni_dp.log 2>&1
+      touch experiments/$d/.fatto_s$s
+    done
+  done
+done
+for C in 0.5 2 4 8; do
+  for a in clip-only noise-only; do
+    d=_rq3_mu0_eps64_C${C}_${a}_s42
+    [ -e experiments/$d/.fatto ] && continue
+    python3 scripts/run_experiments.py --config config/experiment_rq3_mu0_eps64_C$C.yaml --rounds 10 --seed 42 --dp-ablation $a --skip-attacks lira,shadow --sweep-dir experiments/$d >> logs/ablazioni_dp.log 2>&1
+    touch experiments/$d/.fatto
+  done
+done
+d=_rq3_mu0_eps64_C0.5_s42
+[ -e experiments/$d/.fatto ] || { python3 scripts/run_experiments.py --config config/experiment_rq3_mu0_eps64_C0.5.yaml --rounds 10 --seed 42 --skip-attacks lira,shadow --sweep-dir experiments/$d >> logs/ablazioni_dp.log 2>&1 && touch experiments/$d/.fatto; }
+' < /dev/null > logs/coda_notte_2026-10-05.log 2>&1 & disown
+```
+
+**Solo taglio e solo rumore (punto 2 della coda, da lanciare dopo il commit dei flag).** Mac principale, dove ci sono
+FedAvg e FedProx con DP a 5 seed, i rispettivi modelli senza DP e lo screening di C. Prima C = 1 per i due algoritmi a
+5 seed (20 run), poi FedAvg a C = 0.5, 2, 4, 8 al seed 42 con le due ablazioni (8 run) e la DP completa a C = 0.5 al
+seed 42. Attacchi LiRA e Shadow saltati: servono solo le loss. Circa 12 minuti per run, 29 run circa 6 ore.
+
+```bash
+cd ~/Documents/ChargeShield-FL && nohup caffeinate -ims bash -c '
+set -e
+for s in 42 123 456 789 1234; do
+  for p in rq3_mu0_eps64:_rq3_mu0_eps64 rq1_eps64:_rq3_mu0.01_eps64; do
+    c=${p%%:*}; b=${p##*:}
+    for a in clip-only noise-only; do
+      d=${b}_${a}
+      [ -e experiments/$d/.fatto_s$s ] && continue
+      python3 scripts/run_experiments.py --config config/experiment_$c.yaml --rounds 10 --seed $s --dp-ablation $a --skip-attacks lira,shadow --sweep-dir experiments/$d
+      touch experiments/$d/.fatto_s$s
+    done
+  done
+done
+for C in 0.5 2 4 8; do
+  for a in clip-only noise-only; do
+    d=_rq3_mu0_eps64_C${C}_${a}_s42
+    [ -e experiments/$d/.fatto ] && continue
+    python3 scripts/run_experiments.py --config config/experiment_rq3_mu0_eps64_C$C.yaml --rounds 10 --seed 42 --dp-ablation $a --skip-attacks lira,shadow --sweep-dir experiments/$d
+    touch experiments/$d/.fatto
+  done
+done
+d=_rq3_mu0_eps64_C0.5_s42
+[ -e experiments/$d/.fatto ] || { python3 scripts/run_experiments.py --config config/experiment_rq3_mu0_eps64_C0.5.yaml --rounds 10 --seed 42 --skip-attacks lira,shadow --sweep-dir experiments/$d && touch experiments/$d/.fatto; }
+' < /dev/null >> logs/ablazioni_dp.log 2>&1 & disown
+```
+
+Previsione, scritta prima. Statistica: loss sull'holdout al round 10, media geometrica sui 5 seed, confrontata con la
+DP completa (`rq3-mu0-eps64` 0.0122, `rq1-eps64` 0.0065) e con il modello senza DP dello stesso algoritmo (`rq3-mu0`
+circa 0.0004, `nodp-sweep2` circa 0.0015), tutte sul Mac principale. (1) FedAvg a C = 1: il costo sta nel taglio, perché
+al round 10 FedAvg è ancora nel regime della quota trattenuta (quota cumulata 1.46). Solo taglio entro un fattore 1.5
+dalla DP completa e sopra il solo rumore; il solo rumore vicino al pavimento del rumore (0.005-0.012). Se invece il solo
+taglio sta vicino al senza DP e il costo lo porta il rumore, la spiegazione col taglio cade per FedAvg. (2) FedProx a
+C = 1: il costo sta nel rumore, perché dal round 3-4 il taglio non agisce più. Solo rumore entro un fattore 1.5 dalla
+DP completa; solo taglio sotto 3 volte il proprio senza DP (sotto circa 0.0045). (3) FedAvg al seed 42 da C = 0.5 a 8:
+il costo del solo taglio scende con C, quello del solo rumore sale, e le due curve si incrociano fra C = 1 e 2; i due
+costi non devono per forza sommarsi a quello della DP completa. Se valgono (1) e (2), la frase causale di RQ3 è: sotto
+DP per client il costo di FedAvg viene dal taglio, quello di FedProx dal rumore.
 
 **Non previsto.** FedProx sulla DP per record, sull'intera griglia di ε o nelle campagne canary; superficie A2.
 

@@ -307,6 +307,93 @@ class GradientManager(AbstractMLModel):
 
         return clipped_update
 
+    # ── Ablazioni del meccanismo per client (2026-10-05, segnalazione 38) ──────
+    # Per separare il costo del taglio da quello del rumore nel meccanismo per
+    # client (dp-fedavg/local), servono i due pezzi di privatize() da soli.
+    # Nessuna delle due ablazioni da' una garanzia DP: clip_no_noise() non
+    # aggiunge rumore, noise_no_clip() non limita la sensibilita'. Il rumore di
+    # noise_no_clip() resta tarato sul max_grad_norm configurato (stesso sigma
+    # di privatize()), cosi' "solo rumore" ha esattamente il rumore della DP
+    # completa. Gli eventi ML Plane sono emessi a purdue_level=2 come per
+    # privatize(), quindi FLArtifactCollector li tratta come update inviati.
+
+    def clip_no_noise(
+        self,
+        update: GradientUpdate,
+        weight_keys: list[str] | None = None,
+        reference_weights: list[Any] | None = None,
+    ) -> GradientUpdate:
+        """Ablazione "solo taglio": clipping del delta come in privatize(), nessun rumore."""
+        if not update.weights:
+            logger.warning(f"[{update.node_id}] Pesi vuoti — skip clip (ablazione)")
+            return update
+        clipped = self._clip_weights(update.weights, reference=reference_weights, weight_keys=weight_keys)
+        out = GradientUpdate(
+            node_id=update.node_id,
+            cluster_id=update.cluster_id,
+            round_num=update.round_num,
+            weights=clipped,
+            gradients=None,
+            loss=update.loss,
+            n_samples=update.n_samples,
+            metadata={
+                **update.metadata,
+                "dp_ablation": "clip-only",
+                "noise_perturbation_applied": False,
+                "max_grad_norm": self.max_grad_norm,
+            },
+        )
+        self.emit_event(MLPlaneEvent(
+            event_type="gradient_upload",
+            purdue_level=2,
+            payload=out,
+            round_num=update.round_num,
+            metadata={"dp_ablation": "clip-only", "noise_perturbation_applied": False},
+        ))
+        return out
+
+    def noise_no_clip(
+        self,
+        update: GradientUpdate,
+        weight_keys: list[str] | None = None,
+    ) -> GradientUpdate:
+        """Ablazione "solo rumore": stesso rumore di privatize() (sigma tarato su
+        max_grad_norm), nessun clipping. Buffer BatchNorm esclusi come in _add_noise()."""
+        if not update.weights:
+            logger.warning(f"[{update.node_id}] Pesi vuoti — skip rumore (ablazione)")
+            return update
+        tensors = [
+            (w if isinstance(w, torch.Tensor) else torch.tensor(w)).detach().clone()
+            for w in update.weights
+        ]
+        noised = self._add_noise(tensors, weight_keys=weight_keys)
+        out = GradientUpdate(
+            node_id=update.node_id,
+            cluster_id=update.cluster_id,
+            round_num=update.round_num,
+            weights=noised,
+            gradients=None,
+            loss=update.loss,
+            n_samples=update.n_samples,
+            metadata={
+                **update.metadata,
+                "dp_ablation": "noise-only",
+                "noise_perturbation_applied": True,
+                "epsilon": self.epsilon,
+                "delta": self.delta,
+                "sigma": self.sigma,
+                "max_grad_norm": self.max_grad_norm,
+            },
+        )
+        self.emit_event(MLPlaneEvent(
+            event_type="gradient_upload",
+            purdue_level=2,
+            payload=out,
+            round_num=update.round_num,
+            metadata={"dp_ablation": "noise-only", "noise_perturbation_applied": True},
+        ))
+        return out
+
     def privatize_aggregate(
         self,
         global_weights: list[Any],

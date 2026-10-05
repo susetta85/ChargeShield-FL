@@ -626,6 +626,15 @@ riduce e può invertirsi. La quarta macchina non riproduce il Mac principale cif
 8.4754, 4.6364 contro 8.8392, 8.4689, 4.6367; round 10 FedAvg 0.0198 contro 0.0130): vale il confronto fra bracci
 della stessa macchina, non lo scambio di numeri fra macchine.
 
+**30 round con DP, 4 seed sul Mac principale (2026-10-05; `experiments/_rq3_mu0_eps64_r30`, `_rq3_mu0.01_eps64_r30`,
+commit b4285e9 pulito, LiRA ridotta; il seed 42 manca).** I round 1-10 coincidono in ogni cifra con le run a 10
+round. Ai round 26-30 (media geometrica) FedAvg vale 0.0050-0.0075 e FedProx 0.0051-0.0146: FedAvg raggiunge il
+pavimento di FedProx in tutti i seed e sta sotto in 4 su 4 (5 su 5 con il seed 42 della quarta macchina), ma di poco:
+rapporto 0.78 in media geometrica, t(4) = -2.1, p = 0.11. Medie per blocchi di 5 round: dal blocco 11-15 i due
+algoritmi stanno sullo stesso livello (circa 0.008-0.011); FedProx non sale con i round (la deriva vista al seed 42
+non si ripete). Per il paper RQ3 si scrive a budget fisso: a 10 round FedProx costa circa la metà di FedAvg (0.0065
+contro 0.0122), perché il taglio rallenta FedAvg; con abbastanza round i due arrivano allo stesso pavimento di rumore.
+
 **Inizializzazione comune, con DP (2026-10-05; Windows, `experiments_altre_macchine/rq3-ci-*`, commit ff23a1c pulito, 5
 seed per condizione con DP e per FedAvg senza DP, 1 seed per FedProx senza DP).** Con tutti i client che partono dagli
 stessi pesi, FedProx con DP batte ancora FedAvg in 5 seed su 5: loss al round 10 0.0081 contro 0.0166 (medie

@@ -1066,6 +1066,43 @@ def normalize_sessions(
 
 # ── FL Experiment ──────────────────────────────────────────────────────────────
 
+# ── Ablazioni del meccanismo DP per client (2026-10-05, segnalazione 38) ────────
+# "full" e' la DP per client di sempre (taglio del delta + rumore sigma per
+# client). "clip-only" taglia senza rumore, "noise-only" aggiunge lo stesso
+# rumore (sigma tarato su max_grad_norm) senza tagliare: servono a separare il
+# costo del taglio da quello del rumore (linea per il paper DSN, punto 2 della
+# coda). Nessuna delle due ablazioni da' una garanzia DP. Valgono solo per il
+# meccanismo per client (dp-fedavg, local), non per central ne' con --no-dp.
+DP_ABLATIONS = ("full", "clip-only", "noise-only")
+
+
+def _check_dp_ablation(dp_ablation: str, no_dp: bool, dp_mode: str) -> None:
+    """Solleva ValueError se l'ablazione non e' valida o non e' combinabile."""
+    if dp_ablation not in DP_ABLATIONS:
+        raise ValueError(f"dp_ablation non valida: {dp_ablation!r} (attese: {DP_ABLATIONS})")
+    if dp_ablation != "full" and (no_dp or dp_mode not in ("dp-fedavg", "local")):
+        raise ValueError(
+            f"dp_ablation={dp_ablation!r} vale solo con la DP per client "
+            f"(dp_mode dp-fedavg o local) e senza --no-dp; ricevuto no_dp={no_dp}, "
+            f"dp_mode={dp_mode!r}"
+        )
+
+
+def _privatize_per_client(
+    gm: "GradientManager",
+    update: Any,
+    dp_ablation: str = "full",
+    weight_keys: list[str] | None = None,
+    reference_weights: list[Any] | None = None,
+) -> Any:
+    """Meccanismo per client (dp-fedavg/local) secondo l'ablazione scelta."""
+    if dp_ablation == "clip-only":
+        return gm.clip_no_noise(update, weight_keys=weight_keys, reference_weights=reference_weights)
+    if dp_ablation == "noise-only":
+        return gm.noise_no_clip(update, weight_keys=weight_keys)
+    return gm.privatize(update, weight_keys=weight_keys, reference_weights=reference_weights)
+
+
 def run_fl_rounds(
     cfg: dict,
     sessions: list[dict[str, Any]],
@@ -1125,6 +1162,15 @@ def run_fl_rounds(
     exp_cfg  = cfg["experiment"]
     ml_cfg   = cfg["ml"]
     fl_rounds = exp_cfg["fl_rounds"]
+    _dp_ablation = exp_cfg.get("dp_ablation", "full")
+    _check_dp_ablation(_dp_ablation, no_dp=no_dp, dp_mode=dp_mode)
+    if _dp_ablation != "full":
+        logger.warning(
+            f"[ABLAZIONE DP] dp_ablation={_dp_ablation}: "
+            + ("taglio del delta a C, NESSUN rumore" if _dp_ablation == "clip-only"
+               else "rumore sigma tarato su C, NESSUN taglio")
+            + " — nessuna garanzia DP, solo per separare taglio e rumore."
+        )
 
     if cluster_sessions is not None:
         # Sessioni già raggruppate per sito/cluster reale (2026-07-22) — vedi
@@ -1385,8 +1431,11 @@ def run_fl_rounds(
                 # per-client (clip+noise prima dell'aggregazione) — la differenza
                 # tra i due è SOLO nella visibilità di raw_updates per l'IDS
                 # (vedi sotto, dopo il loop dei client).
-                private_update = gm.privatize(
-                    update, weight_keys=weight_keys, reference_weights=pre_round_weights
+                # Ablazioni (2026-10-05): "clip-only"/"noise-only" sostituiscono
+                # privatize() con uno solo dei due pezzi, vedi _privatize_per_client().
+                private_update = _privatize_per_client(
+                    gm, update, _dp_ablation,
+                    weight_keys=weight_keys, reference_weights=pre_round_weights,
                 )
             agg.collect(private_update)
             # Nota (2026-07-22): idem — `private_update` è già stato emesso da
@@ -4001,8 +4050,11 @@ def run_lira(
                             reference_weights=_shadow_pretrain_weights,
                         )
                     else:
-                        _privatized = gm.privatize(
-                            _shadow_update, weight_keys=_shadow_keys,
+                        # Ablazioni (2026-10-05): lo shadow usa lo stesso meccanismo
+                        # dei client reali, anche con clip-only/noise-only.
+                        _privatized = _privatize_per_client(
+                            gm, _shadow_update, exp_cfg.get("dp_ablation", "full"),
+                            weight_keys=_shadow_keys,
                             reference_weights=_shadow_pretrain_weights,
                         )
                     _load_weights_into(shadow_model, _privatized.weights)
@@ -6114,6 +6166,7 @@ def run_registered_attacks(
     holdout_sessions: list[dict[str, Any]],
     fl_results: dict[int, dict[str, Any]],
     extra_attacks: dict[str, type] | None = None,
+    skip_attacks: set[str] | None = None,
     **attack_kwargs: Any,
 ) -> dict[int, dict[str, Any]]:
     """
@@ -6178,6 +6231,11 @@ def run_registered_attacks(
     _registry = ATTACK_REGISTRY if not extra_attacks else {**ATTACK_REGISTRY, **extra_attacks}
     mia_results: dict[int, dict[str, Any]] = {}
     for attack_name, attack_cls in _registry.items():
+        # --skip-attacks (2026-10-05): attacchi saltati per le run di sola
+        # utilita' (ablazioni, prove di meccanismo). Default None: nessun cambio.
+        if skip_attacks and attack_name in skip_attacks:
+            logger.warning(f"Attacco {attack_name} saltato (--skip-attacks)")
+            continue
         attack = attack_cls()
         try:
             attack_results = attack.run(
@@ -6602,10 +6660,14 @@ def save_results(
     # past result too (see scripts/compute_advanced_composition.py). None
     # under no_dp, same guard as epsilon_cumulative_naive.
     _no_dp = cfg["experiment"].get("no_dp", False)
+    # Ablazioni (2026-10-05): senza rumore o senza taglio non c'e' garanzia DP,
+    # quindi nessuna contabilita' cumulata (segnalazione 38).
+    _dp_ablation = cfg["experiment"].get("dp_ablation", "full")
+    _no_guarantee = _no_dp or _dp_ablation != "full"
     _epsilon_advanced: float | None = None
     _delta_advanced: float | None = None
     _epsilon_best_known: float | None = None
-    if not _no_dp:
+    if not _no_guarantee:
         _epsilon_advanced, _delta_advanced = _advanced_composition_epsilon(
             epsilon_per_round=cfg["experiment"]["epsilon"],
             delta_per_round=cfg["experiment"]["delta"],
@@ -6658,6 +6720,10 @@ def save_results(
             # "central" o "local". Vedi docs/CaseStudies.md §2.4.3 per la
             # tassonomia. Irrilevante quando no_dp=True.
             "dp_mode":    cfg["experiment"].get("dp_mode", "dp-fedavg"),
+            # dp_ablation / skipped_attacks (2026-10-05): ablazioni del meccanismo
+            # DP e attacchi saltati, vedi --dp-ablation e --skip-attacks.
+            "dp_ablation": _dp_ablation,
+            "skipped_attacks": cfg["experiment"].get("skipped_attacks"),
             # seed: necessario per multi-seed aggregation (mean±std) — fix M1
             "seed":       cfg["experiment"].get("seed", 42),
             # canary (2026-09-16, Sprint 10zz+113): provenance-bug trovato
@@ -6714,7 +6780,7 @@ def save_results(
             # DP" verificabile numero alla mano, non solo qualitativo.
             # None quando no_dp=True (nessun budget DP consumato).
             "epsilon_cumulative_naive": (
-                None if cfg["experiment"].get("no_dp", False)
+                None if _no_guarantee
                 else cfg["experiment"]["epsilon"] * cfg["experiment"]["fl_rounds"]
             ),
             # epsilon_cumulative_advanced / delta_cumulative_advanced /
@@ -7109,6 +7175,25 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--dp-ablation", type=str, default="full", choices=list(DP_ABLATIONS),
+        help=(
+            "Ablazione del meccanismo DP per client (2026-10-05, segnalazione 38): "
+            "'full' (default) = taglio del delta + rumore, come sempre; "
+            "'clip-only' = solo taglio a max_grad_norm, nessun rumore; "
+            "'noise-only' = solo rumore (sigma tarato su max_grad_norm), nessun taglio. "
+            "Solo con dp-fedavg o local e senza --no-dp. Nessuna garanzia DP per le "
+            "ablazioni: i campi epsilon_cumulative_* del JSON restano None."
+        ),
+    )
+    parser.add_argument(
+        "--skip-attacks", type=str, default=None,
+        help=(
+            "Attacchi da saltare, separati da virgola, fra yeom, shadow, lira "
+            "(2026-10-05): per run di sola utilita'. Es.: --skip-attacks lira. "
+            "Senza LiRA mancano i numeri sui canary e il dump per campione."
+        ),
+    )
+    parser.add_argument(
         "--n-shadow", type=int, default=None,
         help=(
             "Numero di shadow models per LiRA (override config lira.n_shadow). "
@@ -7191,6 +7276,27 @@ def main() -> None:
     cfg["experiment"]["dp_mode"] = args.dp_mode
     if not args.no_dp and args.dp_mode != "dp-fedavg":
         cfg["experiment"]["name"] = cfg["experiment"]["name"] + f"_{args.dp_mode}_dp"
+
+    # Ablazioni del meccanismo DP e attacchi saltati (2026-10-05).
+    try:
+        _check_dp_ablation(args.dp_ablation, no_dp=args.no_dp, dp_mode=args.dp_mode)
+    except ValueError as exc:
+        logger.error(f"--dp-ablation: {exc}")
+        sys.exit(1)
+    cfg["experiment"]["dp_ablation"] = args.dp_ablation
+    if args.dp_ablation != "full":
+        cfg["experiment"]["name"] = cfg["experiment"]["name"] + f"_{args.dp_ablation}"
+    _skip_attacks: set[str] = set()
+    if args.skip_attacks:
+        _skip_attacks = {a.strip() for a in args.skip_attacks.split(",") if a.strip()}
+        _known_attacks = {"yeom", "shadow", "lira", "fedmia_gradient"}
+        _unknown = _skip_attacks - _known_attacks
+        if _unknown:
+            logger.error(f"--skip-attacks: nomi sconosciuti {sorted(_unknown)} (attesi fra {sorted(_known_attacks)})")
+            sys.exit(1)
+        if "lira" in _skip_attacks and args.per_sample_dump:
+            logger.warning("--per-sample-dump ignorato: il dump per campione viene da LiRA, saltato")
+    cfg["experiment"]["skipped_attacks"] = sorted(_skip_attacks) or None
 
     # Warning esplicito se Byzantine è attivo senza --sweep-dir: rischio di mischiare
     # risultati IDS con risultati MIA nella directory experiments/ principale.
@@ -7413,6 +7519,7 @@ def main() -> None:
         mia_results = run_registered_attacks(
             cfg, train_sessions, holdout_sessions, fl_results,
             extra_attacks=_extra_attacks,
+            skip_attacks=_skip_attacks or None,
             n_shadow=n_shadow, shadow_epochs_cap=shadow_cap, no_dp=args.no_dp,
             dp_mode=args.dp_mode, cluster_membership=cluster_membership,
             # Sprint 10zz+17: passato a TUTTI gli attacchi registrati (stesso
