@@ -1242,7 +1242,31 @@ fattore 1.5 da μ = 0 in almeno 4 su 5; con DP μ = 0.1 sopra μ = 0.01 in almen
 Esito della prima tornata (5 run, commit c88a4c5 pulito, zero errori), loss al round 10 con DP: seed 42 μ = 0, 0.001,
 0.01, 0.1: 0.0198, 0.0049, 0.0039, 0.0124; seed 123 μ = 0, 0.001, 0.01: 0.0101, 0.0030, 0.0050. Quota cumulata 1.4-1.5,
 7.9, 8.5-8.6, 9.1. Il seed 123 con μ = 0.01 coincide in ogni cifra con il seed 123 di `_rq3_mu0.01_eps64_dpfedavg`.
-Seconda tornata da importare.
+Seconda tornata importata il 6 ottobre (sotto).
+
+**Esito a 5 seed (2026-10-06).** Seconda tornata: 23 run, dal 5 ottobre alle 21:20 al 6 ottobre alle 03:44 (ora del
+Mac), commit c88a4c5 pulito, zero errori; i JSON della prima tornata contenuti nello zip coincidono byte per byte con
+quelli già importati (PROVENIENZA). Per il seed 42 con DP, μ = 0 e 0.01 sono i round 1-10 delle run a 30 round della
+stessa macchina. Analisi in `Claude outputs/analisi_prova_mu_2026-10-06.py`. Loss sull'holdout al round 10 con DP, media
+geometrica sui 5 seed: μ = 0 0.0158, μ = 0.001 0.0086, μ = 0.01 0.0059, μ = 0.1 0.0103; quota cumulata al round 10 1.47,
+7.99, 8.59, 9.08; norma mediana dei delta al round 10 5.0-8.1, 0.46-0.69, 0.24-0.30, 0.11-0.16. Senza DP: μ = 0 0.00042,
+μ = 0.001 0.00049.
+
+(1) Non regge come scritta. Con DP μ = 0.001 sta sotto μ = 0 in 4 seed su 5, non 5 (al seed 1234 0.0209 contro 0.0132),
+e nella fascia 0.003-0.012 in 3 su 5 (seed 789 e 1234 sopra, 0.019 e 0.021); rapporto con μ = 0 0.54 in media
+geometrica (t(4) = -1.8, p = 0.14). Il taglio sparisce davvero (quota cumulata da 1.5 a 8.0), ma la loss resta sopra
+quella di μ = 0.01: sulla media geometrica dei round 6-10, che pesa meno le oscillazioni di un singolo round, μ = 0.001
+vale 0.0107 contro 0.0078 di μ = 0.01 e 0.0293 di μ = 0, sotto μ = 0 in 5 seed su 5 e sopra μ = 0.01 in 5 su 5. Con quasi
+la stessa quota trattenuta μ = 0.001 fa peggio di μ = 0.01: questi dati non dicono perché. (2) Regge: senza DP μ = 0.001
+sta entro un fattore 1.5 da μ = 0 in 5 seed su 5 (rapporto 1.16, da 0.97 a 1.36, p = 0.09). (3) Regge al limite: con DP
+μ = 0.1 sta sopra μ = 0.01 in 4 seed su 5 (rapporto 1.76, p = 0.056). (4) Regge: la quota cumulata cresce con μ in tutti
+i seed.
+
+Lettura. Con DP la loss al round 10 in funzione di μ ha il minimo intorno a 0.01 (0.0158, 0.0086, 0.0059, 0.0103). Un μ
+minimo toglie il taglio senza costare accuratezza senza DP e con DP porta FedProx sul pavimento di rumore della curva
+comune, ma meno in basso e meno stabilmente di μ = 0.01; un μ grande rallenta l'apprendimento. Il messaggio "basta un μ
+minimo" va attenuato: con la DP per client conviene un μ abbastanza grande da tenere gli aggiornamenti sotto C, e a
+questo budget μ = 0.01 è il migliore dei quattro.
 
 **Flag per le ablazioni (punto 1 della coda, scritti il 2026-10-05).** In `scripts/run_experiments.py`
 `--dp-ablation {full, clip-only, noise-only}` e `--skip-attacks`; in `GradientManager` i metodi `clip_no_noise()` e

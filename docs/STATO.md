@@ -646,10 +646,12 @@ seed 42, al variare di C per FedAvg, il costo del solo taglio scende (0.068 a C 
 rumore sale (0.001 a C = 0.5, 0.35 a C = 8); si incrociano fra C = 1 e 2, e per questo la DP completa vale lo stesso a
 C = 1 e 2. Frase causale per RQ3: sotto DP per client, al punto operativo, il costo di FedAvg viene dal taglio e quello di
 FedProx dal rumore. Placement del rumore: con `central` (quarta macchina, 5 seed) FedProx vale quanto con il rumore lato
-client (rapporto 1.00), quindi la frase vale per la DP per client in generale. Prova su μ (quarta macchina, 2 seed per
-ora): con μ = 0.001 la DP costa quanto FedProx (0.0049 e 0.0030 contro 0.0198 e 0.0101 di FedAvg), mentre senza DP lo
-stesso μ ha l'accuratezza di FedAvg (Mac principale, seed 42: 0.00054 contro 0.00051): un termine prossimale minimo
-toglie il costo del taglio; a 5 seed in arrivo.
+client (rapporto 1.00), quindi la frase vale per la DP per client in generale. Prova su μ (quarta macchina, 5
+seed, commit c88a4c5 pulito, solo Yeom): con DP la loss al round 10 vale 0.0158, 0.0086, 0.0059 e 0.0103 per μ = 0, 0.001,
+0.01 e 0.1 (quota cumulata 1.5, 8.0, 8.6, 9.1); senza DP μ = 0.001 costa poco rispetto a μ = 0 (rapporto 1.16, entro 1.5
+in 5 seed su 5). Un μ minimo toglie il taglio, ma con DP resta sopra μ = 0.01 (in 5 seed su 5 sulla media dei round
+6-10) e non sta sotto μ = 0 in tutti i seed al round 10; μ = 0.1 rallenta. Con la DP per client il μ migliore a questo
+budget è intorno a 0.01, non il più piccolo possibile.
 
 **Inizializzazione comune, con DP (2026-10-05; Windows, `experiments_altre_macchine/rq3-ci-*`, commit ff23a1c pulito, 5
 seed per condizione con DP e per FedAvg senza DP, 1 seed per FedProx senza DP).** Con tutti i client che partono dagli
