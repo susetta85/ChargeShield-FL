@@ -642,16 +642,18 @@ e `_rq3_mu0.01_eps64_*` con `clip-only`/`noise-only`).** Prova causale del mecca
 (il solo taglio riproduce la DP completa, rapporto 0.97); quello di FedProx è il rumore (solo rumore 1.21 volte la DP
 completa, solo taglio 1.5 volte il senza DP). Allo stesso rumore e senza taglio FedAvg arriva più in basso di FedProx
 (0.0044 contro 0.0079, p = 0.07): i suoi aggiornamenti grandi correggono meglio il rumore, coerente con i 30 round. Al
-seed 42, al variare di C per FedAvg, il costo del solo taglio scende (0.068 a C = 0.5, 0.0004 a C = 4) e quello del solo
-rumore sale (0.001 a C = 0.5, 0.35 a C = 8); si incrociano fra C = 1 e 2, e per questo la DP completa vale lo stesso a
-C = 1 e 2. Frase causale per RQ3: sotto DP per client, al punto operativo, il costo di FedAvg viene dal taglio e quello di
+variare di C per FedAvg il costo del solo taglio scende (al seed 42 0.068 a C = 0.5, 0.0004 a C = 4) e quello del solo
+rumore sale (0.001 a C = 0.5, 0.35 a C = 8); si incrociano fra C = 1 e 2 in tutti e tre i seed provati (42, 123, 456): a
+C = 2 la DP completa coincide con il solo rumore (rapporti 0.94-1.15), a C = 1 sta vicino al solo taglio. A C = 2 la DP
+completa è 1.8 volte quella a C = 1 ai seed 123 e 456 (uguale solo al seed 42): dei due, C = 1 è il punto migliore. Frase causale per RQ3: sotto DP per client, al punto operativo, il costo di FedAvg viene dal taglio e quello di
 FedProx dal rumore. Placement del rumore: con `central` (quarta macchina, 5 seed) FedProx vale quanto con il rumore lato
 client (rapporto 1.00), quindi la frase vale per la DP per client in generale. Prova su μ (quarta macchina, 5
 seed, commit c88a4c5 pulito, solo Yeom): con DP la loss al round 10 vale 0.0158, 0.0086, 0.0059 e 0.0103 per μ = 0, 0.001,
 0.01 e 0.1 (quota cumulata 1.5, 8.0, 8.6, 9.1); senza DP μ = 0.001 costa poco rispetto a μ = 0 (rapporto 1.16, entro 1.5
 in 5 seed su 5). Un μ minimo toglie il taglio, ma con DP resta sopra μ = 0.01 (in 5 seed su 5 sulla media dei round
 6-10) e non sta sotto μ = 0 in tutti i seed al round 10; μ = 0.1 rallenta. Con la DP per client il μ migliore a questo
-budget è intorno a 0.01, non il più piccolo possibile.
+budget è intorno a 0.01, non il più piccolo possibile. Sul Mac principale (2026-10-06, 5 seed) la curva si ripete quasi
+uguale: 0.0122, 0.0081, 0.0065, 0.0104; sulla media dei round 6-10 μ = 0.01 sta sotto μ = 0.001 e μ = 0.1 in tutti i seed.
 
 **Inizializzazione comune, con DP (2026-10-05; Windows, `experiments_altre_macchine/rq3-ci-*`, commit ff23a1c pulito, 5
 seed per condizione; FedProx senza DP completato il 2026-10-06).** Con tutti i client che partono dagli

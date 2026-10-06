@@ -1478,6 +1478,23 @@ taglio sta sopra il solo rumore di almeno 10 volte in tutti e due; (b3) la DP co
 da quella a C = 1 dello stesso seed (`rq3-mu0-eps64`: 0.0122 e 0.0063). Se (b1)-(b3) reggono, l'incrocio fra C = 1 e 2
 vale su tre seed.
 
+**Esito (2026-10-06).** 20 run su 20, dalle 9:16 alle 13:06 (ora del Mac), commit 09f5445 pulito, zero errori
+(`logs/mac_mu_C_2026-10-06.log`). (a) Loss al round 10, media geometrica sui 5 seed: μ = 0 0.0122, μ = 0.001 0.0081, μ =
+0.01 0.0065, μ = 0.1 0.0104 (quarta macchina: 0.0158, 0.0086, 0.0059, 0.0103); quota cumulata 1.48, 8.00, 8.57, 9.08.
+(a1) Regge: μ = 0.001 sta fra μ = 0.01 e μ = 0, e sulla media dei round 6-10 sopra μ = 0.01 in 5 seed su 5 (0.0119 contro
+0.0084). (a2) Non regge come scritta: al round 10 μ = 0.1 sta sopra μ = 0.01 in 3 seed su 5 (rapporto 1.59, p = 0.15; al
+seed 456 μ = 0.01 ha un round 10 alto, 0.0103, al seed 789 i due coincidono); sulla media dei round 6-10 sta sopra in 5
+su 5 (rapporti da 1.2 a 1.9). (a3) Regge in 5 seed su 5. Il minimo intorno a μ = 0.01 si ripete sul Mac principale con
+valori quasi uguali a quelli della quarta macchina; il round 10 da solo è rumoroso, la media dei round 6-10 lo mostra in
+tutti i seed. (b) FedAvg, loss al round 10 ai seed 123 e 456: a C = 0.5 solo taglio 0.0588 e 0.0573, solo rumore 0.00116
+e 0.00102; a C = 2 solo taglio 0.0014 e 0.0008, solo rumore 0.0193 e 0.0106, DP completa 0.0222 e 0.0117. (b1) Regge: a C
+= 2 il solo rumore sta sopra il solo taglio in tutti e due (14 e 13 volte). (b2) Regge: a C = 0.5 il solo taglio sta
+sopra il solo rumore di 51 e 56 volte. (b3) Non regge: la DP completa a C = 2 è 1.82 e 1.84 volte quella a C = 1 dello
+stesso seed (0.0122 e 0.0063); solo al seed 42 coincidevano (1.01). L'incrocio fra C = 1 e 2 vale quindi su tre seed: a C
+= 2 la DP completa coincide con il solo rumore (rapporti 0.94, 1.15, 1.10), a C = 1 sta vicino al solo taglio (0.97 sui 5
+seed). La frase "la DP completa vale lo stesso a C = 1 e 2" veniva dal solo seed 42: su tre seed C = 1 è meglio o uguale,
+e questo sostiene la scelta di C = 1 come punto operativo.
+
 **Non previsto.** FedProx sulla DP per record, sull'intera griglia di ε o nelle campagne canary; superficie A2.
 
 ## Rinviato o escluso
