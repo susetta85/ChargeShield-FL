@@ -1171,6 +1171,16 @@ e 6 (quota per round 0.12-0.17, quota cumulata 1.42 contro 1.46 a init casuale) 
 geometrica 0.49, t(4) = -4.3 sul logaritmo; a init casuale 0.34): l'inversione resta e RQ3 regge all'inizializzazione.
 Dettagli in `STATO.md` 3.10.
 
+**Esito completo (2026-10-06, 20 run su 20).** FedProx senza DP rilanciato su Windows il 5 ottobre (seed 123, 456, 789,
+1234, due finestre; il seed 1234 ha scritto in un log a parte), commit ff23a1c pulito, zero Traceback; importato da
+`rq3_ci_fedprox_nodp_windows.zip` (PROVENIENZA). Loss sull'holdout al round 10, media geometrica sui 5 seed, init comune
+(init casuale sulla stessa macchina): FedAvg senza DP 0.00041 (0.00038), FedProx senza DP 0.00081 (0.00147), FedAvg con DP
+0.0166 (0.0196), FedProx con DP 0.0081 (0.0068). Senza DP FedProx costa 1.96 volte FedAvg (3.90 a init casuale; 5 seed su
+5, t(4) = 4.5): l'init comune dimezza lo svantaggio di FedProx senza DP. Costo della DP rispetto al proprio modello senza
+DP: FedAvg 40 volte (52), FedProx 10 volte (4.6); rapporto fra i due costi 0.25 (0.09), sotto 1 in 5 seed su 5. Con l'init
+comune l'inversione si riduce (FedProx/FedAvg con DP 0.49 contro 0.34) ma resta: senza DP FedProx è peggio di FedAvg,
+con DP è meglio, in tutti i seed.
+
 **`central` al punto operativo, quarta macchina (punto 3 della coda, 2026-10-05).** FedProx, ε = 64, C = 1, 10 round,
 seed 42-1234 con `--dp-mode central` e seed 123-1234 con `dp-fedavg` sulla stessa macchina (per il seed 42 i round 1-10
 di `_rq3_mu0.01_eps64_r30_s42`), LiRA ridotta. Lanciato sul Mac di Domenico, con l'ultimo avvio entro le 17:20:
@@ -1400,6 +1410,73 @@ e il solo taglio costa poco (0.0022, 1.5 volte il senza DP, sotto 0.0045 in 5 se
 taglio, a C = 2 è il rumore, e per questo la DP completa vale lo stesso ai due C. I costi non si sommano: a C = 4 e 8 il
 solo rumore fa peggio della DP completa. Frase causale per RQ3: sotto DP per client al punto operativo il costo di FedAvg
 viene dal taglio, quello di FedProx dal rumore (`STATO.md` 3.10).
+
+**Solo taglio e solo rumore su Windows (replica, lanciata il 2026-10-06).** Stesse run del Mac principale a C = 1 (FedAvg
+`experiment_rq3_mu0_eps64.yaml`, FedProx `experiment_rq1_eps64.yaml`, 10 round, `--skip-attacks lira,shadow`, 5 seed),
+più la DP completa sugli stessi seed allo stesso commit. Dopo `git pull`, due finestre PowerShell; finestra 1 (FedAvg),
+la 2 è uguale con `$c = "config\experiment_rq1_eps64.yaml"; $b = "experiments\_rq3_mu0.01_eps64"; $log =
+"logs\ablazioni_win_fedprox.log"`:
+
+```powershell
+$env:PYTHONUTF8 = "1"; $env:OMP_NUM_THREADS = "1"; $env:MKL_NUM_THREADS = "1"
+& {
+  Add-Type -Namespace W3 -Name P -MemberDefinition '[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint f);'
+  [W3.P]::SetThreadExecutionState(2147483649) | Out-Null
+  $c = "config\experiment_rq3_mu0_eps64.yaml"; $b = "experiments\_rq3_mu0_eps64"; $log = "logs\ablazioni_win_fedavg.log"
+  $jobs = @(foreach ($s in 42, 123, 456, 789, 1234) { "clip-only:$s"; "noise-only:$s" }) + @(foreach ($s in 42, 123, 456, 789, 1234) { "full:$s" })
+  foreach ($j in $jobs) {
+    $a, $s = $j.Split(":")
+    $dir = "${b}_$a"
+    if (Test-Path "$dir\.fatto_s$s") { continue }
+    cmd /c ".venv\Scripts\python.exe scripts\run_experiments.py --config $c --rounds 10 --seed $s --dp-ablation $a --skip-attacks lira,shadow --sweep-dir $dir >> $log 2>&1"
+    if ($LASTEXITCODE -ne 0) { return }
+    New-Item -ItemType File -Force -Path "$dir\.fatto_s$s" | Out-Null
+  }
+}
+```
+
+Previsione, scritta prima del lancio (`Claude outputs/previsione_ablazioni_windows_2026-10-06.md`), confronti solo fra run
+di Windows: (1) FedAvg, solo taglio fra 0.67 e 1.5 volte la DP completa in media geometrica (entro un fattore 1.5 in
+almeno 4 seed su 5) e sopra il solo rumore in almeno 4 su 5; (2) FedProx, solo rumore fra 0.67 e 1.5 volte la DP completa,
+solo taglio al massimo metà della DP completa in media geometrica e sotto in almeno 4 seed su 5; (3) solo rumore, FedAvg
+sotto FedProx in media geometrica (la più fragile: sul Mac 0.56, p = 0.07); (4) la DP completa rifatta riproduce in ogni
+cifra le run di Windows a init casuale (fe22124); se no, (1)-(3) restano validi sulle run nuove. Se (1) e (2) reggono, la
+frase causale di RQ3 vale su due macchine.
+
+**Mac principale, mattina del 2026-10-06 (finestra fino alle 14:00).** Due prove, nell'ordine. (a) Curva di μ sul Mac
+principale: FedProx con μ = 0.001 e 0.1 con DP (ε = 64, C = 1), 5 seed; μ = 0 e 0.01 sono `rq3-mu0-eps64` e `rq1-eps64`
+(stesso Mac, training identico). (b) Incrocio fra taglio e rumore al variare di C per FedAvg con altri due seed (123 e
+456): solo taglio, solo rumore e DP completa a C = 2, poi solo taglio e solo rumore a C = 0.5 (al seed 42 ci sono già). Ultimo
+avvio entro le 13:40; run da circa 11 minuti senza LiRA e Shadow; dopo il commit di questi documenti:
+
+```bash
+cd ~/Documents/ChargeShield-FL && git status --porcelain && git log --oneline -1 && nohup caffeinate -ims bash -c '
+set -e
+jobs=""
+for s in 42 123 456 789 1234; do jobs="$jobs $s:rq3_mu0.001:_rq3_mu0.001_eps64_mac:full"; done
+for s in 42 123 456 789 1234; do jobs="$jobs $s:rq3_mu0.1:_rq3_mu0.1_eps64_mac:full"; done
+for s in 123 456; do for a in clip-only noise-only full; do jobs="$jobs $s:rq3_mu0_eps64_C2:_rq3_mu0_eps64_C2_$a:$a"; done; done
+for s in 123 456; do for a in clip-only noise-only; do jobs="$jobs $s:rq3_mu0_eps64_C0.5:_rq3_mu0_eps64_C0.5_$a:$a"; done; done
+for job in $jobs; do
+  IFS=: read s c d a <<< "$job"
+  [ -e experiments/$d/.fatto_s$s ] && continue
+  [ "$(date +%H%M)" -lt 1340 ] || break
+  python3 scripts/run_experiments.py --config config/experiment_$c.yaml --epsilon 64 --rounds 10 --seed $s --dp-ablation $a --skip-attacks lira,shadow --sweep-dir experiments/$d >> logs/mac_mu_C_2026-10-06.log 2>&1
+  touch experiments/$d/.fatto_s$s
+done
+' < /dev/null > logs/coda_mattina_2026-10-06.log 2>&1 & disown
+```
+
+Previsione, scritta prima del lancio. (a) Riferimenti sul Mac principale, loss al round 10 in media geometrica: μ = 0
+0.0122, μ = 0.01 0.0065; sulla quarta macchina la curva era 0.0158, 0.0086, 0.0059, 0.0103 per μ = 0, 0.001, 0.01, 0.1.
+(a1) μ = 0.001 sta fra μ = 0.01 e μ = 0 in media geometrica, e sulla media dei round 6-10 sopra μ = 0.01 in almeno 4
+seed su 5; (a2) μ = 0.1 sopra μ = 0.01 in almeno 4 seed su 5; (a3) quota cumulata al round 10 crescente con μ in ogni
+seed. Se (a1) e (a2) reggono, il minimo intorno a μ = 0.01 si ripete sul Mac principale. (b) Al seed 42: solo taglio
+0.068, 0.0145, 0.0022 e solo rumore 0.00098, 0.0038, 0.0139 a C = 0.5, 1, 2; DP completa 0.0131 a C = 2 contro 0.0130 a C =
+1. Per i seed 123 e 456: (b1) a C = 2 il solo rumore sta sopra il solo taglio in tutti e due; (b2) a C = 0.5 il solo
+taglio sta sopra il solo rumore di almeno 10 volte in tutti e due; (b3) la DP completa a C = 2 sta entro un fattore 1.5
+da quella a C = 1 dello stesso seed (`rq3-mu0-eps64`: 0.0122 e 0.0063). Se (b1)-(b3) reggono, l'incrocio fra C = 1 e 2
+vale su tre seed.
 
 **Non previsto.** FedProx sulla DP per record, sull'intera griglia di ε o nelle campagne canary; superficie A2.
 

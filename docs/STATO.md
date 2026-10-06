@@ -654,14 +654,15 @@ in 5 seed su 5). Un μ minimo toglie il taglio, ma con DP resta sopra μ = 0.01 
 budget è intorno a 0.01, non il più piccolo possibile.
 
 **Inizializzazione comune, con DP (2026-10-05; Windows, `experiments_altre_macchine/rq3-ci-*`, commit ff23a1c pulito, 5
-seed per condizione con DP e per FedAvg senza DP, 1 seed per FedProx senza DP).** Con tutti i client che partono dagli
+seed per condizione; FedProx senza DP completato il 2026-10-06).** Con tutti i client che partono dagli
 stessi pesi, FedProx con DP batte ancora FedAvg in 5 seed su 5: loss al round 10 0.0081 contro 0.0166 (medie
 geometriche; a init casuale sulla stessa macchina 0.0068 contro 0.0196), rapporto 0.49 contro 0.34, t(4) = -4.3 sul
 logaritmo del rapporto. Il regime del taglio non cambia: FedAvg ha aggiornamenti fra 8 e 6 per tutto il training
 (quota cumulata 1.42 contro 1.46), FedProx scende sotto C dal round 3 (8.72 contro 8.58). Le norme grandi di FedAvg
 non vengono quindi dalla media di tre reti indipendenti al round 1, ma dall'addestramento locale (50 epoche) che porta
 ogni client lontano dal modello globale; il termine prossimale le tiene piccole. Senza DP FedAvg non cambia (0.00041
-contro 0.00038). Costo di FedAvg con DP rispetto al proprio modello senza DP: 40 volte (52 a init casuale). RQ3 regge
+contro 0.00038), mentre FedProx migliora (0.00081 contro 0.00147): senza DP FedProx costa 1.96 volte FedAvg invece di
+3.90, in 5 seed su 5. Senza DP FedProx resta peggio di FedAvg, con DP meglio, in tutti i seed. Costo della DP rispetto al proprio modello senza DP: FedAvg 40 volte (52 a init casuale), FedProx 10 volte (4.6); il costo di FedProx è un quarto di quello di FedAvg (0.25; 0.09 a init casuale). RQ3 regge
 all'inizializzazione; il riferimento in simulazione per la validazione sul deployment ha ora le celle con DP a 5 seed.
 
 ## 4. Cosa manca
