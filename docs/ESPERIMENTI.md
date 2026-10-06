@@ -1054,6 +1054,15 @@ richiesti. Medie per blocchi di 5 round sui 4 seed: FedAvg 0.110, 0.028, 0.011, 
 il vantaggio di FedProx con DP è un vantaggio di velocità a budget fisso di round, non un modello finale migliore, e
 con 30 round FedAvg lo raggiunge e forse lo supera di poco.
 
+**Esito a 5 seed (2026-10-06).** Il seed 42 è girato sul Mac principale nella coda della notte (commit c88a4c5 pulito,
+zero errori; 10 run in tutto in `logs/rq3_dp_r30_mac.log`). I round 1-10 coincidono in ogni cifra con le run a 10 round
+(loss sull'holdout al round 10 0.01298 per FedAvg e 0.00409 per FedProx, come nei controlli). Ai round 26-30 FedAvg
+0.0097, FedProx 0.0160 (rapporto 0.60). Sui 5 seed del Mac principale: (a) regge, FedAvg nella fascia 0.006-0.011 in 4
+seed su 5 e nel quinto sotto; (c) FedAvg sotto FedProx in 5 seed su 5, rapporti 0.60, 0.52, 0.98, 0.87, 0.95, media
+geometrica 0.76, t(4) = -2.15, p = 0.098: lo stesso vantaggio piccolo di prima. Deriva di FedProx non confermata: sale
+nei seed 42 e 123, non negli altri tre. Medie per blocchi di 5 round sui 5 seed: FedAvg 0.107, 0.029, 0.011, 0.010,
+0.0081, 0.0070; FedProx 0.031, 0.0084, 0.011, 0.0090, 0.0106, 0.0093. La lettura non cambia.
+
 **Norme della griglia di ε e seed di FedProx a C = 0.25 (proposta del 2026-10-02, per `STATO.md` 3.10).** Le
 run di `rq1-eps{2,4,8,16}` (5 seed, Mac principale, commit f145b79 ed ed0e1f9) non hanno salvato le norme dei delta.
 Da allora il percorso di training con DP per client non è cambiato (diff su `src/ml` e `run_experiments.py`: solo
@@ -1161,6 +1170,79 @@ e 6 (quota per round 0.12-0.17, quota cumulata 1.42 contro 1.46 a init casuale) 
 (quota cumulata 8.72 contro 8.58). Con DP FedProx batte FedAvg in 5 seed su 5 (rapporto delle loss al round 10, media
 geometrica 0.49, t(4) = -4.3 sul logaritmo; a init casuale 0.34): l'inversione resta e RQ3 regge all'inizializzazione.
 Dettagli in `STATO.md` 3.10.
+
+**`central` al punto operativo, quarta macchina (punto 3 della coda, 2026-10-05).** FedProx, ε = 64, C = 1, 10 round,
+seed 42-1234 con `--dp-mode central` e seed 123-1234 con `dp-fedavg` sulla stessa macchina (per il seed 42 i round 1-10
+di `_rq3_mu0.01_eps64_r30_s42`), LiRA ridotta. Lanciato sul Mac di Domenico, con l'ultimo avvio entro le 17:20:
+
+```bash
+cd ~/ChargeShield-FL && source .venv/bin/activate && git fetch susetta && git merge --ff-only susetta/master && git status --porcelain && git log --oneline -1 && nohup caffeinate -ims bash -c '
+set -e
+for s in 42 123 456 789 1234; do
+  [ "$(date +%H%M)" -lt 1720 ] || break
+  python3 scripts/run_experiments.py --config config/experiment_rq1_eps64.yaml --rounds 10 --seed $s --dp-mode central --n-shadow 2 --shadow-epochs-cap 20 --sweep-dir experiments/_rq3_mu0.01_eps64_central
+  [ $s = 42 ] && continue
+  [ "$(date +%H%M)" -lt 1720 ] || break
+  python3 scripts/run_experiments.py --config config/experiment_rq1_eps64.yaml --rounds 10 --seed $s --n-shadow 2 --shadow-epochs-cap 20 --sweep-dir experiments/_rq3_mu0.01_eps64_dpfedavg
+done
+' < /dev/null > logs/central_op.log 2>&1 & disown
+```
+
+Previsione, scritta prima del lancio il 5 ottobre (`Claude outputs/previsione_central_mac4_2026-10-05.md`): il taglio è
+lo stesso, cambia solo il rumore sull'aggregato (0.50σ contro circa 0.69σ); FedProx è nel regime del pavimento di
+rumore, quindi rapporto central/dp-fedavg della loss al round 10 fra 0.6 e 1.0; sopra 0.8 la frase sul costo vale per la
+DP per client in generale, sotto 0.8 va scritta per "client-level DP with client-side noise". Esito: 9 run, commit
+b4285e9 pulito, zero errori (PROVENIENZA). Rapporto 1.00 in media geometrica (0.0059 contro 0.0059; t(4) = 0.0,
+p = 0.99), con rapporti per seed da 0.38 a 2.36; sulla media dei round 6-10 0.99. Quota trattenuta uguale (8.5-8.6).
+Al punto operativo il placement del rumore non conta: la frase sul costo vale per la DP per client in generale.
+
+**Prova su μ con DP, quarta macchina (punto 8 della coda, 2026-10-05).** FedProx con μ = 0.001 e 0.1
+(`experiment_rq3_mu0.001.yaml`, `experiment_rq3_mu0.1.yaml`, uguali a `experiment_rq1_eps64.yaml` salvo μ e nome), con
+`--epsilon 64`, 10 round, `--skip-attacks lira,shadow`; per μ = 0 e 0.01 i config del punto operativo. Prima tornata il
+5 ottobre sera (seed 42 e 123, ultimo avvio entro le 19:45):
+
+```bash
+cd ~/ChargeShield-FL && source .venv/bin/activate && git fetch susetta && git merge --ff-only susetta/master && git status --porcelain && git log --oneline -1 && nohup caffeinate -ims bash -c '
+set -e
+fatto() { grep -qs "\"seed\": $2," experiments/$1/experiment_*.json; }
+for job in 42:rq3_mu0.001:0.001 42:rq3_mu0.1:0.1 123:rq3_mu0_eps64:0 123:rq3_mu0.001:0.001 123:rq1_eps64:0.01 123:rq3_mu0.1:0.1; do
+  s=${job%%:*}; rest=${job#*:}; c=${rest%%:*}; mu=${rest##*:}
+  d=_rq3_mu${mu}_eps64_prova_mu
+  fatto $d $s && continue
+  [ "$(date +%H%M)" -lt 1945 ] || break
+  python3 scripts/run_experiments.py --config config/experiment_$c.yaml --epsilon 64 --rounds 10 --seed $s --skip-attacks lira,shadow --sweep-dir experiments/$d
+done
+' < /dev/null > logs/prova_mu_dp.log 2>&1 & disown
+```
+
+Seconda tornata la notte fra il 5 e il 6 ottobre (seed 456, 789, 1234 con quattro μ; seed 123 con μ = 0.1; tutti i seed
+senza DP con μ = 0 e 0.001), ultimo avvio entro 7 ore e mezza dal lancio:
+
+```bash
+cd ~/ChargeShield-FL && source .venv/bin/activate && git fetch susetta && git merge --ff-only susetta/master && git status --porcelain && git log --oneline -1 && nohup caffeinate -ims bash -c '
+set -e
+scad=$(( $(date +%s) + 27000 ))
+fatto() { grep -qs "\"seed\": $2," experiments/$1/experiment_*.json; }
+for job in 42:rq3_mu0:0:nodp 42:rq3_mu0.001:0.001:nodp 123:rq3_mu0.1:0.1:dp 123:rq3_mu0:0:nodp 123:rq3_mu0.001:0.001:nodp \
+  456:rq3_mu0_eps64:0:dp 456:rq3_mu0.001:0.001:dp 456:rq1_eps64:0.01:dp 456:rq3_mu0.1:0.1:dp 456:rq3_mu0:0:nodp 456:rq3_mu0.001:0.001:nodp \
+  789:rq3_mu0_eps64:0:dp 789:rq3_mu0.001:0.001:dp 789:rq1_eps64:0.01:dp 789:rq3_mu0.1:0.1:dp 789:rq3_mu0:0:nodp 789:rq3_mu0.001:0.001:nodp \
+  1234:rq3_mu0_eps64:0:dp 1234:rq3_mu0.001:0.001:dp 1234:rq1_eps64:0.01:dp 1234:rq3_mu0.1:0.1:dp 1234:rq3_mu0:0:nodp 1234:rq3_mu0.001:0.001:nodp; do
+  IFS=: read s c mu modo <<< "$job"
+  if [ $modo = dp ]; then d=_rq3_mu${mu}_eps64_prova_mu; extra="--epsilon 64"; else d=_rq3_mu${mu}_nodp_prova_mu; extra="--no-dp"; fi
+  fatto $d $s && continue
+  [ $(date +%s) -lt $scad ] || break
+  python3 scripts/run_experiments.py --config config/experiment_$c.yaml $extra --rounds 10 --seed $s --skip-attacks lira,shadow --sweep-dir experiments/$d
+done
+' < /dev/null > logs/prova_mu_notte.log 2>&1 & disown
+```
+
+Previsione, scritta prima di ciascuna tornata (`Claude outputs/previsione_mu_dp_mac4_2026-10-05.md`): con DP μ = 0.001
+sta sotto μ = 0 in tutti i seed e nella fascia di FedProx (0.003-0.012) in almeno 4 su 5; senza DP μ = 0.001 entro un
+fattore 1.5 da μ = 0 in almeno 4 su 5; con DP μ = 0.1 sopra μ = 0.01 in almeno 4 su 5; quota cumulata crescente con μ.
+Esito della prima tornata (5 run, commit c88a4c5 pulito, zero errori), loss al round 10 con DP: seed 42 μ = 0, 0.001,
+0.01, 0.1: 0.0198, 0.0049, 0.0039, 0.0124; seed 123 μ = 0, 0.001, 0.01: 0.0101, 0.0030, 0.0050. Quota cumulata 1.4-1.5,
+7.9, 8.5-8.6, 9.1. Il seed 123 con μ = 0.01 coincide in ogni cifra con il seed 123 di `_rq3_mu0.01_eps64_dpfedavg`.
+Seconda tornata da importare.
 
 **Flag per le ablazioni (punto 1 della coda, scritti il 2026-10-05).** In `scripts/run_experiments.py`
 `--dp-ablation {full, clip-only, noise-only}` e `--skip-attacks`; in `GradientManager` i metodi `clip_no_noise()` e
@@ -1273,6 +1355,27 @@ DP completa; solo taglio sotto 3 volte il proprio senza DP (sotto circa 0.0045).
 il costo del solo taglio scende con C, quello del solo rumore sale, e le due curve si incrociano fra C = 1 e 2; i due
 costi non devono per forza sommarsi a quello della DP completa. Se valgono (1) e (2), la frase causale di RQ3 è: sotto
 DP per client il costo di FedAvg viene dal taglio, quello di FedProx dal rumore.
+
+**Esito (2026-10-06).** Coda della notte finita il 6 ottobre alle 01:33: seed 42 dei 30 round e 29 run di ablazione,
+zero errori, commit c88a4c5 pulito. Loss sull'holdout al round 10, media geometrica sui 5 seed (Mac principale):
+
+| | DP completa | solo taglio | solo rumore | senza DP |
+|---|---|---|---|---|
+| FedAvg | 0.0122 | 0.0119 | 0.0044 | 0.0004 |
+| FedProx | 0.0065 | 0.0022 | 0.0079 | 0.0015 |
+
+(1) FedAvg: il solo taglio riproduce la DP completa (rapporto 0.97, p = 0.86; entro un fattore 1.5 in 4 seed su 5) e
+sta sopra il solo rumore in 4 seed su 5 (rapporto 2.7). Regge. Non regge la parte sul solo rumore: 0.0044, sotto la
+fascia 0.005-0.012 prevista (dentro in 1 seed su 5): con lo stesso rumore e senza taglio FedAvg arriva più in basso di
+FedProx (0.0044 contro 0.0079, rapporto 0.56, p = 0.07), perché i suoi aggiornamenti grandi correggono meglio il rumore.
+(2) FedProx: il solo rumore vale quanto la DP completa (rapporto 1.21, p = 0.21; entro un fattore 1.5 in 3 seed su 5)
+e il solo taglio costa poco (0.0022, 1.5 volte il senza DP, sotto 0.0045 in 5 seed su 5). Regge. (3) FedAvg al seed
+42, loss al round 10 per C = 0.5, 1, 2, 4, 8: solo taglio 0.068, 0.0145, 0.0022, 0.00045, 0.00039 (scende con C, a C = 4
+è al livello senza DP, 0.0005); solo rumore 0.00098, 0.0038, 0.0139, 0.156, 0.347 (sale con C); DP completa 0.071,
+0.0130, 0.0131, 0.049, 0.243. Le due curve si incrociano fra C = 1 e 2, come previsto: a C = 1 il costo di FedAvg è il
+taglio, a C = 2 è il rumore, e per questo la DP completa vale lo stesso ai due C. I costi non si sommano: a C = 4 e 8 il
+solo rumore fa peggio della DP completa. Frase causale per RQ3: sotto DP per client al punto operativo il costo di FedAvg
+viene dal taglio, quello di FedProx dal rumore (`STATO.md` 3.10).
 
 **Non previsto.** FedProx sulla DP per record, sull'intera griglia di ε o nelle campagne canary; superficie A2.
 

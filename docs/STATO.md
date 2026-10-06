@@ -626,14 +626,30 @@ riduce e può invertirsi. La quarta macchina non riproduce il Mac principale cif
 8.4754, 4.6364 contro 8.8392, 8.4689, 4.6367; round 10 FedAvg 0.0198 contro 0.0130): vale il confronto fra bracci
 della stessa macchina, non lo scambio di numeri fra macchine.
 
-**30 round con DP, 4 seed sul Mac principale (2026-10-05; `experiments/_rq3_mu0_eps64_r30`, `_rq3_mu0.01_eps64_r30`,
-commit b4285e9 pulito, LiRA ridotta; il seed 42 manca).** I round 1-10 coincidono in ogni cifra con le run a 10
-round. Ai round 26-30 (media geometrica) FedAvg vale 0.0050-0.0075 e FedProx 0.0051-0.0146: FedAvg raggiunge il
-pavimento di FedProx in tutti i seed e sta sotto in 4 su 4 (5 su 5 con il seed 42 della quarta macchina), ma di poco:
-rapporto 0.78 in media geometrica, t(4) = -2.1, p = 0.11. Medie per blocchi di 5 round: dal blocco 11-15 i due
-algoritmi stanno sullo stesso livello (circa 0.008-0.011); FedProx non sale con i round (la deriva vista al seed 42
-non si ripete). Per il paper RQ3 si scrive a budget fisso: a 10 round FedProx costa circa la metà di FedAvg (0.0065
+**30 round con DP, 5 seed sul Mac principale (2026-10-05 e 06; `experiments/_rq3_mu0_eps64_r30`,
+`_rq3_mu0.01_eps64_r30`, commit b4285e9 pulito per quattro seed e c88a4c5 pulito per il seed 42, LiRA ridotta).** I
+round 1-10 coincidono in ogni cifra con le run a 10 round. Ai round 26-30 (media geometrica) FedAvg vale 0.0050-0.0097
+e FedProx 0.0051-0.0160: FedAvg raggiunge il pavimento di FedProx in tutti i seed e sta sotto in 5 su 5, ma di poco:
+rapporto 0.76 in media geometrica, t(4) = -2.15, p = 0.098. Medie per blocchi di 5 round: dal blocco 11-15 i due
+algoritmi stanno sullo stesso livello (circa 0.007-0.011); in media FedProx non sale con i round (sale nei seed 42 e
+123, scende negli altri tre). Per il paper RQ3 si scrive a budget fisso: a 10 round FedProx costa circa la metà di FedAvg (0.0065
 contro 0.0122), perché il taglio rallenta FedAvg; con abbastanza round i due arrivano allo stesso pavimento di rumore.
+
+**Solo taglio e solo rumore (2026-10-06; Mac principale, 5 seed, commit c88a4c5 pulito; `experiments/_rq3_mu0_eps64_*`
+e `_rq3_mu0.01_eps64_*` con `clip-only`/`noise-only`).** Prova causale del meccanismo, con previsione scritta prima
+(`ESPERIMENTI.md`). Loss al round 10, media geometrica: FedAvg 0.0122 con la DP completa, 0.0119 con il solo taglio,
+0.0044 con il solo rumore, 0.0004 senza DP; FedProx 0.0065, 0.0022, 0.0079, 0.0015. Il costo di FedAvg è il taglio
+(il solo taglio riproduce la DP completa, rapporto 0.97); quello di FedProx è il rumore (solo rumore 1.21 volte la DP
+completa, solo taglio 1.5 volte il senza DP). Allo stesso rumore e senza taglio FedAvg arriva più in basso di FedProx
+(0.0044 contro 0.0079, p = 0.07): i suoi aggiornamenti grandi correggono meglio il rumore, coerente con i 30 round. Al
+seed 42, al variare di C per FedAvg, il costo del solo taglio scende (0.068 a C = 0.5, 0.0004 a C = 4) e quello del solo
+rumore sale (0.001 a C = 0.5, 0.35 a C = 8); si incrociano fra C = 1 e 2, e per questo la DP completa vale lo stesso a
+C = 1 e 2. Frase causale per RQ3: sotto DP per client, al punto operativo, il costo di FedAvg viene dal taglio e quello di
+FedProx dal rumore. Placement del rumore: con `central` (quarta macchina, 5 seed) FedProx vale quanto con il rumore lato
+client (rapporto 1.00), quindi la frase vale per la DP per client in generale. Prova su μ (quarta macchina, 2 seed per
+ora): con μ = 0.001 la DP costa quanto FedProx (0.0049 e 0.0030 contro 0.0198 e 0.0101 di FedAvg), mentre senza DP lo
+stesso μ ha l'accuratezza di FedAvg (Mac principale, seed 42: 0.00054 contro 0.00051): un termine prossimale minimo
+toglie il costo del taglio; a 5 seed in arrivo.
 
 **Inizializzazione comune, con DP (2026-10-05; Windows, `experiments_altre_macchine/rq3-ci-*`, commit ff23a1c pulito, 5
 seed per condizione con DP e per FedAvg senza DP, 1 seed per FedProx senza DP).** Con tutti i client che partono dagli
