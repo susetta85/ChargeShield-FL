@@ -1495,6 +1495,47 @@ stesso seed (0.0122 e 0.0063); solo al seed 42 coincidevano (1.01). L'incrocio f
 seed). La frase "la DP completa vale lo stesso a C = 1 e 2" veniva dal solo seed 42: su tre seed C = 1 è meglio o uguale,
 e questo sostiene la scelta di C = 1 come punto operativo.
 
+**Pilota canary su A3 (punto 6 della coda, lanciato il 2026-10-06 sera, Mac principale).** Config dei canary su tre
+siti già usati senza DP (`experiment_canary_multisite.yaml`, braccio A, e `_swap`, braccio B: canary solo in Office 1,
+k = 20, 30 duplicati, modello da circa 1800 parametri, 1000 epoche, 3 round, FedProx μ = 0.01), con DP per client al
+punto operativo e rumore lato client osservato dall'attaccante dopo taglio e rumore: `--dp-mode local --epsilon 64`
+(C = 1 dal config). Metrica primaria: loss grezza dei canary sull'update di Office 1 (`canary_raw_mse_auc_roc`, 20 x 20
+coppie), per round e media sui 3 round, somma dei due bracci contro le baseline a init casuale (somma 1.00); il modello
+globale (Yeom) come seconda superficie. LiRA ridotta (`--n-shadow 2 --shadow-epochs-cap 20`, numeri di LiRA non validi):
+la loss grezza viene dal modello target, non dipende dagli shadow né nel punteggio né nel pool (correzione di Sprint
+10zz+119), e l'addestramento non dipende da LiRA; Shadow saltato (sui canary coincide con Yeom, segnalazione 64). Per
+controllarlo, il braccio A senza DP al seed 42 si rifà con LiRA ridotta. Seed 42 (baseline dal log del 30 settembre:
+0.7255 e 0.2745) e 123 (baseline calcolate all'inizio della coda). Circa un'ora e mezza per run (75 minuti di training
+dal log del 30 settembre più LiRA ridotta), 7 run; la coda riprende da dove si è fermata.
+
+```bash
+cd ~/Documents/ChargeShield-FL && git status --porcelain && git log --oneline -1 && nohup caffeinate -ims bash -c '
+set -e
+for c in experiment_canary_multisite experiment_canary_multisite_swap; do
+  python3 scripts/check_canary_init_confound.py --config config/$c.yaml --seed 123 >> logs/canary_A3.log 2>&1
+done
+for job in 42:multisite:A3 42:multisite_swap:A3 42:multisite:nodp 123:multisite:A3 123:multisite_swap:A3 123:multisite:nodp 123:multisite_swap:nodp; do
+  IFS=: read s c m <<< "$job"
+  d=_canary_${c}_${m}_s$s
+  [ -e experiments/$d/.fatto ] && continue
+  if [ $m = A3 ]; then dp="--dp-mode local --epsilon 64"; else dp="--no-dp"; fi
+  python3 scripts/run_experiments.py --config config/experiment_canary_$c.yaml $dp --seed $s --n-shadow 2 --shadow-epochs-cap 20 --skip-attacks shadow --sweep-dir experiments/$d >> logs/canary_A3.log 2>&1
+  touch experiments/$d/.fatto
+done
+' < /dev/null > logs/coda_canary_A3.log 2>&1 & disown
+```
+
+Previsione, scritta prima del lancio. Senza DP, al seed 42, la somma A+B della loss grezza sull'update di Office 1 è
+1.58 al round 1 e 1.08 e 1.20 ai round 2 e 3 (`STATO.md`, canary su più siti). (P1) Controllo: il braccio A senza DP al
+seed 42 con LiRA ridotta ridà in ogni cifra 0.79, 0.5775 e 0.65. (P2) Con DP su A3 il segnale sparisce: somme A+B fra
+0.85 e 1.15 in tutti e tre i round, e media sui 3 round fra 0.9 e 1.1, in tutti e due i seed. Motivo: al round 1
+l'update di Office 1 ha norma circa 16 senza DP e il taglio lo riduce a 1 (circa 16 volte), mentre il rumore per client
+ha norma circa 3 (σ = 0.076 su circa 1800 parametri), più grande dell'update tagliato. Se invece la somma al round 1
+resta sopra 1.2 in tutti e due i seed, il segnale dei canary sopravvive alla DP per client al punto operativo, perché
+vive in poche direzioni, e la frase sulla protezione dell'update va scritta con questo limite. Fra 1.15 e 1.2, o con i
+due seed discordi, il pilota non decide e serve la campagna. (P3) Sul modello globale (Yeom) le somme restano intorno a
+1.00, come senza DP.
+
 **Non previsto.** FedProx sulla DP per record, sull'intera griglia di ε o nelle campagne canary; superficie A2.
 
 ## Rinviato o escluso
