@@ -1443,6 +1443,22 @@ sotto FedProx in media geometrica (la più fragile: sul Mac 0.56, p = 0.07); (4)
 cifra le run di Windows a init casuale (fe22124); se no, (1)-(3) restano validi sulle run nuove. Se (1) e (2) reggono, la
 frase causale di RQ3 vale su due macchine.
 
+**Esito su Windows (2026-10-06).** 30 run su 30 (15 per finestra), commit deb5d34 pulito, zero Traceback ed errori nei
+due log; importate da `ablazioni_windows.zip` (PROVENIENZA). Loss sull'holdout al round 10, media geometrica sui 5 seed
+(in parentesi la media dei round 6-10): FedAvg DP completa 0.0196 (0.0325), solo taglio 0.0082 (0.0216), solo rumore
+0.0035 (0.0038), senza DP 0.00038; FedProx 0.0068 (0.0082), 0.0022 (0.0024), 0.0078 (0.0077), senza DP 0.00147.
+(1) Non regge come scritta: per FedAvg il solo taglio vale 0.42 volte la DP completa al round 10 (entro un fattore 1.5
+solo al seed 1234; t(4) = -3.7, p = 0.02), 0.66 sulla media dei round 6-10 (sul Mac 0.97 e 0.91). Regge la seconda
+parte: il solo taglio sta sopra il solo rumore in 5 seed su 5 (2.3 volte al round 10, 5.8 sui round 6-10; sul Mac 6.5).
+Per FedAvg il taglio è la componente più grande del costo su tutte e due le macchine, ma su Windows non lo spiega tutto:
+il rumore aggiunge una parte (DP completa 1.5 volte il solo taglio sui round 6-10, sul Mac 1.1). (2) Regge: per FedProx
+il solo rumore vale 1.15 volte la DP completa (0.94 sui round 6-10) e il solo taglio 0.33 (sotto in 5 seed su 5). (3)
+Regge: allo stesso rumore senza taglio FedAvg sta sotto FedProx (0.46, 4 seed su 5, p = 0.02; sul Mac 0.56, p = 0.07).
+(4) Regge: la DP completa rifatta riproduce in ogni cifra le run di Windows a init casuale (fe22124) in tutte e 10 le
+run, per ogni round, comprese le norme dei delta; Windows riproduce se stesso fra commit diversi, come il Mac. Frase per
+RQ3 su due macchine: sotto DP per client il costo di FedProx viene dal rumore; quello di FedAvg viene soprattutto dal
+taglio, con una parte di rumore che dipende dalla macchina.
+
 **Mac principale, mattina del 2026-10-06 (finestra fino alle 14:00).** Due prove, nell'ordine. (a) Curva di μ sul Mac
 principale: FedProx con μ = 0.001 e 0.1 con DP (ε = 64, C = 1), 5 seed; μ = 0 e 0.01 sono `rq3-mu0-eps64` e `rq1-eps64`
 (stesso Mac, training identico). (b) Incrocio fra taglio e rumore al variare di C per FedAvg con altri due seed (123 e
@@ -1535,6 +1551,81 @@ resta sopra 1.2 in tutti e due i seed, il segnale dei canary sopravvive alla DP 
 vive in poche direzioni, e la frase sulla protezione dell'update va scritta con questo limite. Fra 1.15 e 1.2, o con i
 due seed discordi, il pilota non decide e serve la campagna. (P3) Sul modello globale (Yeom) le somme restano intorno a
 1.00, come senza DP.
+
+**Pilota canary su A3, seed 456 e 789 su Windows (lanciato il 2026-10-06 sera).** Scritto il 2026-10-06 verso le 17:00 EDT, prima del lancio, mentre sul Mac principale gira il pilota ai seed 42 e 123
+(nessun risultato ancora letto: il primo braccio è al round 1). Da copiare in `docs/ESPERIMENTI.md` quando la coda del
+Mac principale è finita (modificare i documenti adesso renderebbe -dirty i JSON del Mac).
+
+Stesso protocollo del pilota sul Mac principale (`ESPERIMENTI.md`, "Pilota canary su A3"): `experiment_canary_multisite`
+e `_swap`, `--dp-mode local --epsilon 64` (C = 1), LiRA ridotta, Shadow saltato, e gli stessi due bracci senza DP per
+avere il segnale di riferimento allo stesso seed. Baseline a init casuale calcolate su Windows all'inizio di ogni finestra.
+Ogni seed sta tutto su Windows (bracci A e B, con e senza DP, baseline): le somme A+B si leggono dentro la macchina.
+Due finestre PowerShell, una per seed, dopo `git pull`; tempo atteso circa 2-2.5 ore per run (il training del canary su
+tre siti dura circa 75 minuti sul Mac principale, Windows con un thread circa 1.7 volte più lento), 4 run per finestra.
+
+```powershell
+$s = 456   # nella seconda finestra: $s = 789
+$env:PYTHONUTF8 = "1"; $env:OMP_NUM_THREADS = "1"; $env:MKL_NUM_THREADS = "1"
+& {
+  Add-Type -Namespace W3 -Name P -MemberDefinition '[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint f);'
+  [W3.P]::SetThreadExecutionState(2147483649) | Out-Null
+  $log = "logs\canary_A3_win_s$s.log"
+  foreach ($c in "experiment_canary_multisite", "experiment_canary_multisite_swap") {
+    cmd /c ".venv\Scripts\python.exe scripts\check_canary_init_confound.py --config config\$c.yaml --seed $s >> $log 2>&1"
+    if ($LASTEXITCODE -ne 0) { return }
+  }
+  foreach ($j in "multisite:A3", "multisite_swap:A3", "multisite:nodp", "multisite_swap:nodp") {
+    $c, $m = $j.Split(":")
+    $dir = "experiments\_canary_${c}_${m}_s$s"
+    if (Test-Path "$dir\.fatto") { continue }
+    $dp = if ($m -eq "A3") { "--dp-mode local --epsilon 64" } else { "--no-dp" }
+    cmd /c ".venv\Scripts\python.exe scripts\run_experiments.py --config config\experiment_canary_$c.yaml $dp --seed $s --n-shadow 2 --shadow-epochs-cap 20 --skip-attacks shadow --sweep-dir $dir >> $log 2>&1"
+    if ($LASTEXITCODE -ne 0) { return }
+    New-Item -ItemType File -Force -Path "$dir\.fatto" | Out-Null
+  }
+}
+```
+
+Previsione (come P2 e P3 del pilota sul Mac, estese a questi seed). (W1) Senza DP la somma A+B della loss grezza
+sull'update di Office 1 al round 1 sta sopra 1.2 in tutti e due i seed (al seed 42 sul Mac era 1.58): lo strumento vede
+l'appartenenza a questi seed. (W2) Con DP su A3 le somme stanno fra 0.85 e 1.15 in tutti e tre i round, e la media sui 3
+round fra 0.9 e 1.1, in tutti e due i seed. (W3) Sul modello globale (Yeom) le somme restano intorno a 1.00 con e senza
+DP. Se W1 non regge per un seed, quel seed non dice nulla sulla DP (manca il segnale da togliere). Con i due seed del Mac
+principale il pilota arriva a quattro seed.
+
+**Esito del pilota sul Mac principale (2026-10-07).** 7 run su 7, dal 6 ottobre alle 16:4x al 7 ottobre alle 01:47 (ora
+del Mac), commit ec27181 pulito, zero errori (`logs/canary_A3.log`); circa 76 minuti per run. Baseline a init casuale
+del seed 123 (dal log): 0.4505 per il braccio A e 0.5495 per il B. (P1) Regge: il braccio A senza DP al seed 42 con LiRA
+ridotta ridà in ogni cifra 0.79, 0.5775 e 0.65, con le stesse norme e la stessa loss sull'holdout della run del 30
+settembre (b3feee4). (P2) Regge in tutti e due i seed. Somme A+B della loss grezza sull'update di Office 1 nei tre round,
+con DP su A3: seed 42 1.0075, 0.975, 1.0275 (senza DP 1.5825, 1.08, 1.1975); seed 123 0.9875, 0.9925, 1.1125 (senza DP
+1.38, 1.06, 1.0475). Media sui 3 round: con DP 1.00 e 1.03, senza DP 1.29 e 1.16. Al round 1, dove senza DP il segnale
+c'è in tutti e due i seed, con DP i due bracci stanno sulle loro baseline (seed 42: 0.7425 e 0.265 contro 0.7255 e
+0.2745; seed 123: 0.435 e 0.5525 contro 0.4505 e 0.5495). (P3) Regge: sul modello globale le somme di Yeom sono fra
+0.995 e 1.0075, con e senza DP. Costo in questo modello (circa 1800 parametri, 3 round): loss sull'holdout del modello
+globale al round 3 0.0145-0.0148 con DP contro 0.0042-0.0048 senza, circa 3-3.5 volte. Lettura: al punto operativo la DP
+per client con rumore lato client toglie il segnale dei canary sull'update che vede l'aggregatore, dove senza DP c'è.
+Seed 456 e 789 su Windows da verificare.
+
+**Pilota canary su A3, seed 1234 sul Mac principale (comando del 2026-10-07, previsione W1-W3 sopra).** Stesso protocollo
+e stessa previsione dei seed di Windows; con questo seed il pilota arriva a cinque seed. Circa 5 ore.
+
+```bash
+cd ~/Documents/ChargeShield-FL && git status --porcelain && git log --oneline -1 && nohup caffeinate -ims bash -c '
+set -e
+for c in experiment_canary_multisite experiment_canary_multisite_swap; do
+  python3 scripts/check_canary_init_confound.py --config config/$c.yaml --seed 1234 >> logs/canary_A3_s1234.log 2>&1
+done
+for job in multisite:A3 multisite_swap:A3 multisite:nodp multisite_swap:nodp; do
+  IFS=: read c m <<< "$job"
+  d=_canary_${c}_${m}_s1234
+  [ -e experiments/$d/.fatto ] && continue
+  if [ $m = A3 ]; then dp="--dp-mode local --epsilon 64"; else dp="--no-dp"; fi
+  python3 scripts/run_experiments.py --config config/experiment_canary_$c.yaml $dp --seed 1234 --n-shadow 2 --shadow-epochs-cap 20 --skip-attacks shadow --sweep-dir experiments/$d >> logs/canary_A3_s1234.log 2>&1
+  touch experiments/$d/.fatto
+done
+' < /dev/null > logs/coda_canary_A3_s1234.log 2>&1 & disown
+```
 
 **Non previsto.** FedProx sulla DP per record, sull'intera griglia di ε o nelle campagne canary; superficie A2.
 

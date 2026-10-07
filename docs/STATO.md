@@ -238,6 +238,17 @@ nessun segnale, e i valori sotto 0.5 del braccio A erano l'effetto dei template.
 LiRA e Shadow sui canary non sono interpretabili (segnalazioni 63 e 64): le somme di LiRA ai
 round 2 e 3 sono 0.49 e 0.70, sotto 1.
 
+**Pilota canary su A3 (2026-10-06/07, Mac principale, seed 42 e 123, commit ec27181 pulito,
+`experiments/_canary_multisite*_A3_s*` e `_canary_multisite*_nodp_s*`).** Stessi tre siti e canary in Office 1, con DP per
+client al punto operativo e rumore lato client (`local`, ε = 64, C = 1): l'attaccante vede l'update di Office 1 dopo
+taglio e rumore. Somme A+B della loss grezza nei tre round: seed 42 1.0075, 0.975, 1.0275 (senza DP 1.58, 1.08, 1.20);
+seed 123 0.9875, 0.9925, 1.1125 (senza DP 1.38, 1.06, 1.05); media sui 3 round 1.00 e 1.03 contro 1.29 e 1.16 senza DP.
+Al round 1, dove senza DP il segnale c'è in tutti e due i seed, con DP i due bracci stanno sulle baseline a init casuale.
+Sul modello globale nessun segnale, con e senza DP. La DP per client al punto operativo toglie il segnale dei canary sulla
+superficie dell'aggregatore; costo in questo modello a 3 round: loss del modello globale circa 3-3.5 volte quella senza
+DP al round 3. Con LiRA ridotta la loss grezza senza DP è identica a quella con LiRA completa (stesso modello target).
+Due seed: altri tre in corso (456 e 789 su Windows, 1234 sul Mac principale).
+
 **Canary bilanciato su Caltech, seed 42 (2026-10-01, Mac principale,
 `experiments/_canary_balanced_caltech_s42` e `_canary_balanced_caltech_swap_s42`, commit 11c7fdf e
 1c0d0c0 con `-dirty` dovuto solo a documenti).** Un client, 561 duplicati per template (la stessa
@@ -646,7 +657,10 @@ variare di C per FedAvg il costo del solo taglio scende (al seed 42 0.068 a C = 
 rumore sale (0.001 a C = 0.5, 0.35 a C = 8); si incrociano fra C = 1 e 2 in tutti e tre i seed provati (42, 123, 456): a
 C = 2 la DP completa coincide con il solo rumore (rapporti 0.94-1.15), a C = 1 sta vicino al solo taglio. A C = 2 la DP
 completa è 1.8 volte quella a C = 1 ai seed 123 e 456 (uguale solo al seed 42): dei due, C = 1 è il punto migliore. Frase causale per RQ3: sotto DP per client, al punto operativo, il costo di FedAvg viene dal taglio e quello di
-FedProx dal rumore. Placement del rumore: con `central` (quarta macchina, 5 seed) FedProx vale quanto con il rumore lato
+FedProx dal rumore. Replica su Windows (2026-10-06, 5 seed, DP completa rifatta e identica alle run vecchie): FedProx
+uguale al Mac (solo rumore 1.15 volte la DP completa, solo taglio 0.33); per FedAvg il solo taglio resta molto sopra il
+solo rumore (5.8 volte sui round 6-10, sul Mac 6.5) ma vale 0.42 volte la DP completa al round 10 e 0.66 sui round 6-10
+(sul Mac 0.97 e 0.91): su due macchine la frase va scritta "il costo di FedAvg viene soprattutto dal taglio". Placement del rumore: con `central` (quarta macchina, 5 seed) FedProx vale quanto con il rumore lato
 client (rapporto 1.00), quindi la frase vale per la DP per client in generale. Prova su μ (quarta macchina, 5
 seed, commit c88a4c5 pulito, solo Yeom): con DP la loss al round 10 vale 0.0158, 0.0086, 0.0059 e 0.0103 per μ = 0, 0.001,
 0.01 e 0.1 (quota cumulata 1.5, 8.0, 8.6, 9.1); senza DP μ = 0.001 costa poco rispetto a μ = 0 (rapporto 1.16, entro 1.5
