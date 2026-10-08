@@ -249,8 +249,8 @@ superficie dell'aggregatore; costo in questo modello a 3 round: loss del modello
 DP al round 3. Con LiRA ridotta la loss grezza senza DP è identica a quella con LiRA completa (stesso modello target).
 Aggiornamento 2026-10-07: seed 1234 (Mac principale) con DP 1.005, 0.998, 1.005 e senza DP 1.50, 1.09, 1.02; seed 456
 (quarta macchina, solo con DP) 1.015, 0.995, 1.08. Con DP quattro seed su quattro intorno a 1.00 in ogni round, senza DP
-il segnale al round 1 c'è in tutti i seed misurati (1.58, 1.38, 1.50). Mancano i bracci senza DP del seed 456 e il seed
-789 (Windows).
+il segnale al round 1 c'è in tutti i seed misurati (1.58, 1.38, 1.50). Seed 789 (Windows, 2026-10-08): con DP 0.98, 0.98, 1.02,
+senza DP 1.48, 1.08, 1.06. Cinque seed su cinque senza segnale con DP; manca il braccio senza DP del seed 456.
 
 **Canary bilanciato su Caltech, seed 42 (2026-10-01, Mac principale,
 `experiments/_canary_balanced_caltech_s42` e `_canary_balanced_caltech_swap_s42`, commit 11c7fdf e

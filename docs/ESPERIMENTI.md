@@ -1640,6 +1640,14 @@ dei template. Yeom sul modello globale: somme fra 0.985 e 1.0. I due bracci senz
 quarta macchina (stesso comando). Seed 789: su Windows, rilanciato il 7 ottobre in una sola finestra. Con DP, quattro seed
 su quattro hanno somme fra 0.975 e 1.11 in ogni round; senza DP il round 1 dà 1.58, 1.38, 1.50 nei tre seed misurati.
 
+**Seed 789 su Windows (2026-10-07/08).** 4 run, commit ec27181 pulito, tutte chiuse con exit 0 (`=== fine` nel log), circa
+2 ore e 10 minuti per run; importate da `canary_A3_s789_windows.zip` (PROVENIENZA). Il Traceback alla riga 86 del log è di
+un rilancio interrotto prima delle run valide (import di torch nello script delle baseline). Baseline 0.5296 (A) e 0.4704
+(B). Somme A+B della loss grezza: con DP 0.9775, 0.98, 1.0225 (media 0.993); senza DP 1.4825, 1.08, 1.055 (media 1.21).
+Yeom sul modello globale fra 0.9875 e 1.0275. Pilota a cinque seed: con DP le somme stanno fra 0.975 e 1.11 in ogni round
+e ogni seed (W2 e P2 reggono); senza DP il round 1 dà 1.58, 1.38, 1.50, 1.48 nei quattro seed misurati (W1 regge; manca il
+seed 456 senza DP).
+
 **Canary su A3: rumore minore e solo taglio (lanciato il 2026-10-08, tre macchine).** Domanda: il segnale sparisce per
 il rumore o per il taglio, e quanto rumore serve? Stesso protocollo del pilota (config `experiment_canary_multisite` e
 `_swap`, `--dp-mode local`, C = 1, LiRA ridotta, Shadow saltato), due condizioni in più: ε = 1024 (σ = 0.0047, rumore
@@ -1709,6 +1717,32 @@ il taglio, non per il rumore. (Q2) ε = 1024: il rumore è circa un quinto dell'
 valore con ε = 64 (circa 1.00) e quello del solo taglio, sopra 1.15 in almeno 2 seed su 4: esiste un ε abbastanza grande
 da lasciar passare il segnale. Se resta fra 0.85 e 1.15 in tutti e quattro i seed, anche un rumore piccolo basta, e la
 protezione al punto operativo ha un margine ampio. (Q3) Sul modello globale nessun segnale in nessuna condizione.
+
+**Correzione (2026-10-08 sera): ε = 512 al posto di 1024.** Con ε = 1024 la run arriva in fondo ma non si salva:
+`save_results` chiama `_advanced_composition_epsilon`, che calcola exp(ε) e va in overflow oltre ε ≈ 709 (OverflowError,
+`logs/canary_A3_bis.log`, Mac principale, seed 42 braccio A, alle 08:25; cartella `_canary_multisite_A3e1024_s42` vuota).
+La coda si è fermata lì (`set -e`); sulle altre due macchine lo stesso accade alla prima run con ε = 1024. Nessuna
+modifica al codice: si usa ε = 512 (σ = 0.0095, rumore per client di norma circa 0.4, due volte e mezzo sotto l'update
+tagliato; la composizione avanzata resta calcolabile). Q1 e Q3 invariate; Q2 vale per ε = 512 con le stesse soglie.
+Segnalazione per dopo: `_advanced_composition_epsilon` deve restituire None o infinito invece di fallire. Comandi
+rilanciati (stessa struttura, `e512` al posto di `e1024`):
+
+```bash
+cd ~/Documents/ChargeShield-FL && git status --porcelain && git log --oneline -1 && nohup caffeinate -ims bash -c '
+set -e
+for job in 42:multisite:e512 42:multisite_swap:e512 123:multisite:e512 123:multisite_swap:e512 42:multisite:clip 42:multisite_swap:clip 123:multisite:clip 123:multisite_swap:clip; do
+  IFS=: read s c m <<< "$job"
+  d=_canary_${c}_A3${m}_s$s
+  [ -e experiments/$d/.fatto ] && continue
+  if [ $m = e512 ]; then dp="--dp-mode local --epsilon 512"; else dp="--dp-mode local --epsilon 64 --dp-ablation clip-only"; fi
+  python3 scripts/run_experiments.py --config config/experiment_canary_$c.yaml $dp --seed $s --n-shadow 2 --shadow-epochs-cap 20 --skip-attacks shadow --sweep-dir experiments/$d >> logs/canary_A3_bis.log 2>&1
+  touch experiments/$d/.fatto
+done
+' < /dev/null > logs/coda_canary_A3_bis.log 2>&1 & disown
+```
+
+Quarta macchina: come sopra con `A3e512` e `--epsilon 512` al posto di `A3e1024` e `--epsilon 1024`. Windows: come sopra con
+`"multisite:e512", "multisite_swap:e512"` e `--epsilon 512`.
 
 **Pilota canary su A3, seed 1234 sul Mac principale (comando del 2026-10-07, previsione W1-W3 sopra).** Stesso protocollo
 e stessa previsione dei seed di Windows; con questo seed il pilota arriva a cinque seed. Circa 5 ore.
