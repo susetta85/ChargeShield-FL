@@ -1640,6 +1640,76 @@ dei template. Yeom sul modello globale: somme fra 0.985 e 1.0. I due bracci senz
 quarta macchina (stesso comando). Seed 789: su Windows, rilanciato il 7 ottobre in una sola finestra. Con DP, quattro seed
 su quattro hanno somme fra 0.975 e 1.11 in ogni round; senza DP il round 1 dà 1.58, 1.38, 1.50 nei tre seed misurati.
 
+**Canary su A3: rumore minore e solo taglio (lanciato il 2026-10-08, tre macchine).** Domanda: il segnale sparisce per
+il rumore o per il taglio, e quanto rumore serve? Stesso protocollo del pilota (config `experiment_canary_multisite` e
+`_swap`, `--dp-mode local`, C = 1, LiRA ridotta, Shadow saltato), due condizioni in più: ε = 1024 (σ = 0.0047, rumore
+per client di norma circa 0.2 su circa 1800 parametri, cinque volte sotto l'update tagliato) e solo taglio
+(`--dp-ablation clip-only`, nessun rumore). Ogni seed resta sulla sua macchina: 42 e 123 sul Mac principale, 456 sulla
+quarta macchina (prima i due bracci senza DP che mancano), 789 su Windows. Baseline già nei log dei seed.
+
+Mac principale (circa 10 ore, 8 run):
+
+```bash
+cd ~/Documents/ChargeShield-FL && git status --porcelain && git log --oneline -1 && nohup caffeinate -ims bash -c '
+set -e
+for job in 42:multisite:e1024 42:multisite_swap:e1024 123:multisite:e1024 123:multisite_swap:e1024 42:multisite:clip 42:multisite_swap:clip 123:multisite:clip 123:multisite_swap:clip; do
+  IFS=: read s c m <<< "$job"
+  d=_canary_${c}_A3${m}_s$s
+  [ -e experiments/$d/.fatto ] && continue
+  if [ $m = e1024 ]; then dp="--dp-mode local --epsilon 1024"; else dp="--dp-mode local --epsilon 64 --dp-ablation clip-only"; fi
+  python3 scripts/run_experiments.py --config config/experiment_canary_$c.yaml $dp --seed $s --n-shadow 2 --shadow-epochs-cap 20 --skip-attacks shadow --sweep-dir experiments/$d >> logs/canary_A3_bis.log 2>&1
+  touch experiments/$d/.fatto
+done
+' < /dev/null > logs/coda_canary_A3_bis.log 2>&1 & disown
+```
+
+Quarta macchina (circa 13 ore, 6 run; la coda riprende da dove si ferma):
+
+```bash
+cd ~/ChargeShield-FL && source .venv/bin/activate && git fetch susetta && git merge --ff-only susetta/master && git status --porcelain && git log --oneline -1 && nohup caffeinate -ims bash -c '
+set -e
+for job in multisite:nodp multisite_swap:nodp multisite:A3e1024 multisite_swap:A3e1024 multisite:A3clip multisite_swap:A3clip; do
+  IFS=: read c m <<< "$job"
+  d=_canary_${c}_${m}_s456
+  [ -e experiments/$d/.fatto ] && continue
+  case $m in nodp) dp="--no-dp";; A3e1024) dp="--dp-mode local --epsilon 1024";; A3clip) dp="--dp-mode local --epsilon 64 --dp-ablation clip-only";; esac
+  python3 scripts/run_experiments.py --config config/experiment_canary_$c.yaml $dp --seed 456 --n-shadow 2 --shadow-epochs-cap 20 --skip-attacks shadow --sweep-dir experiments/$d >> logs/canary_A3_s456.log 2>&1
+  touch experiments/$d/.fatto
+done
+' < /dev/null > logs/coda_canary_A3_s456_bis.log 2>&1 & disown
+```
+
+Windows (una finestra PowerShell nella cartella del progetto, circa 9 ore, 4 run):
+
+```powershell
+$s = 789
+$env:PYTHONUTF8 = "1"; $env:OMP_NUM_THREADS = "1"; $env:MKL_NUM_THREADS = "1"
+& {
+  Add-Type -Namespace W3 -Name P -MemberDefinition '[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint f);'
+  [W3.P]::SetThreadExecutionState(2147483649) | Out-Null
+  $log = "logs\canary_A3_win_s$s.log"
+  foreach ($j in "multisite:e1024", "multisite_swap:e1024", "multisite:clip", "multisite_swap:clip") {
+    $c, $m = $j.Split(":")
+    $dir = "experiments\_canary_${c}_A3${m}_s$s"
+    if (Test-Path "$dir\.fatto") { continue }
+    $dp = if ($m -eq "e1024") { "--dp-mode local --epsilon 1024" } else { "--dp-mode local --epsilon 64 --dp-ablation clip-only" }
+    cmd /c ".venv\Scripts\python.exe scripts\run_experiments.py --config config\experiment_canary_$c.yaml $dp --seed $s --n-shadow 2 --shadow-epochs-cap 20 --skip-attacks shadow --sweep-dir $dir >> $log 2>&1"
+    Add-Content $log "=== fine $dir, exit $LASTEXITCODE, $(Get-Date) ==="
+    if ($LASTEXITCODE -ne 0) { return }
+    New-Item -ItemType File -Force -Path "$dir\.fatto" | Out-Null
+  }
+}
+```
+
+Previsione, scritta prima del lancio. (Q1) Solo taglio: il segnale resta. Il taglio riduce l'update di Office 1 di circa 16
+volte al round 1 ma ne conserva la direzione, e la loss grezza confronta i canary fra loro, quindi conta l'ordine e non la
+scala: somma A+B al round 1 sopra 1.15 in almeno 3 seed su 4, non oltre il valore senza DP dello stesso seed. Se invece
+sta fra 0.85 e 1.15 in almeno 3 seed su 4, è il taglio da solo a togliere il segnale e la frase del pilota va scritta per
+il taglio, non per il rumore. (Q2) ε = 1024: il rumore è circa un quinto dell'update tagliato; somma al round 1 fra il
+valore con ε = 64 (circa 1.00) e quello del solo taglio, sopra 1.15 in almeno 2 seed su 4: esiste un ε abbastanza grande
+da lasciar passare il segnale. Se resta fra 0.85 e 1.15 in tutti e quattro i seed, anche un rumore piccolo basta, e la
+protezione al punto operativo ha un margine ampio. (Q3) Sul modello globale nessun segnale in nessuna condizione.
+
 **Pilota canary su A3, seed 1234 sul Mac principale (comando del 2026-10-07, previsione W1-W3 sopra).** Stesso protocollo
 e stessa previsione dei seed di Windows; con questo seed il pilota arriva a cinque seed. Circa 5 ore.
 
