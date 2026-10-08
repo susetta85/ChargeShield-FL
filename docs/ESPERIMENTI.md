@@ -1607,6 +1607,39 @@ globale al round 3 0.0145-0.0148 con DP contro 0.0042-0.0048 senza, circa 3-3.5 
 per client con rumore lato client toglie il segnale dei canary sull'update che vede l'aggregatore, dove senza DP c'è.
 Seed 456 e 789 su Windows da verificare.
 
+**Seed 1234 (Mac principale) e 456 (quarta macchina), 2026-10-07.** Seed 1234: 4 run, commit 5def4d1 pulito, zero
+errori (`logs/canary_A3_s1234.log`); la prima run senza DP si è interrotta alle 12:54 per la batteria scarica (nessun file
+salvato) ed è stata rifatta con lo stesso comando, che ha saltato le due run già finite. Baseline 0.5983 (A) e 0.4017
+(B). Somme A+B della loss grezza: con DP 1.005, 0.9975, 1.005 (media 1.0025); senza DP 1.50, 1.0925, 1.015 (media 1.20).
+Seed 456: passato da Windows alla quarta macchina dopo due interruzioni su Windows (6 ottobre: finestra chiusa; 7
+ottobre alle 11:15: riavvio forzato per un aggiornamento del firmware, evento 1074 nel registro di sistema; nessuna run
+finita). Sulla quarta macchina, finestra fino alle 19:00, solo i due bracci con DP (commit 5def4d1 pulito, zero errori,
+circa 2 ore e 10 minuti per run), comando scritto prima del lancio:
+
+```bash
+cd ~/ChargeShield-FL && source .venv/bin/activate && git fetch susetta && git merge --ff-only susetta/master && git status --porcelain && git log --oneline -1 && nohup caffeinate -ims bash -c '
+set -e
+for c in experiment_canary_multisite experiment_canary_multisite_swap; do
+  python3 scripts/check_canary_init_confound.py --config config/$c.yaml --seed 456 >> logs/canary_A3_s456.log 2>&1
+done
+for job in multisite:A3 multisite_swap:A3 multisite:nodp multisite_swap:nodp; do
+  IFS=: read c m <<< "$job"
+  d=_canary_${c}_${m}_s456
+  [ -e experiments/$d/.fatto ] && continue
+  [ "$(date +%H%M)" -lt 1700 ] || break
+  if [ $m = A3 ]; then dp="--dp-mode local --epsilon 64"; else dp="--no-dp"; fi
+  python3 scripts/run_experiments.py --config config/experiment_canary_$c.yaml $dp --seed 456 --n-shadow 2 --shadow-epochs-cap 20 --skip-attacks shadow --sweep-dir experiments/$d >> logs/canary_A3_s456.log 2>&1
+  touch experiments/$d/.fatto
+done
+' < /dev/null > logs/coda_canary_A3_s456.log 2>&1 & disown
+```
+
+Baseline 0.4274 (A) e 0.5726 (B), uguali a quelle calcolate su Windows. Somme A+B con DP: 1.015, 0.995, 1.0775 (media
+1.03); al round 2 i due bracci si scostano in versi opposti dalle baseline (0.3325 e 0.6625) e la somma li annulla: effetto
+dei template. Yeom sul modello globale: somme fra 0.985 e 1.0. I due bracci senza DP del seed 456 restano da fare sulla
+quarta macchina (stesso comando). Seed 789: su Windows, rilanciato il 7 ottobre in una sola finestra. Con DP, quattro seed
+su quattro hanno somme fra 0.975 e 1.11 in ogni round; senza DP il round 1 dà 1.58, 1.38, 1.50 nei tre seed misurati.
+
 **Pilota canary su A3, seed 1234 sul Mac principale (comando del 2026-10-07, previsione W1-W3 sopra).** Stesso protocollo
 e stessa previsione dei seed di Windows; con questo seed il pilota arriva a cinque seed. Circa 5 ore.
 

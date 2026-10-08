@@ -247,7 +247,10 @@ Al round 1, dove senza DP il segnale c'è in tutti e due i seed, con DP i due br
 Sul modello globale nessun segnale, con e senza DP. La DP per client al punto operativo toglie il segnale dei canary sulla
 superficie dell'aggregatore; costo in questo modello a 3 round: loss del modello globale circa 3-3.5 volte quella senza
 DP al round 3. Con LiRA ridotta la loss grezza senza DP è identica a quella con LiRA completa (stesso modello target).
-Due seed: altri tre in corso (456 e 789 su Windows, 1234 sul Mac principale).
+Aggiornamento 2026-10-07: seed 1234 (Mac principale) con DP 1.005, 0.998, 1.005 e senza DP 1.50, 1.09, 1.02; seed 456
+(quarta macchina, solo con DP) 1.015, 0.995, 1.08. Con DP quattro seed su quattro intorno a 1.00 in ogni round, senza DP
+il segnale al round 1 c'è in tutti i seed misurati (1.58, 1.38, 1.50). Mancano i bracci senza DP del seed 456 e il seed
+789 (Windows).
 
 **Canary bilanciato su Caltech, seed 42 (2026-10-01, Mac principale,
 `experiments/_canary_balanced_caltech_s42` e `_canary_balanced_caltech_swap_s42`, commit 11c7fdf e
