@@ -250,7 +250,15 @@ DP al round 3. Con LiRA ridotta la loss grezza senza DP è identica a quella con
 Aggiornamento 2026-10-07: seed 1234 (Mac principale) con DP 1.005, 0.998, 1.005 e senza DP 1.50, 1.09, 1.02; seed 456
 (quarta macchina, solo con DP) 1.015, 0.995, 1.08. Con DP quattro seed su quattro intorno a 1.00 in ogni round, senza DP
 il segnale al round 1 c'è in tutti i seed misurati (1.58, 1.38, 1.50). Seed 789 (Windows, 2026-10-08): con DP 0.98, 0.98, 1.02,
-senza DP 1.48, 1.08, 1.06. Cinque seed su cinque senza segnale con DP; manca il braccio senza DP del seed 456.
+senza DP 1.48, 1.08, 1.06. Cinque seed su cinque senza segnale con DP. Seed 456 senza DP (quarta macchina, JSON importati il 2026-10-09): 1.555, 1.04,
+1.1025. Limite importante (2026-10-09, seed 42 e 123): anche il solo taglio, senza rumore, toglie il segnale (somme fra 0.975
+e 1.02), come ε = 512 ed ε = 64. Per questo attaccante il segnale sparisce perché l'update tagliato lascia il modello
+osservato vicino all'inizializzazione, non per il rumore; il taglio da solo non è un meccanismo di privacy (un attaccante
+che riscala l'update tagliato potrebbe recuperare il segnale). Il pilota non può essere scritto come "la DP toglie il
+segnale grazie al rumore" finché non si prova un attaccante che riscala l'update (`ESPERIMENTI.md`).
+Seed 456 e 789 (2026-10-09): solo taglio 1.0025, 1.0525, 1.1425 e 0.9975, 1.015, 1.0425; ε = 512 1.01, 0.99, 1.0475 e
+0.9925, 0.9925, 1.0175. Al round 1 il solo taglio toglie il segnale in quattro seed su quattro. Attaccante che riscala
+l'update: codice pronto (`--canary-rescale`, Sprint 10zz+170), coda di 24 run sul Mac principale con previsione R1-R4.
 
 **Canary bilanciato su Caltech, seed 42 (2026-10-01, Mac principale,
 `experiments/_canary_balanced_caltech_s42` e `_canary_balanced_caltech_swap_s42`, commit 11c7fdf e

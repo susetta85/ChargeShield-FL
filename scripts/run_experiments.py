@@ -1322,6 +1322,11 @@ def run_fl_rounds(
     for round_num in range(1, fl_rounds + 1):
         logger.info(f"=== FL Round {round_num}/{fl_rounds} ===")
         _delta_norms: dict[str, float] = {}
+        # Attaccante che riscala l'update (2026-10-09, Sprint 10zz+170): modello
+        # ricevuto da ogni client a inizio round, riferimento di
+        # ref + s*(update osservato - ref) in run_lira(). Solo in memoria, non
+        # va nel JSON; get_weights() restituisce copie.
+        _pre_round_per_client: dict[str, Any] = {}
 
         for cid, trainer in trainers.items():
             # Fix 2026-07-22 (review B1): cattura i pesi del modello PRIMA del
@@ -1332,6 +1337,7 @@ def run_fl_rounds(
             # ancora applicato); per i round successivi coincide col modello
             # applicato da apply_global_model() alla fine del round precedente.
             pre_round_weights = trainer.get_weights()
+            _pre_round_per_client[cid] = pre_round_weights
 
             # Training locale
             update = trainer.train_local(cluster_sessions[cid], round_num)
@@ -1544,6 +1550,8 @@ def run_fl_rounds(
             "raw_updates":       _store_raw,          # pre-DP — usati da IDS (None sotto local DP) — dal ML Plane
             "raw_global_weights": _store_raw_global,  # media raw — riferimento IDS (idem)
             "global_weights":    aggregated.global_weights,
+            # Sprint 10zz+170: vedi _pre_round_per_client sopra.
+            "pre_round_weights_per_client": _pre_round_per_client,
         }
 
     return results
@@ -2897,6 +2905,38 @@ def run_shadow(
 
 # ── LiRA Attack (Carlini et al. 2022) ──────────────────────────────────────────
 
+def _rescale_update_weights(
+    observed: list[Any],
+    reference: list[Any],
+    s: float,
+    weight_keys: list[str],
+) -> list[Any] | None:
+    """Pesi ref + s*(observed - ref) per l'attaccante che riscala l'update.
+
+    Aggiunto il 2026-10-09 (Sprint 10zz+170). Con il taglio a C l'update del
+    client arriva ridotto (Office 1: norma circa 16 portata a 1 al round 1) e il
+    modello osservato resta vicino al riferimento; un attaccante che conosce il
+    riferimento (il modello inviato dal server) puo' riscalare la direzione
+    dell'update. s = 1 riproduce il modello osservato. Stessa convenzione di
+    GradientManager._clip_weights(): buffer BatchNorm e tensori non float non
+    si riscalano (si tiene il valore osservato). None se le liste non hanno la
+    stessa lunghezza.
+    """
+    if len(observed) != len(reference) or len(observed) != len(weight_keys):
+        return None
+    _bn = {"running_mean", "running_var", "num_batches_tracked"}
+    out: list[Any] = []
+    for k, w, r in zip(weight_keys, observed, reference):
+        wt = w if isinstance(w, torch.Tensor) else torch.tensor(w)
+        rt = r if isinstance(r, torch.Tensor) else torch.tensor(r)
+        if k.split(".")[-1] in _bn or not wt.is_floating_point():
+            out.append(wt.clone())
+            continue
+        rt = rt.to(wt.dtype)
+        out.append(rt + s * (wt - rt))
+    return out
+
+
 def run_lira(
     cfg: dict,
     train_sessions: list[dict[str, Any]],
@@ -3427,6 +3467,12 @@ def run_lira(
     # enumerate(client_updates)`) per il motivo per cui questo è un cambiamento
     # chirurgico: la selezione dei membri per cluster e tutta la diagnostica restano
     # identiche, cambia solo quale modello produce target_loss.
+    # Attaccante che riscala l'update osservato (2026-10-09, Sprint 10zz+170,
+    # --canary-rescale): lista di fattori s; vuota = disattivato, nessun costo.
+    # Solo sui canary e solo con observation_surface == "client".
+    _canary_rescale: list[float] = [
+        float(_s) for _s in (cfg.get("lira", {}).get("canary_rescale") or [])
+    ]
     _lira_observation_surface = cfg.get("lira", {}).get("observation_surface", "client")
     if _lira_observation_surface not in ("client", "global"):
         raise ValueError(
@@ -4264,6 +4310,15 @@ def run_lira(
         # _diag_raw_loss_members/nonmembers ma ristretto ai canary.
         round_canary_member_raw_loss:    list[float] = []
         round_canary_nonmember_raw_loss: list[float] = []
+        # Sprint 10zz+170: loss dei canary sul modello riscalato, per s:
+        # (membri, non-membri). Vuoto se --canary-rescale non e' dato.
+        round_canary_rescaled_loss: dict[float, tuple[list[float], list[float]]] = {
+            _s: ([], []) for _s in _canary_rescale
+        } if _lira_observation_surface == "client" else {}
+        _rescale_ref_per_client = (
+            (round_data.get("pre_round_weights_per_client") or {})
+            if round_canary_rescaled_loss else {}
+        )
         # Diagnostica 2026-09-13 (richiesta esplicita dell'utente dopo il run
         # experiment_canary_positive_control_caltech_highdensity.yaml:
         # canary_n_member=2490 invece dei 2520 attesi — 84×30 — e
@@ -4425,6 +4480,24 @@ def run_lira(
                     continue
                 client_model.eval()
 
+            # Sprint 10zz+170: modelli riscalati ref + s*(osservato - ref).
+            _rescaled_models: dict[float, Any] = {}
+            if round_canary_rescaled_loss:
+                _ref_w = _rescale_ref_per_client.get(getattr(update, "cluster_id", None))
+                if _ref_w is None:
+                    logger.warning(
+                        f"LiRA round {round_num} {getattr(update, 'cluster_id', None)}: "
+                        "riferimento di inizio round assente, niente modelli riscalati"
+                    )
+                else:
+                    _ae_keys = list(client_model.state_dict().keys())
+                    for _s in _canary_rescale:
+                        _w_s = _rescale_update_weights(update.weights, _ref_w, _s, _ae_keys)
+                        _m_s = Autoencoder(input_dim=input_dim, **_autoencoder_arch_kwargs(cfg))
+                        if _w_s is not None and _load_weights_into(_m_s, _w_s):
+                            _m_s.eval()
+                            _rescaled_models[_s] = _m_s
+
             # Fix: usa l'ensemble shadow del cluster di QUESTO client — non un ensemble
             # cross-cluster globale — per calibrare IN/OUT sotto lo stesso regime di
             # training del modello attaccato (vedi docstring "shadow/target mismatch").
@@ -4567,6 +4640,12 @@ def run_lira(
                     else:
                         round_canary_nonmember_raw_loss.append(target_loss)
                         round_canary_nonmember_raw_groups.add(_sample_canary_group[id(sample)])
+                    # Sprint 10zz+170: stesse coppie del pool raw, modello riscalato.
+                    for _s, _m_s in _rescaled_models.items():
+                        with torch.no_grad():
+                            _rec_s = _m_s(tensor)
+                            _loss_s = float(torch.mean((_rec_s - tensor) ** 2).item())
+                        round_canary_rescaled_loss[_s][0 if is_member else 1].append(_loss_s)
 
                 _sample_id = id(sample)
                 in_losses:  list[float] = []
@@ -5085,6 +5164,37 @@ def run_lira(
             f"(gap={score_gap:.6f}, n_shadow={n_shadow}, "
             f"TPR@1%FPR={_tpr_fields.get('tpr_at_fpr_0.01')})"
         )
+        # Sprint 10zz+170: AUC della loss grezza dei canary sul modello riscalato.
+        canary_rescaled_raw_auc_roc: dict[str, float | None] | None = None
+        canary_rescaled_mean_loss: dict[str, list[float | None]] | None = None
+        if round_canary_rescaled_loss:
+            canary_rescaled_raw_auc_roc, canary_rescaled_mean_loss = {}, {}
+            for _s, (_ml, _nl) in round_canary_rescaled_loss.items():
+                _k = f"{_s:g}"
+                _auc_s = None
+                if _ml and _nl:
+                    try:
+                        _auc_s = round(float(roc_auc_score(
+                            [1] * len(_ml) + [0] * len(_nl),
+                            [-x for x in _ml] + [-x for x in _nl],
+                        )), 6)
+                    except ValueError:
+                        _auc_s = None
+                canary_rescaled_raw_auc_roc[_k] = _auc_s
+                canary_rescaled_mean_loss[_k] = [
+                    round(float(np.mean(_ml)), 8) if _ml else None,
+                    round(float(np.mean(_nl)), 8) if _nl else None,
+                ]
+            logger.info(
+                f"Round {round_num} — [CANARY RISCALATO] raw_loss_auc per s: "
+                + ", ".join(f"s={k}: {v}" for k, v in canary_rescaled_raw_auc_roc.items())
+                + f" (raw_loss_auc osservato={canary_raw_mse_auc_roc})"
+            )
+            if "1" in canary_rescaled_raw_auc_roc and canary_rescaled_raw_auc_roc["1"] != canary_raw_mse_auc_roc:
+                logger.warning(
+                    f"Round {round_num} — [CANARY RISCALATO] s=1 diverso dal raw_loss_auc "
+                    f"osservato ({canary_rescaled_raw_auc_roc['1']} contro {canary_raw_mse_auc_roc})"
+                )
         if canary_auc_roc is not None:
             logger.info(
                 f"Round {round_num} — [CANARY] AUC: {canary_auc_roc:.4f} "
@@ -5281,6 +5391,10 @@ def run_lira(
             # Sprint 10zz+28 (2026-09-03, task #53) — vedi commento sopra.
             "canary_raw_advantage":       canary_raw_advantage,
             "canary_raw_confusion":       canary_raw_confusion,
+            # Sprint 10zz+170 (--canary-rescale): AUC e loss medie (membri,
+            # non-membri) dei canary su ref + s*(osservato - ref), chiave s.
+            "canary_rescaled_raw_auc_roc": canary_rescaled_raw_auc_roc,
+            "canary_rescaled_mean_loss":   canary_rescaled_mean_loss,
             # MIA Advantage (task #41, Sprint 10zz+13) — vedi _mia_advantage().
             "lira_advantage":             lira_advantage,
             "canary_advantage":           canary_advantage,
@@ -6724,6 +6838,8 @@ def save_results(
             # DP e attacchi saltati, vedi --dp-ablation e --skip-attacks.
             "dp_ablation": _dp_ablation,
             "skipped_attacks": cfg["experiment"].get("skipped_attacks"),
+            # Sprint 10zz+170: fattori dell'attaccante che riscala (None = spento).
+            "canary_rescale": cfg.get("lira", {}).get("canary_rescale"),
             # seed: necessario per multi-seed aggregation (mean±std) — fix M1
             "seed":       cfg["experiment"].get("seed", 42),
             # canary (2026-09-16, Sprint 10zz+113): provenance-bug trovato
@@ -7194,6 +7310,16 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--canary-rescale", type=str, default=None,
+        help=(
+            "Fattori s separati da virgola, es. 1,2,4,8,16,32 (2026-10-09, Sprint "
+            "10zz+170): oltre alla loss grezza dei canary sul modello osservato, "
+            "la calcola su ref + s*(osservato - ref), con ref il modello ricevuto "
+            "dal client a inizio round. Attaccante che riscala l'update tagliato. "
+            "Richiede LiRA (non con --skip-attacks lira) e observation_surface client."
+        ),
+    )
+    parser.add_argument(
         "--n-shadow", type=int, default=None,
         help=(
             "Numero di shadow models per LiRA (override config lira.n_shadow). "
@@ -7297,6 +7423,19 @@ def main() -> None:
         if "lira" in _skip_attacks and args.per_sample_dump:
             logger.warning("--per-sample-dump ignorato: il dump per campione viene da LiRA, saltato")
     cfg["experiment"]["skipped_attacks"] = sorted(_skip_attacks) or None
+    if args.canary_rescale:
+        try:
+            _rescale = [float(x) for x in args.canary_rescale.split(",") if x.strip()]
+        except ValueError:
+            logger.error(f"--canary-rescale: valori non numerici {args.canary_rescale!r}")
+            sys.exit(1)
+        if not _rescale or any(x <= 0 for x in _rescale):
+            logger.error(f"--canary-rescale: servono fattori positivi, ricevuto {args.canary_rescale!r}")
+            sys.exit(1)
+        if "lira" in _skip_attacks:
+            logger.error("--canary-rescale richiede LiRA: togliere lira da --skip-attacks")
+            sys.exit(1)
+        cfg.setdefault("lira", {})["canary_rescale"] = _rescale
 
     # Warning esplicito se Byzantine è attivo senza --sweep-dir: rischio di mischiare
     # risultati IDS con risultati MIA nella directory experiments/ principale.

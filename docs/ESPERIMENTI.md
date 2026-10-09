@@ -1744,6 +1744,79 @@ done
 Quarta macchina: come sopra con `A3e512` e `--epsilon 512` al posto di `A3e1024` e `--epsilon 1024`. Windows: come sopra con
 `"multisite:e512", "multisite_swap:e512"` e `--epsilon 512`.
 
+**Esito sul Mac principale, seed 42 e 123 (2026-10-09).** 8 run su 8, dall'8 ottobre alle 18:1x al 9 ottobre alle 04:18
+(ora del Mac), commit 1b504bf pulito, zero errori nuovi (l'unico Traceback del log è quello di ε = 1024). Somme A+B della
+loss grezza sull'update di Office 1 nei tre round. Solo taglio: seed 42 1.00, 0.9825, 1.005; seed 123 1.0175, 0.975,
+1.0175. ε = 512: seed 42 0.99, 0.9925, 1.0625; seed 123 1.02, 1.01, 0.995. Riferimenti: ε = 64 1.0075, 0.975, 1.0275 e
+0.9875, 0.9925, 1.1125; senza DP 1.58 e 1.38 al round 1. Yeom sul modello globale intorno a 1.00 ovunque. Loss sull'holdout
+del modello globale al round 3: solo taglio 0.016-0.018, ε = 512 0.015-0.016, ε = 64 0.014-0.015, senza DP 0.0042-0.0048.
+(Q1) Non regge: il solo taglio toglie il segnale in tutti e due i seed, come la DP completa. (Q2) Con ε = 512 nessun
+segnale, ma dopo Q1 questo non dice nulla sul rumore. (Q3) Regge. Lettura: per questo attacco (loss grezza dei canary sul
+modello che l'attaccante vede, cioè modello globale più update di Office 1) è il taglio a togliere il segnale, e con esso
+gran parte dell'utilità. Al round 1 il modello globale di partenza è l'inizializzazione casuale e l'update di Office 1 (norma
+circa 16) viene ridotto a norma 1: il modello osservato resta vicino all'inizializzazione e la loss dei canary segue la
+baseline a init casuale. Il pilota quindi non mostra che il rumore protegge; mostra che questo attaccante non vede il
+segnale in un update tagliato. Senza rumore il taglio conserva la direzione dell'update, e un attaccante che lo riscala
+(modello globale più s volte l'update osservato, s circa 16 al round 1) potrebbe recuperare il segnale; con il rumore il
+riscalamento amplifica anche il rumore. Per attribuire la protezione al rumore serve questo attaccante adattivo (codice
+nuovo: valutare la loss dei canary su modello globale più s volte l'update osservato, per alcuni s), su solo taglio, ε = 512
+ed ε = 64. Seed 456 e 789 sotto.
+
+**Esito sulla quarta macchina (seed 456) e su Windows (seed 789), 2026-10-09.** Quarta macchina: 6 run (i due bracci senza
+DP, poi ε = 512 e solo taglio), dall'8 ottobre alle 07:05 al 9 alle 00:54 (EDT); senza DP commit 3da79c0, le altre 1b504bf,
+tutti puliti; 8 "Esperimento completato" nel log, un solo Traceback (ε = 1024, overflow già noto). Windows: 4 run (ε = 512 e
+solo taglio) dall'8 ottobre alle 18:17 al 9 alle 04:35, circa 2 ore e 35 minuti per run, commit 1b504bf pulito, ogni run
+chiusa con "=== fine ..., exit 0"; nel log due Traceback, quello vecchio della riga 86 e quello di ε = 1024. Somme A+B della
+loss grezza (round 1, 2, 3). Seed 456: solo taglio 1.0025, 1.0525, 1.1425; ε = 512 1.01, 0.99, 1.0475; ε = 64 1.015, 0.995,
+1.0775; senza DP 1.555, 1.04, 1.1025. Seed 789: solo taglio 0.9975, 1.015, 1.0425; ε = 512 0.9925, 0.9925, 1.0175; ε = 64
+0.9775, 0.98, 1.0225; senza DP 1.4825, 1.08, 1.055. Il 1.1425 del seed 456 al round 3 viene dal braccio B (0.6825 contro
+la baseline 0.5726); senza DP lo stesso seed al round 3 dà 1.1025, quindi non lo leggo come segnale. Yeom sui canary del
+modello globale fra 0.97 e 1.045 ovunque. Con quattro seed su quattro il quadro di Q1 resta: al round 1 il solo taglio
+toglie il segnale come la DP completa. Manca il seed 1234 per solo taglio ed ε = 512 (Windows, lanciato il 9 ottobre).
+
+**Attaccante che riscala l'update (Sprint 10zz+170, codice del 2026-10-09).** Domanda: il segnale che il taglio toglie
+torna se l'attaccante riscala l'update osservato, e il rumore lo impedisce? Il server conosce il modello che ha inviato al
+client (ref, il modello ricevuto a inizio round) e vede l'update tagliato. Nuovo flag `--canary-rescale 1,2,4,8,16,32`: per
+ogni s calcola la loss grezza dei canary su ref + s·(osservato − ref), sulle stesse coppie della metrica raw di sempre, e
+salva `canary_rescaled_raw_auc_roc` e `canary_rescaled_mean_loss` per round nel JSON (chiave = s), più una riga
+`[CANARY RISCALATO]` nel log. Buffer BatchNorm e tensori interi non si riscalano, come in `_clip_weights()`. Al round 1 il
+riferimento è l'inizializzazione di Office 1 (senza `common_init` ogni client parte dalla sua), che qui l'attaccante conosce:
+è un'ipotesi a favore dell'attaccante, giusta in FL dove il server invia il modello iniziale. Senza flag il codice non cambia
+nulla: provato su una copia del codice (3 epoche, 2 round) che FL e metriche coincidono campo per campo con e senza la modifica, e che s = 1
+dà esattamente il raw_loss_auc osservato (il log avvisa se no). Test: `tests/test_canary_rescale.py` (formula, s = 1, buffer
+invariati, un update tagliato e riscalato del fattore di taglio torna quello vero, flag non validi).
+
+Perché s fino a 32: la norma dell'update di Office 1 al round 1 è 14-21 in tutti i seed (C = 1, quindi fattore di taglio
+circa 1/16), ai round 2 e 3 è 1-2, dove il taglio quasi non agisce. Il round che conta è il primo. Il rumore per client ha
+norma circa σ·√1800: 3.2 a ε = 64 (σ = 0.0757) e 0.40 a ε = 512 (σ = 0.0095). Riscalando di 16 l'update torna di norma
+circa 16, il rumore diventa circa 51 a ε = 64 e circa 6.4 a ε = 512.
+
+Previsione, scritta prima del lancio. Statistica: somma A+B della loss grezza al round 1 con s = 16, scelto prima (non il
+migliore fra gli s, che gonfierebbe il risultato su sei confronti). (R1) Solo taglio: il segnale torna, somma sopra 1.2 in
+ogni seed (senza DP 1.38-1.58). Se resta sotto 1.15, il taglio non si inverte riscalando e la lettura di Q1 va rivista.
+(R2) ε = 64: nessun segnale per nessun s, somme fra 0.85 e 1.15. Se R1 e R2 reggono, al punto operativo è il rumore a
+proteggere da un attaccante che conosce il taglio, e la frase del paper si può scrivere. (R3) ε = 512: esito aperto; rumore
+circa 0.4 volte l'update riscalato, mi aspetto un segnale ridotto (somma fra 1.0 e il valore senza DP). (R4) Controllo: con
+s = 1 ogni run riproduce le run già salvate dello stesso seed e condizione (stesso codice di training); senza DP gli s > 1
+dicono quanto rende l'estrapolazione oltre l'update vero.
+
+Mac principale, coda del weekend (24 run, circa 1 ora e 15 per run, circa 30 ore; riprende da dove si ferma):
+
+```bash
+cd ~/Documents/ChargeShield-FL && git status --porcelain && git log --oneline -1 && nohup caffeinate -ims bash -c '
+set -e
+for m in clip e64 e512 nodp; do for s in 42 123 1234; do for c in multisite multisite_swap; do
+  d=_canary_${c}_R${m}_s$s
+  [ -e experiments/$d/.fatto ] && continue
+  case $m in clip) dp="--dp-mode local --epsilon 64 --dp-ablation clip-only";; e64) dp="--dp-mode local --epsilon 64";; e512) dp="--dp-mode local --epsilon 512";; nodp) dp="--no-dp";; esac
+  python3 scripts/run_experiments.py --config config/experiment_canary_$c.yaml $dp --seed $s --n-shadow 2 --shadow-epochs-cap 20 --skip-attacks shadow --canary-rescale 1,2,4,8,16,32 --sweep-dir experiments/$d >> logs/canary_A3_rescale.log 2>&1
+  touch experiments/$d/.fatto
+done; done; done
+' < /dev/null > logs/coda_canary_A3_rescale.log 2>&1 & disown
+```
+
+Ordine: prima il solo taglio sui tre seed (risponde a R1 dopo circa 7 ore), poi ε = 64, ε = 512, senza DP.
+
 **Pilota canary su A3, seed 1234 sul Mac principale (comando del 2026-10-07, previsione W1-W3 sopra).** Stesso protocollo
 e stessa previsione dei seed di Windows; con questo seed il pilota arriva a cinque seed. Circa 5 ore.
 
