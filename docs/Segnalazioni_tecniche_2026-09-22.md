@@ -709,3 +709,118 @@ script persona e canary.
 92. **Pacchetto senza dati**: `aggiornamento_v2b` non contiene `datasets/`; ogni run fallisce dopo circa 36 secondi con
     `FileNotFoundError: Nessun dataset trovato`. Da indicare nel LEGGIMI del pacchetto (copiare `datasets/acn`).
 
+## U. Shadow e copertura DP degli attacchi (2026-10-19)
+
+Decisione della dottoranda, 19 ottobre: tutti gli attacchi e tutti i modelli sono federati, e ogni attacco gira in
+tutte le configurazioni DP, nessuna DP inclusa. Righe riferite a `scripts/run_experiments.py` dopo la correzione.
+
+93. **Lo shadow (Shokri) non era federato e non usava la DP** (`run_shadow()`, riga 2545; modello shadow alle righe
+    2680-2730, `shadow_epochs = min(epoche x round, 500)`). In ogni cella lo shadow era un autoencoder centralizzato,
+    senza FL e senza DP: la sua distribuzione di loss non descrive il modello federato bersaglio (stesso difetto delle
+    voci 65 e 66, in forma piu' grave). Il punteggio, loss dello shadow meno loss del bersaglio (riga 2576), non e'
+    nemmeno il metodo del paper (`preliminaries.tex`: "its loss distribution supplies the threshold applied to
+    l(x, f)", calibrazione globale). Nessun campo `shadow_*` prodotto prima del 19 ottobre vale come shadow attack del
+    paper. Corretto con la versione 2, default (`src/plugins/attacks/shadow2.py`; la versione 1 resta con
+    `shadow.version: 1`): federazione shadow allenata con `run_fl_rounds()` sulla meta' dei membri di ogni client
+    (stessi client, round, FedProx, DP per client, per record o per soggetto, ablazioni, inizializzazione comune del
+    bersaglio; seme proprio, seed + 500009), soglia globale fissata sullo shadow (vantaggio massimo, e FPR 1%)
+    applicata alla loss del modello globale bersaglio. Nuovo argomento `run_fl_rounds(init_weights=...)` (riga 1193,
+    default None, nessun cambiamento per le chiamate esistenti). Definizione scelta dalla dottoranda fra tre:
+    soglia globale, differenza per record, classificatore di Shokri. Test `tests/test_shadow2.py`.
+94. **Con la soglia globale l'AUC dello shadow e' quella di Yeom.** La soglia non cambia l'ordinamento della loss:
+    `shadow_auc_roc` e' l'AUC del punteggio di Yeom su un sottoinsieme (la meta' dei membri non usata dallo shadow),
+    quindi vicina ma non identica a quella di Yeom (prova ACN senza DP: 0,5015 contro 0,4987). Il contenuto dello shadow v2 sono i tassi alla soglia scelta
+    dallo shadow (`shadow_tpr_cal_fpr`, `shadow_fpr_cal_fpr`, `shadow_advantage_cal_adv`) contro il vantaggio ottimo
+    con etichette note (`shadow_oracle_advantage`). Da scrivere nel paper (Preliminaries e risultati). Nelle prove
+    brevi (2 round, 2 epoche, seed 42) la soglia a FPR 1% dello shadow da' sul bersaglio, al round 2, un FPR fra 0,04%
+    e 4,1% senza DP per client, con DP per record o per soggetto, con epsilon 64 local o central e nelle ablazioni,
+    ma 54,5% con DP per client local a epsilon 2: con rumore forte un solo shadow ha un livello di loss
+    diverso dal bersaglio e l'FPR realizzato non e' controllato. E' una proprieta' dell'attacco da riportare, non un
+    errore.
+95. **`canary_persona.py` senza DP per client** (riga 308 prima della correzione: `run_fl_rounds(..., no_dp=True,
+    dp_mode="dp-fedavg")`). Il canary persona copriva solo nessuna DP, DP per record e per soggetto. Aggiunti
+    `--dp-mode {nessuna,local,central}` e `--epsilon` (riga 323): `nessuna` e' il comportamento precedente, quindi i
+    file v2 e v2b restano validi e combinabili. Il JSON registra `dp_client_modo`, `dp_client_epsilon` e `dp_client`;
+    `combina` rifiuta due bracci con DP per client diversa e copia i due campi nel file appaiato.
+96. **`mia_persona.py` senza DP per client central** (`MECCANISMI`, riga 76). Aggiunto `client_central_eps64`.
+97. **Segnalazioni 51 e 63 superate nella v2** (`src/plugins/attacks/lira2.py`). Gli shadow di LiRA v2 usano
+    `train_local` con la stessa DP per record o per soggetto del client (51, come 66) e dal round 2 ripartono dal
+    modello globale del round precedente; la soglia di scarto a 8 sigma della versione 1 non esiste piu' (63). Misura
+    sui JSON v2: in `v2_acn_central_eps64_s123` e `_s1234` (tre client, 10 round) i campioni valutati da LiRA restano
+    7440/7420 e 7437/7423 dal round 1 al round 10, nessuno scarto. Non ancora misurato su una run v2 con DP per record.
+98. **Righe di log della federazione shadow.** Fra `[SHADOW-FL] inizio` e `[SHADOW-FL] fine` il log della run contiene
+    le righe di training della federazione shadow (per esempio `[SUBJECT-DP]`, con lo stesso nome dei client del
+    bersaglio). Chi legge i log di `run_experiments.py` deve escludere quel tratto; `scripts/epsilon_canary_persona.py`
+    legge solo i log di `canary_persona.py`, che non esegue lo shadow.
+
+## V. Attacchi con dati che il server non possiede (2026-10-20)
+
+Decisione della dottoranda, 20 ottobre: nessun attacco e nessuna ipotesi che il server non possa realizzare. Il
+server possiede cio' che osserva, i propri dati ausiliari e le sessioni che interroga. Le voci 99-101 non sono errori
+di codice ma attacchi fuori dal modello di minaccia: i risultati gia' prodotti restano come analisi di
+sensibilita', le run non ancora eseguite non si eseguono. Campagna sostitutiva: v3 (`ESPERIMENTI.md`).
+
+99. **LiRA e RMIA v2 allenano le ombre sull'universo del client** (`src/plugins/attacks/lira2.py`, riga 527:
+    `universo = mb + nm`, tutti i membri e i non membri del client). Il server non possiede quelle sessioni. Tutti i
+    campi `lira_*`, `rmia_*`, `composed_lira_*`, `composed_rmia_*` e `canary_auc_roc`/`canary_rmia_auc_roc` delle
+    campagne v2 e v2c sono analisi di sensibilita'. Versione realistica: `lira.fonte_ombre: server`.
+100. **Shadow v2 con i membri del client** (`src/plugins/attacks/shadow2.py`, riga 351: `sessioni_shadow` dai
+    membri del bersaglio; anche il controllo `bersaglio_ridotto`, riga 373). Nessuna run eseguita (la v2d non e'
+    partita). Versione realistica: `shadow.fonte_membri: esterna`, membri dello shadow dai dati ausiliari.
+101. **MIA per persona** (`scripts/mia_persona.py`): il modello di riferimento si allena su persone di
+    riferimento e sfondo, che sono sessioni dei client (riga 275); la re-identificazione cerca nel pool di tutte le
+    sessioni (riga 371, `_ritrova` riga 167); l'oracolo usa tutte le sessioni vere della persona (riga 366). Le 30
+    run v2 (6 meccanismi x 5 seed) sono analisi di sensibilita'; la v2d con DP central non si esegue. Discrepanza
+    di documentazione: il docstring (riga 30) dice che le sessioni ritrovate vengono dal pool "SENZA
+    identificativi", il codice e `ESPERIMENTI.md` (riga 2259) cercano in tutte le sessioni. Vale il codice.
+102. **Raccoglitore: colonna RMIA offline sempre vuota** (`raccogli_risultati.py` della v2d, riga 56: cerca
+    `rmia_offline_auc_roc`, mentre `lira2.py` scrive `rmia_off_auc_roc`). Nelle v2 e v2c l'offline non era
+    calcolato, quindi nessun numero perso. Corretto in `scripts/raccogli_risultati.py`, che legge entrambe le chiavi.
+103. **Shadow v2: canary nella valutazione principale** (`src/plugins/attacks/shadow2.py`, righe 303-304 della
+    versione del 19 ottobre: `dividi_membri` e `dividi_non_membri` mettono i canary nella valutazione e
+    `x_mem_all`/`x_non_all` li includono, mentre il log dice che sono esclusi). Senza effetto sui numeri: nessuna
+    run shadow v2 con canary. Corretto (righe 390-391): canary esclusi dalla valutazione principale.
+104. **Ombre realistiche piu' piccole del client** (misura, seed 42, dati veri): ombre online circa il 12-13% della
+    taglia del client, offline circa il 3,5%, membri dello shadow con dati ausiliari circa il 4,3%, con le stesse
+    epoche. Non e' un errore: e' il limite di un server che ha meno dati del client. Le distribuzioni IN/OUT e la
+    soglia dello shadow si spostano rispetto al bersaglio; nelle prove brevi l'FPR realizzato alla soglia a FPR 1%
+    dello shadow va dallo 0,06% al 96%. Da riportare nel paper insieme ai risultati v3. La forma offline di Carlini
+    (`lira_out_*`, `rmia_out_*`, ombre online OUT) ha la stessa taglia della forma online; quella con ombre solo
+    ausiliarie (`lira_off_*`, `rmia_off_*`) ha meno dati.
+105. **Bozza del capitolo 3: quote dello shadow con dati propri sbagliate** (`cap3_threat_model_it.tex`, tabella
+    `tab:versioni-shadow`: 5% di membri e 5% di calibrazione). Con la riserva per i profili (30% dell'holdout) le
+    quote sono circa 3,5% e 3,5%. Corretto nella riscrittura del capitolo.
+
+Revisione indipendente del 20 ottobre (codice v3, dati sintetici): nessuna fuga di dati ne' uso delle etichette
+prima della valutazione nei percorsi realistici; correzioni applicate prima delle code: popolazione z anche
+nell'universo delle ombre online (come in RMIA), varianza offline robusta a un NaN, LiRA e RMIA online calcolati
+anche senza ombre offline, `lira.n_shadow: 32` nei config v3, IID rifiutata anche dallo shadow con dati ausiliari,
+definizione di canary uguale a `shadow2.e_canary`. Restano dichiarati: RMIA offline con a = 1; popolazione z piccola
+nei siti piccoli (Office 1 circa 22 sessioni, Shetland circa 23), quindi molti pareggi nel punteggio RMIA per round.
+106. **Superficie "global" di LiRA: aggiornamenti reali degli altri client** (`src/plugins/attacks/lira2.py`,
+    `traiettoria_shadow`: lo shadow prende il posto del client e si aggrega con `spec.altri_update`, cioe' gli update
+    osservati dal server, `fl_results[r]["updates"]`). Corrisponde al server, non a un partecipante che vede solo i
+    modelli globali. Nessuna run v2 o v2c con questa superficie. Per l'avversario partecipante: nuova superficie
+    `lira.observation_surface: partecipante`, con aggiornamenti degli altri client emulati dai dati ausiliari del
+    server (`aggiornamenti_emulati`).
+107. **DP per soggetto: etichetta dell'accountant nel JSON sbagliata** (`src/ml/subject_dp.py`, righe 411-412 e
+    428). Il campo `subject_dp_accounting.accountant` e la nota dicono "RDP ... adiacenza add/remove", ma
+    `epsilon_subject_dp` viene da `subject_dp_accounting` (righe 330-360), che usa per default PLD con sostituzione
+    (`accountant`, righe 273-288); il valore add/remove e' solo in `per_client[*].epsilon_add_remove`. I numeri sono
+    giusti, l'etichetta no. Non corretta: il codice di accounting non si tocca durante la campagna v3. Nel paper
+    l'epsilon per soggetto e' dichiarato per sostituzione (PLD).
+108. **Canary per sessione v2 con LiRA: le run falliscono all'avvio** (`config/experiment_canary_multisite.yaml`,
+    `_swap.yaml`, `_iid.yaml`, `_swap_iid.yaml`, riga `lira.shadow_init: cold`; `scripts/run_experiments.py`, righe
+    7938-7950). Dal 16 ottobre la LiRA v2 e' il default e rifiuta le opzioni della v1 prima del training
+    (ValueError). Le 18 run `v2_canary*` di `coda_v2_windows.csv` non saltano LiRA, quindi si fermano subito: il
+    pacchetto v2 contiene sia la riga del config sia il controllo. Non verificato sul PC Windows (servono
+    `stato/v2_canary*.errore` e i log). Sostituite dalle 12 run `v3_canary*` con
+    `experiment_canary_multisite{,_swap}_v3.yaml`, senza `shadow_init`. Il canary persona non e' toccato
+    (`scripts/canary_persona.py` non legge il blocco `lira`).
+109. **Mac di Domenico: installazione della v3 incompleta** (cartella `~/Downloads/ChargeShield_v2b/codice`, file
+    in sola lettura, `-r--r--r--`, dal pacchetto v2b). `cp -R` ha aggiornato solo i file scrivibili: `lira2.py` e
+    `shadow2.py` nuovi, `scripts/run_experiments.py` vecchio (md5 1ba9215b..., senza l'argomento `init_weights` di
+    `run_fl_rounds`, usato dalla federazione dello shadow v2). Le 6 run v3 finite il 20 ottobre (Scozia senza DP s42
+    e per record sigma 1, 5 seed) non hanno lo shadow v2 (`shadow_version` assente nei JSON): si rifanno dopo
+    `chmod -R u+w codice` e una nuova copia, con un controllo md5 dei file principali. Nessun effetto sulle altre
+    macchine (md5 verificati sul Mac di Susy).

@@ -189,7 +189,7 @@ def combina(fa: Path, fb: Path, out: Path, spostamento: float | None = None) -> 
         raise BracciIncoerenti(f"bracci {A.get('braccio')!r} e {B.get('braccio')!r} invece di 'A' e 'B'")
     for chiave in ("seed", "copie", "config", "config_sha", "g1", "g2", "sito", "divisione",
                    "spostamento", "rounds", "epochs", "sessioni_training", "sessioni_fresche",
-                   "feature", "utenti_idonei"):
+                   "feature", "utenti_idonei", "dp_client_modo", "dp_client_epsilon"):
         if A.get(chiave) != B.get(chiave):
             raise BracciIncoerenti(f"i due bracci differiscono in {chiave}")
     if spostamento is not None and float(A.get("spostamento", 0.0)) != float(spostamento):
@@ -199,7 +199,8 @@ def combina(fa: Path, fb: Path, out: Path, spostamento: float | None = None) -> 
     utenti = A["g1"] + A["g2"]
     lab = [1] * len(A["g1"]) + [0] * len(A["g2"])
     ris: dict[str, Any] = {k: A.get(k) for k in ("seed", "copie", "spostamento", "config", "sito", "divisione",
-                                             "rounds", "epochs", "sessioni_training", "sessioni_fresche")}
+                                             "rounds", "epochs", "sessioni_training", "sessioni_fresche",
+                                             "dp_client_modo", "dp_client_epsilon")}
     ris["per_round"] = {}
     for r in A["perdite_per_round"]:
         riga = {}
@@ -247,6 +248,14 @@ def main() -> None:
                     help="persona costruita: quota L verso il centro proprio dell'utente, 0-1 (0 = utenti reali)")
     ap.add_argument("--rounds", type=int, default=None)
     ap.add_argument("--epochs", type=int, default=None)
+    # 2026-10-19: DP per client (Segnalazioni, voce 93). "nessuna" = comportamento
+    # precedente (no_dp=True: restano solo la DP per record o per soggetto del
+    # config). local: il client taglia e rumorizza, si osserva l'update rumorizzato
+    # (A3); central: il client taglia, il server rumorizza l'aggregato (A2).
+    ap.add_argument("--dp-mode", choices=("nessuna", "local", "central"), default="nessuna",
+                    help="DP per client (default nessuna)")
+    ap.add_argument("--epsilon", type=float, default=None,
+                    help="epsilon della DP per client (default: quello del config)")
     ap.add_argument("--out", default=str(ROOT / "risultati/canary_persona"))
     ap.add_argument("--etichetta", default=None, help="nome del regime nei file (default: nome del config)")
     ap.add_argument("--combina", action="store_true", help="solo il file appaiato dai due bracci gia' fatti")
@@ -255,9 +264,15 @@ def main() -> None:
     a = ap.parse_args()
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    tag = a.etichetta or Path(a.config).stem
     sp = f"_d{a.spostamento:g}" if a.spostamento > 0 else ""
     cfg = rx.load_config(Path(a.config), {"rounds": a.rounds, "epochs": a.epochs})
+    no_dp_client = a.dp_mode == "nessuna"
+    dp_mode = "dp-fedavg" if no_dp_client else a.dp_mode
+    if not no_dp_client and a.epsilon is not None:
+        cfg["experiment"]["epsilon"] = float(a.epsilon)
+    eps_client = None if no_dp_client else float(cfg["experiment"]["epsilon"])
+    tag = a.etichetta or (Path(a.config).stem if no_dp_client
+                          else f"{Path(a.config).stem}_{a.dp_mode}_eps{eps_client:g}")
     # round ed epoche nel nome: una run con parametri diversi non sovrascrive
     rr, ee = cfg["experiment"]["fl_rounds"], cfg["ml"]["epochs"]
     nome = lambda b: out / f"canary_persona_{tag}_c{a.copie}{sp}_r{rr}_e{ee}_{b}_s{a.seed}.json"  # noqa: E731
@@ -305,7 +320,7 @@ def main() -> None:
     cs_map = rx.group_indices_by_site(train)
     cs = {cid: [train[i] for i in idx] for cid, idx in cs_map.items()}
     t1 = time.time()
-    res = rx.run_fl_rounds(cfg, train, no_dp=True, dp_mode="dp-fedavg", cluster_sessions=cs)
+    res = rx.run_fl_rounds(cfg, train, no_dp=no_dp_client, dp_mode=dp_mode, cluster_sessions=cs)
     t_train = time.time() - t1
 
     membri = set(pool["g1"] if a.braccio == "A" else pool["g2"])
@@ -345,6 +360,9 @@ def main() -> None:
         "loss_globale_per_round": {r: res[r].get("mean_loss") for r in perdite},
         "auc_per_round": aucs, "perdite_per_round": perdite,
         "secondi_training": t_train, "secondi_totali": time.time() - t0,
+        "dp_client_modo": None if no_dp_client else a.dp_mode,
+        "dp_client_epsilon": eps_client,
+        "dp_client": rx._client_dp_fields(cfg, dp_mode, no_dp_client, {c: len(v) for c, v in cs.items()}),
     }
     f = nome(a.braccio)
     f.write_text(json.dumps(esito, indent=2))

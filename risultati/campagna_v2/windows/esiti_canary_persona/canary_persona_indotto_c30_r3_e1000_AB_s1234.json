@@ -1,0 +1,177 @@
+{
+  "seed": 1234,
+  "copie": 30,
+  "spostamento": 0.0,
+  "config": "experiment_canary_multisite.yaml",
+  "sito": "jpl",
+  "divisione": "casuale",
+  "rounds": 3,
+  "epochs": 1000,
+  "sessioni_training": 20,
+  "sessioni_fresche": 10,
+  "per_round": {
+    "1": {
+      "globale_training_appaiata": {
+        "auc": 0.40750000000000003,
+        "ci95": [
+          0.23072916666666668,
+          0.5950059523809523
+        ],
+        "p": 0.8447988719269208,
+        "test": "Mann-Whitney unilaterale",
+        "p_holm": 1.0
+      },
+      "globale_training_somma_AB": 0.8400000000000001,
+      "globale_training_auc_A": 0.4325,
+      "globale_training_auc_B": 0.40750000000000003,
+      "globale_fresche_appaiata": {
+        "auc": 0.445,
+        "ci95": [
+          0.26085824275362324,
+          0.619827178030303
+        ],
+        "p": 0.7286141492414966,
+        "test": "Mann-Whitney unilaterale",
+        "p_holm": 1.0
+      },
+      "globale_fresche_somma_AB": 0.865,
+      "globale_fresche_auc_A": 0.45749999999999996,
+      "globale_fresche_auc_B": 0.4075,
+      "client_training_appaiata": {
+        "auc": 0.885,
+        "ci95": [
+          0.7599849624060151,
+          0.9747522214627478
+        ],
+        "p": 1.6465529538661105e-05,
+        "test": "Mann-Whitney unilaterale",
+        "p_holm": 0.00018112082492527216
+      },
+      "client_training_somma_AB": 1.315,
+      "client_training_auc_A": 0.7125,
+      "client_training_auc_B": 0.6025,
+      "client_fresche_appaiata": {
+        "auc": 0.575,
+        "ci95": [
+          0.3934591165413534,
+          0.7570527293797954
+        ],
+        "p": 0.21244173684104928,
+        "test": "Mann-Whitney unilaterale",
+        "p_holm": 1.0
+      },
+      "client_fresche_somma_AB": 1.0025,
+      "client_fresche_auc_A": 0.5700000000000001,
+      "client_fresche_auc_B": 0.4325
+    },
+    "2": {
+      "globale_training_appaiata": {
+        "auc": 0.4625,
+        "ci95": [
+          0.27772556390977443,
+          0.6496520007459505
+        ],
+        "p": 0.6624929216747558,
+        "test": "Mann-Whitney unilaterale",
+        "p_holm": 1.0
+      },
+      "globale_training_somma_AB": 0.9749999999999999,
+      "globale_training_auc_A": 0.5149999999999999,
+      "globale_training_auc_B": 0.46,
+      "globale_fresche_appaiata": {
+        "auc": 0.49249999999999994,
+        "ci95": [
+          0.3226625,
+          0.6800572916666665
+        ],
+        "p": 0.5377136358338882,
+        "test": "Mann-Whitney unilaterale",
+        "p_holm": 1.0
+      },
+      "globale_fresche_somma_AB": 0.9924999999999999,
+      "globale_fresche_auc_A": 0.5225,
+      "globale_fresche_auc_B": 0.47000000000000003,
+      "client_training_appaiata": {
+        "auc": 0.585,
+        "ci95": [
+          0.4143222506393862,
+          0.7576213260423786
+        ],
+        "p": 0.1824208273043295,
+        "test": "Mann-Whitney unilaterale",
+        "p_holm": 1.0
+      },
+      "client_training_somma_AB": 1.1025,
+      "client_training_auc_A": 0.5575,
+      "client_training_auc_B": 0.5449999999999999,
+      "client_fresche_appaiata": {
+        "auc": 0.5525,
+        "ci95": [
+          0.3649659090909091,
+          0.7519333359167119
+        ],
+        "p": 0.28960917615670845,
+        "test": "Mann-Whitney unilaterale",
+        "p_holm": 1.0
+      },
+      "client_fresche_somma_AB": 1.0525000000000002,
+      "client_fresche_auc_A": 0.5375000000000001,
+      "client_fresche_auc_B": 0.515
+    },
+    "3": {
+      "globale_training_appaiata": {
+        "auc": 0.66,
+        "ci95": [
+          0.49220636819321034,
+          0.8229245580808081
+        ],
+        "p": 0.042927439975205185,
+        "test": "Mann-Whitney unilaterale",
+        "p_holm": 0.42927439975205184
+      },
+      "globale_training_somma_AB": 1.0924999999999998,
+      "globale_training_auc_A": 0.5475,
+      "globale_training_auc_B": 0.5449999999999999,
+      "globale_fresche_appaiata": {
+        "auc": 0.5575,
+        "ci95": [
+          0.375975,
+          0.7394086176980913
+        ],
+        "p": 0.2713858507585034,
+        "test": "Mann-Whitney unilaterale",
+        "p_holm": 1.0
+      },
+      "globale_fresche_somma_AB": 1.065,
+      "globale_fresche_auc_A": 0.5175,
+      "globale_fresche_auc_B": 0.5475,
+      "client_training_appaiata": {
+        "auc": 0.725,
+        "ci95": [
+          0.5563909774436091,
+          0.8721804511278196
+        ],
+        "p": 0.007739301221419287,
+        "test": "Mann-Whitney unilaterale",
+        "p_holm": 0.007739301221419287
+      },
+      "client_training_somma_AB": 1.1275,
+      "client_training_auc_A": 0.54,
+      "client_training_auc_B": 0.5875,
+      "client_fresche_appaiata": {
+        "auc": 0.595,
+        "ci95": [
+          0.4015771526001705,
+          0.7853778166278166
+        ],
+        "p": 0.15520112807307912,
+        "test": "Mann-Whitney unilaterale",
+        "p_holm": 1.0
+      },
+      "client_fresche_somma_AB": 1.0550000000000002,
+      "client_fresche_auc_A": 0.49250000000000005,
+      "client_fresche_auc_B": 0.5625
+    }
+  },
+  "metrica_primaria": "per_round[3].client_training_appaiata"
+}

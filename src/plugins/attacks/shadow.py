@@ -19,8 +19,10 @@ from core.base_attack import BaseAttack
 
 
 class ShadowAttack(BaseAttack):
-    """Shadow-model calibrated MIA — vedi run_shadow(). Forza intermedia
-    fra Yeom (debole) e LiRA (primario)."""
+    """Shadow-model MIA. Versione 2 (default, 2026-10-19): shadow federato con
+    la stessa DP del bersaglio e soglia globale, vedi plugins/attacks/shadow2.py.
+    Versione 1 (shadow.version: 1): run_shadow(), shadow centralizzato senza
+    DP, solo per riprodurre le run precedenti."""
 
     name = "shadow"
 
@@ -32,8 +34,6 @@ class ShadowAttack(BaseAttack):
         fl_results: dict[int, dict[str, Any]],
         **kwargs: Any,
     ) -> dict[int, dict[str, Any]]:
-        from run_experiments import run_shadow  # noqa: PLC0415 (lazy, vedi yeom.py)
-
         # Sprint 10zz+29 (2026-09-03, task #54) — vedi yeom.py per la
         # motivazione, stesso pattern qui per Shadow.
         _roc_dir = kwargs.get("roc_curve_dump_dir")
@@ -41,6 +41,22 @@ class ShadowAttack(BaseAttack):
         if _roc_dir is not None:
             import os  # noqa: PLC0415 (lazy, coerente col resto del modulo)
             _roc_path = os.path.join(_roc_dir, "roc_curves_shadow.json")
+
+        # Versione 2 (2026-10-19): shadow federato, stessa DP del bersaglio,
+        # calibrazione globale come nel paper. Default per ogni config che non
+        # chiede esplicitamente shadow.version: 1, che resta solo per
+        # riprodurre le run precedenti (shadow centralizzato senza DP).
+        if int((cfg.get("shadow", {}) or {}).get("version", 2)) == 2:
+            from plugins.attacks.shadow2 import run_shadow_v2  # noqa: PLC0415
+            return run_shadow_v2(
+                cfg, train_sessions, holdout_sessions, fl_results,
+                no_dp=kwargs.get("no_dp", False),
+                dp_mode=kwargs.get("dp_mode", "dp-fedavg"),
+                cluster_membership=kwargs.get("cluster_membership"),
+                roc_curve_dump_path=_roc_path,
+            )
+
+        from run_experiments import run_shadow  # noqa: PLC0415 (lazy, vedi yeom.py)
 
         # Sprint 10zz+94 (2026-09-15, task #155) — vedi yeom.py per la
         # motivazione: no_dp/dp_mode servono solo a

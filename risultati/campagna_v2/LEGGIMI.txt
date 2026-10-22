@@ -1,0 +1,12 @@
+Risultati delle campagne v2 e v2c (raccolti il 2026-10-20 con scripts/raccogli_risultati.py)
+
+mac_susy/: JSON di ~/Downloads/ChargeShield_offline/esiti (Mac di Susy): v2 (ACN con attacchi, curva in
+epsilon, MIA per persona) e v2c (curva in epsilon con LiRA e RMIA).
+mac_domenico/: JSON di ~/Downloads/esiti_domenico_v2.zip (Mac di Domenico): v2 (Scozia ridotta, ACN a quattro
+feature, curva di capacita', canary persona per soggetto).
+
+Solo le righe con id che inizia per v2_ o v2c_ sono celle delle campagne; le altre sono run del codice
+precedente alla revisione del 16 ottobre (prove). Colonne lira_rmia_classe e shadow_classe: realistico (solo dati
+che il server possiede), sensibilita' (ombre o shadow su dati dei client), non_valido (LiRA v1). Yeom e la loss
+sull'holdout sono realistici in tutte le righe v2 e v2c. Lettura in docs/STATO.md, sezione 3.11.
+Mancano: v2c del Mac di Domenico e v2 di Windows (non copiate su questa macchina).

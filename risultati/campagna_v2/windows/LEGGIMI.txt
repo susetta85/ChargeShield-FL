@@ -1,0 +1,13 @@
+Risultati v2 del PC Windows (coda_v2_windows.csv), consegnati dalla dottoranda il 21 ottobre 2026
+(zip risultati_windows_v2.zip: esiti/canary_persona, stato, log). JSON scritti fra il 17 e il 20 ottobre,
+quindi con il codice della v2 (dopo la revisione del 16 ottobre).
+
+- canary_persona.csv: generato da scripts/raccogli_risultati.py (versione v3) sui 15 file appaiati _AB_.
+  Una riga per file e round: AUC appaiata (L_B - L_A) con intervallo bootstrap al 95%, p e p di Holm, sul
+  modello globale e sull'aggiornamento del client di JPL, sessioni di training e sessioni fresche.
+- esiti_canary_persona/: i 45 JSON (bracci A, B e appaiati).
+- log/: log delle run; stato_coda_v2_windows.txt: 39 run fatte, 18 errori.
+
+Run: canary persona indotto (30 copie, spostamento 0 e 0,5, 3 round da 1000 epoche, 5 seed) e naturale
+(1, 10 e 30 copie, modello e training del paper, 10 round, 3 seed). Errori: le 18 run v2 del canary per
+sessione con LiRA (Segnalazioni 108), sostituite dalla v3. Classe: controllo positivo (non un attacco).

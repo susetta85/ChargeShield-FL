@@ -76,6 +76,10 @@ from core.autoencoder import Autoencoder  # noqa: E402
 MECCANISMI: dict[str, dict[str, Any]] = {
     "nodp": {"no_dp": True},
     "client_eps64": {"no_dp": False, "dp_mode": "local", "epsilon": 64.0},
+    # 2026-10-19 (Segnalazioni, voce 93): anche la DP per client central, come
+    # nella campagna FL. Il server rumorizza l'aggregato; si attacca il modello
+    # globale finale, quindi il rumore e' nel modello osservato.
+    "client_central_eps64": {"no_dp": False, "dp_mode": "central", "epsilon": 64.0},
     "record_s2": {"no_dp": True, "ml": {"norm": "group", "record_dp": {
         "enabled": True, "max_grad_norm": 1.0, "noise_multiplier": 2.0}}},
     "record_s5": {"no_dp": True, "ml": {"norm": "group", "record_dp": {

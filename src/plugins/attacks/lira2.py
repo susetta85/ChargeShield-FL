@@ -44,6 +44,28 @@ Inference Attacks", ICML 2024), adattato all'osservatore federato:
 5. Composizione sui round: somma dei log-rapporti dello stesso campione sui
    round in cui e' valutato in tutti (LiRA e RMIA).
 
+Fonte dei dati delle ombre (`lira.fonte_ombre`, 2026-10-20, decisione della
+dottoranda: niente attacchi con dati che il server non possiede).
+  - "universo" (default, comportamento delle campagne v2 e v2c): ombre su
+    meta' circa di membri + non membri del client. Il server non possiede quei
+    dati: i risultati valgono solo come analisi di sensibilita'.
+  - "server": ombre solo su dati del server, cioe' i suoi dati ausiliari (meta'
+    dell'holdout per gli attacchi di ogni sito, la stessa riserva dello shadow
+    realistico) e le sessioni che interroga. Sugli stessi candidati: LiRA e RMIA
+    online (ombre su meta' di dati ausiliari + candidati); LiRA e RMIA offline
+    nella forma di Carlini et al. (sez. IV-C), con le sole ombre online che non
+    hanno visto il campione ("out"); LiRA e RMIA offline con ombre allenate solo
+    sui dati ausiliari, che non vedono nessun candidato ("off"). Popolazione z di
+    RMIA dai dati ausiliari; RMIA offline con a = 1 (media sulle ombre OUT, senza
+    l'approssimazione lineare di Zarifzadeh et al.). Vedi `insiemi_server` e
+    `_run_lira_server`.
+  Con `lira.observation_surface: partecipante` (solo con "server") l'avversario
+  e' un partecipante che vede solo la sequenza dei modelli globali: a ogni round
+  le ombre del client c ripartono dal globale osservato e prendono il posto di c
+  nell'aggregazione, gli aggiornamenti degli altri client sono emulati con i dati
+  ausiliari del server (`aggiornamenti_emulati`), con i pesi di aggregazione
+  pubblici; il bersaglio osservato e' il modello globale.
+
 Parallelismo: ogni traiettoria di shadow (client, k) e' indipendente e
 deterministica dato il seed; con `workers > 1` gira in processi separati, un
 thread ciascuno, e i numeri coincidono con l'esecuzione sequenziale.
@@ -148,6 +170,26 @@ def log_lr_rmia(mse_target: np.ndarray, mse_shadow: np.ndarray, tau: float) -> n
     tau = max(float(tau), LOG_EPS)
     lp_t = -np.asarray(mse_target, dtype=float) / tau
     lp_ref = _logmeanexp(-np.asarray(mse_shadow, dtype=float) / tau, axis=0)
+    return lp_t - lp_ref
+
+
+def log_lr_rmia_offline(mse_target: np.ndarray, mse_shadow: np.ndarray, in_mask: np.ndarray,
+                        tau: float) -> np.ndarray:
+    """RMIA offline (Zarifzadeh et al.): Pr(x) e' la media sui soli shadow che NON hanno visto
+    il record (OUT), non su tutti come nella forma online. in_mask: (n_shadow, n), True se lo
+    shadow ha il record nel training. Dove non c'e' nessuno shadow OUT il risultato e' NaN."""
+    tau = max(float(tau), LOG_EPS)
+    lp_t = -np.asarray(mse_target, dtype=float) / tau
+    lv = -np.asarray(mse_shadow, dtype=float) / tau
+    fuori = ~np.asarray(in_mask, dtype=bool)
+    n_out = fuori.sum(axis=0)
+    lv_m = np.where(fuori, lv, -np.inf)
+    mx = np.max(lv_m, axis=0)
+    mx = np.where(np.isfinite(mx), mx, 0.0)
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        lse = mx + np.log(np.sum(np.exp(lv_m - mx), axis=0))
+        lp_ref = lse - np.log(n_out)
+    lp_ref = np.where(n_out > 0, lp_ref, np.nan)
     return lp_t - lp_ref
 
 
@@ -294,6 +336,63 @@ def traiettoria_shadow(spec: SpecShadow) -> dict[int, np.ndarray]:
     return out
 
 
+def aggiornamenti_emulati(spec: SpecShadow) -> dict[int, list[Any]]:
+    """Avversario partecipante (2026-10-20): emula l'aggiornamento di un client con
+    i soli dati del server (`spec.in_sessions`). A ogni round riparte dal modello
+    globale osservato del round precedente, si allena con il codice e la DP del
+    client e restituisce i pesi nella forma che il server aggrega (privatizzati
+    con local e dp-fedavg, solo tagliati con central). Non usa nessun dato o
+    aggiornamento reale dei client."""
+    from ml.autoencoder_trainer import AutoencoderTrainer
+    from ml.gradient_manager import GradientManager
+
+    torch.set_num_threads(1)
+    torch.manual_seed(spec.seed)
+    tr = AutoencoderTrainer(config={**spec.ml_cfg, "seed": spec.seed},
+                            node_id=f"emulato-{spec.cid}", cluster_id=spec.cid)
+    if spec.subject_weights is not None:
+        tr.set_subject_weights(spec.subject_weights)
+    if spec.init_weights is not None:
+        tr.set_weights(spec.init_weights)
+        tr._global_weights = None
+    keys = tr.get_weight_keys()
+    gm = GradientManager(spec.gm_cfg)
+    out: dict[int, list[Any]] = {}
+    for r in spec.rounds:
+        if r > 1:
+            tr.set_weights(spec.global_prev[r])
+        pre = tr.get_weights()
+        torch.manual_seed(_seme_round(spec.seed, r))
+        upd = tr.train_local(spec.in_sessions, r)
+        torch.manual_seed(_seme_round(spec.seed, r, 1))
+        if spec.no_dp:
+            agg = upd
+        elif spec.dp_mode == "central":
+            agg = gm.clip_only(upd, weight_keys=keys, reference_weights=pre)
+        elif spec.dp_ablation == "clip-only":
+            agg = gm.clip_no_noise(upd, weight_keys=keys, reference_weights=pre)
+        elif spec.dp_ablation == "noise-only":
+            agg = gm.noise_no_clip(upd, weight_keys=keys)
+        else:
+            agg = gm.privatize(upd, weight_keys=keys, reference_weights=pre)
+        out[r] = agg.weights
+    return out
+
+
+def esegui_emulazioni(specs: list[SpecShadow], workers: int = 1) -> list[dict[int, list[Any]]]:
+    if workers <= 1 or len(specs) <= 1:
+        stato = torch.get_num_threads()
+        rng = torch.get_rng_state()
+        try:
+            return [aggiornamenti_emulati(s) for s in specs]
+        finally:
+            torch.set_num_threads(stato)
+            torch.set_rng_state(rng)
+    import multiprocessing as mp
+    with ProcessPoolExecutor(max_workers=workers, mp_context=mp.get_context("spawn")) as ex:
+        return list(ex.map(aggiornamenti_emulati, specs))
+
+
 def esegui_traiettorie(specs: list[SpecShadow], workers: int = 1) -> list[dict[int, np.ndarray]]:
     """Esegue le traiettorie, in sequenza o in processi separati. L'ordine dei
     risultati segue quello di `specs` in entrambi i casi."""
@@ -391,8 +490,10 @@ def run_lira_v2(
     if lira_cfg.get("canary_rescale"):
         raise ValueError("lira v2: canary_rescale non e' supportato (usare lira.version: 1)")
     superficie = lira_cfg.get("observation_surface", "client")
-    if superficie not in ("client", "global"):
+    if superficie not in ("client", "global", "partecipante"):
         raise ValueError(f"observation_surface non valido: {superficie!r}")
+    if superficie == "partecipante" and lira_cfg.get("fonte_ombre", "universo") != "server":
+        raise ValueError("observation_surface: partecipante richiede lira.fonte_ombre: server")
     in_size = lira_cfg.get("in_size", "client")
     if in_size not in ("client", "half"):
         raise ValueError(f"lira.in_size non valido: {in_size!r} (atteso 'client' o 'half')")
@@ -426,6 +527,19 @@ def run_lira_v2(
         pools = {c: list(range(i * size, len(train_sessions) if i == len(cluster_ids) - 1 else (i + 1) * size))
                  for i, c in enumerate(cluster_ids)}
     membri = {c: [train_sessions[i] for i in pools[c]] for c in cluster_ids}
+    fonte_ombre = str(lira_cfg.get("fonte_ombre", "universo"))
+    if fonte_ombre not in ("universo", "server"):
+        raise ValueError(f"lira.fonte_ombre deve essere 'universo' o 'server', trovato {fonte_ombre!r}")
+    if fonte_ombre == "server":
+        return _run_lira_server({
+            "cfg": cfg, "holdout_sessions": holdout_sessions, "fl_results": fl_results, "seed": seed,
+            "rounds": rounds, "cluster_ids": cluster_ids, "membri": membri, "n_shadow": n_shadow,
+            "n_offline": int(lira_cfg.get("n_shadow_offline", n_shadow)), "feats": feats, "arch": arch,
+            "input_dim": input_dim, "ml_cfg": ml_cfg, "gm_cfg": gm_cfg, "no_dp": no_dp, "dp_mode": dp_mode,
+            "dp_ablation": dp_ablation, "superficie": superficie, "gamma": gamma, "frazione_z": frazione_z,
+            "composed_output": composed_output, "per_sample_dump_path": per_sample_dump_path,
+            "workers": workers,
+        })
     non_membri = assegna_non_membri(holdout_sessions, cluster_ids, cfg,
                                     {c: len(v) for c, v in membri.items()})
 
@@ -518,6 +632,8 @@ def run_lira_v2(
 
     cumul_lira: dict[int, float] = {}
     cumul_rmia: dict[int, float] = {}
+    cumul_rmia_off: dict[int, float] = {}
+    conta_off: dict[int, int] = {}
     conta: dict[int, int] = {}
     meta: dict[int, tuple[bool, Any, Any]] = {}
     for r in rounds:
@@ -531,6 +647,8 @@ def run_lira_v2(
         sc_l: list[float] = []
         lab_r: list[int] = []
         sc_r: list[float] = []
+        lab_o: list[int] = []
+        sc_o: list[float] = []
         raw_lab: list[int] = []
         raw_sc: list[float] = []
         can = {"l": [], "r": [], "raw": []}
@@ -548,6 +666,9 @@ def run_lira_v2(
             llr_all = log_lr_rmia(mse_t, mse_s, tau)
             rmia = punteggio_rmia(llr_all[:nv], llr_all[nv:], gamma)
             ok = np.isfinite(score) & np.isfinite(rmia)
+            llr_off = log_lr_rmia_offline(mse_t, mse_s, inf["in_mask"][:, :mse_s.shape[1]], tau)
+            rmia_off = punteggio_rmia(llr_off[:nv], llr_off[nv:], gamma)
+            ok_off = ok & np.isfinite(rmia_off)
             m = inf["membro"]
             for j in np.flatnonzero(ok):
                 s = inf["valutati"][j]
@@ -557,9 +678,14 @@ def run_lira_v2(
                 if not canary:
                     lab_l.append(lab); sc_l.append(float(score[j]))
                     lab_r.append(lab); sc_r.append(float(rmia[j]))
+                    if ok_off[j]:
+                        lab_o.append(lab); sc_o.append(float(rmia_off[j]))
                 key = id(s)
                 cumul_lira[key] = cumul_lira.get(key, 0.0) + float(score[j])
                 cumul_rmia[key] = cumul_rmia.get(key, 0.0) + float(llr_all[j])
+                if np.isfinite(llr_off[j]):
+                    cumul_rmia_off[key] = cumul_rmia_off.get(key, 0.0) + float(llr_off[j])
+                    conta_off[key] = conta_off.get(key, 0) + 1
                 conta[key] = conta.get(key, 0) + 1
                 meta[key] = (bool(m[j]), s.get("_canary_group"), s.get("session_id"))
                 if s.get("_canary_group") is not None:
@@ -577,6 +703,7 @@ def run_lira_v2(
                          "n_in_shadow": inf["n_in"], "universo": inf["universo"]}
         res = _metriche(lab_l, sc_l, "lira")
         res.update(_metriche(lab_r, sc_r, "rmia"))
+        res.update(_metriche(lab_o, sc_o, "rmia_off"))
         from sklearn.metrics import roc_auc_score
         res["lira_debug_raw_mse_auc_roc"] = (round(float(roc_auc_score(raw_lab, raw_sc)), 6)
                                              if len(set(raw_lab)) == 2 else None)
@@ -610,6 +737,12 @@ def run_lira_v2(
         # somma dei log-rapporti di RMIA sui round (non il punteggio a coppie di RMIA)
         composed_output.update({f"composed_{k}": v for k, v in
                                 _metriche(lab, [cumul_rmia[k] for k in completi], "rmia_loglr").items()})
+        completi_off = [k for k in completi if conta_off.get(k, 0) == len(rounds)]
+        if completi_off:
+            lab_off = [int(meta[k][0]) for k in completi_off]
+            composed_output.update({f"composed_{k}": v for k, v in
+                                    _metriche(lab_off, [cumul_rmia_off[k] for k in completi_off],
+                                              "rmia_off_loglr").items()})
         composed_output["composed_n_samples"] = len(completi)
     if per_sample_dump_path is not None and completi:
         Path(per_sample_dump_path).parent.mkdir(parents=True, exist_ok=True)
@@ -619,6 +752,369 @@ def run_lira_v2(
                 "lira_version": 2, "n_rounds": len(rounds), "n_records": len(completi),
                 "records": [{"session_id": meta[k][2], "is_member": meta[k][0],
                              "is_canary": meta[k][1] is not None, "composed_score": cumul_lira[k],
-                             "composed_rmia_log_lr": cumul_rmia[k]} for k in completi],
+                             "composed_rmia_log_lr": cumul_rmia[k],
+                             "composed_rmia_off_log_lr": cumul_rmia_off.get(k)} for k in completi],
+            }, f)
+    return risultati
+
+
+# ── Versione realistica: ombre solo su dati che il server possiede (2026-10-20) ─
+
+_SEED_OFFLINE = 424_243
+_SEED_EMULATO = 818_181
+
+
+def insiemi_server(
+    mb: list[dict[str, Any]], nm_valuta: list[dict[str, Any]], aux: list[dict[str, Any]],
+    frazione_z: float, n_shadow: int, n_offline: int, seed: int, ci: int, campiona,
+) -> dict[str, Any]:
+    """Insiemi di un client per LiRA e RMIA con `lira.fonte_ombre: server`.
+
+    Il server possiede solo due cose: i propri dati ausiliari `aux` (sessioni della
+    stessa distribuzione, fuori dal training e dalla valutazione) e le sessioni che
+    interroga (i candidati valutati). Mai il resto dei dati del client.
+
+      - popolazione z di RMIA: una quota `frazione_z` di `aux`, mai usata per
+        addestrare ombre e mai valutata;
+      - candidati: membri non canary estratti in numero pari ai non membri di
+        valutazione, i non membri di valutazione, i canary;
+      - ombre online: ciascuna su meta' di (aux + candidati), cosi' ogni candidato e'
+        IN in circa meta' delle ombre (Carlini et al., forma online); anche z sta nell'
+        universo delle ombre online, come la popolazione di RMIA (Zarifzadeh et al.),
+        ma non e' mai valutata;
+      - ombre offline: ciascuna su meta' di (aux senza z); nessun candidato e' mai IN.
+
+    `campiona(rng, pool, n)` e' `_sample_preserving_canary_groups` (i gruppi canary
+    restano interi). Restituisce le liste di sessioni; nessun accesso al resto dei
+    membri del client oltre ai candidati estratti."""
+    rng = random.Random(seed + 9001 + ci * _SEED_CLUSTER)
+    e_can = lambda s: s.get("_canary_group") is not None or s.get("_canary_role") is not None  # noqa: E731
+    canarini = [s for s in mb + nm_valuta if e_can(s)]
+    nm_eval = [s for s in nm_valuta if not e_can(s)]
+    aux_l = [s for s in aux if not e_can(s)]
+    rng.shuffle(aux_l)
+    n_z = max(1, int(round(frazione_z * len(aux_l)))) if len(aux_l) > 1 else 0
+    z, aux_tr = aux_l[:n_z], aux_l[n_z:]
+    mb_libere = [s for s in mb if not e_can(s)]
+    mb_eval = rng.sample(mb_libere, min(len(nm_eval), len(mb_libere)))
+    valutati = mb_eval + nm_eval + canarini
+    mb_ids = {id(s) for s in mb}
+    membro = np.array([id(s) in mb_ids for s in valutati], dtype=bool)
+    universo_on = aux_tr + z + valutati
+    n_in_on = len(universo_on) // 2
+    ins_on = [campiona(random.Random(seed + ci * _SEED_CLUSTER + k * _SEED_SHADOW), universo_on, n_in_on)
+              for k in range(n_shadow)]
+    n_in_off = len(aux_tr) // 2
+    ins_off = ([random.Random(seed + ci * _SEED_CLUSTER + k * _SEED_SHADOW + _SEED_OFFLINE).sample(aux_tr, n_in_off)
+                for k in range(n_offline)] if n_in_off >= 1 else [])
+    return {"valutati": valutati, "membro": membro, "z": z, "aux_tr": aux_tr, "universo_on": universo_on,
+            "n_in_on": n_in_on, "n_in_off": n_in_off, "ins_on": ins_on, "ins_off": ins_off}
+
+
+def punteggio_lira_offline(t: np.ndarray, stat_ref: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
+    """LiRA offline (Carlini et al. 2022, sez. IV-C): solo ombre che non hanno mai
+    visto il campione. Statistica = log della MSE, quindi un membro ha t piu' basso.
+    Punteggio = (mu_out - t) / s_out, con mu_out media per campione sulle ombre e
+    s_out deviazione fissa per client e round (radice della media delle varianze per
+    campione, ddof = 1). Monotono nel p-value unilaterale gaussiano, quindi stessa
+    AUC. NaN se le ombre sono meno di due o la deviazione non e' positiva."""
+    s = np.asarray(stat_ref, dtype=float)
+    t = np.asarray(t, dtype=float)
+    score = np.full(t.shape, np.nan)
+    if s.ndim != 2 or s.shape[0] < 2:
+        return score, {"sigma_out": None, "n_valutati": 0}
+    with np.errstate(invalid="ignore"):
+        mu = s.mean(axis=0)
+        var = s.var(axis=0, ddof=1)
+    var = var[np.isfinite(var)]
+    sd = float(np.sqrt(var.mean())) if var.size else float("nan")
+    ok = np.isfinite(t) & np.isfinite(mu)
+    if np.isfinite(sd) and sd > 0:
+        score[ok] = (mu[ok] - t[ok]) / sd
+    return score, {"sigma_out": sd, "n_valutati": int(np.isfinite(score).sum())}
+
+
+def punteggio_lira_out(t: np.ndarray, stat_shadow: np.ndarray,
+                       in_mask: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
+    """LiRA offline nella forma di Carlini et al. (sez. IV-C) con le ombre online:
+    per ogni campione si usano solo le ombre che NON l'hanno visto (OUT), cioe'
+    ombre della stessa taglia di quelle online, allenate su dati ausiliari e altri
+    candidati. Punteggio = (mu_out - t) / s_out, s_out fissa per client e round."""
+    _, mu_out, _, n_out, _, s_out = stime_in_out(stat_shadow, in_mask)
+    t = np.asarray(t, dtype=float)
+    score = np.full(t.shape, np.nan)
+    ok = (n_out >= 1) & np.isfinite(t) & np.isfinite(mu_out)
+    if ok.any() and np.isfinite(s_out) and s_out > 0:
+        score[ok] = (mu_out[ok] - t[ok]) / s_out
+    return score, {"sigma_out": s_out, "n_valutati": int(np.isfinite(score).sum())}
+
+
+def _run_lira_server(ctx: dict[str, Any]) -> dict[int, dict[str, Any]]:
+    """LiRA e RMIA, online e offline, con ombre addestrate solo su dati del server
+    (`lira.fonte_ombre: server`). Vedi `insiemi_server` per gli insiemi; ombre,
+    osservazione e statistica come nella versione con l'universo del client."""
+    import json
+    from pathlib import Path
+
+    from run_experiments import (
+        _sample_preserving_canary_groups, _subject_cross_client_weights, _subject_dp_config,
+        group_indices_by_site,
+    )
+
+    from plugins.attacks.shadow2 import dividi_non_membri
+
+    cfg = ctx["cfg"]
+    holdout_sessions = ctx["holdout_sessions"]
+    fl_results = ctx["fl_results"]
+    seed, rounds, cluster_ids, membri = ctx["seed"], ctx["rounds"], ctx["cluster_ids"], ctx["membri"]
+    n_shadow, n_off = ctx["n_shadow"], ctx["n_offline"]
+    feats, arch, input_dim, ml_cfg, gm_cfg = ctx["feats"], ctx["arch"], ctx["input_dim"], ctx["ml_cfg"], ctx["gm_cfg"]
+    no_dp, dp_mode, dp_ablation = ctx["no_dp"], ctx["dp_mode"], ctx["dp_ablation"]
+    superficie, gamma, frazione_z = ctx["superficie"], ctx["gamma"], ctx["frazione_z"]
+    composed_output, per_sample_dump_path, workers = (
+        ctx["composed_output"], ctx["per_sample_dump_path"], ctx["workers"])
+    exp_cfg = cfg.get("experiment", {})
+
+    strategia = (cfg.get("partition") or {}).get("strategy", "per_site")
+    if strategia != "per_site":
+        raise ValueError("lira.fonte_ombre: server richiede partition.strategy: per_site "
+                         f"(trovato {strategia!r}): i dati ausiliari del server sono divisi per sito")
+    # Stessa divisione dell'holdout dello shadow realistico (shadow2.dividi_non_membri,
+    # stesso seme): meta' ai dati ausiliari del server, meta' ai non membri valutati.
+    fraz_cal = float((cfg.get("shadow") or {}).get("calibration_fraction", 0.5))
+    gruppi = group_indices_by_site(holdout_sessions)
+    idx_cal, idx_non = dividi_non_membri(gruppi, holdout_sessions, fraz_cal, seed)
+    sito = {i: g for g, v in gruppi.items() for i in v}
+    aux = {c: [holdout_sessions[i] for i in idx_cal if sito.get(i) == c] for c in cluster_ids}
+    nm_val = {c: [holdout_sessions[i] for i in idx_non if sito.get(i) == c] for c in cluster_ids}
+
+    def _valida(s: dict[str, Any]) -> bool:
+        try:
+            return all(np.isfinite(float(s[f])) for f in feats)
+        except (KeyError, TypeError, ValueError):
+            return False
+
+    def _vettore(sess: list[dict[str, Any]]) -> np.ndarray:
+        return np.array([[float(s[f]) for f in feats] for s in sess], dtype=np.float32)
+
+    common_init = bool(ml_cfg.get("common_init", False))
+    init_comune = (fl_results.get(0) or {}).get("raw_global_weights") if common_init else None
+    global_prev = {r: fl_results[r - 1]["global_weights"] for r in rounds if r > 1}
+
+    info: dict[str, dict[str, Any]] = {}
+    for ci, c in enumerate(cluster_ids):
+        mb = [s for s in membri[c] if _valida(s)]
+        nmv = [s for s in nm_val[c] if _valida(s)]
+        ax = [s for s in aux[c] if _valida(s)]
+        if not mb or not nmv or len(ax) < 3:
+            logger.warning("LiRA server [%s]: membri, non membri o dati del server insufficienti, "
+                           "client saltato", c)
+            continue
+        ins = insiemi_server(mb, nmv, ax, frazione_z, n_shadow, n_off, seed, ci,
+                             _sample_preserving_canary_groups)
+        tutti = ins["valutati"] + ins["z"]                      # z in coda
+        pos = {id(s): j for j, s in enumerate(tutti)}
+        m_on = np.zeros((n_shadow, len(tutti)), dtype=bool)
+        for k, ss in enumerate(ins["ins_on"]):
+            for s in ss:
+                j = pos.get(id(s))
+                if j is not None:
+                    m_on[k, j] = True
+        info[c] = {**ins, "ci": ci, "x": _vettore(tutti), "n_z": len(ins["z"]), "in_mask_on": m_on,
+                   "n_aux": len(ax)}
+
+    sdp = _subject_dp_config(ml_cfg)
+    pesi_on = pesi_off = None
+    if sdp["enabled"]:
+        key = str(sdp["subject_key"])
+        pesi_on = _subject_cross_client_weights({c: v["universo_on"] for c, v in info.items()}, key, feats)
+        pesi_off = _subject_cross_client_weights({c: v["aux_tr"] for c, v in info.items()}, key, feats)
+
+    emulati: dict[str, dict[int, list[Any]]] = {}
+    if superficie == "partecipante":
+        # L'avversario partecipante vede solo i modelli globali: gli aggiornamenti
+        # degli altri client li emula con i propri dati ausiliari di quel sito.
+        from ml.base_ml import GradientUpdate
+        spec_em = []
+        for ci, c in enumerate(cluster_ids):
+            dati = info[c]["aux_tr"] if c in info else [s for s in aux[c] if _valida(s)]
+            if not dati:
+                raise RuntimeError(f"LiRA partecipante: nessun dato del server per emulare il client {c}")
+            spec_em.append(SpecShadow(
+                cid=c, k=-1, seed=seed + ci * _SEED_CLUSTER + _SEED_EMULATO, rounds=rounds, in_sessions=dati,
+                eval_x=np.zeros((0, input_dim), dtype=np.float32), ml_cfg=ml_cfg, arch=arch,
+                input_dim=input_dim, gm_cfg=gm_cfg, no_dp=no_dp, dp_mode=dp_mode, dp_ablation=dp_ablation,
+                init_weights=init_comune, global_prev=global_prev,
+                subject_weights=(pesi_off or {}).get(c, {}) if pesi_off is not None else None,
+                superficie="client"))
+        emulati = dict(zip(cluster_ids, esegui_emulazioni(spec_em, workers=workers)))
+
+    specs_on: list[SpecShadow] = []
+    specs_off: list[SpecShadow] = []
+    for c, inf in info.items():
+        ci = inf["ci"]
+        altri: dict[int, list[Any]] = {}
+        n_cli: dict[int, int] = {}
+        if superficie == "partecipante":
+            # pesi di aggregazione pubblici (numerosita' dei client): l'ordine e le
+            # numerosita' sono quelli del protocollo, i pesi del modello sono emulati
+            for r in rounds:
+                upd = fl_results[r].get("updates") or []
+                altri[r] = [None if u.cluster_id == c else GradientUpdate(
+                    node_id=f"emulato-{u.cluster_id}", cluster_id=u.cluster_id, round_num=r,
+                    weights=emulati[u.cluster_id][r], gradients=None, loss=None, n_samples=u.n_samples,
+                    metadata={}) for u in upd]
+                propri = [u for u in upd if u.cluster_id == c]
+                if propri:
+                    n_cli[r] = propri[0].n_samples
+        elif superficie == "global":
+            for r in rounds:
+                upd = fl_results[r].get("updates") or []
+                altri[r] = [None if u.cluster_id == c else u for u in upd]
+                propri = [u for u in upd if u.cluster_id == c]
+                if propri:
+                    n_cli[r] = propri[0].n_samples
+        comuni = dict(rounds=rounds, eval_x=inf["x"], ml_cfg=ml_cfg, arch=arch, input_dim=input_dim,
+                      gm_cfg=gm_cfg, no_dp=no_dp, dp_mode=dp_mode, dp_ablation=dp_ablation,
+                      init_weights=init_comune, global_prev=global_prev,
+                      superficie=("global" if superficie == "partecipante" else superficie),
+                      altri_update=altri, n_samples_client=n_cli, n_partecipanti=len(cluster_ids))
+        for k, ss in enumerate(inf["ins_on"]):
+            specs_on.append(SpecShadow(
+                cid=c, k=k, seed=seed + ci * _SEED_CLUSTER + k * _SEED_SHADOW, in_sessions=ss,
+                subject_weights=(pesi_on or {}).get(c, {}) if pesi_on is not None else None, **comuni))
+        for k, ss in enumerate(inf["ins_off"]):
+            specs_off.append(SpecShadow(
+                cid=c, k=k, seed=seed + ci * _SEED_CLUSTER + k * _SEED_SHADOW + _SEED_OFFLINE, in_sessions=ss,
+                subject_weights=(pesi_off or {}).get(c, {}) if pesi_off is not None else None, **comuni))
+
+    logger.info("LiRA server: %d ombre online e %d offline (%d e %d per client), %s worker, superficie %s",
+                len(specs_on), len(specs_off), n_shadow, n_off, workers, superficie)
+    esiti = esegui_traiettorie(specs_on + specs_off, workers=workers)
+    per_on: dict[str, list[dict[int, np.ndarray]]] = {}
+    per_off: dict[str, list[dict[int, np.ndarray]]] = {}
+    for spec, es in zip(specs_on, esiti[:len(specs_on)]):
+        per_on.setdefault(spec.cid, []).append(es)
+    for spec, es in zip(specs_off, esiti[len(specs_on):]):
+        per_off.setdefault(spec.cid, []).append(es)
+
+    from sklearn.metrics import roc_auc_score
+    acc = {n: {} for n in ("lira", "lira_out", "lira_off", "rmia", "rmia_out", "rmia_off")}
+    conta = {n: {} for n in acc}
+    meta: dict[int, tuple[bool, Any, Any]] = {}
+    risultati: dict[int, dict[str, Any]] = {}
+    for r in rounds:
+        rd = fl_results[r]
+        if superficie in ("global", "partecipante"):
+            pesi_target = {c: rd["global_weights"] for c in info}
+        else:
+            fonte = (rd.get("raw_updates") if (not no_dp and dp_mode == "dp-fedavg") else rd.get("updates")) or []
+            pesi_target = {u.cluster_id: u.weights for u in fonte}
+        etich = {n: ([], []) for n in acc}
+        can = {n: [] for n in list(acc) + ["raw"]}
+        raw_lab: list[int] = []
+        raw_sc: list[float] = []
+        diag_c: dict[str, Any] = {}
+        for c, inf in info.items():
+            if c not in pesi_target or c not in per_on:
+                logger.warning("LiRA server round %d: bersaglio o ombre del client %s assenti", r, c)
+                continue
+            mse_t = mse_per_campione(arch, input_dim, pesi_target[c], inf["x"])
+            mse_on = np.stack([es[r] for es in per_on[c]])
+            nv = len(inf["valutati"])
+            t = statistica(mse_t[:nv])
+            tau = float(np.median(mse_t[nv:])) if inf["n_z"] else float(np.median(mse_t))
+            m_on = inf["in_mask_on"]
+            s_on, d_on = punteggio_lira(t, statistica(mse_on[:, :nv]), m_on[:, :nv])
+            s_out, d_out = punteggio_lira_out(t, statistica(mse_on[:, :nv]), m_on[:, :nv])
+            llr_on = log_lr_rmia(mse_t, mse_on, tau)
+            llr_out = log_lr_rmia_offline(mse_t, mse_on, m_on, tau)
+            punt = {"lira": s_on, "lira_out": s_out,
+                    "rmia": punteggio_rmia(llr_on[:nv], llr_on[nv:], gamma),
+                    "rmia_out": punteggio_rmia(llr_out[:nv], llr_out[nv:], gamma)}
+            somma = {"lira": s_on, "lira_out": s_out, "rmia": llr_on[:nv], "rmia_out": llr_out[:nv]}
+            d_off = None
+            if c in per_off:
+                mse_off = np.stack([es[r] for es in per_off[c]])
+                s_off, d_off = punteggio_lira_offline(t, statistica(mse_off[:, :nv]))
+                llr_off = log_lr_rmia(mse_t, mse_off, tau)
+                punt["lira_off"] = s_off
+                punt["rmia_off"] = punteggio_rmia(llr_off[:nv], llr_off[nv:], gamma)
+                somma["lira_off"] = s_off
+                somma["rmia_off"] = llr_off[:nv]
+            m = inf["membro"]
+            for j in range(nv):
+                s = inf["valutati"][j]
+                lab = int(m[j])
+                key = id(s)
+                canary = s.get("_canary_group") is not None
+                meta[key] = (bool(m[j]), s.get("_canary_group"), s.get("session_id"))
+                for n, v in punt.items():
+                    if not (np.isfinite(v[j]) and np.isfinite(somma[n][j])):
+                        continue
+                    if canary:
+                        can[n].append((lab, float(v[j])))
+                    else:
+                        etich[n][0].append(lab); etich[n][1].append(float(v[j]))
+                    acc[n][key] = acc[n].get(key, 0.0) + float(somma[n][j])
+                    conta[n][key] = conta[n].get(key, 0) + 1
+                if canary:
+                    can["raw"].append((lab, -float(mse_t[j])))
+                else:
+                    raw_lab.append(lab); raw_sc.append(-float(mse_t[j]))
+            diag_c[c] = {"lira_online": d_on, "lira_out": d_out, "lira_offline": d_off, "tau_rmia": tau,
+                         "n_valutati": nv, "n_z": inf["n_z"], "n_aux_server": inf["n_aux"],
+                         "n_aux_ombre": len(inf["aux_tr"]), "n_in_online": inf["n_in_on"],
+                         "n_in_offline": inf["n_in_off"]}
+        res: dict[str, Any] = {}
+        for n in acc:
+            res.update(_metriche(etich[n][0], etich[n][1], n))
+        res["lira_debug_raw_mse_auc_roc"] = (round(float(roc_auc_score(raw_lab, raw_sc)), 6)
+                                             if len(set(raw_lab)) == 2 else None)
+        for nome, coppie in (("canary_auc_roc", can["lira"]), ("canary_lira_out_auc_roc", can["lira_out"]),
+                             ("canary_lira_off_auc_roc", can["lira_off"]),
+                             ("canary_rmia_auc_roc", can["rmia"]), ("canary_rmia_out_auc_roc", can["rmia_out"]),
+                             ("canary_rmia_off_auc_roc", can["rmia_off"]),
+                             ("canary_raw_mse_auc_roc", can["raw"])):
+            ll = [a for a, _ in coppie]
+            res[nome] = (round(float(roc_auc_score(ll, [b for _, b in coppie])), 6)
+                         if len(set(ll)) == 2 else None)
+        res.update({"lira_version": 2, "lira_fonte_ombre": "server", "n_shadow": n_shadow,
+                    "n_shadow_offline": n_off, "lira_observation_surface": superficie,
+                    "rmia_gamma": gamma, "lira_per_client": diag_c})
+        risultati[r] = res
+        logger.info("Round %d — LiRA server online %s, offline OUT %s, offline aux %s; "
+                    "RMIA online %s, offline OUT %s, offline aux %s",
+                    r, res.get("lira_auc_roc"), res.get("lira_out_auc_roc"), res.get("lira_off_auc_roc"),
+                    res.get("rmia_auc_roc"), res.get("rmia_out_auc_roc"), res.get("rmia_off_auc_roc"))
+
+    # composizione sui round: somma per campione sui round in cui e' valutato in tutti
+    # (log-rapporti per LiRA online e RMIA; punteggi z per LiRA offline, combinazione di Stouffer)
+    if composed_output is not None:
+        nomi = {"lira": "lira", "lira_out": "lira_out", "lira_off": "lira_off", "rmia": "rmia_loglr",
+                "rmia_out": "rmia_out_loglr", "rmia_off": "rmia_off_loglr"}
+        for n, pref in nomi.items():
+            completi = [k for k, q in conta[n].items() if q == len(rounds) and meta[k][1] is None]
+            if completi:
+                lab = [int(meta[k][0]) for k in completi]
+                composed_output.update({f"composed_{k}": v for k, v in
+                                        _metriche(lab, [acc[n][k] for k in completi], pref).items()})
+        composed_output["composed_n_samples"] = len(
+            [k for k, q in conta["lira"].items() if q == len(rounds) and meta[k][1] is None])
+        composed_output["lira_fonte_ombre"] = "server"
+    if per_sample_dump_path is not None:
+        completi = [k for k, q in conta["lira"].items() if q == len(rounds) and meta[k][1] is None]
+        Path(per_sample_dump_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(per_sample_dump_path, "w") as f:
+            json.dump({
+                "seed": seed, "epsilon": exp_cfg.get("epsilon"), "no_dp": no_dp, "dp_mode": dp_mode,
+                "lira_version": 2, "lira_fonte_ombre": "server", "n_rounds": len(rounds),
+                "n_records": len(completi),
+                "records": [{"session_id": meta[k][2], "is_member": meta[k][0],
+                             "composed_score": acc["lira"].get(k), "composed_lira_out": acc["lira_out"].get(k),
+                             "composed_lira_off": acc["lira_off"].get(k),
+                             "composed_rmia_log_lr": acc["rmia"].get(k),
+                             "composed_rmia_out_log_lr": acc["rmia_out"].get(k),
+                             "composed_rmia_off_log_lr": acc["rmia_off"].get(k)} for k in completi],
             }, f)
     return risultati

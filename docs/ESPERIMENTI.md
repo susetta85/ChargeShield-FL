@@ -1,6 +1,6 @@
 # ChargeShield-FL — Esperimenti da eseguire
 
-> **Stato: documento CANONICO.** Aggiornato il 2026-10-16 (revisione profonda: correzioni di LiRA, RMIA, DP e script persona prima di nuove run di attacco, sezione in fondo); prima, il 2026-10-14 (Scozia ridotta con DP per record e per soggetto, controllo ACN a quattro feature, una run alla volta per macchina, previsioni; prima, il 2026-09-30: revisione: costo, E-C, controlli (a) e (b) eseguiti, griglia del punto operativo, canary su più siti, E-D con DP, campagna E-B, braccio con DP di E-E; il 2026-09-30 esito dello screening di C e del solo clipping, config e run di prova del canary su più siti). Sostituisce,
+> **Stato: documento CANONICO.** Aggiornato il 2026-10-20 (campagna v3: solo attacchi realistici, code v2d, v2e blocco A, v2f e v2clf annullate, v2c residua interrotta; sezione in fondo); prima, il 2026-10-16 (revisione profonda: correzioni di LiRA, RMIA, DP e script persona prima di nuove run di attacco, sezione in fondo); prima, il 2026-10-14 (Scozia ridotta con DP per record e per soggetto, controllo ACN a quattro feature, una run alla volta per macchina, previsioni; prima, il 2026-09-30: revisione: costo, E-C, controlli (a) e (b) eseguiti, griglia del punto operativo, canary su più siti, E-D con DP, campagna E-B, braccio con DP di E-E; il 2026-09-30 esito dello screening di C e del solo clipping, config e run di prova del canary su più siti). Sostituisce,
 > per gli esperimenti ancora da lanciare, il vecchio `TestRoadmap_DSN2027.md`, eliminato
 > il 2026-09-22 e recuperabile dalla storia git. Ogni
 > voce dice quale RQ serve, quale conclusione può cambiare, cosa deve essere vero
@@ -2574,3 +2574,240 @@ V12 confermata nel confronto con il senza DP, ma il solo taglio fa gia' scendere
 il rumore non abbassa ulteriormente il segnale (intervalli sovrapposti). Conclusione provvisoria: con epsilon fra
 circa 15 e 29 la persona canary resta rilevabile in questo attacco (AUC 0,66-0,74). Solo tre seed; intervalli
 di circa +/-0,15.
+
+**Coda v2c (2026-10-19, Mac di Susy e di Domenico, `scripts/genera_coda_v2c.py`, commit 63327a8).** Le 110 run della
+v2 rimaste senza LiRA e RMIA, ripetute con LiRA completa (32 shadow) e RMIA, stessi config e seed: curva in epsilon
+ACN (6 valori x 5 seed, Mac di Susy), Scozia ridotta (8 celle x 5 seed) e ACN a quattro feature (8 celle x 5 seed),
+Mac di Domenico. Verifiche prima del lancio: code rigenerate identiche byte per byte a quelle copiate; prova breve
+(1 round, 2 shadow, 2 epoche) di LiRA v2 e RMIA su ACN a quattro feature, Scozia con DP per record e per soggetto,
+epsilon 2 e solo taglio, tutte con le chiavi lette dal raccoglitore; suite delle code verde. Avviata il 19 ottobre
+(Mac di Susy alle 8:47, stima circa 27 ore; Mac di Domenico circa 39 ore). Lo shadow resta saltato come nella v2:
+vedi v2d. **Interrotta il 20 ottobre sul Mac di Domenico** (circa 23 run su 40 delle celle a quattro
+feature): LiRA e RMIA sull'universo del client sono analisi di sensibilita' (Segnalazioni 99); il resto non si
+esegue. Sul Mac di Susy completa (30 run e il test, zero errori, finita il 20 ottobre alle 10:29).
+
+## Campagna v2d: shadow federato (decisa il 2026-10-19, da lanciare a v2c e Windows concluse)
+
+**Annullata il 20 ottobre, mai lanciata.** Lo shadow sui membri del client e la MIA per persona usano dati che il
+server non possiede (Segnalazioni 100-101): le celle passano alla campagna v3 con attacchi realistici, sezione in
+fondo. Il canary persona con DP per client della coda di Windows passa alla v3 invariato.
+
+**Scelte della dottoranda, 19 ottobre.** Tutti gli attacchi e tutti i modelli sono federati; ogni attacco gira in
+tutte le configurazioni DP, nessuna DP inclusa. Lo shadow e' quello del paper: calibrazione globale, una soglia
+fissata sulla distribuzione di loss di uno shadow addestrato sulla meta' dei membri (Segnalazioni 93-94). Il codice
+non cambia nelle copie che eseguono v2c e la coda di Windows.
+
+**Metodo (`src/plugins/attacks/shadow2.py`, default; `shadow.version: 1` per le run vecchie).** Per ogni client meta'
+dei membri non canary allo shadow, il resto alla valutazione; non membri divisi per sito, meta' alla calibrazione e
+meta' alla valutazione. Federazione shadow con `run_fl_rounds()`: stessi client, round, FedProx e DP del bersaglio,
+inizializzazione comune del bersaglio, seme proprio (seed + 500009), nessun attacco bizantino; i generatori casuali
+vengono ripristinati, quindi gli altri attacchi non cambiano. A ogni round, dalle loss del modello globale shadow su
+IN e OUT: soglia di vantaggio massimo e soglia con FPR 1% sullo shadow; le due soglie si applicano alla loss del
+modello globale bersaglio su membri e non membri di valutazione, bilanciati. Campi nel JSON: `shadow_version` (2),
+`shadow_auc_roc` (stesso punteggio di Yeom, la loss, ma sulla meta' dei membri non usata dallo shadow: valori
+vicini, non identici), `shadow_tpr_cal_fpr`, `shadow_fpr_cal_fpr`,
+`shadow_advantage_cal_fpr`, `shadow_advantage_cal_adv`, `shadow_oracle_advantage`, loss medie, `shadow_fl` (seme,
+meccanismi, membri dello shadow per client, secondi). Il raccoglitore prende solo i campi della versione 2.
+
+**Verifiche (19 ottobre).** `tests/test_shadow2.py`, 12 test: specchio della federazione (stessi dati, seme e
+inizializzazione del bersaglio, senza rumore: pesi globali identici a ogni round, senza DP, DP per record e per
+soggetto con sigma 0), seme proprio e generatori ripristinati, attacco completo deterministico con nessuna DP, local
+e central. Prove brevi su dati veri (2 round, 2 epoche, seed 42) nelle sette configurazioni della campagna (nessuna
+DP, local, central, per record, per soggetto, solo taglio, solo rumore): tutte complete; fra la run ACN con e senza
+shadow i 73 campi di Yeom, LiRA e RMIA sono identici.
+
+**Code (`scripts/genera_coda_v2d.py`).** Ogni run FL ripete la cella e il seed della v2 o v2c con `--skip-attacks lira`
+(LiRA e RMIA ci sono gia'), sulla macchina che l'ha eseguita: `coda_v2d_mac.csv`, 75 celle ACN (nessuna DP, mu 0 e
+0,01, epsilon 64 local, central, per soggetto sigma 5 e 2, per record sigma 0/1/2/5, curva in epsilon) e
+`mia_persona` con `client_central_eps64` (5 seed), circa 40 ore; `coda_v2d_domenico.csv`, Scozia 60 run, quattro
+feature 40, capacita' 15 (cap16_8 coincide con acn_nodp_mu0.01), circa 68 ore; `coda_v2d_windows.csv`, canary persona
+indotto a spostamento 0,5 con DP per client local e central a epsilon 64, 5 seed x 2 bracci, circa 36 ore. Escluse le
+run canary per sessione della v2 (1000 epoche, circa 55 ore l'una): per i canary lo shadow v2 non ha metriche
+dedicate. Ore stimate dal training della v2 per 1,5; da correggere con la prima run cronometrata di ogni macchina.
+
+**Previsioni, scritte prima del lancio.**
+- V13. Riproducibilita': sulla stessa macchina l'AUC di Yeom per round coincide con quella della run v2 o v2c della
+  stessa cella e seed in tutte le run. Una differenza indica training non deterministico o codice diverso, e va
+  capita prima di leggere lo shadow.
+- V14. Shadow senza DP: `shadow_auc_roc` come Yeom, fra 0,45 e 0,56 (ACN) e al caso in Scozia; alla soglia dello
+  shadow a FPR 1% l'FPR realizzato sul bersaglio sta fra 0,3% e 5% e il TPR resta entro 0,02 dall'FPR (vantaggio
+  vicino a 0, come Yeom).
+- V15. Con DP, a epsilon 64 e con DP per record e per soggetto: vantaggio alla soglia dello shadow non superiore a
+  quello senza DP dello stesso seed piu' 0,01. Nella curva in epsilon l'FPR realizzato alla soglia dello shadow si
+  allontana dall'1% al calare di epsilon (nella prova a epsilon 2: 54,5%): con rumore forte la soglia globale di un
+  solo shadow non si trasferisce, e lo si riporta.
+- V16. Canary persona con DP per client a epsilon 64: con local (A3) l'AUC appaiata sulla superficie client scende
+  rispetto al senza DP della v2 (V6) ma resta sopra 0,5 con p < 0,05 in almeno 3 seed su 5 (epsilon 64 e' debole);
+  con central l'update del client e' solo tagliato (A2), quindi sulla superficie client il segnale resta simile al
+  solo taglio, e scende sulla superficie globale.
+- V17. MIA per persona con DP central: come V8, non sopra il senza DP.
+
+**Prima del lancio.** Commit del codice; pacchetto per ogni macchina con `codice/` aggiornato, `datasets/acn` e
+`datasets/alt`, `raccogli_risultati.py` con le colonne dello shadow; la riga di test della coda include
+`tests/test_shadow2.py` e `tests/test_canary_persona.py`.
+
+## Campagna v3: attacchi realistici (decisa il 2026-10-20)
+
+**Decisione della dottoranda, 20 ottobre.** Niente attacchi e ipotesi che nella realta' non possono esistere:
+nessun attacco usa dati che il server non possiede. Il server honest-but-curious possiede tre cose: cio' che
+osserva (il modello globale a ogni round e l'update del client nel punto esposto dal meccanismo DP), i propri dati
+ausiliari della stessa distribuzione, e le sessioni su cui fa la domanda di appartenenza (i candidati valutati, che
+possiede per definizione della domanda). Mai il resto dei dati dei client. La configurazione di DP cambia solo cio'
+che il server osserva e il meccanismo che le ombre imitano, non i dati che possiede. Gli attacchi della campagna:
+Yeom, shadow con dati ausiliari, LiRA e RMIA in forma online e offline con ombre su soli dati del server. I
+risultati gia' prodotti con dati che il server non possiede restano come analisi di sensibilita'; quelli non
+ancora eseguiti non si eseguono (Segnalazioni, sezione V, voci 99-107).
+
+**Dati ausiliari del server.** Simulati con l'holdout per gli attacchi di ogni sito, cioe' l'holdout (20% delle
+sessioni) senza la riserva per i profili (30% dell'holdout, `scripts/run_experiments.py` riga 7989): circa il 14%
+delle sessioni del sito. `shadow2.dividi_non_membri` (stesso seme in shadow e LiRA) lo divide a meta' per sito:
+circa il 7% ai dati ausiliari del server, mai valutati da shadow, LiRA e RMIA (Yeom, che non usa dati ausiliari, valuta come non membri tutto l'holdout per gli attacchi), e circa il 7% ai non membri
+valutati. Lo shadow realistico (`shadow.fonte_membri: esterna`) divide ancora a meta' i dati ausiliari: circa il
+3,5% come membri della federazione shadow e il 3,5% come calibrazione. LiRA e RMIA (`lira.fonte_ombre: server`)
+riservano il 20% dei dati ausiliari alla popolazione z di RMIA (circa l'1,4%, mai valutata). Le ombre online si
+allenano su meta' di (dati ausiliari + candidati), circa il 10% delle sessioni del sito: ogni candidato e' IN in
+circa meta' delle 32 ombre. Le ombre offline si allenano su meta' dei dati ausiliari senza z, circa il 2,8%, e non
+vedono mai un candidato. Il client si allena sull'80%: le ombre hanno da 8 a 29 volte meno dati, con le stesse
+epoche. E' il costo del realismo, non un errore: le distribuzioni IN/OUT e le soglie dello shadow si spostano
+rispetto al bersaglio, e lo si riporta (prova breve: alla soglia a FPR 1% dello shadow l'FPR realizzato sul
+bersaglio va dallo 0,06% al 96% secondo la cella).
+
+**Attacchi di ogni run v3** (stessi candidati per LiRA e RMIA; chiavi del JSON per round):
+- Yeom: `auc_roc`, invariato.
+- Shadow federato sui dati ausiliari, soglia globale (`shadow_*`, `shadow_fl.fonte_membri = esterna`) e
+  classificatore di tipo Shokri (`shadow.classificatore: logistica`, regressione logistica sull'errore di
+  ricostruzione per feature, pesi di classe bilanciati, decisione logit >= 0; `shadow_clf_*`).
+- LiRA online (`lira_*`): medie IN e OUT per campione, varianza fissa per client e round.
+- LiRA offline nella forma di Carlini et al. (`lira_out_*`): solo le ombre online che non hanno visto il campione,
+  punteggio (mu_out - t)/s_out.
+- LiRA offline con ombre solo sui dati ausiliari (`lira_off_*`): nessun candidato in nessuna ombra.
+- RMIA online (`rmia_*`), offline con le ombre OUT (`rmia_out_*`) e offline con le ombre ausiliarie
+  (`rmia_off_*`); offline con a = 1 (media sulle ombre OUT), gamma = 1; tau = mediana della loss del bersaglio
+  sulla popolazione z.
+- Composti sui round: `composed_lira_*`, `composed_lira_out_*`, `composed_lira_off_*` (somma dei punteggi z,
+  combinazione di Stouffer), `composed_rmia_loglr_*`, `composed_rmia_out_loglr_*`, `composed_rmia_off_loglr_*`.
+- Canary: `canary_auc_roc`, `canary_lira_out_auc_roc`, `canary_lira_off_auc_roc`, `canary_rmia_*`, fuori dalle
+  metriche principali (nelle celle v3 il canary e' spento).
+
+**Codice.** `src/plugins/attacks/lira2.py`: `lira.fonte_ombre` ("universo" di default, comportamento v2/v2c
+invariato, oppure "server"), `insiemi_server`, `punteggio_lira_offline`, `punteggio_lira_out`, `_run_lira_server`;
+`lira.n_shadow_offline`. `src/plugins/attacks/shadow2.py`: `shadow.fonte_membri` ("bersaglio" di default,
+"esterna", "bersaglio_ridotto"), `shadow.classificatore` ("soglia" di default, "logistica"); canary fuori dalla
+valutazione principale (voce 103); le versioni con dati ausiliari rifiutano la partizione IID, come LiRA server.
+`src/plugins/attacks/clf_logistica.py` (solo numpy). Config `config/*_v3.yaml` (31, uno per cella di base, con in
+testa cosa cambia: `lira.fonte_ombre: server`, `lira.n_shadow: 32`, `lira.n_shadow_offline: 32`,
+`shadow.fonte_membri: esterna`, `shadow.classificatore: logistica`; il resto identico). Raccoglitore
+`scripts/raccogli_risultati.py` con fonte e classe degli attacchi (realistico, sensibilita', non valido per la LiRA
+v1), le forme offline, il classificatore e la chiave `rmia_off_auc_roc` (voce 102).
+
+**Avversario partecipante (decisione della dottoranda, 20 ottobre).** Oltre al server, l'avversario B: un
+partecipante o un osservatore esterno che vede solo la sequenza dei modelli globali, non gli aggiornamenti dei
+client. Yeom e lo shadow con dati ausiliari gli si applicano gia' (usano solo il modello globale). Per LiRA e RMIA
+la superficie "global" della v2 non basta: per costruire il globale ombra usa gli aggiornamenti reali degli altri
+client, che un partecipante non vede (voce 106). Nuova superficie `lira.observation_surface: partecipante` (solo con
+`fonte_ombre: server`): a ogni round le ombre del client c ripartono dal globale osservato e prendono il posto di c
+nell'aggregazione; gli aggiornamenti degli altri client sono emulati con i dati ausiliari del server di quel sito
+(`aggiornamenti_emulati`, una emulazione per client e round, con il codice e la DP del client), con i pesi di
+aggregazione pubblici; il bersaglio e' il modello globale. Config `experiment_v3_partecipante.yaml` e
+`experiment_rq1_eps64_v3_partecipante.yaml`. Celle (sottoinsieme deciso il 20 ottobre): ACN senza DP, local e central a
+epsilon 64, 5 seed, Mac di Susy, priorita' 2, shadow saltato (gira gia' nella run v3 della stessa cella).
+
+**Verifiche (20 ottobre, nel cloud con torch).** Suite completa: 486 test passati, fra cui
+`tests/test_lira_server.py` (17: le ombre online vedono solo dati ausiliari, z e candidati; le offline solo dati
+ausiliari; z mai in una valutazione; dei membri del client solo i candidati; quattro forme deterministiche con 1 e 2
+worker; IID rifiutata; default invariato; con il partecipante, emulazioni solo su dati del server e nessun
+aggiornamento reale nell'aggregazione, senza DP, local e central), `tests/test_shadow_esterna.py`, `tests/test_shadow_clf.py`. Il percorso di
+default di LiRA da' JSON identici prima e dopo la modifica (revisione indipendente); nello shadow cambia solo
+l'esclusione dei canary dalla valutazione (voce 103), che non tocca le celle senza canary. Prove brevi
+su dati veri (2 round, 2 epoche, 2-4 ombre, seed 42): ACN senza DP, local e central a epsilon 64, solo taglio,
+per record sigma 1, per soggetto sigma 5, Scozia ridotta senza DP, e il partecipante senza DP, local e central: tutte complete con i
+campi attesi. Non ancora
+eseguite sulle macchine della campagna.
+
+**Code (`scripts/genera_coda_v3.py`, pacchetto `~/Downloads/aggiornamento_v3`).** Le celle e i semi della v2d, sulla
+macchina che le ha eseguite, con il config `_v3`, `--n-shadow 32` e LiRA attiva: `coda_v3_mac.csv`, 75 run ACN, 15
+run del partecipante e il blocco a 30 round della v2e (utilita', 40 run; dal 20 ottobre priorita' 1, subito dopo la prova, perche' la RQ2 dell'introduzione ne dipende; celle ACN priorita' 2 e 3, partecipante 3), circa 85 ore; `coda_v3_domenico.csv`, Scozia 60,
+quattro feature 40, capacita' 15, circa 62 ore; `coda_v3_windows.csv`, canary persona con DP per client local e
+central a epsilon 64, 20 run, circa 36 ore. Ogni run con attacchi scrive il dump per campione (`--per-sample-dump`, punteggi composti
+realistici) per l'analisi per record (E-C). Prova cronometrata per prima su Mac di Susy e di Domenico. Ore stimate:
+T x 1,05 + 0,16 L / w (T training della cella, L ore di LiRA della v2 con un worker, w worker).
+
+**Code annullate il 20 ottobre (mai lanciate):** v2d (shadow sui membri del client, MIA per persona con DP
+central), v2e blocco A (RMIA offline sull'universo del client), v2f (shadow con dati ausiliari e controllo a taglia
+uguale sui membri del client: il primo e' nella v3, il secondo non e' realistico), v2clf (classificatore sui membri
+del client). Interrotta il 20 ottobre sul Mac di Domenico la v2c residua (LiRA e RMIA sull'universo del client per
+le celle a quattro feature: fatte circa 23 run su 40; la run interrotta e le successive non si rifanno).
+
+**Previsioni, scritte prima del lancio.**
+- V18. Riproducibilita': sulla stessa macchina la loss sull'holdout e l'AUC di Yeom per round coincidono con la
+  run v2 o v2c della stessa cella e seed (come gia' fra v2 e v2c: 30 coppie su 30 identiche).
+- V19. ACN senza DP: LiRA, RMIA e le forme offline realistiche hanno AUC composta fra 0,45 e 0,56 in ogni seed, e
+  non superiore di piu' di 0,01 a quella con l'universo del client (v2/v2c) dello stesso seed in almeno 4 seed su
+  5: con meno dati l'attacco non diventa piu' forte.
+- V20. Con DP (per client, per record, per soggetto) l'AUC realistica non supera quella senza DP dello stesso seed
+  di piu' di 0,01.
+- V21. Shadow con dati ausiliari: alla soglia a FPR 1% l'FPR realizzato sul bersaglio sta fuori dall'intervallo
+  0,3%-5% in almeno 3 seed su 5 delle celle senza DP (ombra allenata su circa il 3,5% delle sessioni contro l'80%
+  del bersaglio); il vantaggio realizzato resta entro 0,02 da 0.
+- V22. Classificatore di tipo Shokri: AUC del logit entro 0,01 da quella della soglia sulla loss dello stesso seed
+  nelle celle senza DP; se la supera di piu' di 0,01 in almeno 3 seed su 5, l'errore per feature porta segnale che
+  la loss totale non porta, ed e' da riportare.
+- V23. Avversario partecipante: AUC composta di LiRA e RMIA online fra 0,45 e 0,56 senza DP, e non superiore di piu'
+  di 0,01 a quella del server sull'aggiornamento del client dello stesso seed in almeno 4 seed su 5: chi vede solo il
+  modello globale, con aggiornamenti degli altri client emulati, non vede piu' del server.
+
+**Aggiunte del 20 ottobre sera (RQ dell'introduzione del paper; decisione della dottoranda).** Tre buchi rispetto
+alle due RQ dell'introduzione e un controllo positivo mancante. (1) Ablazione solo taglio e solo rumore su ACN a sei
+feature, con attacchi realistici: 4 celle per 5 seed, Mac di Susy, priorita' 1 (prima esisteva solo in Scozia e su
+ACN a quattro feature). (2) 30 round in Scozia: FedAvg e FedProx, senza DP e con DP locale a epsilon 64, 10 seed,
+Mac di Domenico, priorita' 1. Entrambi i blocchi a 30 round passano a `--common-init` e `--dp-mode local`, come le
+celle a 10 round: i round 1-10 di ogni run a 30 round devono coincidere con la cella a 10 round dello stesso seed e
+della stessa macchina, e i cinque seed nuovi aggiungono repliche anche al round 10 (in Scozia con DP la media di
+FedAvg e FedProx coincide: 0,121 contro 0,120 su 5 seed). (3) Canary per sessione con shadow, LiRA e RMIA realistici
+(`experiment_canary_multisite{,_swap}_v3.yaml`): bracci A e B, senza DP e con DP locale a epsilon 64, 3 seed, PC
+Windows, priorita' 1 dopo la prova `v3_canaryA_nodp_s42`; il canary persona v3 passa a priorita' 2. Le run v2 dello
+stesso controllo, con LiRA, falliscono all'avvio (Segnalazioni 108). Lo shadow v2 calcola ora metriche canary
+separate (`shadow_canary_*`, `shadow_clf_canary_*`, `src/plugins/attacks/shadow2.py`); senza canary l'output non
+cambia, quindi nessuna cella gia' prodotta diventa non confrontabile. Verificato: prova breve su dati veri (2 round,
+3 epoche, 4 ombre, seed 42, braccio A senza DP) con tutti i campi canary di LiRA, RMIA e shadow; AUC canary dello
+shadow alla soglia uguale a quella di Yeom sui canary, come atteso (stessa loss). Code (con l'attacco al soggetto, sotto): Mac di
+Susy 174 run (circa 131 ore), Mac di Domenico 190 (circa 124), Windows 56 (circa 115): 420 in tutto.
+- V24. Canary per sessione senza DP: AUC della loss grezza sui canary sopra 0,5 in 6 bracci su 6 (A e B, 3 seed) e
+  somma A + B sopra 1 in 3 seed su 3. Per LiRA, RMIA e shadow realistici sui canary nessuna previsione quantitativa:
+  e' la domanda del controllo.
+- V25. ACN a sei feature: con il solo taglio FedAvg ha loss sull'holdout piu' alta di FedProx in almeno 4 seed su
+  5; con il solo rumore la loss di FedProx sta entro un fattore 1,5 da quella con la DP completa dello stesso seed.
+- V26. 30 round (ACN e Scozia): i round 1-10 coincidono con le celle a 10 round dello stesso seed e macchina; nessuna
+  previsione sul segno della differenza FedAvg - FedProx al round 30.
+
+**Attacco realistico al soggetto (deciso il 20 ottobre sera, dalla dottoranda).** `scripts/mia_soggetto.py`: la
+domanda e' se un soggetto, o un periodo di ricariche di un soggetto, era nel training. L'avversario e' il server e usa
+solo il modello globale, i propri dati e le sessioni che interroga. Due livelli. Entita': i soggetti con almeno 10
+sessioni (persone con `user_id` in ACN, punti di ricarica con `node_id` in Scozia) divisi a caso in tre terzi, membri
+(tutte le sessioni nel training), non membri e soggetti del server; stessa divisione di `mia_persona.py` a parita' di
+seed in ACN (193, 193 e 194 persone con il seed 42). Gruppo: unita' di 14 sessioni consecutive dello stesso soggetto
+nello stesso client (la mediana delle sessioni per utente, vista di gruppo della DP per record), divise in tre terzi;
+gli avanzi e le sessioni senza chiave restano nel training. I dati del server sono le unita' del terzo del server:
+la meta' delle unita' fuori dal training, come i dati ausiliari della campagna per sessione (meta' dell'holdout). Il
+riferimento e' una federazione con lo stesso meccanismo e la stessa inizializzazione del bersaglio, addestrata sulle
+sole unita' del server; niente sfondo, niente re-identificazione nel pool dei client. Sessioni note: 1, 3 e 10 per
+l'entita' (prime in ordine di tempo; "tutte" e' un limite superiore), 1, 5 e 14 per il gruppo. Metrica primaria:
+calibrata, 10 sessioni note (entita') e gruppo intero (gruppo); AUC sulle unita' con intervallo bootstrap, Mann-Whitney
+unilaterale, Holm sulle secondarie. Celle: ACN senza DP, DP per client locale a epsilon 64, per soggetto sigma 5 e 2,
+per record sigma 2 e 5 (seed come nella campagna); Scozia senza DP, DP per client locale, per soggetto sigma 5 (punto
+di ricarica) e, solo nel livello gruppo, per record sigma 1. Code: entita' ACN sul Mac di Susy (24 run), gruppo ACN
+sul PC Windows (24), Scozia sul Mac di Domenico (35). Verificato: 5 test (`tests/test_mia_soggetto.py`: il
+riferimento non contiene sessioni del training ne' valutate), prove brevi su dati veri (2 round, 2 epoche, seed 42) in
+otto celle dei due livelli e dei due dataset. Il modello bersaglio e' addestrato su una parte delle sessioni (sfondo e
+membri: con il seed 42, 30 793 su 66 713 in ACN per entita'; in Scozia 19 181 per entita' e 23 345 per gruppo su 65 303,
+contro 22 340 e 20 986 del riferimento del server, perche' quasi ogni punto di ricarica e' un'unita'), quindi la sua
+loss non e' quella delle celle della campagna: il costo si legge nella colonna propria. Risultati: `mia_soggetto.csv`
+del raccoglitore. Revisione indipendente: nessun uso di dati che il server non possiede; corretti il raccoglitore
+(mancava il blocco del soggetto), il controllo sulla normalizzazione e la posizione del controllo della metrica
+primaria.
+- V27. Entita', ACN e Scozia, senza DP: AUC primaria fra 0,45 e 0,58 in ogni seed (la MIA per persona di
+  sensibilita', con piu' dati, e' 0,478-0,570 sull'oracolo calibrato); con DP per soggetto non sopra quella senza DP
+  dello stesso seed di piu' di 0,02.
+- V28. Gruppo, DP per record: nessuna previsione quantitativa; e' la misura empirica della vista di gruppo
+  (epsilon di gruppo della Tabella dei gruppi). Se l'AUC primaria supera 0,55 in almeno 2 seed su 3 con sigma 2, si
+  riporta come segnale a livello di gruppo non coperto dalla garanzia per sessione.

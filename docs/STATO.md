@@ -1,6 +1,6 @@
 # ChargeShield-FL — Stato del progetto
 
-> **Stato: documento CANONICO.** Aggiornato il 2026-10-02 (revisione: costo sul modello
+> **Stato: documento CANONICO.** Aggiornato il 2026-10-20 (sezione 3.11: campagne v2 e v2c dai JSON, classificazione realistico, sensibilita', controllo, non valido; sezione 4: campagna v3); prima, il 2026-10-02 (revisione: costo sul modello
 > rilasciato, analisi per record corretta, E-C, segnalazioni 46-59, controlli del protocollo, celle delle matrici ricomposte, RQ2 senza DP,
 > punto operativo a 5 seed, RQ2 con DP, E-B a σ = 1 e 2 con il riferimento GroupNorm, RQ3 senza DP; il 2026-09-29 E-B a σ = 5, RQ3 sul Mac principale con e senza DP, prove su mu e FedAvg con DP su Windows; il 2026-09-30 lo screening di C per FedAvg con DP e il solo clipping di E-B; il 2026-10-01 il braccio B del canary su più siti, il braccio FedProx con DP di Windows e il braccio A del canary su Caltech della quarta macchina, il test appaiato per record su tutte le 24 celle a 5 seed, il seed 42 del canary su Caltech; il 2026-10-02 la linea per il paper DSN e l'analisi per round di RQ3; dai JSON e non ancora nelle matrici). Solo numeri
 > presenti in `risultati/` o letti dai JSON grezzi alla data, e lo dice dove.
@@ -705,7 +705,80 @@ contro 0.00038), mentre FedProx migliora (0.00081 contro 0.00147): senza DP FedP
 3.90, in 5 seed su 5. Senza DP FedProx resta peggio di FedAvg, con DP meglio, in tutti i seed. Costo della DP rispetto al proprio modello senza DP: FedAvg 40 volte (52 a init casuale), FedProx 10 volte (4.6); il costo di FedProx è un quarto di quello di FedAvg (0.25; 0.09 a init casuale). RQ3 regge
 all'inizializzazione; il riferimento in simulazione per la validazione sul deployment ha ora le celle con DP a 5 seed.
 
+### 3.11 Campagne v2 e v2c: cosa vale (2026-10-20)
+
+Fonte: `risultati/campagna_v2/mac_susy/` e `risultati/campagna_v2/mac_domenico/` (`riepilogo_run.csv`,
+`loss_per_round.csv`, `mia_persona.csv`, `canary_persona.csv`), generati il 2026-10-20 da
+`scripts/raccogli_risultati.py` dai JSON in `~/Downloads/ChargeShield_offline/esiti` (Mac di Susy, v2 e v2c) e in
+`esiti_domenico_v2.zip` (Mac di Domenico, v2). Le righe senza prefisso `v2_` o `v2c_` sono run del codice
+precedente alla revisione del 16 ottobre: prove, non celle del paper. La v2c del Mac di Domenico (Scozia 40 run e
+ACN a quattro feature, circa 23 run su 40, interrotta il 20 ottobre) non e' ancora stata copiata: i suoi numeri non
+si citano. Le run v2 di Windows sono in `risultati/campagna_v2/windows/` (copiate il 21 ottobre): canary persona
+fatto, canary per sessione mai partito (18 errori, Segnalazioni 108).
+
+Classificazione (decisione del 20 ottobre, `ESPERIMENTI.md`, campagna v3; Segnalazioni V):
+- realistici: Yeom e la loss sull'holdout del modello rilasciato (costo) di tutte le celle v2 e v2c;
+- analisi di sensibilita': LiRA e RMIA v2 e v2c (ombre sull'universo del client, voce 99) e la MIA per persona
+  (voce 101);
+- controlli positivi (validano lo strumento, non certificano il null naturale): canary persona e canary per
+  sessione;
+- non validi: LiRA v1 e shadow v1 (Segnalazioni 65-73 e 93).
+
+Riproducibilita': le 30 coppie v2/v2c della curva in epsilon (stessa cella, seme e macchina) hanno loss sull'holdout
+e AUC di Yeom all'ultimo round identiche.
+
+ACN, Mac di Susy, medie sui seed all'ultimo round (n = seed). Yeom e' l'attacco realistico; LiRA e RMIA composti
+sono sensibilita'.
+
+| cella | n | loss holdout | Yeom AUC (min-max) | LiRA composto | RMIA composto |
+|---|---|---|---|---|---|
+| nessuna DP, mu 0,01 | 5 | 0,0014 | 0,5007 (0,496-0,504) | 0,5027 | 0,5034 |
+| nessuna DP, mu 0 | 5 | 0,0005 | 0,5046 (0,500-0,509) | 0,5054 | 0,5074 |
+| local eps 64, mu 0,01 | 5 | 0,0845 | 0,5046 (0,499-0,508) | 0,5003 | 0,5000 |
+| local eps 64, mu 0 | 5 | 0,1771 | 0,5012 (0,495-0,505) | 0,5012 | 0,5011 |
+| central eps 64 | 5 | 0,0538 | 0,4999 (0,497-0,504) | 0,4966 | 0,5021 |
+| local eps 2 / 4 / 8 | 5 | 0,4379 / 0,4691 / 0,4568 | 0,4986 / 0,4986 / 0,4988 | 0,5021 / 0,5000 / 0,4986 | 0,4991 / 0,4987 / 0,4984 |
+| local eps 16 / 32 / 256 | 5 | 0,3655 / 0,2582 / 0,0282 | 0,5016 / 0,5013 / 0,5015 | 0,5005 / 0,5010 / 0,4983 | 0,5008 / 0,4992 / 0,4990 |
+| per record sigma 0 / 1 / 2 / 5 | 3 | 0,0013 / 0,0036 / 0,0039 / 0,0054 | 0,5009 / 0,5013 / 0,4999 / 0,4998 | 0,5002 / 0,5003 / 0,4977 / 0,5007 | 0,5016 / 0,4996 / 0,4958 / 0,4966 |
+| per soggetto sigma 2 (n = 3) / 5 (n = 5) | 3/5 | 0,0117 / 0,0140 | 0,5019 / 0,5001 | 0,4983 / 0,4997 | 0,4952 / 0,4967 |
+
+Per la curva in epsilon LiRA e RMIA vengono dalla v2c (stessi config e semi). Mac di Domenico (v2, 5 seed): Yeom
+fra 0,4955 (Scozia, per soggetto sigma 5) e 0,5025 (capacita' 64-32) in tutte le 25 celle; LiRA e RMIA composti
+(sensibilita', solo nelle celle con attacchi: Scozia senza DP e con local eps 64, curva di capacita') fra 0,4969 e
+0,5044.
+
+MIA per persona v2 (sensibilita'; ACN, 193 membri e 193 non membri, 5 seed): oracolo calibrato, AUC media senza DP
+0,5122 (0,478-0,570, intervallo al 95% che contiene 0,5 in 4 seed su 5), DP per client local eps 64 0,5035, per
+record sigma 2 0,525 e sigma 5 0,5105, per soggetto sigma 2 0,489 e sigma 5 0,5015; intervallo che contiene 0,5 in
+almeno 4 seed su 5 in ogni meccanismo. Previsione V8 ("fino a 0,56") superata in un seed senza DP (0,570).
+
+Canary persona v2 (controllo positivo, PC Windows, `risultati/campagna_v2/windows/canary_persona.csv`; AUC appaiata
+all'ultimo round, media sui seed e quanti seed hanno l'intervallo al 95% sopra 0,5; modello globale e aggiornamento
+del client di JPL, sessioni di training):
+- indotto, 30 copie, spostamento 0,5 (3 round da 1000 epoche, 5 seed): globale 0,735 (4 su 5), client 0,833 (4 su 5);
+  sulle sessioni fresche 0,724 e 0,828: lo strumento vede la persona memorizzata, anche su sessioni mai viste;
+- indotto, 30 copie, spostamento 0 (persone reali duplicate): globale 0,555 (0 su 5), client 0,604 (1 su 5);
+- naturale, modello e training del paper (10 round da 50 epoche, 3 seed): 1 copia 0,498 e 0,463, 10 copie 0,522 e
+  0,502, 30 copie 0,613 e 0,645 (0 e 2 seed su 3 sopra 0,5).
+Lettura: senza duplicazione, nel regime del paper, il segnale per persona e' al caso; compare solo con persone
+costruite per essere memorizzate o molto duplicate. Valida lo strumento sulla loss (come Yeom), non LiRA ne' shadow.
+
+Conclusione che non cambia: nel regime naturale nessun attacco distingue i membri, con o senza DP. Cosa cambia: la
+frase vale per Yeom come attacco realistico; per LiRA, RMIA e shadow servono i numeri realistici della v3.
+
 ## 4. Cosa manca
+
+**Attacchi realistici (aggiornato il 2026-10-20).** Decisione della dottoranda: solo attacchi con dati che il server
+possiede. Yeom e la loss sull'holdout delle v2 e v2c valgono; LiRA e RMIA v2 e v2c e la MIA per persona sono analisi
+di sensibilita' (sezione 3.11). Lo shadow non ha ancora numeri validi: la versione 1 non e' valida (Segnalazioni 93),
+la versione con i membri del client non e' realistica e non si esegue. Mancano i numeri realistici di shadow (dati
+ausiliari del server, soglia globale e classificatore di tipo Shokri) e di LiRA e RMIA online e offline (ombre su
+soli dati del server), dal punto di vista del server e, su un sottoinsieme di celle, di un partecipante che vede
+solo i modelli globali: campagna v3 (`ESPERIMENTI.md`), 420 run su tre macchine, con il canary persona con DP per
+client, i blocchi a 30 round su ACN e Scozia, l'ablazione solo taglio e solo rumore su ACN a sei feature e il canary
+per sessione con attacchi realistici e l'attacco realistico al soggetto, persona e punto di ricarica, per entita' e
+per gruppo di 14 sessioni (aggiunte del 20 ottobre sera). Le run v2 del canary per sessione con LiRA
+non sono mai partite (Segnalazioni 108): il controllo positivo per sessione e' tutto nella v3.
 
 L'elenco ordinato, con comandi e prerequisiti, è `ESPERIMENTI.md`. E-A è chiuso (sezione
 3.1b), con la griglia del punto operativo e ε = 64 a 5 seed; E-C è eseguito sulle celle

@@ -1190,9 +1190,16 @@ def run_fl_rounds(
     no_dp: bool = False,
     dp_mode: str = "dp-fedavg",
     cluster_sessions: dict[str, list[dict[str, Any]]] | None = None,
+    init_weights: list[Any] | None = None,
 ) -> dict[int, dict[str, Any]]:
     """
     Esegue FL rounds via ML Plane.
+
+    init_weights (2026-10-19, shadow v2): pesi iniziali comuni imposti a tutti
+    i client al posto di quelli del primo trainer. Solo con ml.common_init:
+    true; lo usa la federazione shadow di plugins/attacks/shadow2.py per
+    partire dallo stesso modello iniziale del bersaglio. Default None: nessun
+    cambiamento per ogni chiamata esistente.
     Ogni round: train locale → [DP opzionale] → FedAvg → global model.
     Restituisce gradient history per round.
 
@@ -1329,9 +1336,11 @@ def run_fl_rounds(
     # l'inizializzazione (nel FedProx standard sarebbe attivo anche al round 1,
     # verso il modello iniziale). Nessuna estrazione casuale in piu': il resto
     # della run consuma il generatore come prima.
+    if init_weights is not None and not ml_cfg.get("common_init", False):
+        raise ValueError("run_fl_rounds: init_weights richiede ml.common_init: true")
     if ml_cfg.get("common_init", False) and cluster_ids:
-        _w0 = trainers[cluster_ids[0]].get_weights()
-        for cid in cluster_ids[1:]:
+        _w0 = trainers[cluster_ids[0]].get_weights() if init_weights is None else init_weights
+        for cid in (cluster_ids[1:] if init_weights is None else cluster_ids):
             trainers[cid].set_weights(_w0)
         for _t in trainers.values():
             _t._global_weights = None

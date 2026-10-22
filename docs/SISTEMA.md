@@ -3,7 +3,8 @@
 > **Stato: documento OPERATIVO.** Scritto il 2026-09-22 estraendo da Architecture,
 > MLPlane e ThreatModel (eliminati) le sole parti che corrispondono al codice al
 > commit `f89c1cc`. Descrive cosa gira, non cosa era stato progettato. Per la linea
-> scientifica vedi la guida; per lo stato dei risultati `STATO.md`.
+> scientifica vedi la guida; per lo stato dei risultati `STATO.md`. Aggiornato il
+> 2026-10-20 nelle sezioni 7 e 8 (attacchi realistici della campagna v3).
 
 ## 1. Cosa esiste e cosa no
 
@@ -98,13 +99,24 @@ descritto come contatore di budget.
 
 ## 7. Attacchi
 
-Tutti derivano il giudizio dalla loss di ricostruzione del campione.
+Tutti derivano il giudizio dalla loss di ricostruzione del campione. Dal 2026-10-20 la
+campagna usa solo attacchi con dati che il server possiede (cio' che osserva, i propri
+dati ausiliari, le sessioni che interroga); i default del codice riproducono le campagne
+v2 e v2c, che restano analisi di sensibilita'.
 
-| attacco | superficie | scorer | note |
+| attacco | superficie | scorer | dati delle ombre |
 |---|---|---|---|
-| Yeom | modello globale | −loss | nessuna calibrazione; è la metrica che regge |
-| Shadow | modello globale | loss shadow − loss target, un solo shadow su metà dei membri | invertito nel regime canary |
-| LiRA | update del singolo client | log-rapporto di verosimiglianza gaussiano, n_shadow = 16 per sito, shadow riaddestrati ogni round con warm start e privatizzati come il client | floor di varianza colpito nel 97-99% dei casi: degenera in una funzione monotona della loss; punteggio composto sommato sui round |
+| Yeom | modello globale | −loss | nessuna ombra; realistico |
+| Shadow v2 (`shadow2.py`) | modello globale | soglia globale sulla loss della federazione shadow (vantaggio massimo e FPR 1%); con `shadow.classificatore: logistica` anche regressione logistica sull'errore per feature | `shadow.fonte_membri: esterna` = dati ausiliari del server (realistico, v3); `bersaglio` (default) = meta' dei membri del client (non realistico) |
+| LiRA v2 e RMIA (`lira2.py`) | update del client nel punto esposto (server); modello globale con aggiornamenti degli altri client emulati dai dati del server (`observation_surface: partecipante`, avversario che vede solo i modelli globali); "global" usa gli update reali degli altri client ed equivale al server | LiRA: log-rapporto gaussiano con varianza fissa per client e round; offline: (mu_out − t)/s_out; RMIA: quota della popolazione z battuta, gamma = 1, offline con a = 1 | `lira.fonte_ombre: server` = 32 ombre online su meta' di dati ausiliari + candidati e 32 offline sui soli dati ausiliari (realistico, v3); `universo` (default) = ombre su sottoinsiemi dell'universo membri + non membri del client, con un insieme IN della taglia del client, circa l'85% dell'universo (non realistico, Segnalazioni 89) |
+| MIA al soggetto realistica (`scripts/mia_soggetto.py`, 2026-10-20) | modello globale finale | media sulle sessioni note di (loss del riferimento − loss del bersaglio), e −loss | riferimento federato sulle sole unita' del server (un terzo delle unita'), stesso meccanismo e inizializzazione del bersaglio; livello `entita` (persona con `user_id`, punto di ricarica con `node_id`) e `gruppo` (14 sessioni consecutive dello stesso soggetto nello stesso client) |
+| MIA per persona (`scripts/mia_persona.py`) | modello globale finale | come sopra, piu' re-identificazione e oracolo | riferimento su persone di riferimento + sfondo (sessioni dei client): analisi di sensibilita' (Segnalazioni 101) |
+
+Dati ausiliari del server: meta' dell'holdout per gli attacchi di ogni sito (circa il 7%
+delle sessioni del sito), la stessa meta' in shadow e LiRA (`shadow2.dividi_non_membri`).
+Ombre e shadow si allenano su molte meno sessioni del client (Segnalazioni 104). Le
+versioni realistiche rifiutano la partizione IID. La LiRA v1 e lo shadow v1 restano nel
+codice per riprodurre le run vecchie e non sono validi (Segnalazioni 65-73 e 93).
 
 Metriche per tutti: AUC-ROC, TPR a FPR in {0.1%, 1%, 5%} con caso a TPR = FPR,
 advantage di Youden, matrice di confusione, curva ROC completa a richiesta,
@@ -121,11 +133,13 @@ bilanciati, baseline a inizializzazione casuale.
 ## 8. Threat model
 
 Scenario 1, l'unico valutato: aggregatore honest-but-curious, segue il protocollo
-e registra ciò che riceve. Cosa riceve dipende dal placement, tabella in 4.
-Yeom e Shadow modellano un partecipante qualunque che vede il modello globale;
-LiRA modella l'aggregatore che vede l'update di un client. Le shadow di LiRA si
-addestrano sui dati reali del sito, membri e holdout: è un accesso più ampio di
-quello del threat model, quindi la misura è un limite superiore generoso.
+e registra ciò che riceve. Cosa riceve dipende dal placement, tabella in 4. Possiede
+solo cio' che osserva, i propri dati ausiliari della stessa distribuzione e le sessioni
+su cui fa la domanda di appartenenza; non possiede il resto dei dati dei client. Yeom e
+lo shadow modellano chi vede il modello globale; LiRA e RMIA l'aggregatore che vede
+l'update di un client o il modello globale. Con `lira.fonte_ombre: universo` o
+`shadow.fonte_membri: bersaglio` l'attacco usa dati dei client e vale solo come analisi
+di sensibilita'.
 
 Scenario 2, client malevolo: dominio del ByzantineDetector, mai eseguito su un
 attacco reale, fuori dal paper. Scenari 3 e 4, gateway compromesso e

@@ -1,6 +1,6 @@
 # Indice dei config
 
-> **Stato: documento OPERATIVO.** Una riga per file, aggiornato il 2026-09-30. Ogni
+> **Stato: documento OPERATIVO.** Una riga per file, aggiornato il 2026-10-20 (config v3). Ogni
 > config è una cella: prima di crearne uno nuovo cercare qui se esiste già. La base
 > di tutti è `experiment.yaml`; le colonne dicono cosa cambia rispetto a quella base
 > (3 siti, 10 round, 50 epoche, 6 feature, ε = 1, n_shadow 16, FedProx mu 0.01).
@@ -111,6 +111,28 @@ dei ruoli estrae insiemi disgiunti e non è uno scambio. Restano come storia.
 3.3x, 1000 epoche), `_richfeat` (7 feature), `_combined` (capacità e feature),
 `_altsite` (Caltech 2021). Servivano a stabilire se il modello può memorizzare
 senza canary: no.
+
+## Campagna v3: attacchi realistici (2026-10-20)
+
+`<base>_v3.yaml`, uno per cella delle campagne v2 e v2c (31 file, generati da quelli di
+base): identici alla base salvo il blocco degli attacchi, `lira.fonte_ombre: server`,
+`lira.n_shadow: 32`, `lira.n_shadow_offline: 32`, e `shadow` con `version: 2`,
+`fonte_membri: esterna`, `fraz_esterna: 0.5`, `classificatore: logistica`. Basi:
+`experiment`, `experiment_rq3_mu0`, `experiment_rq1_eps64`, `experiment_rq3_mu0_eps64`,
+`experiment_rq1_eps{2,4,8,16,32,256}`, `experiment_rq1_recorddp_nm{0,1,2,5}`,
+`experiment_acn_subjectdp`, `experiment_acn_subjectdp_s5`, `experiment_sc3`,
+`experiment_sc3_mu0`, `experiment_sc3_eps64`, `experiment_sc3_mu0_eps64`,
+`experiment_sc3_mu0.001_eps64`, `experiment_sc3_mu0.1_eps64`, `experiment_sc3_recorddp`,
+`experiment_sc3_subjectdp`, `experiment_acn4f`, `experiment_acn4f_mu0`,
+`experiment_acn4f_eps64`, `experiment_acn4f_mu0_eps64`, `experiment_cap{32_16,64_32,128_64}`.
+`experiment_v3_partecipante.yaml` e `experiment_rq1_eps64_v3_partecipante.yaml`: come i `_v3`
+corrispondenti, con `lira.observation_surface: partecipante` (avversario che vede solo i modelli
+globali). `experiment_canary_multisite_v3.yaml` e `experiment_canary_multisite_swap_v3.yaml`
+(2026-10-20 sera): come `experiment_canary_multisite{,_swap}.yaml` con il blocco degli attacchi della v3
+(LiRA e RMIA sui dati del server, 32 + 32 ombre; shadow v2 esterna con classificatore) e senza
+`lira.shadow_init`, opzione della LiRA v1 che la v2 rifiuta (Segnalazioni 108): canary per sessione,
+controllo positivo degli attacchi realistici. Coda: `scripts/genera_coda_v3.py`. I file `*_esterna.yaml`, `*_ridotto.yaml` e
+`*_clf.yaml` della v2f e della v2clf (code annullate) non sono nel repository.
 
 ## Auditor
 
