@@ -1,0 +1,31 @@
+log,file,sito,epoche,round,delta,sigma,soggetti,passi,epsilon
+v2b_cps_gn_e200_A_s123.log,canary_persona_indotto_gn_c30_d0.5_r3_e200_A_s123.json,jpl,200,3,1e-05,,,0,senza DP per soggetto
+v2b_cps_gn_e200_A_s42.log,canary_persona_indotto_gn_c30_d0.5_r3_e200_A_s42.json,jpl,200,3,1e-05,,,0,senza DP per soggetto
+v2b_cps_gn_e200_A_s456.log,canary_persona_indotto_gn_c30_d0.5_r3_e200_A_s456.json,jpl,200,3,1e-05,,,0,senza DP per soggetto
+v2b_cps_gn_e200_B_s123.log,canary_persona_indotto_gn_c30_d0.5_r3_e200_B_s123.json,jpl,200,3,1e-05,,,0,senza DP per soggetto
+v2b_cps_gn_e200_B_s42.log,canary_persona_indotto_gn_c30_d0.5_r3_e200_B_s42.json,jpl,200,3,1e-05,,,0,senza DP per soggetto
+v2b_cps_gn_e200_B_s456.log,canary_persona_indotto_gn_c30_d0.5_r3_e200_B_s456.json,jpl,200,3,1e-05,,,0,senza DP per soggetto
+v2b_cps_subject_s0_e200_A_s123.log,canary_persona_indotto_subject_s0_c30_d0.5_r3_e200_A_s123.json,jpl,200,3,1e-05,0.0,754,14400,inf
+v2b_cps_subject_s0_e200_A_s42.log,canary_persona_indotto_subject_s0_c30_d0.5_r3_e200_A_s42.json,jpl,200,3,1e-05,0.0,757,14400,inf
+v2b_cps_subject_s0_e200_A_s456.log,canary_persona_indotto_subject_s0_c30_d0.5_r3_e200_A_s456.json,jpl,200,3,1e-05,0.0,763,14400,inf
+v2b_cps_subject_s0_e200_B_s123.log,canary_persona_indotto_subject_s0_c30_d0.5_r3_e200_B_s123.json,jpl,200,3,1e-05,0.0,754,14400,inf
+v2b_cps_subject_s0_e200_B_s42.log,canary_persona_indotto_subject_s0_c30_d0.5_r3_e200_B_s42.json,jpl,200,3,1e-05,0.0,757,14400,inf
+v2b_cps_subject_s0_e200_B_s456.log,canary_persona_indotto_subject_s0_c30_d0.5_r3_e200_B_s456.json,jpl,200,3,1e-05,0.0,763,14400,inf
+v2b_cps_subject_s5_e1000_A_s123.log,canary_persona_indotto_subject_s5_c30_d0.5_r3_e1000_A_s123.json,jpl,1000,3,1e-05,5.0,754,72000,29.071
+v2b_cps_subject_s5_e1000_A_s42.log,canary_persona_indotto_subject_s5_c30_d0.5_r3_e1000_A_s42.json,jpl,1000,3,1e-05,5.0,757,72000,28.913
+v2b_cps_subject_s5_e1000_A_s456.log,canary_persona_indotto_subject_s5_c30_d0.5_r3_e1000_A_s456.json,jpl,1000,3,1e-05,5.0,763,72000,28.601
+v2b_cps_subject_s5_e1000_B_s123.log,canary_persona_indotto_subject_s5_c30_d0.5_r3_e1000_B_s123.json,jpl,1000,3,1e-05,5.0,754,72000,29.071
+v2b_cps_subject_s5_e1000_B_s42.log,canary_persona_indotto_subject_s5_c30_d0.5_r3_e1000_B_s42.json,jpl,1000,3,1e-05,5.0,757,72000,28.913
+v2b_cps_subject_s5_e1000_B_s456.log,canary_persona_indotto_subject_s5_c30_d0.5_r3_e1000_B_s456.json,jpl,1000,3,1e-05,5.0,763,72000,28.601
+v2b_cps_subject_s5_e200_A_s123.log,canary_persona_indotto_subject_s5_c30_d0.5_r3_e200_A_s123.json,jpl,200,3,1e-05,5.0,754,14400,10.218
+v2b_cps_subject_s5_e200_A_s42.log,canary_persona_indotto_subject_s5_c30_d0.5_r3_e200_A_s42.json,jpl,200,3,1e-05,5.0,757,14400,10.168
+v2b_cps_subject_s5_e200_A_s456.log,canary_persona_indotto_subject_s5_c30_d0.5_r3_e200_A_s456.json,jpl,200,3,1e-05,5.0,763,14400,10.07
+v2b_cps_subject_s5_e200_B_s123.log,canary_persona_indotto_subject_s5_c30_d0.5_r3_e200_B_s123.json,jpl,200,3,1e-05,5.0,754,14400,10.218
+v2b_cps_subject_s5_e200_B_s42.log,canary_persona_indotto_subject_s5_c30_d0.5_r3_e200_B_s42.json,jpl,200,3,1e-05,5.0,757,14400,10.168
+v2b_cps_subject_s5_e200_B_s456.log,canary_persona_indotto_subject_s5_c30_d0.5_r3_e200_B_s456.json,jpl,200,3,1e-05,5.0,763,14400,10.07
+v2b_cps_subject_s8_e1000_A_s123.log,canary_persona_indotto_subject_s8_c30_d0.5_r3_e1000_A_s123.json,jpl,1000,3,1e-05,8.0,754,72000,15.581
+v2b_cps_subject_s8_e1000_A_s42.log,canary_persona_indotto_subject_s8_c30_d0.5_r3_e1000_A_s42.json,jpl,1000,3,1e-05,8.0,757,72000,15.501
+v2b_cps_subject_s8_e1000_A_s456.log,canary_persona_indotto_subject_s8_c30_d0.5_r3_e1000_A_s456.json,jpl,1000,3,1e-05,8.0,763,72000,15.345
+v2b_cps_subject_s8_e1000_B_s123.log,canary_persona_indotto_subject_s8_c30_d0.5_r3_e1000_B_s123.json,jpl,1000,3,1e-05,8.0,754,72000,15.581
+v2b_cps_subject_s8_e1000_B_s42.log,canary_persona_indotto_subject_s8_c30_d0.5_r3_e1000_B_s42.json,jpl,1000,3,1e-05,8.0,757,72000,15.501
+v2b_cps_subject_s8_e1000_B_s456.log,canary_persona_indotto_subject_s8_c30_d0.5_r3_e1000_B_s456.json,jpl,1000,3,1e-05,8.0,763,72000,15.345

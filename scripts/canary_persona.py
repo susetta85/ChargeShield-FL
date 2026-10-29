@@ -143,6 +143,23 @@ def applica_spostamento(sessions_n: list[dict], pool: dict, feats: list[str], la
     return out
 
 
+def sha_config(cfg: dict) -> str:
+    """Hash del config usato per riconoscere i due bracci dello stesso esperimento. Esclude
+    ml.seme_rumore_dp, che per costruzione e' diverso fra A e B (2026-10-27)."""
+    c = copy.deepcopy(cfg)
+    (c.get("ml") or {}).pop("seme_rumore_dp", None)
+    return hashlib.sha256(json.dumps(c, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
+def seme_rumore_braccio(seed: int, braccio: str) -> int:
+    """Seme del rumore DP di un braccio (2026-10-26): fisso per (seed, braccio),
+    diverso fra A e B. Inizializzazione, campionamenti e dati restano quelli
+    del seed comune; cambia solo il rumore, che nella realta' e' indipendente
+    fra due addestramenti e non deve cancellarsi nella differenza appaiata."""
+    h = hashlib.sha256(f"rumore-dp|{int(seed)}|{braccio}".encode()).hexdigest()
+    return int(h[:8], 16)
+
+
 def training_del_braccio(sessions_n: list[dict], pool: dict, braccio: str, copie: int) -> list[dict]:
     membri = pool["g1"] if braccio == "A" else pool["g2"]
     train = [sessions_n[i] for i in pool["sfondo"]]
@@ -187,9 +204,18 @@ def combina(fa: Path, fb: Path, out: Path, spostamento: float | None = None) -> 
     A, B = json.loads(fa.read_text()), json.loads(fb.read_text())
     if A.get("braccio") != "A" or B.get("braccio") != "B":
         raise BracciIncoerenti(f"bracci {A.get('braccio')!r} e {B.get('braccio')!r} invece di 'A' e 'B'")
+    # 2026-10-27: con il rumore indipendente fra i bracci (seme_rumore_dp) il seme deve essere
+    # diverso; le run del 2026-10-26 hanno l'hash calcolato anche sul seme (sha_senza_rumore
+    # assente), quindi per loro l'hash non si confronta: restano confrontati tutti gli altri campi.
+    con_seme = "seme_rumore_dp" in A or "seme_rumore_dp" in B
+    if con_seme and A.get("seme_rumore_dp") == B.get("seme_rumore_dp"):
+        raise BracciIncoerenti("i due bracci hanno lo stesso seme del rumore DP")
+    salta_sha = con_seme and not (A.get("sha_senza_rumore") and B.get("sha_senza_rumore"))
     for chiave in ("seed", "copie", "config", "config_sha", "g1", "g2", "sito", "divisione",
                    "spostamento", "rounds", "epochs", "sessioni_training", "sessioni_fresche",
                    "feature", "utenti_idonei", "dp_client_modo", "dp_client_epsilon"):
+        if chiave == "config_sha" and salta_sha:
+            continue
         if A.get(chiave) != B.get(chiave):
             raise BracciIncoerenti(f"i due bracci differiscono in {chiave}")
     if spostamento is not None and float(A.get("spostamento", 0.0)) != float(spostamento):
@@ -283,6 +309,8 @@ def main() -> None:
 
     t0 = time.time()
     cfg["experiment"]["seed"] = a.seed
+    # rumore DP indipendente fra i due bracci (vedi seme_rumore_braccio)
+    cfg.setdefault("ml", {})["seme_rumore_dp"] = seme_rumore_braccio(a.seed, a.braccio)
     cfg.setdefault("canary", {})["enabled"] = False  # il canary per sessione non c'entra
     mp._semina(a.seed)
     sessions = rx.enrich_sessions(rx.load_sessions(cfg))
@@ -349,9 +377,12 @@ def main() -> None:
     sfondo_per_sito = Counter(sito_di(sessions[i]) for i in pool["sfondo"])
     esito = {
         "seed": a.seed, "braccio": a.braccio, "copie": a.copie, "config": Path(a.config).name,
-        "config_sha": hashlib.sha256(json.dumps(cfg, sort_keys=True, default=str).encode()).hexdigest()[:16],
+        # hash del config senza il seme del rumore, che differisce fra i bracci (2026-10-27)
+        "config_sha": sha_config(cfg),
+        "sha_senza_rumore": True,
         "commit": mp._commit(), "normalizzazione": info_norm, "profili": profili,
         "sito": a.sito, "divisione": a.divisione, "spostamento": a.spostamento, "rounds": cfg["experiment"]["fl_rounds"],
+        "seme_rumore_dp": cfg["ml"]["seme_rumore_dp"],
         "epochs": cfg["ml"]["epochs"], "feature": feats,
         "sessioni_training": a.sessioni_training, "sessioni_fresche": a.sessioni_fresche,
         "utenti_idonei": pool["idonei"], "g1": pool["g1"], "g2": pool["g2"],

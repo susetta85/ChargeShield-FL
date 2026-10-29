@@ -811,6 +811,33 @@ def insiemi_server(
             "n_in_on": n_in_on, "n_in_off": n_in_off, "ins_on": ins_on, "ins_off": ins_off}
 
 
+
+def diagnostica_canary(t: np.ndarray, stat_on: np.ndarray, in_mask: np.ndarray,
+                       membro: np.ndarray, valutati: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Diagnostica dei canary (2026-10-26): per i canary membri e non membri, mediana della
+    statistica del bersaglio t e delle medie per campione sulle ombre online IN e OUT.
+
+    Serve a leggere l'inversione di LiRA e RMIA online sui canary: se le ombre IN
+    memorizzano il canary piu' del bersaglio, t dei membri cade dalla parte OUT del punto
+    medio fra mu_in e mu_out. t e stat_on sono gia' nella scala della statistica (log MSE);
+    stat_on ha forma (ombre, candidati), in_mask la stessa forma. None se non ci sono canary."""
+    stat_on = np.asarray(stat_on, dtype=float)
+    msk = np.asarray(in_mask, dtype=bool)
+    t = np.asarray(t, dtype=float)
+    idx = [j for j, s in enumerate(valutati) if s.get("_canary_group") is not None]
+    if not idx:
+        return None
+    out: dict[str, Any] = {}
+    for nome, sel in (("membri", [j for j in idx if membro[j]]), ("non_membri", [j for j in idx if not membro[j]])):
+        if not sel:
+            continue
+        mi = [float(stat_on[msk[:, j], j].mean()) for j in sel if msk[:, j].any()]
+        mo = [float(stat_on[~msk[:, j], j].mean()) for j in sel if (~msk[:, j]).any()]
+        out[nome] = {"n": len(sel), "t_mediana": float(np.median(t[sel])),
+                     "mu_in_mediana": float(np.median(mi)) if mi else None,
+                     "mu_out_mediana": float(np.median(mo)) if mo else None}
+    return out
+
 def punteggio_lira_offline(t: np.ndarray, stat_ref: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
     """LiRA offline (Carlini et al. 2022, sez. IV-C): solo ombre che non hanno mai
     visto il campione. Statistica = log della MSE, quindi un membro ha t piu' basso.
@@ -1062,7 +1089,10 @@ def _run_lira_server(ctx: dict[str, Any]) -> dict[int, dict[str, Any]]:
                     can["raw"].append((lab, -float(mse_t[j])))
                 else:
                     raw_lab.append(lab); raw_sc.append(-float(mse_t[j]))
+            canary_diag = diagnostica_canary(t, statistica(mse_on[:, :nv]), m_on[:, :nv],
+                                             inf["membro"], inf["valutati"])
             diag_c[c] = {"lira_online": d_on, "lira_out": d_out, "lira_offline": d_off, "tau_rmia": tau,
+                         "canary": canary_diag,
                          "n_valutati": nv, "n_z": inf["n_z"], "n_aux_server": inf["n_aux"],
                          "n_aux_ombre": len(inf["aux_tr"]), "n_in_online": inf["n_in_on"],
                          "n_in_offline": inf["n_in_off"]}

@@ -1,6 +1,6 @@
 # ChargeShield-FL — Esperimenti da eseguire
 
-> **Stato: documento CANONICO.** Aggiornato il 2026-10-20 (campagna v3: solo attacchi realistici, code v2d, v2e blocco A, v2f e v2clf annullate, v2c residua interrotta; sezione in fondo); prima, il 2026-10-16 (revisione profonda: correzioni di LiRA, RMIA, DP e script persona prima di nuove run di attacco, sezione in fondo); prima, il 2026-10-14 (Scozia ridotta con DP per record e per soggetto, controllo ACN a quattro feature, una run alla volta per macchina, previsioni; prima, il 2026-09-30: revisione: costo, E-C, controlli (a) e (b) eseguiti, griglia del punto operativo, canary su più siti, E-D con DP, campagna E-B, braccio con DP di E-E; il 2026-09-30 esito dello screening di C e del solo clipping, config e run di prova del canary su più siti). Sostituisce,
+> **Stato: documento CANONICO.** Aggiornato il 2026-10-23 (esiti della campagna v3 sui due Mac, code extra che alleggeriscono Windows, controllo di memorizzazione per l'attacco al soggetto; sezione in fondo); prima, il 2026-10-20 (campagna v3: solo attacchi realistici, code v2d, v2e blocco A, v2f e v2clf annullate, v2c residua interrotta; sezione in fondo); prima, il 2026-10-16 (revisione profonda: correzioni di LiRA, RMIA, DP e script persona prima di nuove run di attacco, sezione in fondo); prima, il 2026-10-14 (Scozia ridotta con DP per record e per soggetto, controllo ACN a quattro feature, una run alla volta per macchina, previsioni; prima, il 2026-09-30: revisione: costo, E-C, controlli (a) e (b) eseguiti, griglia del punto operativo, canary su più siti, E-D con DP, campagna E-B, braccio con DP di E-E; il 2026-09-30 esito dello screening di C e del solo clipping, config e run di prova del canary su più siti). Sostituisce,
 > per gli esperimenti ancora da lanciare, il vecchio `TestRoadmap_DSN2027.md`, eliminato
 > il 2026-09-22 e recuperabile dalla storia git. Ogni
 > voce dice quale RQ serve, quale conclusione può cambiare, cosa deve essere vero
@@ -2811,3 +2811,37 @@ primaria.
 - V28. Gruppo, DP per record: nessuna previsione quantitativa; e' la misura empirica della vista di gruppo
   (epsilon di gruppo della Tabella dei gruppi). Se l'AUC primaria supera 0,55 in almeno 2 seed su 3 con sigma 2, si
   riporta come segnale a livello di gruppo non coperto dalla garanzia per sessione.
+
+**Esiti (2026-10-23).** Mac di Susy 175 run su 175 e Mac di Domenico 191 su 191, zero errori, in circa 47 e 36 ore
+contro 131 e 124 stimate. Numeri, tabelle e verifica delle previsioni V18-V28: `STATO.md` 3.12 e
+`risultati/campagna_v3/` (`scripts/tabelle_v3.py`). In breve: ogni forma realistica di LiRA e RMIA sta fra 0,479 e
+0,518 in ogni seed di ogni cella; V18, V19, V22, V23, V26 e V27 confermate (V27 con un'eccezione), V21 e V25 in
+parte, V20 entro il rumore di seed; V24 e V28 su ACN aperte.
+
+**Windows alleggerito (23 ottobre).** Il canary per sessione dura circa 8,2 ore per run su Windows (stima 3,4): da
+solo restavano circa 4 giorni. Le run non ancora partite sono state divise: `coda_v3_extra_domenico.csv` (canary per
+sessione seed 456, quattro bracci, piu' l'attacco al soggetto per gruppo su ACN, 24 run) e `coda_v3_extra_mac.csv`
+(canary persona con DP local e central, 20 run). Per il canary per sessione A e B dello stesso seed restano sulla
+stessa macchina, perche' i confronti fra bracci valgono solo li'. Windows salta le run spostate grazie a un file
+`stato/<id>.fatto` con scritto "spostata" e la coda di destinazione; nessuna run e' stata fermata.
+
+**Controllo di memorizzazione per l'attacco al soggetto (23 ottobre).** `scripts/gap_soggetto.py` riaddestra il
+bersaglio di `mia_soggetto.py` (stessi argomenti, senza il riferimento del server) e misura la loss di membri, non
+membri e unita' del server a ogni round; `scripts/riepiloga_gap_soggetto.py` fa la tabella. Eseguito senza DP su
+ACN e Scozia, 5 seed, nel cloud: riproduce le code entro 0,009 di AUC. Scozia: nessuna memorizzazione; ACN:
+debole, in 2 seed su 5. Il risultato nullo dell'attacco al soggetto e' quindi una proprieta' del modello, non un
+errore della pipeline; per misurare l'effetto della DP sul soggetto serve un regime che memorizza (da decidere).
+
+**Prova di un regime che memorizza (23 ottobre).** Stesso controllo con 3 round da 1000 epoche invece di 10 da 50
+(ACN, senza DP, seed 42, `gap_soggetto_entita_experiment_nodp_s42_r3_e1000.json`): il divario mediano dei membri
+scende al 6% contro i non membri e all'8% contro il server (19-20% con 10 round da 50 epoche, stesso seed), l'AUC per
+sessione a 0,527 (0,557) e la loss globale sale (1,3e-3 contro 4,1e-4). Piu' epoche locali non aumentano la
+memorizzazione: con questa architettura ((16, 8)/4, sei feature) la persona non viene memorizzata senza duplicarla.
+Il controllo positivo per il soggetto resta quindi il canary persona (persona duplicata nel regime indotto), non un
+nuovo regime di training.
+
+**Aggiornamento (23 ottobre, sera).** Raccolti dal Mac di Domenico il canary per sessione seed 456 e l'attacco al
+soggetto per gruppo su ACN (24 run). V28 chiusa: nessun segnale di gruppo con DP per record (AUC primaria mai sopra
+0,55). V24 parziale: seed 456 come previsto (A 0,557, B 0,578, somma 1,135). Estensione del canary per sessione ai
+seed 789 e 1234 sul Mac di Domenico (`coda_v3_canary_789_1234.csv`, 8 run), cosi' il controllo positivo per
+sessione arriva a 5 seed come il resto della campagna; la previsione V24 resta scritta sui 3 seed iniziali.

@@ -1,0 +1,91 @@
+% Modifiche proposte a sections/s1_introduction.tex — bozza in italiano, 2026-10-26, aggiornata il 2026-10-29.
+% Per ogni punto: cosa cambiare, perche', testo proposto. Da tradurre dopo la verifica.
+
+% ----------------------------------------------------------------------------
+% 1. Secondo paragrafo, ultima frase.
+% Ora: "how the choice of optimization algorithm (e.g., FedAvg vs. FedProx)
+% interacts with norm clipping across different observation surfaces remains an
+% open question".
+% Perche': i risultati riguardano l'interazione con clipping e rumore, non con le
+% superfici. Testo proposto:
+% ----------------------------------------------------------------------------
+Sebbene la letteratura abbia studiato l'effetto del clipping sull'utilità e proposto
+strategie di regolarizzazione, resta aperto quanto la scelta dell'algoritmo di
+ottimizzazione (FedAvg o FedProx) interagisca separatamente con il clipping e con il rumore,
+e se il valore di regolarizzazione utile sia lo stesso su dataset diversi.
+
+% ----------------------------------------------------------------------------
+% 2. RQ1. Aggiungere esplicitamente il confronto fra solo clipping e rumore e la
+% posizione del rumore (client o server). Testo proposto:
+% ----------------------------------------------------------------------------
+\item \textbf{RQ1 --- Rilevabilità dell'appartenenza e controlli positivi:} nel training
+federato su dati operativi reali di ricarica, qual è il rischio effettivo di membership
+inference sulle diverse superfici osservate dall'avversario, con e senza DP? I controlli
+positivi (canary) confermano che l'audit è in grado di vedere l'appartenenza, e quanto
+protegge il solo clipping rispetto al rumore aggiunto dal client o dal server?
+
+% ----------------------------------------------------------------------------
+% 3. RQ2. Aggiungere il parametro mu. Testo proposto:
+% ----------------------------------------------------------------------------
+\item \textbf{RQ2 --- Ottimizzazione e costo della protezione:} come interagiscono FedAvg e
+FedProx con i meccanismi DP nel determinare il costo di utilità (perdita di ricostruzione
+sull'holdout), quale ruolo hanno il clipping e il rumore, e da cosa dipende il valore utile
+del termine prossimale $\mu$?
+
+% ----------------------------------------------------------------------------
+% 4. RQ3 resta com'e'.
+% ----------------------------------------------------------------------------
+
+% ----------------------------------------------------------------------------
+% 5. Ultimo paragrafo (sintesi dei risultati): sostituire con il testo sotto.
+% Perche': il "60x" va aggiornato a 66x (ACN, 10 seed, mu = 0,01) e legato al
+% dataset; la frase su FedProx va ridimensionata; i controlli positivi vanno
+% descritti (central non protegge dal server, local si'); le due insidie
+% dell'audit sono un contributo. I punti marcati PENDENTE dipendono da run in corso.
+% ----------------------------------------------------------------------------
+Definiamo un framework di audit che separa gli attacchi realistici, che usano solo dati
+disponibili al server (modello globale, aggiornamenti esposti, dati ausiliari del server e
+interrogazioni sui bersagli), dalle analisi di sensibilità, che assumono l'accesso ai dati
+dei client e danno un limite superiore al rischio. Misuriamo l'esposizione empirica per due avversari,
+l'aggregatore (quattro punti di osservazione) e un partecipante o osservatore esterno che vede
+solo i modelli globali, per tre unità protette (client, sessione, soggetto), e la confrontiamo
+con le garanzie formali.
+In condizioni naturali nessun attacco realistico identifica i membri, né a livello di sessione
+né di soggetto, con o senza DP, su entrambi i dataset. I controlli positivi mostrano che
+l'audit vede l'appartenenza quando la memorizzazione è indotta: un canary per sessione e un
+canary per persona sono riconosciuti senza DP in tutti i seed. Il solo clipping non protegge:
+con la DP centrale l'aggregatore riceve l'aggiornamento clippato e riconosce il canary come
+senza DP, mentre la DP locale lo nasconde. Il costo di utilità è alto: con DP per client a
+$\varepsilon=64$ per round la perdita del modello rilasciato cresce di circa 66 volte su
+ACN-Data e di oltre 400 volte sugli altri due dataset, soprattutto per effetto del rumore.
+Con la DP FedProx riduce la perdita rispetto a FedAvg, di più nei primi round (da 0,30 a 0,46
+volte a 5 round, confermato da una replica dichiarata prima su seed nuovi) e meno con l'aumentare
+dei round; l'ablazione attribuisce il guadagno all'interazione con il clipping, e senza DP
+FedProx peggiora sempre. Mostriamo inoltre analiticamente che la DP per sessione non protegge gli utenti
+frequenti: con la privacy di gruppo il $\delta$ cresce in modo esponenziale con il numero di
+sessioni e la garanzia è vuota per le 14 sessioni dell'utente mediano di ACN-Data, per tutti i
+moltiplicatori di rumore provati, e lo confermiamo sperimentalmente: con la DP per sessione
+($\varepsilon\le1{,}3$ per sessione) l'aggregatore riconosce ancora un utente canary con molte
+sessioni, mentre la DP per soggetto (ULDP-FL) allo stesso livello di rumore lo nasconde.
+
+% ----------------------------------------------------------------------------
+% 6. Aggiungere dopo l'ultimo paragrafo un elenco esplicito dei contributi
+% (oggi l'introduzione non lo ha; i revisori DSN lo cercano). Testo proposto:
+% ----------------------------------------------------------------------------
+I contributi del lavoro sono:
+\begin{itemize}[leftmargin=*]
+  \item uno studio empirico su due dataset reali di ricarica, con tre unità protette, cinque
+        superfici di osservazione e oltre 1000 run, che separa attacchi realistici e analisi di
+        sensibilità;
+  \item due controlli positivi (canary per sessione e per persona) che validano l'audit e
+        mostrano che il solo clipping, anche nella DP centrale, non protegge dall'aggregatore;
+  \item un'analisi del costo che separa clipping e rumore e spiega quando FedProx riduce il
+        costo della DP, con una replica confermativa su seed nuovi;
+  \item un confronto fra unità protette che mostra, analiticamente e con un canary per utente,
+        che la DP per sessione non protegge gli utenti frequenti e la DP per soggetto sì;
+  \item due insidie metodologiche dell'audit empirico: nei disegni appaiati il rumore della DP
+        deve essere indipendente fra i bracci, altrimenti si cancella; e LiRA e RMIA nella
+        versione online possono invertirsi su record fortemente memorizzati.
+\end{itemize}
+% Nota: il quarto punto va tenuto solo se l'analisi dell'inversione la conferma
+% (vedi docs/RISULTATI.md, sezione 1.4).

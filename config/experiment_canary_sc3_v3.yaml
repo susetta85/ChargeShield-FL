@@ -1,0 +1,62 @@
+# Canary per sessione su ChargePlace Scotland (2026-10-26), braccio A.
+# Stesso protocollo dei canary su ACN (experiment_canary_multisite_v3.yaml): 20 template con 30
+# duplicati, 20 non membri dallo stesso sito (paired_split), 3 round da 1000 epoche, encoder
+# 32-16, latente 8. Sito dei canary: Shetland Islands (circa 1361 sessioni di training, come
+# Office 1). Dati, feature e attacchi come experiment_sc3_v3.yaml.
+experiment:
+  name: chargeshield_canary_sc3
+  fl_rounds: 3
+  seed: 42
+  epsilon: 1.0
+  delta: 1.0e-05
+  max_grad_norm: 1.0
+dataset_adapter: chargeplace_scotland
+chargeplace_scotland:
+  metadata_dir: datasets/alt/chargeplace_scotland/CPID_information
+  clients:
+  - Glasgow City
+  - Dundee City
+  - Shetland Islands
+  session_files:
+  - datasets/alt/chargeplace_scotland/Sessions_from_CPS/SEP-23.xlsx
+  - datasets/alt/chargeplace_scotland/Sessions_from_CPS/OCT-23.xlsx
+  - datasets/alt/chargeplace_scotland/Sessions_from_CPS/NOV-23.xlsx
+ml:
+  input_dim: 4
+  lr: 0.001
+  epochs: 1000
+  batch_size: 32
+  proximal_mu: 0.01
+  feature_names:
+  - total_energy_kwh
+  - max_power_kw
+  - hour_of_day
+  - duration_hours
+  hidden_dims:
+  - 32
+  - 16
+  latent_dim: 8
+output:
+  experiments_dir: experiments
+lira:
+  fonte_ombre: server
+  n_shadow_offline: 32
+  n_shadow: 32
+byzantine_attack:
+  enabled: false
+  attack_type: gradient_scaling
+  byzantine_node: synthetic_1
+  scale_factor: 10
+shadow:
+  version: 2
+  fonte_membri: esterna
+  fraz_esterna: 0.5
+  classificatore: logistica
+canary:
+  enabled: true
+  site: Shetland Islands
+  nonmember_source: paired_split
+  swap_assignment: false
+  n_templates: 20
+  n_duplicates: 30
+  n_nonmember_templates: 20

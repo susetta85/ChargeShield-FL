@@ -1,6 +1,6 @@
 # ChargeShield-FL — Stato del progetto
 
-> **Stato: documento CANONICO.** Aggiornato il 2026-10-20 (sezione 3.11: campagne v2 e v2c dai JSON, classificazione realistico, sensibilita', controllo, non valido; sezione 4: campagna v3); prima, il 2026-10-02 (revisione: costo sul modello
+> **Stato: documento CANONICO.** Aggiornato il 2026-10-23 (sezione 3.12: esiti della campagna v3 sui due Mac, attacchi realistici, attacco al soggetto, controllo di memorizzazione; sezione 4); prima, il 2026-10-20 (sezione 3.11: campagne v2 e v2c dai JSON, classificazione realistico, sensibilita', controllo, non valido; sezione 4: campagna v3); prima, il 2026-10-02 (revisione: costo sul modello
 > rilasciato, analisi per record corretta, E-C, segnalazioni 46-59, controlli del protocollo, celle delle matrici ricomposte, RQ2 senza DP,
 > punto operativo a 5 seed, RQ2 con DP, E-B a σ = 1 e 2 con il riferimento GroupNorm, RQ3 senza DP; il 2026-09-29 E-B a σ = 5, RQ3 sul Mac principale con e senza DP, prove su mu e FedAvg con DP su Windows; il 2026-09-30 lo screening di C per FedAvg con DP e il solo clipping di E-B; il 2026-10-01 il braccio B del canary su più siti, il braccio FedProx con DP di Windows e il braccio A del canary su Caltech della quarta macchina, il test appaiato per record su tutte le 24 celle a 5 seed, il seed 42 del canary su Caltech; il 2026-10-02 la linea per il paper DSN e l'analisi per round di RQ3; dai JSON e non ancora nelle matrici). Solo numeri
 > presenti in `risultati/` o letti dai JSON grezzi alla data, e lo dice dove.
@@ -766,19 +766,81 @@ costruite per essere memorizzate o molto duplicate. Valida lo strumento sulla lo
 Conclusione che non cambia: nel regime naturale nessun attacco distingue i membri, con o senza DP. Cosa cambia: la
 frase vale per Yeom come attacco realistico; per LiRA, RMIA e shadow servono i numeri realistici della v3.
 
+### 3.12 Campagna v3: attacchi realistici (2026-10-23)
+
+Fonte: `risultati/campagna_v3/mac_susy/` e `risultati/campagna_v3/mac_domenico/` (`riepilogo_run.csv`,
+`loss_per_round.csv`, `mia_soggetto.csv`, generati il 22 ottobre da `raccogli_risultati.py` sulle due macchine);
+tabelle `risultati/campagna_v3/tabella_celle_v3.md` (una riga per macchina e cella, media e deviazione standard sui
+seed), `soggetto_v3.md` e la verifica delle previsioni `previsioni_v3.md`, tutte generate da `scripts/tabelle_v3.py`.
+Il 23 ottobre sono stati aggiunti il canary per sessione seed 456 e l'attacco al soggetto per gruppo su ACN (Mac di
+Domenico). Mancano il canary per sessione seed 42 (finito su Windows, non raccolto), 123 (Windows, in corso), 789 e
+1234 (Mac di Domenico, estensione del 23 ottobre) e il canary persona con DP (Mac di Susy, in corso).
+
+Code. Mac di Susy 175 run su 175 (dal 20 ottobre 18:33 al 22 ottobre 17:35), Mac di Domenico 191 su 191 (dal 20
+ottobre 18:36 al 22 ottobre 06:18), zero errori. Le durate reali sono molto sotto le stime (circa 47 e 36 ore contro
+131 e 124): sui Mac le stime di `genera_coda_v3.py` sono un limite superiore, su Windows no. PC Windows: ogni run del canary per
+sessione dura circa 8,2 ore contro 3,4 stimate; il seed 42 (quattro bracci) e' finito il 22 ottobre. Il 23 ottobre le
+run di Windows non ancora partite sono state spostate: canary per sessione seed 456 (quattro bracci, stessa
+macchina per A e B) e attacco al soggetto per gruppo su ACN (24 run) sul Mac di Domenico
+(`coda_v3_extra_domenico.csv`), canary persona con DP per client local e central (20 run) sul Mac di Susy
+(`coda_v3_extra_mac.csv`). Su Windows restano i seed 123 del canary per sessione; le run spostate hanno in `stato/`
+un file `.fatto` con scritto "spostata" e dove gira.
+
+Per sessione. In tutte le celle con attacchi (225 run: ACN a sei e a quattro feature, Scozia, curva di capacita',
+con e senza DP per client, per record e per soggetto, solo taglio e solo rumore, FedAvg e FedProx) ogni forma
+realistica di LiRA e RMIA (online, offline con le ombre OUT, offline con le ombre ausiliarie, composte sui round)
+sta fra 0,479 e 0,518 in ogni seed. Medie di cella: Yeom fra 0,4955 e 0,5046, shadow alla soglia fra 0,497 e 0,507,
+classificatore di tipo Shokri fra 0,495 e 0,508. Avversario partecipante (solo modelli globali, ACN senza DP, local e
+central a epsilon 64): LiRA e RMIA online fra 0,492 e 0,506, mai sopra il server dello stesso seed di oltre 0,01 in
+almeno 4 seed su 5.
+
+Previsioni scritte prima del lancio (`ESPERIMENTI.md`, campagna v3; dettaglio in `previsioni_v3.md`):
+- V18 confermata: 171 coppie v3/v2 o v2c (stessa cella, seed e macchina) con loss sull'holdout e AUC di Yeom
+  identiche.
+- V19 confermata: ACN senza DP, 60 valori su 60 in [0,45; 0,56] (0,487-0,512); LiRA e RMIA realistici mai sopra
+  quelli con l'universo del client di oltre 0,01 (5 seed su 5).
+- V20: 57 superamenti di 0,01 su 630 confronti (9%), massimo +0,025 (per soggetto sigma 2, LiRA offline
+  ausiliaria). Con l'AUC senza DP gia' a circa 0,50 e' rumore di seed, non un effetto della DP.
+- V21 confermata in parte: FPR realizzato alla soglia dell'1% fuori da [0,3%; 5%] in 5 seed su 5 con FedAvg (mu 0)
+  su ACN a quattro feature e in Scozia, in 2 e 1 seed su 5 con FedProx, mai su ACN a sei feature (0,5%-3,0%); vantaggio realizzato sempre entro 0,012.
+- V22 confermata: il classificatore non supera mai la soglia di oltre 0,01 in 3 seed su 5.
+- V23 confermata.
+- V25: prima parte confermata (solo taglio, FedAvg peggiore di FedProx in 5 seed su 5, da 2,1 a 6,7 volte), seconda
+  no (solo rumore contro DP completa con FedProx: rapporto fra 0,21 e 6,15, entro un fattore 1,5 in 1 seed su 5).
+- V26 confermata: round 1-10 identici alla cella a 10 round in 40 casi su 40. Al round 30, senza DP FedAvg ha loss
+  piu' bassa di FedProx (rapporto medio 0,56 ACN, 0,17 Scozia, 10 seed su 10); con DP locale a epsilon 64 FedAvg e'
+  peggiore in media (1,56 ACN, 1,52 Scozia) ma in 7 e 6 seed su 10, con rapporti da 0,39 a 3,55.
+- V27 confermata, con un'eccezione: AUC primaria senza DP in [0,45; 0,58] in 5 seed su 5 in ACN e in Scozia; DP per
+  soggetto non sopra senza DP di oltre 0,02 in tutti i seed tranne uno (ACN, sigma 2, 2 seed su 3).
+- V28: nessun segnale di gruppo con DP per record. AUC primaria 0,492-0,517 (ACN, sigma 2), 0,489-0,515 (ACN,
+  sigma 5), 0,496-0,521 (Scozia, sigma 1), mai sopra 0,55.
+- V24 parziale: seed 456 senza DP, AUC della loss grezza sui canary 0,557 (A) e 0,578 (B), somma 1,135, come
+  previsto; gli altri seed in corso o da raccogliere (`canary_sessione_v3.csv`).
+
+Attacco realistico al soggetto (`soggetto_v3.md`). Metrica primaria: 10 sessioni note, punteggio calibrato (entita'),
+gruppo intero di 14 sessioni (gruppo). AUC media fra 0,484 e 0,522 in ogni cella (19 celle, ACN e Scozia, entita' e gruppo);
+seed con p < 0,05 al massimo 2 su 5 (ACN senza DP; Scozia, gruppo, DP per record sigma 1). Il limite superiore con tutte le sessioni del soggetto, non
+realistico, sta fra 0,488 e 0,540.
+
+Controllo di memorizzazione (`scripts/gap_soggetto.py`, `risultati/campagna_v3/gap_soggetto/`, 23 ottobre).
+Riaddestra il bersaglio dell'attacco al soggetto senza DP e misura, round per round, la loss dei membri, dei non
+membri e delle unita' del server. Riproduce l'AUC del limite superiore delle code entro 0,009 in 10 run su 10 (5
+seed, ACN e Scozia, su una macchina diversa): la pipeline dell'attacco calcola quello che deve. Scozia: loss
+mediana uguale per colonnine membro, non membro e del server in 5 seed su 5 (divario medio circa 0%); il modello
+non memorizza la colonnina. ACN: divario mediano del 16-19% rispetto sia ai non membri sia al server nei seed 42 e
+456, dall'1 al 5% negli altri tre; memorizzazione debole e non stabile. Prima del training (round 0) l'AUC per unita'
+va gia' da 0,46 a 0,57 secondo il seed, solo per la differenza fra le unita' estratte nei due gruppi: un'AUC di
+circa 0,55 su un seed non basta a dire che c'e' memorizzazione.
+
+Conclusione. Nel regime naturale nessun attacco realistico distingue i membri, ne' per sessione ne' per soggetto,
+con o senza DP. La v3 estende a LiRA, RMIA, shadow e partecipante quello che le v2 dicevano per Yeom. Senza DP non
+c'e' quasi segnale da sopprimere: i bracci con DP (per client, per record, per soggetto) non si leggono come
+protezione dimostrata. L'effetto protettivo si misura solo dove il modello memorizza: i controlli positivi (canary per
+sessione, Windows e Mac di Domenico; canary persona con DP, Mac di Susy) sono in corso.
+
 ## 4. Cosa manca
 
-**Attacchi realistici (aggiornato il 2026-10-20).** Decisione della dottoranda: solo attacchi con dati che il server
-possiede. Yeom e la loss sull'holdout delle v2 e v2c valgono; LiRA e RMIA v2 e v2c e la MIA per persona sono analisi
-di sensibilita' (sezione 3.11). Lo shadow non ha ancora numeri validi: la versione 1 non e' valida (Segnalazioni 93),
-la versione con i membri del client non e' realistica e non si esegue. Mancano i numeri realistici di shadow (dati
-ausiliari del server, soglia globale e classificatore di tipo Shokri) e di LiRA e RMIA online e offline (ombre su
-soli dati del server), dal punto di vista del server e, su un sottoinsieme di celle, di un partecipante che vede
-solo i modelli globali: campagna v3 (`ESPERIMENTI.md`), 420 run su tre macchine, con il canary persona con DP per
-client, i blocchi a 30 round su ACN e Scozia, l'ablazione solo taglio e solo rumore su ACN a sei feature e il canary
-per sessione con attacchi realistici e l'attacco realistico al soggetto, persona e punto di ricarica, per entita' e
-per gruppo di 14 sessioni (aggiunte del 20 ottobre sera). Le run v2 del canary per sessione con LiRA
-non sono mai partite (Segnalazioni 108): il controllo positivo per sessione e' tutto nella v3.
+**Attacchi realistici (aggiornato il 2026-10-23).** Decisione della dottoranda: solo attacchi con dati che il server possiede. La campagna v3 e' finita sui due Mac (sezione 3.12), con l'attacco per gruppo su ACN e il canary per sessione seed 456: mancano il canary per sessione seed 42 e 123 (Windows) e 789 e 1234 (Mac di Domenico), e il canary persona con DP per client local e central (Mac di Susy), con la previsione V24. Nel regime del paper il segnale per soggetto senza DP e' assente (Scozia) o debole e instabile (ACN); una prova con 3 round da 1000 epoche (23 ottobre, `ESPERIMENTI.md`) memorizza ancora meno, quindi il controllo positivo per il soggetto resta il canary persona (persona duplicata), non un nuovo regime di training. Le run v2 del canary per sessione con LiRA non sono mai partite (Segnalazioni 108).
 
 L'elenco ordinato, con comandi e prerequisiti, è `ESPERIMENTI.md`. E-A è chiuso (sezione
 3.1b), con la griglia del punto operativo e ε = 64 a 5 seed; E-C è eseguito sulle celle

@@ -1,0 +1,5 @@
+macchina,seed,dp,braccio,loss_holdout_rilasciato,canary_raw_auc_ultimo,canary_lira_auc_ultimo,canary_lira_out_auc_ultimo,canary_lira_offline_auc_ultimo,canary_rmia_auc_ultimo,canary_rmia_out_auc_ultimo,canary_rmia_offline_auc_ultimo,shadow_canary_auc_ultimo,shadow_clf_canary_auc_ultimo
+Mac di Domenico,456,local_eps64,A,0.097717402033063,0.4,0.39,0.4375,0.44,0.41625,0.44125,0.435,0.575,0.335
+Mac di Domenico,456,local_eps64,B,0.0989588388940815,0.6525,0.715,0.6275,0.59,0.59,0.615,0.5825,0.425,0.6625
+Mac di Domenico,456,nodp,A,0.0027625413195731,0.5575,0.38,0.6475,0.575,0.385,0.655,0.6,0.56,0.41
+Mac di Domenico,456,nodp,B,0.002740775915337,0.5775,0.465,0.705,0.6625,0.52125,0.72125,0.71375,0.445,0.615

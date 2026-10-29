@@ -1383,6 +1383,10 @@ def run_fl_rounds(
         "delta":         exp_cfg["delta"],
         "max_grad_norm": exp_cfg["max_grad_norm"],
         "sigma_calibration": exp_cfg.get("sigma_calibration", "analitica"),
+        # 2026-10-26: rumore della DP per client da un generatore proprio,
+        # solo se ml.seme_rumore_dp e' impostato (default None: come prima).
+        "seme_rumore_dp": (None if ml_cfg.get("seme_rumore_dp") is None
+                           else int(ml_cfg["seme_rumore_dp"]) + 7951),
     })
 
     agg = FedAvgAggregator({"min_participants": len(cluster_ids)})

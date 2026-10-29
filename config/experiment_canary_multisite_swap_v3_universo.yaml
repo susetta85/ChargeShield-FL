@@ -1,0 +1,91 @@
+# Derivato da experiment_canary_multisite_swap_v3.yaml (2026-10-26): diagnostica dell'inversione di LiRA e RMIA online sui canary.
+# Cambia solo lira.fonte_ombre = universo: ombre su meta' dei dati del client, come il bersaglio
+# (analisi di sensibilita', non attacco realistico).
+# Campagna v3 (2026-10-20): controllo positivo degli attacchi realistici, braccio B (scambio dei ruoli).
+# RQ1 (controllo positivo); fase: validazione dello strumento. Cambia rispetto a experiment_canary_multisite_swap.yaml solo il
+# blocco degli attacchi, come experiment_v3.yaml rispetto a experiment.yaml:
+#   - lira.fonte_ombre: server, lira.n_shadow: 32 online, lira.n_shadow_offline: 32 offline;
+#   - shadow v2, fonte_membri: esterna, classificatore: logistica, con le metriche canary dello
+#     shadow (shadow_canary_*, shadow_clf_canary_*).
+# Training, canary, DP, split e accounting identici a experiment_canary_multisite_swap.yaml.
+# Inizializzazione: la coda v3 passa --common-init (come tutte le run v3), mentre le run canary
+# precedenti partivano da inizializzazioni per client: i numeri canary non sono confrontabili con quelle.
+# ChargeShield-FL — Canary su più siti, braccio B / SWAP (2026-09-30)
+#
+# Identico a config/experiment_canary_multisite.yaml tranne swap_assignment e
+# experiment.name. Va lanciato con lo STESSO seed del braccio A: stesso seed ->
+# stesso `drawn`, quindi i due gruppi di 20 template si scambiano esattamente il
+# ruolo. Motivazioni nel file del braccio A e in experiment_canary_balanced.yaml.
+
+experiment:
+  name: chargeshield_canary_multisite_swap
+  fl_rounds: 3
+  seed: 42
+  epsilon: 1.0
+  delta: 1.0e-5
+  max_grad_norm: 1.0
+
+sites:
+  caltech:
+    - datasets/acn/caltech/acndata_sessions_2018.json
+    - datasets/acn/caltech/acndata_sessions_2019.json
+    - datasets/acn/caltech/acndata_sessions_2020.json
+    - datasets/acn/caltech/acndata_sessions_2021.json
+  jpl:
+    - datasets/acn/jpl/acndata_sessions_2018.json
+    - datasets/acn/jpl/acndata_sessions_2019.json
+    - datasets/acn/jpl/acndata_sessions_2020.json
+    - datasets/acn/jpl/acndata_sessions_2021.json
+  office1:
+    - datasets/acn/office1/acndata_sessions_2019.json
+    - datasets/acn/office1/acndata_sessions_2020.json
+    - datasets/acn/office1/acndata_sessions_2021.json
+    # Nessun 2018: non disponibile per Office 1 su ev.caltech.edu.
+
+ml:
+  input_dim: 7
+  lr: 0.001
+  epochs: 1000
+  batch_size: 32
+  proximal_mu: 0.01
+  hidden_dims: [32, 16]
+  latent_dim: 8
+  feature_names:
+    - total_energy_kwh
+    - max_power_kw
+    - kwh_requested
+    - minutes_available
+    - hour_of_day
+    - duration_hours
+    - start_time_epoch
+
+canary:
+  enabled: true
+  site: office1              # canary iniettati solo in Office 1
+  nonmember_source: paired_split
+  swap_assignment: true       # braccio B — ruoli scambiati rispetto ad A
+  n_templates: 20             # == n_nonmember_templates: condizione dello scambio
+  n_duplicates: 30
+  n_nonmember_templates: 20
+
+output:
+  experiments_dir: experiments
+
+lira:
+  fonte_ombre: universo      # diagnostica: ombre su meta' dei dati del client
+  n_shadow_offline: 32        # v3: ombre offline (solo dati ausiliari)
+  n_shadow: 32                # v3 (era 8)
+  # shadow_init (opzione della LiRA v1) tolto: la LiRA v2 lo rifiuta (Segnalazioni 108).
+
+byzantine_attack:
+  enabled: false
+  attack_type: gradient_scaling
+  byzantine_node: synthetic_1
+  scale_factor: 10
+
+# Shadow v3: dati ausiliari del server e classificatore di tipo Shokri.
+shadow:
+  version: 2
+  fonte_membri: esterna
+  fraz_esterna: 0.5
+  classificatore: logistica

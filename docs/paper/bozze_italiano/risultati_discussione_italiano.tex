@@ -1,0 +1,301 @@
+% Capitoli V (Risultati) e VI (Discussione) — bozza in italiano, 2026-10-26, aggiornata il 2026-10-29.
+% Numeri da docs/RISULTATI.md (campagna v3, tre macchine). Le celle ancora in corso
+% sono marcate con \pending{...} (macro definita in main.tex).
+% Da tradurre in inglese dopo la verifica.
+
+\section{Risultati}
+\label{sec:results}
+
+Riportiamo la perdita di ricostruzione sull'holdout del modello globale rilasciato
+($\mathrm{MSE}_{\mathrm{holdout}}$) e, per gli attacchi, l'AUC con il suo intervallo sui seed.
+Per i canary usiamo la somma $\mathrm{AUC}_A+\mathrm{AUC}_B$ sui due bracci con ruoli
+invertiti (valore atteso 1 in assenza di segnale) e, per il canary persona, l'AUC appaiato
+della differenza di perdita dello stesso utente fra il braccio in cui è membro e quello in cui
+non lo è. I confronti di utilità usano un test di permutazione a due code sulla media delle
+perdite (10 seed per cella); gli attacchi sul canary persona un test di Mann--Whitney
+unilaterale, con correzione di Holm sulle metriche secondarie.
+
+\subsection{RQ1: rilevabilità in condizioni naturali}
+\label{subsec:res_naturale}
+
+In nessuna configurazione un attacco realistico distingue membri e non membri. Su ACN-Data,
+a 10 seed, l'attacco a soglia di Yeom ha AUC 0,501 senza DP (intervallo 0,496--0,506) e 0,502
+con DP locale a $\varepsilon=64$ (0,495--0,508); LiRA e RMIA con dati ausiliari del server
+restano fra 0,499 e 0,501, il classificatore shadow fra 0,496 e 0,505. Su ChargePlace Scotland,
+su tutte le celle (senza DP, DP per client, per sessione e per soggetto), gli stessi attacchi
+stanno fra 0,486 e 0,513; lo stesso accade su ACN ridotto alle quattro feature di Scotland e
+lungo la curva di capacità del modello (fino a 128--64 neuroni), dove l'AUC resta fra 0,497 e
+0,508. Anche l'attacco al soggetto, che aggrega le sessioni di un utente o di un punto di
+ricarica, non trova segnale: AUC 0,513 per il gruppo di 14 sessioni su ACN senza DP (1 seed su 5
+significativo) e 0,520 per l'entità su Scotland (nessun seed significativo), circa 0,50 con
+ciascun meccanismo di DP.
+
+\paragraph{Avversario esterno}
+Un partecipante o un osservatore esterno vede solo la sequenza dei modelli globali. Yeom e il
+classificatore shadow usano già solo il modello globale, quindi i valori sopra valgono anche per
+lui. Per LiRA e RMIA le ombre prendono il posto del client nell'aggregazione e gli aggiornamenti
+degli altri client sono emulati con i dati ausiliari del server. Su ACN-Data (5 seed) tutte le
+forme stanno fra 0,497 e 0,508 senza DP, con DP locale e con DP centrale (massimo su seed e round
+0,518), come per il server sulle stesse celle: chi osserva solo il modello globale non vede più
+dell'aggregatore. \pending{Scotland e controllo positivo dell'avversario esterno in corso}
+
+\subsection{RQ1: controlli positivi}
+\label{subsec:res_canary}
+
+\paragraph{Canary per sessione}
+La Tabella~\ref{tab:canary_sessione} riporta il canary per sessione (30 copie di 20 sessioni
+di Office~1, 5 seed) letto sull'aggiornamento del client, cioè dalla posizione
+dell'aggregatore. Senza DP il canary è riconosciuto in tutti i seed dalla perdita grezza
+(somma media 1,127), da LiRA offline (1,284) e da RMIA offline (1,287). Con la DP centrale
+l'aggregatore riceve l'aggiornamento soltanto clippato, perché il rumore è aggiunto dopo,
+sull'aggregato: il canary è riconosciuto come senza DP (1,099, 1,280 e 1,240, tutti i seed).
+Con la DP locale, dove il client aggiunge il rumore prima dell'invio, tutte le somme tornano
+fra 0,999 e 1,014. Il solo clipping, quindi, non protegge dall'aggregatore; lo protegge il
+rumore aggiunto dal client.
+
+\begin{table}[t]
+\caption{Canary per sessione (Office~1, 30 copie, 5 seed): somma $\mathrm{AUC}_A+\mathrm{AUC}_B$
+sull'aggiornamento del client (posizione dell'aggregatore), media e numero di seed con somma $>1$.
+La DP centrale e quella locale usano $\varepsilon=64$ per round.}
+\label{tab:canary_sessione}
+\centering\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Attacco & Senza DP & DP centrale (A2) & DP locale (A3) \\
+\midrule
+Perdita grezza & 1,127 (5/5) & 1,099 (5/5) & 1,014 \\
+LiRA offline   & 1,284 (5/5) & 1,280 (5/5) & 0,999 \\
+RMIA offline   & 1,287 (5/5) & 1,240 (5/5) & 1,012 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Canary persona}
+Il canary persona (40 utenti di JPL, 20 sessioni per utente con 30 copie, spostamento 0,5,
+10 seed; Tabella~\ref{tab:canary_persona}) conferma il quadro sull'unità utente. Al round 3
+l'AUC appaiato sull'aggregatore è 0,802 senza DP e 0,843 con DP centrale, significativo in
+10 seed su 10, e 0,543 con DP locale (1 seed su 10, compatibile con il caso). Sul modello
+rilasciato il canary è riconosciuto senza DP (0,697, 8 seed su 10) e quasi mai con DP centrale
+(0,574, 2 su 10) o locale (0,555, 2 su 10): il rumore sull'aggregato protegge il modello
+rilasciato, non l'aggiornamento visto dal server. Il modello rilasciato è anche ciò che vede
+l'avversario esterno: il canary persona è quindi un controllo positivo anche per lui. Al round 1 senza DP l'AUC sull'aggregatore
+è 0,999: è una saturazione (gli AUC dei singoli bracci sono 0,955--0,988 e il $p$ è al minimo
+possibile per 20 utenti contro 20). Senza spostamento il segnale senza DP è forte al round 1
+(0,775, 7 seed su 10) e si indebolisce al round 3 (0,59, 2 su 10); con la DP, e rumore
+indipendente fra i bracci, non c'è in nessun regime (DP centrale 0,518 sull'aggregatore e 0,465
+sul modello rilasciato, DP locale 0,484 e 0,460, nessun seed significativo su 5).
+Ripetuto con rumore indipendente fra i bracci (5 seed), il quadro non cambia: DP centrale 0,711
+sull'aggregatore (4 seed su 5) e 0,547 sul modello rilasciato (nessuno), DP locale 0,487 e 0,564.
+
+% La Tabella tab:canary_persona e' quella gia' preparata (10 seed per lo spostamento 0,5).
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_canary.pdf}
+\caption{Controlli positivi. A sinistra: canary per sessione, somma $\mathrm{AUC}_A+\mathrm{AUC}_B$
+sull'aggiornamento del client (5 seed); la linea a 1 è il caso. A destra: canary persona, AUC
+appaiato al round 3 sull'aggregatore e sul modello rilasciato (10 seed), con il numero di seed
+significativi. La DP centrale lascia riconoscere il canary all'aggregatore, la DP locale no.}
+\label{fig:canary}
+\end{figure*}
+
+\subsection{RQ2: costo della protezione e ottimizzazione federata}
+\label{subsec:res_costo}
+
+La Tabella~\ref{tab:utilita} riassume il costo. La DP per client a $\varepsilon=64$ per round
+($\varepsilon_{\mathrm{totale}}\approx 430$ su 10 round) moltiplica la perdita sull'holdout
+per 66 su ACN-Data con FedProx $\mu=0{,}01$, per 422 su ACN a quattro feature e per 536 su
+Scotland. Quasi tutto il costo viene dal rumore: con il solo rumore la perdita è da 10 a 100
+volte quella con il solo clipping. Lungo la griglia di $\varepsilon$ su ACN la perdita resta
+fra 0,37 e 0,47 fino a $\varepsilon=16$ e scende a 0,028 (21 volte il no-DP) solo a
+$\varepsilon=256$.
+
+Senza DP FedAvg è sempre migliore di FedProx (da 2,3 a 87 volte meno perdita), e una replica
+su 10 seed nuovi lo conferma in tutti i seed e in tutti i confronti. Con la DP l'ordine si
+inverte. Su ACN-Data FedProx con $\mu=0{,}01$ ha 0,55 volte la perdita di FedAvg a 10 round
+($p=0{,}02$); con altri 10 seed il rapporto è 0,75, e sui 20 seed insieme 0,65 ($p=0{,}008$). L'ablazione indica il meccanismo: con il solo clipping FedProx riduce la perdita
+a 0,27 volte ($p<0{,}001$), con il solo rumore non cambia niente (0,85, $p=0{,}62$). Le norme degli aggiornamenti
+mostrano il meccanismo: con FedAvg e la DP la norma dell'aggiornamento di ogni client resta
+intorno a 8--9 dal secondo round e il clipping a $C=1$ ne lascia passare circa un sesto; con
+FedProx a $\mu=0{,}01$ la norma scende a 0,6--0,7, il clipping agisce solo nell'11--16\% dei
+casi e lascia passare il 97--98\% dell'aggiornamento; con $\mu=0{,}1$ non agisce più. Il
+rumore, invece, ha la stessa ampiezza qualunque sia la norma, ed è per questo che FedProx non
+aiuta contro il rumore. Su Scotland e su ACN a quattro feature $\mu=0{,}01$ non basta: a 10
+round, sui 20 seed, il rapporto è 0,94 e 0,85 (non significativo), mentre $\mu=0{,}1$ dimezza
+la perdita (0,45 e 0,53, $p<0{,}005$) e su ACN equivale a $\mu=0{,}01$ (0,66); a $\mu=0{,}1$ il
+guadagno compare solo con clipping e rumore insieme, non con l'uno o l'altro da soli.
+$\mu=0{,}001$ non ha effetto in nessun dataset. A 30 round il vantaggio di FedProx non si
+conserva: 0,80 su ACN ($p=0{,}46$) e 0,74--0,77 su Scotland ($p>0{,}3$).
+L'andamento per round spiega perché. Senza DP entrambi gli algoritmi convergono e FedAvg
+scende più in fretta e più in basso. Con la DP nessuno dei due converge: FedAvg non scende mai
+sotto la perdita del primo round, mentre FedProx raggiunge un minimo fra il terzo e il quinto
+round (mediana 0,04--0,07, da due a quattro volte sotto FedAvg allo stesso round) e poi risale,
+perché il rumore accumulato prevale; a 30 round le due curve tornano vicine
+(Figura~\ref{fig:convergenza}). A un orizzonte di 5 round FedProx è migliore di FedAvg in tutti e
+tre i dataset e con entrambi i valori di $\mu$: rapporto 0,59 e 0,57 su ACN-Data ($p=0{,}012$ e
+$0{,}006$), 0,39 e 0,29 su Scotland ($p=0{,}004$ e $0{,}0007$), 0,56 e 0,31 su ACN a quattro
+feature ($p=0{,}04$ e $0{,}0015$), per $\mu=0{,}01$ e $\mu=0{,}1$; tutti i sei confronti restano
+significativi con la correzione di Holm. Poiché l'orizzonte era stato fissato dopo aver visto le
+curve, abbiamo ripetuto il confronto su 10 seed nuovi con ipotesi, test e seed dichiarati prima
+(Tabella~\ref{tab:replica5}): FedProx ha una perdita fra 0,30 e 0,46 volte quella di FedAvg in
+tutti e sei i confronti ($p\le0{,}003$ con Holm), migliore di FedAvg in 9 o 10 seed su 10. Con la
+DP conviene quindi un numero di round piccolo, che riduce anche l'$\varepsilon$ totale. La
+Figura~\ref{fig:ablazione} riassume l'ablazione.
+
+\begin{table}[t]
+\caption{Replica confermativa al round 5 (10 seed nuovi, DP locale $\varepsilon=64$ per round,
+$C=1$): perdita di FedProx divisa per quella di FedAvg; fra parentesi il $p$ di permutazione a
+una coda corretto con Holm sui sei confronti e i seed in cui FedProx è migliore.}
+\label{tab:replica5}
+\centering\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Dataset & $\mu=0{,}01$ & $\mu=0{,}1$ \\
+\midrule
+ACN-Data      & 0,40 (0,0005; 9/10)  & 0,36 (0,0004; 10/10) \\
+Scotland      & 0,46 (0,003; 9/10)   & 0,32 (0,0005; 10/10) \\
+ACN 4 feature & 0,36 (0,0005; 10/10) & 0,30 (0,0004; 10/10) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Ruolo delle feature}
+Togliendo da ACN una feature alla volta (10 seed per variante) il quadro non cambia. Senza DP
+FedProx aggiunge una perdita quasi costante in valore assoluto (circa $7\cdot10^{-4}$ con
+$\mu=0{,}01$), e il rapporto con FedAvg è più alto solo quando il compito è più facile: senza
+i kWh richiesti, i minuti disponibili o l'ora la perdita di FedAvg scende di 3,4--3,8 volte e il
+rapporto sale da 2,3 a 5--6. Con la DP il guadagno di FedProx (0,54--0,75 con $\mu=0{,}01$,
+0,51--0,63 con $\mu=0{,}1$) e le norme degli aggiornamenti (7,9--8,9 con FedAvg, 0,64--0,74 con
+FedProx) sono simili qualunque feature si tolga.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_convergenza.pdf}
+\caption{Perdita sull'holdout del modello rilasciato per round (mediana su 10 seed), con DP per
+client a $\varepsilon=64$ per round e, tratteggiata in grigio, senza DP. Su ACN-Data FedProx con
+$\mu=0{,}1$ ha solo 10 round. Senza DP la perdita scende fino al round 30; con la DP FedProx
+raggiunge un minimo fra il terzo e il quinto round e poi risale.}
+\label{fig:convergenza}
+\end{figure*}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig_ablazione.pdf}
+\caption{Rapporto fra la perdita di FedProx ($\mu=0{,}01$) e quella di FedAvg a 10 round, con
+solo clipping, solo rumore e DP completa (10 seed). Simboli pieni: $p<0{,}05$; vuoti: differenza
+non significativa. FedProx aiuta contro il clipping, non contro il rumore.}
+\label{fig:ablazione}
+\end{figure}
+
+\begin{table*}[t]
+\caption{Perdita sull'holdout del modello rilasciato (media su 10 seed, 10 round, $C=1$,
+$\varepsilon=64$ per round). Fra parentesi il rapporto con FedAvg ($\mu=0$) e il $p$ del test
+di permutazione.}
+\label{tab:utilita}
+\centering\footnotesize
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}llccc@{}}
+\toprule
+Dataset & Variante & FedAvg ($\mu=0$) & FedProx $\mu=0{,}01$ & FedProx $\mu=0{,}1$ \\
+\midrule
+ACN-Data & Senza DP & $5{,}1\cdot10^{-4}$ & $1{,}2\cdot10^{-3}$ (2,33; $<$0,001) & -- \\
+ & Solo clipping & $1{,}15\cdot10^{-2}$ & $3{,}2\cdot10^{-3}$ (0,27; $<$0,001) & -- \\
+ & Solo rumore & 0,110 & 0,093 (0,85; 0,62) & -- \\
+ & DP completa & 0,142 & 0,078 (0,55; 0,02) & 0,089 (0,63; 0,08) \\
+\midrule
+Scotland & Senza DP & $6{,}6\cdot10^{-5}$ & $3{,}0\cdot10^{-4}$ (4,5; $<$0,001) & $1{,}3\cdot10^{-3}$ (20; $<$0,001) \\
+ & Solo clipping & $5{,}4\cdot10^{-3}$ & $2{,}4\cdot10^{-3}$ (0,45; 0,006) & $8{,}9\cdot10^{-3}$ (1,66; 0,01) \\
+ & Solo rumore & 0,106 & 0,196 (1,85; 0,05) & 0,164 (1,55; 0,23) \\
+ & DP completa & 0,183 & 0,159 (0,87; 0,56) & 0,090 (0,49; 0,015) \\
+\midrule
+ACN 4 feature & Senza DP & $2{,}0\cdot10^{-5}$ & $3{,}2\cdot10^{-4}$ (16; $<$0,001) & $1{,}7\cdot10^{-3}$ (87; $<$0,001) \\
+ & Solo clipping & $4{,}7\cdot10^{-3}$ & $1{,}55\cdot10^{-3}$ (0,33; 0,03) & $8{,}5\cdot10^{-3}$ (1,81; 0,10) \\
+ & Solo rumore & 0,162 & 0,172 (1,06; 0,86) & 0,156 (0,96; 0,91) \\
+ & DP completa & 0,209 & 0,137 (0,65; 0,06) & 0,098 (0,47; 0,003) \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{RQ3: unità protetta e superfici di osservazione}
+\label{subsec:res_unita}
+
+Il costo cresce con l'ampiezza dell'unità protetta. Su ACN, a 10 seed, la DP per sessione costa da 2,7 a
+3,9 volte il no-DP per $\sigma$ da 1 a 5, la DP per soggetto da 9 a 11 volte, la DP per
+client 62 volte nella forma centrale e 66 in quella locale; su Scotland la DP per sessione con
+$\sigma=1$ costa 8 volte, quella per soggetto con $\sigma=5$ 72 volte, quella per client 536
+volte. La DP per sessione costa poco ma non
+protegge l'utente frequente: con la privacy di gruppo, a $\sigma=5$ ($\varepsilon\approx1{,}2$
+per Caltech e JPL) il $\delta$ di gruppo supera $10^{-2}$ già con 6 sessioni e supera 1 con 14,
+la mediana delle sessioni per utente in ACN-Data. La superficie conta quanto il meccanismo:
+la DP centrale protegge il modello rilasciato ma non l'aggiornamento osservato dal server
+(Sezione~\ref{subsec:res_canary}); la DP locale protegge entrambi. Con la DP per soggetto il canary persona non è
+riconosciuto: al round 3 l'AUC appaiato sull'aggregatore è 0,499 con $\sigma=5$ ($\varepsilon\approx29$
+per soggetto), 0,522 con $\sigma=8$ e 0,476 con $\sigma=1000$, senza seed significativi (5 seed), contro
+0,80 senza DP nella stessa configurazione. Con la DP per sessione allo stesso $\sigma=5$
+($\varepsilon\le1{,}3$ per sessione) il canary persona resta visibile all'aggregatore: AUC
+appaiato 0,740 al round 1 (4 seed su 5) e 0,590 al round 3 (1 su 5), mentre con la DP per
+soggetto è 0,516 e 0,499 (nessun seed). È la verifica sperimentale dell'argomento sulla privacy
+di gruppo: la garanzia per sessione non copre un utente con molte sessioni.
+
+\section{Discussione}
+\label{sec:discussion}
+
+\paragraph{Un AUC vicino a 0,5 non certifica la privacy}
+In condizioni naturali nessun attacco vede i membri, con o senza DP. Senza i controlli positivi
+questo risultato sarebbe ambiguo: potrebbe voler dire che il modello non memorizza o che gli
+attacchi non sono in grado di estrarre il segnale. I canary mostrano che il sistema di audit
+vede l'appartenenza quando la memorizzazione è indotta, e che la vede attraverso le stesse
+superfici e gli stessi attacchi usati nel regime naturale. L'assenza di segnale va quindi letta
+come assenza di memorizzazione misurabile nel regime operativo, non come garanzia: la garanzia
+viene solo dal meccanismo, dalla sua unità protetta e dalla superficie che il rumore copre.
+
+\paragraph{La posizione del rumore decide chi è protetto}
+La DP centrale e la DP locale hanno lo stesso $\varepsilon$ ma proteggono avversari diversi.
+Con la DP centrale il server riceve l'aggiornamento clippato e il canary è riconosciuto come
+senza DP: il clipping limita la sensibilità ma non nasconde il contributo. Un operatore che
+non si fida dell'aggregatore deve aggiungere il rumore sul client, con un costo di utilità
+più alto.
+
+\paragraph{FedProx compensa il clipping, non il rumore}
+Il vantaggio di FedProx con la DP nasce dall'interazione con il clipping: il termine
+prossimale riduce la norma degli aggiornamenti e quindi la parte tagliata. Poiché la maggior
+parte del costo viene dal rumore, FedProx riduce il costo al più della metà e non lo avvicina
+al no-DP. $\mu=0{,}1$ è uguale o migliore di $\mu=0{,}01$ su tutti e tre i dataset, mentre
+$\mu=0{,}01$ basta solo su ACN; senza DP FedProx peggiora sempre: la scelta dell'algoritmo
+dipende dalla presenza della DP. Il vantaggio è netto nei primi round (confermato a 5 round da
+una replica dichiarata prima), si riduce a 10 e non è più significativo a 30, perché il rumore
+accumulato domina.
+
+\paragraph{Due insidie dell'audit empirico}
+Nel canary persona i due bracci usavano lo stesso seed e quindi, finché il rumore della DP
+veniva dal generatore globale, lo stesso rumore: la differenza appaiata lo cancellava e
+mostrava un segnale anche con $\varepsilon\approx0{,}08$. Un disegno appaiato deve tenere
+comuni l'inizializzazione e i dati ma usare rumore indipendente fra i bracci, come accade fra
+due addestramenti reali. Inoltre, sui canary, LiRA e RMIA nella versione online danno somme
+sotto 1 (fra 0,77 e 0,84). Il server dispone di pochi dati propri (112 sessioni per Office~1),
+quindi l'universo delle ombre online è fatto per circa due terzi di copie dei canary: le ombre
+che includono un canary lo memorizzano molto più del modello bersaglio, dove il canary è
+diluito fra i dati del sito e mediato con gli altri siti. La perdita del bersaglio sul canary
+cade allora dalla parte delle ombre OUT e il rapporto di verosimiglianza si inverte; le
+varianti che usano solo ombre che non hanno visto il candidato non hanno questo problema.
+Negli attacchi realistici con pochi dati del server, quindi, le forme online vanno usate con
+cautela quando i candidati sono record ripetuti. \pending{Conferma con il dump per campione dei canary: proposta}
+
+\paragraph{La DP per sessione non basta per gli utenti frequenti}
+Il canary persona mostra in pratica quello che la privacy di gruppo dice in teoria: con
+$\varepsilon\le1{,}3$ per sessione l'aggregatore riconosce ancora un utente con molte sessioni,
+mentre la DP per soggetto allo stesso livello di rumore lo nasconde. In dati di ricarica, dove
+l'utente mediano ha 14 sessioni, l'unità da proteggere è l'utente.
+
+\paragraph{Limiti}
+Le federazioni hanno tre partecipanti per dataset; il modello è un autoencoder piccolo; i
+canary usano una configurazione indotta (7 feature, encoder 32--16, 3 round da 1000 epoche)
+diversa da quella principale; un $\varepsilon$ di 64 per round (430 in totale) è un livello di
+rumore, non una garanzia significativa; non abbiamo un controllo positivo su ChargePlace
+Scotland, quindi lì possiamo dire che non si vede appartenenza, non che l'audit la vedrebbe
+\pending{controllo positivo su Scotland in corso}; il canary persona è costruito solo su JPL; il
+canary per sessione, mediato con gli altri siti, sul modello globale si vede appena anche senza
+DP (somme 1,00--1,09 con Yeom e shadow) \pending{LiRA e RMIA dell'avversario esterno sul canary per sessione in corso}.

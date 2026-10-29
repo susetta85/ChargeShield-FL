@@ -70,6 +70,11 @@ class GradientManager(AbstractMLModel):
         # sigma per client (dp-fedavg/local): sensibilita' 2C con l'analitica
         # (sostituzione), C con la classica (comportamento precedente)
         self.sigma = self._compute_sigma()
+        # Seme dedicato al rumore (2026-10-26, vedi AutoencoderTrainer e
+        # seme_rumore_dp). None: torch.randn_like sul generatore globale, come prima.
+        _sr = config.get("seme_rumore_dp")
+        self._gen_rumore: torch.Generator | None = (
+            torch.Generator().manual_seed(int(_sr)) if _sr is not None else None)
 
         self._listeners: list[MLPlaneListener] = []
 
@@ -632,5 +637,10 @@ class GradientManager(AbstractMLModel):
                 # Buffer BatchNorm: restituiti invariati, non sono parametri DP
                 result.append(w)
             else:
-                result.append(w + torch.randn_like(w) * _sigma)
+                if self._gen_rumore is None:
+                    rumore = torch.randn_like(w)
+                else:
+                    rumore = torch.randn(tuple(w.shape), generator=self._gen_rumore,
+                                         dtype=w.dtype).to(w.device)
+                result.append(w + rumore * _sigma)
         return result

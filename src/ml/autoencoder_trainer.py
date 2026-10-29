@@ -152,6 +152,17 @@ class AutoencoderTrainer(AbstractMLModel):
         # Seed per DataLoader shuffle deterministico (riproducibilità DSN 2027)
         self._seed: int = config.get("seed", 42)
 
+        # Seme dedicato al rumore DP (2026-10-26). None: rumore dal generatore
+        # globale di torch, come prima (risultati gia' prodotti invariati). Un
+        # intero: rumore da un generatore proprio per round e client, che non
+        # dipende dal resto della casualita'. Serve agli esperimenti appaiati
+        # (canary persona, bracci A/B con lo stesso seed): con il generatore
+        # globale i due bracci ricevevano lo stesso rumore, che si cancellava
+        # nella differenza appaiata L_B(u) - L_A(u).
+        _sr = config.get("seme_rumore_dp")
+        self._seme_rumore_dp: int | None = int(_sr) if _sr is not None else None
+        self._gen_rumore: torch.Generator | None = None
+
         # feature_names: escalation di entropia feature opzionale (Sprint 10kk,
         # 2026-08-28 — vedi docs/TestRoadmap_DSN2027.md #2, passo 2), usata solo
         # dagli esperimenti di calibrazione LiRA che la impostano esplicitamente
@@ -274,6 +285,14 @@ class AutoencoderTrainer(AbstractMLModel):
         self.optimizer.step()
         return float(loss.item())
 
+    def _rumore_dp(self, g: torch.Tensor, std: float) -> torch.Tensor:
+        """Rumore gaussiano N(0, std^2) con la forma di g: dal generatore del
+        round se seme_rumore_dp e' impostato, altrimenti dal generatore globale."""
+        if self._gen_rumore is None:
+            return torch.normal(mean=0.0, std=std, size=g.shape, device=g.device)
+        return torch.normal(mean=0.0, std=std, size=tuple(g.shape),
+                            generator=self._gen_rumore).to(device=g.device, dtype=g.dtype)
+
     def _train_step_record_dp(self, data: Any) -> float:
         """
         Passo DP-SGD con clipping del gradiente PER ESEMPIO (Abadi et al. 2016).
@@ -347,7 +366,7 @@ class AutoencoderTrainer(AbstractMLModel):
         for idx, (acc, p) in enumerate(zip(somma, params)):
             g = acc
             if sigma > 0.0:
-                g = g + torch.normal(mean=0.0, std=sigma * C, size=g.shape, device=g.device)
+                g = g + self._rumore_dp(g, sigma * C)
             g = g / float(n)
             # Termine prossimale FedProx, aggiunto DOPO il rumore: vedi docstring.
             if self.proximal_mu > 0.0 and self._global_weights is not None:
@@ -446,7 +465,7 @@ class AutoencoderTrainer(AbstractMLModel):
                 for idx, (acc, p) in enumerate(zip(somma, params)):
                     g = acc
                     if sigma > 0.0:
-                        g = g + torch.normal(mean=0.0, std=sigma * C, size=g.shape, device=g.device)
+                        g = g + self._rumore_dp(g, sigma * C)
                     g = g / float(B)                 # denominatore costante = B atteso
                     if self.proximal_mu > 0.0 and self._global_weights is not None:
                         if idx < len(self._global_weights):
@@ -565,7 +584,7 @@ class AutoencoderTrainer(AbstractMLModel):
                 for idx, (acc, p) in enumerate(zip(somma, params)):
                     g = acc
                     if sigma > 0.0:
-                        g = g + torch.normal(mean=0.0, std=sigma * C, size=g.shape, device=g.device)
+                        g = g + self._rumore_dp(g, sigma * C)
                     g = g / float(denom)
                     if self.proximal_mu > 0.0 and self._global_weights is not None:
                         if idx < len(self._global_weights):
@@ -637,6 +656,12 @@ class AutoencoderTrainer(AbstractMLModel):
             ))
             return _skip_update
 
+        # Generatore del rumore DP per questo round e client (vedi seme_rumore_dp).
+        self._gen_rumore = (
+            torch.Generator().manual_seed(
+                self._seme_rumore_dp + 104729 * round_num + 7937
+                + zlib.crc32(self.cluster_id.encode()))
+            if self._seme_rumore_dp is not None else None)
         epoch_losses: list[float] = []
         if self.subject_dp_enabled:
             # Campionamento di Poisson dei soggetti al posto del DataLoader
