@@ -51,7 +51,10 @@ l'aggregatore riceve l'aggiornamento soltanto clippato, perché il rumore è agg
 sull'aggregato: il canary è riconosciuto come senza DP (1,099, 1,280 e 1,240, tutti i seed).
 Con la DP locale, dove il client aggiunge il rumore prima dell'invio, tutte le somme tornano
 fra 0,999 e 1,014. Il solo clipping, quindi, non protegge dall'aggregatore; lo protegge il
-rumore aggiunto dal client.
+rumore aggiunto dal client. Lo stesso accade su ChargePlace Scotland, con 20 sessioni di Shetland
+Islands ripetute 30 volte (5 seed): al round 3 LiRA offline dà somma 1,183 senza DP e 1,145 con DP
+centrale, RMIA offline 1,178 e 1,160, sempre in tutti i seed, mentre con la DP locale le somme
+stanno fra 0,97 e 1,01.
 
 \begin{table}[t]
 \caption{Canary per sessione (Office~1, 30 copie, 5 seed): somma $\mathrm{AUC}_A+\mathrm{AUC}_B$
@@ -281,8 +284,14 @@ che includono un canary lo memorizzano molto più del modello bersaglio, dove il
 diluito fra i dati del sito e mediato con gli altri siti. La perdita del bersaglio sul canary
 cade allora dalla parte delle ombre OUT e il rapporto di verosimiglianza si inverte; le
 varianti che usano solo ombre che non hanno visto il candidato non hanno questo problema.
-Negli attacchi realistici con pochi dati del server, quindi, le forme online vanno usate con
-cautela quando i candidati sono record ripetuti. \pending{Conferma con il dump per campione dei canary: proposta}
+Una diagnostica sul seed 42, che salva per i canary la statistica del bersaglio e le medie delle
+ombre, mostra due effetti: le ombre che includono un canary lo memorizzano quanto o più del
+bersaglio, e il bersaglio, addestrato su tutti i dati del sito, ricostruisce anche i non membri
+molto meglio delle ombre, che il server addestra su pochi dati generici. Rispetto alle ombre IN i
+non membri sembrano quindi più membri dei membri, ed è questo confronto che pesa nel denominatore
+di RMIA online. Con le ombre addestrate sull'universo del client, a parità di seed, l'inversione
+sparisce (RMIA online 1,27--1,41). Negli attacchi realistici con pochi dati del server, quindi,
+le forme online vanno usate con cautela quando i candidati sono record ripetuti.
 
 \paragraph{La DP per sessione non basta per gli utenti frequenti}
 Il canary persona mostra in pratica quello che la privacy di gruppo dice in teoria: con
@@ -294,8 +303,6 @@ l'utente mediano ha 14 sessioni, l'unità da proteggere è l'utente.
 Le federazioni hanno tre partecipanti per dataset; il modello è un autoencoder piccolo; i
 canary usano una configurazione indotta (7 feature, encoder 32--16, 3 round da 1000 epoche)
 diversa da quella principale; un $\varepsilon$ di 64 per round (430 in totale) è un livello di
-rumore, non una garanzia significativa; non abbiamo un controllo positivo su ChargePlace
-Scotland, quindi lì possiamo dire che non si vede appartenenza, non che l'audit la vedrebbe
-\pending{controllo positivo su Scotland in corso}; il canary persona è costruito solo su JPL; il
+rumore, non una garanzia significativa; il canary persona è costruito solo su JPL; il
 canary per sessione, mediato con gli altri siti, sul modello globale si vede appena anche senza
 DP (somme 1,00--1,09 con Yeom e shadow) \pending{LiRA e RMIA dell'avversario esterno sul canary per sessione in corso}.

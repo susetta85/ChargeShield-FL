@@ -89,6 +89,29 @@ principale. **Il solo clipping non protegge**: con la central DP l'aggregatore r
 l'update clippato (il rumore viene aggiunto dopo, sull'aggregato) e riconosce il canary
 come senza DP. Il rumore lato client lo nasconde.
 
+### 1.2b Canary per sessione su ChargePlace Scotland (Shetland Islands, 30 copie, 5 seed) — consolidato
+
+Controllo positivo su Scotland (`coda_v3hk_domenico.csv`, Mac di Domenico): 20 sessioni di
+Shetland Islands ripetute 30 volte (Shetland ha 1944 sessioni di training contro circa 25 000 di
+Glasgow e Dundee), 3 round da 1000 epoche, hidden [32, 16], latent 8, come il canary di Office 1.
+Superficie: aggiornamento del client osservato dall'aggregatore. Somma A+B media e seed con somma > 1.
+
+| Attacco | No DP, round 1 | No DP, round 3 | Central DP ε=64 (A2), round 3 | Local DP ε=64 (A3), round 3 |
+|---|---|---|---|---|
+| Perdita grezza | 1,408, 5/5 | 1,036, 4/5 | 1,047, 5/5 | 1,012, 4/5 |
+| LiRA offline | 1,332, 5/5 | 1,183, 5/5 | 1,145, 5/5 | 0,998, 3/5 |
+| LiRA out | 1,330, 5/5 | 1,250, 5/5 | 1,226, 5/5 | 0,973, 1/5 |
+| RMIA offline | 1,107, 5/5 | 1,178, 5/5 | 1,160, 5/5 | 1,000, 3/5 |
+| RMIA out | 1,283, 5/5 | 1,276, 5/5 | 1,223, 5/5 | 0,994, 3/5 |
+| LiRA online | 1,419, 5/5 | 0,823 (invertito) | 1,092 | 1,039 |
+| RMIA online | 0,891 (invertito) | 0,861 (invertito) | 0,852 (invertito) | 1,006 |
+
+Stesso quadro di Office 1: senza DP e con la DP centrale l'aggregatore riconosce il canary in
+tutti i seed con le varianti offline e "out"; con la DP locale le somme tornano intorno a 1. Con
+la DP centrale al round 1 il segnale non c'è ancora (somme 0,98–1,05) e compare dal round 2.
+Yeom e shadow sul modello globale restano fra 0,97 e 1,02 (il canary è diluito nella media).
+**Ora c'è un controllo positivo anche su Scotland.**
+
 ### 1.3 Canary persona (JPL, 40 utenti, 30 copie, spostamento 0,5, 10 seed) — consolidato (local e central confermati con rumore indipendente, 5 seed)
 
 AUC appaiato al round 3, seed significativi.
@@ -138,33 +161,38 @@ al round 3 sull'aggregatore: subject DP σ = 1000 0,476, σ = 5 0,499, σ = 8 0,
 significativo (prima, con il rumore condiviso, 0,72 / 0,72 / 0,70). Il segnale era interamente un
 artefatto del disegno. Da rifare ancora: local/central allo spostamento 0 (code v3h).
 
-**Inversione di LiRA e RMIA online sui canary (spiegata, da confermare con un dump).** Su 10
-run (due macchine, due bracci) LiRA e RMIA online danno somme fra 0,77 e 0,84: i membri
-risultano meno membri dei non membri. Le varianti che non usano ombre addestrate sul
-candidato funzionano: LiRA "out" (solo ombre online OUT) e "off" (ombre sui soli dati
-ausiliari) danno 0,68 e 0,81 in un braccio del seed 42, RMIA "out" e "off" 0,69 e 0,75.
+**Inversione di RMIA (e a volte LiRA) online sui canary — causa confermata (2026-10-29).** Al
+round 3 RMIA online dà somme sotto 1 su Office 1 senza DP in 5 seed su 5 (0,55–0,93) e con la DP
+centrale in 4 su 5 (0,59–0,93), e su Scotland (0,82–0,89, 1.2b): i membri risultano meno membri
+dei non membri. LiRA online è instabile: sotto 1 in 4 seed su 5 su Office 1 senza DP (0,66–0,85),
+sopra 1 nella ripetizione diagnostica del seed 42 (1,45, 1,45, 1,10 ai round 1–3). Le varianti
+che non usano ombre addestrate sul candidato funzionano sempre (LiRA e RMIA "out" e offline).
 
-Causa, dai JSON (`lira_per_client.office1`, seed 42): l'universo delle ombre online di
-Office 1 ha 998 sessioni, 112 di dati ausiliari del server e 886 candidati, di cui 620 sono
-copie dei canary (20 gruppi da 31). Le ombre online, ciascuna su metà dell'universo (499
-sessioni), sono quindi fatte per circa due terzi di canary, e i gruppi restano interi: un'ombra
-IN vede un canary 31 volte in un insieme piccolo. Lo memorizza molto più del modello bersaglio,
-dove il canary pesa per meno di un terzo dei dati di Office 1 e viene poi mediato con gli altri
-due siti. Il divario medio fra ombre IN e OUT (log MSE) a Office 1 è −1,57 al round 1 (−1,90
-nell'altro braccio), contro circa −0,001 a Caltech, dove non ci sono canary. In LiRA online il
-punteggio di un campione cresce quanto più la perdita del bersaglio è vicina alla media IN; se
-le ombre IN memorizzano più del bersaglio, la perdita del bersaglio sul canary cade dalla parte
-OUT del punto medio e il punteggio diventa negativo, mentre per i non membri (sessioni
-singole, poco memorizzate) IN e OUT quasi coincidono e il punteggio resta vicino a 0: i membri
-finiscono sotto i non membri. In RMIA online il denominatore è la media sulle ombre, metà delle
-quali hanno memorizzato il candidato in eccesso, e il rapporto dei membri si abbassa.
+Diagnostica (`coda_v3hk_domenico.csv`, seed 42, due bracci): per i canary `lira2.py` salva ora la
+statistica del bersaglio t (log della perdita) e le medie delle ombre IN e OUT
+(`lira_per_client.office1.canary`). Mediane al round 1, braccio A / B:
 
-Non è un difetto di LiRA o RMIA in generale (nel regime naturale danno 0,50 come gli altri
-attacchi), ma una conseguenza del canary: il server non ha abbastanza dati propri per
-costruire ombre simili al bersaglio quando i candidati sono record ripetuti. Per confermarlo
-servirebbe salvare, solo per i canary, la perdita del bersaglio e le medie IN e OUT per
-campione (oggi `per_sample.json` esclude i canary) e rifare un seed. Sui canary si riportano
-la perdita grezza e le varianti "out" e "off".
+| Gruppo | t del bersaglio | media ombre IN | media ombre OUT |
+|---|---|---|---|
+| Membri (620 copie) | −13,30 / −11,77 | −12,32 / −12,34 | −10,75 / −10,25 |
+| Non membri (40) | −12,25 / −11,46 | −10,94 / −11,24 | −10,33 / −10,51 |
+
+Due fatti. (1) Le ombre IN memorizzano i canary membri quanto o più del bersaglio (nel braccio B
+t è sopra la media IN), perché ognuna è addestrata su circa 500 sessioni di cui due terzi sono
+copie dei canary. (2) Il bersaglio, addestrato su tutti i dati di Office 1, ricostruisce anche i
+non membri molto meglio delle ombre (al round 1 t è 1,0–1,9 sotto la media OUT), perché le ombre del
+server hanno pochi dati generici. Rispetto alle ombre IN, quindi, i non membri sembrano "più
+membri" dei membri in 4 casi su 6 (due bracci per tre round), ed è questo il confronto che pesa nel
+denominatore di RMIA online. Prova diretta della causa: con lo stesso seed ma le ombre addestrate
+sull'universo del client (più dati generici, analisi di sensibilità) l'inversione sparisce, RMIA
+online 1,27 / 1,16 / 1,41 e LiRA online 1,08 / 1,13 / 1,37 ai round 1–3.
+
+Conclusione: non è un difetto di LiRA o RMIA in generale (nel regime naturale danno 0,50 come gli
+altri attacchi), ma del loro uso con le sole risorse del server quando i candidati sono record
+ripetuti: le ombre online del server sono modelli generici peggiori del bersaglio e memorizzano i
+duplicati più di quanto il bersaglio li distingua. Sui canary si riportano la perdita grezza e le
+varianti "out" e offline. L'ipotesi iniziale ("le ombre IN memorizzano più del bersaglio") era solo
+metà della spiegazione: conta anche quanto il bersaglio generalizza meglio delle ombre.
 
 ### 1.5 Risposta a RQ1
 
@@ -179,8 +207,8 @@ la perdita grezza e le varianti "out" e "off".
 - Il solo clipping non protegge dall'aggregatore: con la central DP il canary è riconosciuto
   come senza DP. Il rumore aggiunto dal client (local DP) lo nasconde. Il rumore sull'aggregato
   protegge solo il modello rilasciato.
-- Non abbiamo un controllo positivo su ChargePlace Scotland: lì possiamo dire che non si vede
-  niente, non che l'audit sarebbe in grado di vederlo.
+- Il controllo positivo c'è anche su ChargePlace Scotland (1.2b): senza DP e con DP centrale
+  l'aggregatore riconosce il canary in tutti i seed, con la DP locale no.
 
 ---
 
@@ -514,9 +542,9 @@ di gruppo non dà nessuna garanzia.
 | Local e central sul canary persona allo spostamento 0,5 con rumore indipendente | Mac di Domenico | fatto (1.3) |
 | Local e central allo spostamento 0 con rumore indipendente | Mac principale (seed 42–1234), Windows (1618–3141) | fatto su 5 seed (1.3); Windows da avviare (`coda_v3h_windows.csv`) |
 | Meccanismi di RQ3 su ACN a 10 seed | Mac principale | fatto (3.1) |
-| Conferma dell'inversione di LiRA e RMIA online (dump dei canary e un seed) | piccola modifica a `lira2.py` | proposto |
-| Controllo positivo su Scotland (canary per sessione a Shetland Islands, 5 seed) | Mac di Domenico | coda pronta |
-| Diagnostica dell'inversione (seed 42, con dump dei canary e con ombre sull'universo del client) | Mac di Domenico | coda pronta |
+| Conferma dell'inversione di LiRA e RMIA online (dump dei canary e un seed) | Mac di Domenico | fatto (1.4) |
+| Controllo positivo su Scotland (canary per sessione a Shetland Islands, 5 seed) | Mac di Domenico | fatto (1.2b) |
+| Diagnostica dell'inversione (seed 42, con dump dei canary e con ombre sull'universo del client) | Mac di Domenico | fatto (1.4) |
 | Norma di clipping C = 0,25, 0,5, 2 per FedAvg e FedProx (ACN, 10 seed, solo utilità) | Windows | da avviare (`coda_v3h_windows.csv`) |
 | Ablazione delle feature (ACN senza una feature alla volta, 10 seed) | Mac principale | fatto (2.4c) |
 | Riferimento a 6 feature con la procedura dell'ablazione | Mac principale | fatto: identico bit per bit alla campagna v3 (2.4c) |
