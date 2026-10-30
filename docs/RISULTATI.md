@@ -1,6 +1,6 @@
 # ChargeShield-FL — Risultati per domanda di ricerca (campagna v3)
 
-> Aggiornato al 2026-10-26. Numeri letti dai CSV raccolti sulle tre macchine
+> Aggiornato al 2026-10-30. Numeri letti dai CSV raccolti sulle tre macchine
 > (`risultati/campagna_v3/mac_susy`, `mac_domenico`, `windows`) e dai JSON in `esiti/`.
 > Test: Mann-Whitney unilaterale per gli attacchi sul canary persona (Holm sulle metriche
 > secondarie, la primaria al round 3 non corretta); permutazione a due code (20 000
@@ -112,35 +112,39 @@ la DP centrale al round 1 il segnale non c'è ancora (somme 0,98–1,05) e compa
 Yeom e shadow sul modello globale restano fra 0,97 e 1,02 (il canary è diluito nella media).
 **Ora c'è un controllo positivo anche su Scotland.**
 
-### 1.3 Canary persona (JPL, 40 utenti, 30 copie, spostamento 0,5, 10 seed) — consolidato (local e central confermati con rumore indipendente, 5 seed)
+### 1.3 Canary persona (JPL, 40 utenti, 30 copie, spostamento 0,5) — consolidato (no DP 10 seed; local e central con rumore indipendente, 5 seed)
 
-AUC appaiato al round 3, seed significativi.
+AUC appaiato al round 3, seed significativi. Con la DP valgono solo le run con rumore indipendente
+fra i bracci (1.4).
 
-| Regime | Aggregatore | Modello rilasciato |
-|---|---|---|
-| No DP | 0,802, 10/10 | 0,697, 8/10 |
-| Central DP ε=64 | 0,843, 10/10 | 0,574, 2/10 |
-| Local DP ε=64 | 0,543, 1/10 | 0,555, 2/10 |
+| Regime | Seed | Aggregatore | Modello rilasciato |
+|---|---|---|---|
+| No DP | 10 | 0,802, 10/10 | 0,697, 8/10 |
+| Central DP ε=64, rumore indipendente | 5 | 0,711, 4/5 | 0,547, 0/5 |
+| Local DP ε=64, rumore indipendente | 5 | 0,487, 0/5 | 0,564, 1/5 |
+
+Le prime run con la DP (10 seed, Mac principale) avevano il rumore condiviso fra i bracci e non si
+usano: central 0,843 (10/10) e 0,574 (2/10), local 0,543 (1/10) e 0,555 (2/10). Il rumore condiviso
+gonfia l'AUC appaiato anche per la central sull'aggregatore (0,843 contro 0,711), come spiegato in 1.4.
 
 Al round 1 senza DP l'AUC sull'aggregatore è 0,999 in 10 seed su 10: saturazione (gli AUC
 dei singoli bracci sono 0,955–0,988, il p è al minimo possibile per 20 utenti contro 20),
-non un difetto. Un seed su dieci significativo con local DP è compatibile con il caso
-(con 10 test al 5% se ne attende circa mezzo).
+non un difetto. Un seed su cinque significativo sul modello rilasciato con local DP è compatibile
+con il caso.
 
-Ripetizione con rumore indipendente fra i bracci (5 seed, round 3): DP centrale sull'aggregatore
-0,711 (4/5), sul modello rilasciato 0,547 (0/5); DP locale 0,487 (0/5) e 0,564 (1/5). Le
-conclusioni non cambiano: la DP centrale lascia vedere il canary al server, non sul modello
-rilasciato; la DP locale non lo lascia vedere.
+Le conclusioni sono le stesse con le due versioni del rumore: la DP centrale lascia vedere il canary
+al server (0,711, 4/5), non sul modello rilasciato; la DP locale non lo lascia vedere.
 
 Spostamento 0, senza DP (10 seed: 42–1234 sul Mac principale, 1618–3141 su Windows): il segnale
 è forte al round 1 (0,731, 2/5 e 0,818, 5/5; insieme 0,775, 7/10) e si indebolisce al round 3
 (0,536, 0/5 e 0,645, 2/5; insieme 0,59, 2/10). Con rumore indipendente (Mac principale, seed 42–1234, round 3): DP
 centrale sull'aggregatore 0,518 (0/5), sul modello rilasciato 0,465 (0/5); DP locale 0,484 (0/5)
-e 0,460 (0/5). Senza spostamento il canary non si vede in nessun regime con DP. Le run local e
-central dei seed 1618–3141 fatte su Windows usano ancora il rumore condiviso (somma A+B = 1,000 al
-round 1) e non si usano: la central sull'aggregatore dà 0,698 (3/5) al round 3, un esempio
-dell'artefatto descritto in 1.4. La ripetizione con rumore indipendente è nella coda
-`coda_v3h_windows.csv`, che su Windows non è ancora partita.
+e 0,460 (0/5). Senza spostamento il canary non si vede in nessun regime con DP. Ripetizione con rumore indipendente sui seed 1618–3141 (Windows, `coda_v3h`, 5 seed, round 3):
+DP centrale sull'aggregatore 0,580 (1/5), sul modello rilasciato 0,505 (1/5); DP locale 0,490 (0/5)
+e 0,510 (0/5). Con il rumore condiviso della versione precedente la central dava 0,698 (3/5): la
+differenza fra le due versioni è spiegata in 1.4. Insieme (10 seed, rumore indipendente, round 3):
+central 0,549 (1/10) sull'aggregatore e 0,485 (1/10) sul modello rilasciato; local 0,487 (0/10) e
+0,485 (0/10).
 
 ### 1.4 Due problemi di metodo trovati
 
@@ -160,6 +164,16 @@ nasconde il canary" resta vero a maggior ragione.
 al round 3 sull'aggregatore: subject DP σ = 1000 0,476, σ = 5 0,499, σ = 8 0,522, nessun seed
 significativo (prima, con il rumore condiviso, 0,72 / 0,72 / 0,70). Il segnale era interamente un
 artefatto del disegno. Da rifare ancora: local/central allo spostamento 0 (code v3h).
+
+**Rumore condiviso e central DP (2026-10-30).** Sui seed 1618–3141 (Windows) l'AUC appaiato della
+central DP sull'aggregatore è identico con e senza rumore condiviso al round 1 (0,610, 0,362, 0,453,
+0,497, 0,510 per i cinque seed). Dal round 2 le due versioni divergono: al round 3 0,698 (3/5) con il
+rumore condiviso contro 0,580 (1/5) con il rumore indipendente. Il modello globale rilasciato porta il
+rumore condiviso e lo ritrasmette ai round successivi, quindi l'affermazione precedente che la central
+DP sull'aggregatore non è influenzata dal rumore vale solo al round 1. Lo stesso effetto spiega il
+canary persona allo spostamento 0,5 (1.3): central sull'aggregatore 0,843 con il rumore condiviso,
+0,711 con quello indipendente. Lì le due versioni sono state eseguite su macchine diverse (Mac
+principale e Mac di Domenico), quindi anche il round 1 differisce e il confronto per round non è pulito.
 
 **Inversione di RMIA (e a volte LiRA) online sui canary — causa confermata (2026-10-29).** Al
 round 3 RMIA online dà somme sotto 1 su Office 1 senza DP in 5 seed su 5 (0,55–0,93) e con la DP
@@ -376,6 +390,30 @@ feature resta intorno a 0,14–0,19. Non ha una spiegazione meccanica e non lo r
 risultato; le conclusioni sui rapporti FedProx/FedAvg non ne dipendono, perché sono calcolate
 dentro ciascuna variante.
 
+### 2.4d Norma di clipping C = 0,25, 0,5, 2 (ACN, 10 seed, solo utilità) — consolidato (coda_v3h, Windows)
+
+Perdita sull'holdout del modello rilasciato al round 10, DP completa (ε = 64 per round), 10 seed
+(42, 123, 456, 789, 1234, 1618, 2025, 2026, 2718, 3141). Riferimento C = 1 da 2.1 (10 seed, ACN a 6 feature).
+
+| C | FedAvg μ=0, media (mediana) | FedProx μ=0,01, media (mediana) | Rapporto mediano FedProx/FedAvg | Seed con FedProx migliore |
+|---|---|---|---|---|
+| 0,25 | 0,120 (0,126) | 0,017 (0,013) | 0,096 | 10/10 |
+| 0,5 | 0,098 (0,087) | 0,024 (0,024) | 0,23 | 9/10 |
+| 1 (da 2.1) | 0,142 | 0,078 | 0,51 (rapporto delle medie 0,55, p = 0,02) | 8/10 |
+| 2 | 0,232 (0,202) | 0,252 (0,217) | 1,00 (media dei rapporti 1,21) | 4/10 |
+
+Il vantaggio di FedProx con la DP cresce quando C diminuisce e scompare a C = 2. Il rumore è tarato
+su ε per round e la sua ampiezza è proporzionale a C: con C piccolo il rumore è più piccolo, quindi
+il confronto fra valori di C mescola l'effetto del clipping con quello del rumore. A C = 2 il rumore
+domina e il termine prossimale non aiuta più (la norma di FedAvg resta sopra C, ma il guadagno di
+FedProx sparisce). Questo va riportato come osservazione sulla sensibilità a C, non come una curva
+di ottimo: C = 1 resta quello fissato nel resto della campagna.
+
+A C = 2 il modello è in gran parte distrutto dal rumore (perdite 0,03–0,46). In due seed (1618 e
+3141) FedAvg e FedProx finiscono sulla stessa perdita (0,2149 e 0,2024) pur con curve diverse nei
+round precedenti: il modello cade in una soluzione degenere che non dipende da μ. Non sono run
+duplicate, ma la riga C = 2 va letta come "il rumore domina", non come un confronto fra algoritmi.
+
 ### 2.5 Orizzonte fissato a 5 round — confermato con una replica dichiarata prima (10 seed nuovi)
 
 Prima serie (esplorativa). Perdita al round 5, FedProx / FedAvg, DP completa, 10 seed, test di permutazione.
@@ -452,6 +490,7 @@ senza DP FedAvg è comunque il migliore, e con la DP più round peggiorano.
   con 20 seed, resta per μ = 0,1 ovunque (0,45–0,66) e per μ = 0,01 solo su ACN (0,65).
 - Il vantaggio di FedProx non si conserva a 30 round (rapporti 0,74–0,80, p > 0,3): con la DP
   più round accumulano più rumore e la variabilità fra seed cresce.
+- Il vantaggio di FedProx con la DP dipende dalla norma di clipping: forte a C = 0,25 e 0,5, nullo a C = 2 (2.4d).
 
 ---
 
@@ -540,12 +579,12 @@ di gruppo non dà nessuna garanzia.
 |---|---|---|
 | Subject DP sul canary persona con rumore indipendente (σ = 5, 8, 1000) | Mac di Domenico | fatto (3.3) |
 | Local e central sul canary persona allo spostamento 0,5 con rumore indipendente | Mac di Domenico | fatto (1.3) |
-| Local e central allo spostamento 0 con rumore indipendente | Mac principale (seed 42–1234), Windows (1618–3141) | fatto su 5 seed (1.3); Windows da avviare (`coda_v3h_windows.csv`) |
+| Local e central allo spostamento 0 con rumore indipendente | Mac principale (seed 42–1234), Windows (1618–3141) | fatto su 5 seed (1.3) |
 | Meccanismi di RQ3 su ACN a 10 seed | Mac principale | fatto (3.1) |
 | Conferma dell'inversione di LiRA e RMIA online (dump dei canary e un seed) | Mac di Domenico | fatto (1.4) |
 | Controllo positivo su Scotland (canary per sessione a Shetland Islands, 5 seed) | Mac di Domenico | fatto (1.2b) |
 | Diagnostica dell'inversione (seed 42, con dump dei canary e con ombre sull'universo del client) | Mac di Domenico | fatto (1.4) |
-| Norma di clipping C = 0,25, 0,5, 2 per FedAvg e FedProx (ACN, 10 seed, solo utilità) | Windows | da avviare (`coda_v3h_windows.csv`) |
+| Norma di clipping C = 0,25, 0,5, 2 per FedAvg e FedProx (ACN, 10 seed, solo utilità) | Windows | fatto (2.4d) |
 | Ablazione delle feature (ACN senza una feature alla volta, 10 seed) | Mac principale | fatto (2.4c) |
 | Riferimento a 6 feature con la procedura dell'ablazione | Mac principale | fatto: identico bit per bit alla campagna v3 (2.4c) |
 | Curve per round (convergenza) di FedAvg e FedProx | `loss_per_round.csv` | fatto (2.4) |

@@ -1,4 +1,4 @@
-% Capitoli V (Risultati) e VI (Discussione) — bozza in italiano, 2026-10-26, aggiornata il 2026-10-29.
+% Capitoli V (Risultati) e VI (Discussione) — bozza in italiano, 2026-10-26, aggiornata il 2026-10-30.
 % Numeri da docs/RISULTATI.md (campagna v3, tre macchine). Le celle ancora in corso
 % sono marcate con \pending{...} (macro definita in main.tex).
 % Da tradurre in inglese dopo la verifica.
@@ -75,31 +75,32 @@ RMIA offline   & 1,287 (5/5) & 1,240 (5/5) & 1,012 \\
 \end{table}
 
 \paragraph{Canary persona}
-Il canary persona (40 utenti di JPL, 20 sessioni per utente con 30 copie, spostamento 0,5,
-10 seed; Tabella~\ref{tab:canary_persona}) conferma il quadro sull'unità utente. Al round 3
-l'AUC appaiato sull'aggregatore è 0,802 senza DP e 0,843 con DP centrale, significativo in
-10 seed su 10, e 0,543 con DP locale (1 seed su 10, compatibile con il caso). Sul modello
-rilasciato il canary è riconosciuto senza DP (0,697, 8 seed su 10) e quasi mai con DP centrale
-(0,574, 2 su 10) o locale (0,555, 2 su 10): il rumore sull'aggregato protegge il modello
-rilasciato, non l'aggiornamento visto dal server. Il modello rilasciato è anche ciò che vede
-l'avversario esterno: il canary persona è quindi un controllo positivo anche per lui. Al round 1 senza DP l'AUC sull'aggregatore
-è 0,999: è una saturazione (gli AUC dei singoli bracci sono 0,955--0,988 e il $p$ è al minimo
-possibile per 20 utenti contro 20). Senza spostamento il segnale senza DP è forte al round 1
-(0,775, 7 seed su 10) e si indebolisce al round 3 (0,59, 2 su 10); con la DP, e rumore
-indipendente fra i bracci, non c'è in nessun regime (DP centrale 0,518 sull'aggregatore e 0,465
-sul modello rilasciato, DP locale 0,484 e 0,460, nessun seed significativo su 5).
-Ripetuto con rumore indipendente fra i bracci (5 seed), il quadro non cambia: DP centrale 0,711
-sull'aggregatore (4 seed su 5) e 0,547 sul modello rilasciato (nessuno), DP locale 0,487 e 0,564.
+Il canary persona (40 utenti di JPL, 20 sessioni per utente con 30 copie, spostamento 0,5;
+Tabella~\ref{tab:canary_persona}) conferma il quadro sull'unità utente. Con la DP usiamo solo le
+run con rumore indipendente fra i due bracci (5 seed; si veda la Discussione). Al round 3 l'AUC
+appaiato sull'aggregatore è 0,802 senza DP (10 seed su 10) e 0,711 con DP centrale (4 seed su 5),
+mentre con DP locale è 0,487 (nessun seed). Sul modello rilasciato il canary è riconosciuto senza
+DP (0,697, 8 seed su 10) e non con DP centrale (0,547, nessun seed) o locale (0,564, 1 seed su
+5): il rumore sull'aggregato protegge il modello rilasciato, non l'aggiornamento visto dal
+server. Il modello rilasciato è anche ciò che vede l'avversario esterno: il canary persona è
+quindi un controllo positivo anche per lui. Al round 1 senza DP l'AUC sull'aggregatore è 0,999:
+è una saturazione (gli AUC dei singoli bracci sono 0,955--0,988 e il $p$ è al minimo possibile
+per 20 utenti contro 20). Senza spostamento il segnale senza DP è forte al round 1 (0,775, 7
+seed su 10) e si indebolisce al round 3 (0,59, 2 su 10); con la DP non c'è in nessun regime (10
+seed: DP centrale 0,549 sull'aggregatore e 0,485 sul modello rilasciato, 1 seed su 10 in
+entrambi; DP locale 0,487 e 0,485, nessun seed).
 
-% La Tabella tab:canary_persona e' quella gia' preparata (10 seed per lo spostamento 0,5).
+% La Tabella tab:canary_persona va aggiornata con i valori con rumore indipendente (DP centrale
+% 0,711 e 0,547, DP locale 0,487 e 0,564, 5 seed): le run con rumore condiviso (0,843 e 0,543)
+% non si usano. RISULTATI.md 1.3.
 
 \begin{figure*}[t]
 \centering
 \includegraphics[width=\textwidth]{figures/fig_canary.pdf}
 \caption{Controlli positivi. A sinistra: canary per sessione, somma $\mathrm{AUC}_A+\mathrm{AUC}_B$
 sull'aggiornamento del client (5 seed); la linea a 1 è il caso. A destra: canary persona, AUC
-appaiato al round 3 sull'aggregatore e sul modello rilasciato (10 seed), con il numero di seed
-significativi. La DP centrale lascia riconoscere il canary all'aggregatore, la DP locale no.}
+appaiato al round 3 sull'aggregatore e sul modello rilasciato (10 seed senza DP, 5 con la DP e
+rumore indipendente fra i bracci), con il numero di seed significativi. La DP centrale lascia riconoscere il canary all'aggregatore, la DP locale no.}
 \label{fig:canary}
 \end{figure*}
 
@@ -145,6 +146,16 @@ curve, abbiamo ripetuto il confronto su 10 seed nuovi con ipotesi, test e seed d
 tutti e sei i confronti ($p\le0{,}003$ con Holm), migliore di FedAvg in 9 o 10 seed su 10. Con la
 DP conviene quindi un numero di round piccolo, che riduce anche l'$\varepsilon$ totale. La
 Figura~\ref{fig:ablazione} riassume l'ablazione.
+
+Il vantaggio di FedProx dipende anche dalla norma di clipping. Su ACN-Data, con la DP locale a
+$\varepsilon=64$ per round e 10 seed, il rapporto mediano per seed fra FedProx ($\mu=0{,}01$) e
+FedAvg a 10 round è 0,10 con $C=0{,}25$ (FedProx migliore in 10 seed su 10), 0,23 con $C=0{,}5$
+(9 su 10), 0,51 con $C=1$ (8 su 10) e 1,00 con $C=2$ (4 su 10). A parità di $\varepsilon$
+l'ampiezza del rumore è proporzionale a $C$, quindi il confronto fra valori di $C$ mescola
+l'effetto del clipping con quello del rumore: con $C=2$ il rumore domina (perdite fra 0,03 e
+0,46) e in due seed FedAvg e FedProx finiscono sulla stessa soluzione degenere. Il risultato
+indica quanto il vantaggio di FedProx sia sensibile a $C$, non un valore ottimo di $C$, che
+nel resto della campagna resta fissato a 1.
 
 \begin{table}[t]
 \caption{Replica confermativa al round 5 (10 seed nuovi, DP locale $\varepsilon=64$ per round,
@@ -277,7 +288,11 @@ Nel canary persona i due bracci usavano lo stesso seed e quindi, finché il rumo
 veniva dal generatore globale, lo stesso rumore: la differenza appaiata lo cancellava e
 mostrava un segnale anche con $\varepsilon\approx0{,}08$. Un disegno appaiato deve tenere
 comuni l'inizializzazione e i dati ma usare rumore indipendente fra i bracci, come accade fra
-due addestramenti reali. Inoltre, sui canary, LiRA e RMIA nella versione online danno somme
+due addestramenti reali. Il rumore condiviso altera anche la DP centrale vista
+dall'aggregatore, che pure riceve l'aggiornamento prima del rumore: sulla stessa macchina e
+con gli stessi seed, al round 1 i valori con rumore condiviso e indipendente coincidono, ma dal round 2 il modello globale porta il rumore
+condiviso nei round successivi (canary persona al round 3: 0,843 contro 0,711 allo spostamento
+0,5, 0,698 contro 0,580 allo spostamento 0 sugli stessi seed). Inoltre, sui canary, LiRA e RMIA nella versione online danno somme
 sotto 1 (fra 0,77 e 0,84). Il server dispone di pochi dati propri (112 sessioni per Office~1),
 quindi l'universo delle ombre online è fatto per circa due terzi di copie dei canary: le ombre
 che includono un canary lo memorizzano molto più del modello bersaglio, dove il canary è
