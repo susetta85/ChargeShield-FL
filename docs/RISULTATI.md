@@ -41,7 +41,7 @@ Scotland entità no DP 0,520 (0/5), DP per client 0,486, subject DP 0,484; Scotl
 fra 0,497 e 0,508. Nessuna differenza fra ACN e Scotland: in nessuno dei due dataset
 l'appartenenza si vede in condizioni naturali, con o senza DP.
 
-### 1.1b Avversario B (partecipante o osservatore esterno) — ACN fatto, Scotland e controllo positivo in coda
+### 1.1b Avversario B (partecipante o osservatore esterno) — ACN, Scotland e controllo positivo su Office 1 fatti
 
 L'avversario B vede solo i modelli globali, round per round, non gli aggiornamenti dei client.
 Implementato il 20 ottobre (`lira.observation_surface: partecipante`, `lira2.py`): le ombre
@@ -61,15 +61,38 @@ seed e round):
 Valori uguali a quelli del server sulle stesse celle e seed (differenze ≤ 0,005): previsione V23
 confermata, chi vede solo il modello globale non vede più del server.
 
-Controlli positivi visti da B: il canary persona sul modello rilasciato (1.3) è riconosciuto senza
-DP (0,697, 8/10 al round 3) e non con DP locale o centrale. Il canary per sessione, invece, sul
-modello globale si vede poco anche senza DP: Yeom e shadow sul globale danno somme A+B fra 1,00
-e 1,09 (3 coppie), contro 1,13–1,29 sull'aggiornamento del client (1.2). Manca LiRA/RMIA di B
-sul canary per sessione.
+Scotland, regime naturale (`v3o_partecipante_sc3_*`, Mac di Domenico, 5 seed, round 10; fra
+parentesi il massimo su seed e round):
 
-In coda (`coda_v3on_domenico.csv`, Mac di Domenico): B su Scotland ridotta, senza DP, DP locale e
-centrale a ε = 64, 5 seed (15 run); B sul canary per sessione, senza DP, A2 e A3, due bracci,
-5 seed (30 run).
+| Cella | Yeom | LiRA | LiRA out / off | RMIA | RMIA out / off |
+|---|---|---|---|---|---|
+| No DP μ = 0,01 | 0,498 (0,503) | 0,497 (0,518) | 0,498 / 0,498 (0,511) | 0,501 (0,512) | 0,501 / 0,500 (0,514) |
+| DP locale ε = 64 μ = 0,01 | 0,501 (0,509) | 0,502 (0,516) | 0,504 / 0,505 (0,517) | 0,501 (0,516) | 0,503 / 0,503 (0,517) |
+| DP centrale ε = 64 μ = 0,01 | 0,502 (0,513) | 0,499 (0,514) | 0,496 / 0,497 (0,516) | 0,497 (0,516) | 0,496 / 0,497 (0,517) |
+
+Nessun segnale su Scotland: le medie restano fra 0,496 e 0,505 e il massimo è 0,517, come su ACN.
+Anche per B l'appartenenza non si vede in regime naturale, con o senza DP.
+
+Controlli positivi visti da B: il canary persona sul modello rilasciato (1.3) è riconosciuto senza
+DP (0,697, 8/10 al round 3) e non con DP locale o centrale. Il canary per sessione sul modello
+globale è invece debole. Somme A+B su Office 1 (30 copie, round 3, 5 seed, `v3o_partecipante_canary*`,
+Mac di Domenico), media [minimo–massimo] e seed con somma > 1:
+
+| Attacco | No DP | Central DP ε = 64 (A2) | Local DP ε = 64 (A3) |
+|---|---|---|---|
+| Perdita grezza | 1,010 [0,992–1,050], 3/5 | 0,997 [0,985–1,002], 1/5 | 1,001 [0,992–1,008], 2/5 |
+| LiRA offline | 1,031 [0,975–1,087], 4/5 | 1,002 [0,990–1,010], 3/5 | 0,983 [0,953–1,010], 1/5 |
+| RMIA offline | 1,044 [0,975–1,176], 3/5 | 0,996 [0,987–1,004], 1/5 | 0,986 [0,945–1,009], 2/5 |
+| LiRA out | 1,026 [0,965–1,087], 4/5 | 0,966 [0,912–1,010], 2/5 | 0,982 [0,948–1,008], 2/5 |
+| RMIA out | 1,040 [0,976–1,160], 4/5 | 0,980 [0,934–1,020], 1/5 | 0,987 [0,938–1,021], 2/5 |
+| LiRA online | 0,958 [0,827–1,130], 1/5 | 1,020 [0,762–1,350], 3/5 | 0,988 [0,912–1,055], 2/5 |
+| RMIA online | 1,032 [0,968–1,147], 4/5 | 0,996 [0,985–1,011], 1/5 | 0,979 [0,941–1,022], 1/5 |
+
+Anche senza DP B riconosce poco il canary per sessione: i migliori attacchi offline e "out" danno
+somme di 1,03–1,04, appena sopra 1, con variazione fra seed in entrambi i sensi. Sull'aggiornamento
+del client (1.2) le stesse somme sono 1,13–1,29. Il segnale del canary per sessione sta quindi
+nell'aggiornamento che vede l'aggregatore, non nel modello globale che vede B. Con la DP (centrale o
+locale) le somme stanno intorno a 1.
 
 ### 1.2 Canary per sessione (Office 1, 30 copie, 5 seed) — consolidato
 
@@ -146,6 +169,29 @@ differenza fra le due versioni è spiegata in 1.4. Insieme (10 seed, rumore indi
 central 0,549 (1/10) sull'aggregatore e 0,485 (1/10) sul modello rilasciato; local 0,487 (0/10) e
 0,485 (0/10).
 
+### 1.3b Quante sessioni servono — canary persona con 1, 5, 10 e 30 copie (JPL, round 3, 5 seed) — fatto
+
+Coda v3n (`coda_v3on_domenico.csv`, Mac di Domenico): stesso canary persona di 1.3, spostamento 0,5, con
+1, 5 e 10 copie della persona e, per il confronto, 30 copie. Senza DP la configurazione usa GroupNorm,
+come le run con DP per sessione: la riga senza DP non è quindi la stessa run di 1.3 (0,802, 10 seed) e
+va letta solo dentro questa tabella. AUC appaiato al round 3, seed significativi su 5 (p < 0,05).
+
+| Copie | Senza DP, aggregatore | Senza DP, rilasciato | Session DP σ = 5, aggregatore | Session DP σ = 5, rilasciato |
+|---|---|---|---|---|
+| 1 | 0,598, 2/5 | 0,580, 1/5 | 0,514, 1/5 | 0,524, 1/5 |
+| 5 | 0,630, 3/5 | 0,531, 0/5 | 0,572, 1/5 | 0,531, 0/5 |
+| 10 | 0,700, 3/5 | 0,617, 1/5 | 0,642, 2/5 | 0,547, 0/5 |
+| 30 | 0,793, 5/5 | 0,666, 3/5 | 0,590, 1/5 (da 3.3b) | 0,544, 0/5 (da 3.3b) |
+
+Senza DP il segnale cresce con il numero di sessioni: già con una sola sessione l'aggregatore arriva a
+0,60, ma su 5 seed solo 2 sono significativi; con 30 sessioni la media è 0,79 e tutti e 5 i seed sono
+significativi. Il modello rilasciato lo vede meno: 0,67 con 30 sessioni, 3 seed su 5. Con la session DP
+a σ = 5 il segnale è più debole a parità di sessioni (0,64 contro 0,70 a 10 copie) e sul modello
+rilasciato non è significativo a 5 e 10 copie. La colonna con 30 copie in DP viene da 3.3b, non da questa coda, e lì il valore
+(0,59) è più basso di quello a 10 copie: con 5 seed la differenza è dentro il rumore, quindi la curva
+con la DP non si può dire né crescente né piatta. Per una risposta precisa su quante sessioni servono
+con la DP servono più seed.
+
 ### 1.4 Due problemi di metodo trovati
 
 **Rumore condiviso fra i bracci (risolto nel codice il 2026-10-26).** Nel canary persona i
@@ -216,8 +262,9 @@ metà della spiegazione: conta anche quanto il bersaglio generalizza meglio dell
   sessione e il canary persona sono riconosciuti senza DP in tutti i seed.
 - L'avversario esterno (partecipante o osservatore, vede solo i modelli globali) non vede più
   del server: su ACN tutte le forme di LiRA e RMIA restano fra 0,497 e 0,508 con e senza DP
-  (1.1b). Scotland e il controllo positivo di B sono in coda; il canary persona sul modello
-  rilasciato è già un controllo positivo per B.
+  (1.1b). Su Scotland, con e senza DP, B non vede più del server (medie fra 0,496 e 0,505). Il
+  canary per sessione non si vede da B nemmeno senza DP (somme 1,01–1,04, 1.1b); il canary persona
+  sul modello rilasciato è già un controllo positivo per B.
 - Il solo clipping non protegge dall'aggregatore: con la central DP il canary è riconosciuto
   come senza DP. Il rumore aggiunto dal client (local DP) lo nasconde. Il rumore sull'aggregato
   protegge solo il modello rilasciato.
@@ -600,5 +647,7 @@ Approfondimenti (non necessari per le RQ, decisi il 2026-10-29):
 | Session DP σ = 5 sul canary persona, altri 5 seed (test formale con 10 seed) | Mac principale | `coda_v3m_mac.csv` |
 | RQ2 su Scotland a 32 council (FedAvg/FedProx, con e senza DP, 10 seed, solo utilità) | Mac principale | `coda_v3m_mac.csv` |
 | Curva ε: session DP σ = 1, 2, 10 e subject DP σ = 2 sul canary persona (5 seed) | Mac principale | `coda_v3m_mac.csv` |
-| Avversario B su Scotland (regime naturale, 15 run) e sul canary per sessione (30 run) | Mac di Domenico | `coda_v3on_domenico.csv`, dopo la v3hk |
-| Quante sessioni servono: canary persona con 1, 5, 10, 30 copie, senza DP e session DP σ = 5 | Mac di Domenico | `coda_v3on_domenico.csv`, dopo l'avversario B |
+| Avversario B su Scotland (regime naturale, 15 run) e sul canary per sessione (30 run) | Mac di Domenico | fatto (1.1b) |
+| Quante sessioni servono: canary persona con 1, 5, 10, 30 copie, senza DP e session DP σ = 5 | Mac di Domenico | fatto (1.3b, 5 seed: potenza bassa) |
+| Canary persona allo spostamento 0,5, central e local con rumore indipendente, seed 1618–3141 (tabella 1.3 a 10 seed) | Windows | `coda_v3p_windows.csv` |
+| Clipping a rumore uguale: C = 0,25, 0,5, 2 con ε = 9,83, 23,94, 190,99 (stesso σ di C = 1, ε = 64), FedAvg e FedProx, 10 seed | Windows | `coda_v3p_windows.csv` |
