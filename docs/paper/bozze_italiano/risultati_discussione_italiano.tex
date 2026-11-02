@@ -1,4 +1,4 @@
-% Capitoli V (Risultati) e VI (Discussione) — bozza in italiano, 2026-10-26, aggiornata il 2026-10-30.
+% Capitoli V (Risultati) e VI (Discussione) — bozza in italiano, 2026-10-26, aggiornata il 2026-11-01.
 % Numeri da docs/RISULTATI.md (campagna v3, tre macchine). Le celle ancora in corso
 % sono marcate con \pending{...} (macro definita in main.tex).
 % Da tradurre in inglese dopo la verifica.
@@ -37,7 +37,12 @@ lui. Per LiRA e RMIA le ombre prendono il posto del client nell'aggregazione e g
 degli altri client sono emulati con i dati ausiliari del server. Su ACN-Data (5 seed) tutte le
 forme stanno fra 0,497 e 0,508 senza DP, con DP locale e con DP centrale (massimo su seed e round
 0,518), come per il server sulle stesse celle: chi osserva solo il modello globale non vede più
-dell'aggregatore. \pending{Scotland e controllo positivo dell'avversario esterno in corso}
+dell'aggregatore. Lo stesso vale su Scotland (5 seed): le medie stanno fra 0,496 e 0,505, con
+massimo 0,517. Fra i controlli positivi, il canary persona sul modello rilasciato è riconosciuto
+senza DP e non con la DP (Sezione~\ref{subsec:res_canary}), quindi vale anche per chi osserva solo
+il modello globale. Il canary per sessione, invece, sul modello globale è debole anche senza DP: i
+migliori attacchi offline danno somme di 1,03--1,04, contro 1,13--1,29 sull'aggiornamento del
+client. Il suo segnale sta nell'aggiornamento che vede l'aggregatore, non nel modello globale.
 
 \subsection{RQ1: controlli positivi}
 \label{subsec:res_canary}
@@ -77,30 +82,45 @@ RMIA offline   & 1,287 (5/5) & 1,240 (5/5) & 1,012 \\
 \paragraph{Canary persona}
 Il canary persona (40 utenti di JPL, 20 sessioni per utente con 30 copie, spostamento 0,5;
 Tabella~\ref{tab:canary_persona}) conferma il quadro sull'unità utente. Con la DP usiamo solo le
-run con rumore indipendente fra i due bracci (5 seed; si veda la Discussione). Al round 3 l'AUC
-appaiato sull'aggregatore è 0,802 senza DP (10 seed su 10) e 0,711 con DP centrale (4 seed su 5),
-mentre con DP locale è 0,487 (nessun seed). Sul modello rilasciato il canary è riconosciuto senza
-DP (0,697, 8 seed su 10) e non con DP centrale (0,547, nessun seed) o locale (0,564, 1 seed su
-5): il rumore sull'aggregato protegge il modello rilasciato, non l'aggiornamento visto dal
+run con rumore indipendente fra i due bracci (10 seed; si veda la Discussione). Al round 3 l'AUC
+appaiato sull'aggregatore è 0,802 senza DP (10 seed su 10) e 0,722 con DP centrale (9 seed su 10),
+mentre con DP locale è 0,504 (nessun seed; Tabella~\ref{tab:canary_persona}). Sul modello rilasciato il canary è riconosciuto senza
+DP (0,697, 8 seed su 10) e non con DP centrale (0,527, nessun seed) o locale (0,533, 1 seed su
+10): il rumore sull'aggregato protegge il modello rilasciato, non l'aggiornamento visto dal
 server. Il modello rilasciato è anche ciò che vede l'avversario esterno: il canary persona è
 quindi un controllo positivo anche per lui. Al round 1 senza DP l'AUC sull'aggregatore è 0,999:
 è una saturazione (gli AUC dei singoli bracci sono 0,955--0,988 e il $p$ è al minimo possibile
 per 20 utenti contro 20). Senza spostamento il segnale senza DP è forte al round 1 (0,775, 7
 seed su 10) e si indebolisce al round 3 (0,59, 2 su 10); con la DP non c'è in nessun regime (10
 seed: DP centrale 0,549 sull'aggregatore e 0,485 sul modello rilasciato, 1 seed su 10 in
-entrambi; DP locale 0,487 e 0,485, nessun seed).
+entrambi; DP locale 0,487 e 0,485, nessun seed). Il segnale cresce con il numero di sessioni della
+persona: senza DP, con 1, 5, 10 e 30 copie, l'AUC sull'aggregatore è 0,60, 0,63, 0,70 e 0,79
+(5 seed; significativo in 2, 3, 3 e 5 seed).
 
-% La Tabella tab:canary_persona va aggiornata con i valori con rumore indipendente (DP centrale
-% 0,711 e 0,547, DP locale 0,487 e 0,564, 5 seed): le run con rumore condiviso (0,843 e 0,543)
-% non si usano. RISULTATI.md 1.3.
+\begin{table}[t]
+\caption{Canary persona (JPL, 40 utenti, 30 copie, spostamento 0,5, 10 seed): AUC appaiato al
+round 3 e seed significativi ($p<0{,}05$). Con la DP ($\varepsilon=64$ per round) il rumore è
+indipendente fra i due bracci.}
+\label{tab:canary_persona}
+\centering\footnotesize
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Regime & Aggregatore & Modello rilasciato \\
+\midrule
+Senza DP    & 0,802 (10/10) & 0,697 (8/10) \\
+DP centrale & 0,722 (9/10)  & 0,527 (0/10) \\
+DP locale   & 0,504 (0/10)  & 0,533 (1/10) \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \begin{figure*}[t]
 \centering
 \includegraphics[width=\textwidth]{figures/fig_canary.pdf}
 \caption{Controlli positivi. A sinistra: canary per sessione, somma $\mathrm{AUC}_A+\mathrm{AUC}_B$
 sull'aggiornamento del client (5 seed); la linea a 1 è il caso. A destra: canary persona, AUC
-appaiato al round 3 sull'aggregatore e sul modello rilasciato (10 seed senza DP, 5 con la DP e
-rumore indipendente fra i bracci), con il numero di seed significativi. La DP centrale lascia riconoscere il canary all'aggregatore, la DP locale no.}
+appaiato al round 3 sull'aggregatore e sul modello rilasciato (10 seed; con la DP il rumore è
+indipendente fra i bracci), con il numero di seed significativi. La DP centrale lascia riconoscere il canary all'aggregatore, la DP locale no.}
 \label{fig:canary}
 \end{figure*}
 
@@ -147,15 +167,50 @@ tutti e sei i confronti ($p\le0{,}003$ con Holm), migliore di FedAvg in 9 o 10 s
 DP conviene quindi un numero di round piccolo, che riduce anche l'$\varepsilon$ totale. La
 Figura~\ref{fig:ablazione} riassume l'ablazione.
 
-Il vantaggio di FedProx dipende anche dalla norma di clipping. Su ACN-Data, con la DP locale a
-$\varepsilon=64$ per round e 10 seed, il rapporto mediano per seed fra FedProx ($\mu=0{,}01$) e
-FedAvg a 10 round è 0,10 con $C=0{,}25$ (FedProx migliore in 10 seed su 10), 0,23 con $C=0{,}5$
-(9 su 10), 0,51 con $C=1$ (8 su 10) e 1,00 con $C=2$ (4 su 10). A parità di $\varepsilon$
-l'ampiezza del rumore è proporzionale a $C$, quindi il confronto fra valori di $C$ mescola
-l'effetto del clipping con quello del rumore: con $C=2$ il rumore domina (perdite fra 0,03 e
-0,46) e in due seed FedAvg e FedProx finiscono sulla stessa soluzione degenere. Il risultato
-indica quanto il vantaggio di FedProx sia sensibile a $C$, non un valore ottimo di $C$, che
-nel resto della campagna resta fissato a 1.
+Il vantaggio di FedProx dipende anche da come si sceglie la norma di clipping
+(Figura~\ref{fig:clipping}). Su ACN-Data, con la DP locale a $\varepsilon=64$ per round e 10 seed, il
+rapporto mediano per seed fra FedProx ($\mu=0{,}01$) e FedAvg a 10 round è 0,10 con $C=0{,}25$
+(FedProx migliore in 10 seed su 10), 0,23 con $C=0{,}5$ (9 su 10), 0,51 con $C=1$ (8 su 10) e 1,00
+con $C=2$ (4 su 10). A parità di $\varepsilon$, però, l'ampiezza del rumore è proporzionale a $C$,
+quindi questo confronto mescola l'effetto del clipping con quello del rumore. Per separarli abbiamo
+ripetuto le stesse celle con lo stesso rumore di $C=1$, cioè con $\varepsilon$ per round 9,83,
+23,94 e 190,99 per $C=0{,}25$, 0,5 e 2 (Tabella~\ref{tab:clipping}). Con rumore uguale FedProx
+resta migliore a tutte le norme, con rapporto mediano 0,80, 0,56, 0,51 e 0,35, e il vantaggio è
+più piccolo con $C$ piccolo, non più grande: la dipendenza da $C$ della prima serie viene in gran
+parte dal rumore. A parità di rumore un $C$ più stretto peggiora entrambi gli algoritmi (FedAvg
+0,209 con $C=0{,}25$ contro 0,142 con $C=1$). Il risultato descrive la sensibilità a $C$, non un
+valore ottimo, che nel resto della campagna resta fissato a 1.
+
+\begin{table}[t]
+\caption{Norma di clipping con rumore uguale per tutti i $C$ (ACN-Data, DP locale, $\sigma$ di
+$C=1$ con $\varepsilon=64$ per round; 10 seed, round 10). $\varepsilon$ per round; perdita media
+sull'holdout di FedAvg e di FedProx ($\mu=0{,}01$); rapporto
+mediano per seed FedProx/FedAvg con i seed in cui FedProx è migliore; $p$ di permutazione a una
+coda con correzione di Holm sui tre valori di $C$ diversi da 1.}
+\label{tab:clipping}
+\centering\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}cccccc@{}}
+\toprule
+$C$ & $\varepsilon$ & FedAvg & FedProx & Rapporto & $p$ \\
+\midrule
+0,25 & 9,83   & 0,209 & 0,143 & 0,80 (10/10) & 0,003 \\
+0,5  & 23,94  & 0,185 & 0,100 & 0,56 (9/10)  & 0,015 \\
+1    & 64     & 0,142 & 0,078 & 0,51 (8/10)  & --    \\
+2    & 190,99 & 0,138 & 0,076 & 0,35 (8/10)  & 0,020 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_clipping.pdf}
+\caption{Norma di clipping (ACN-Data, DP locale, 10 seed, round 10). A sinistra: rapporto mediano
+per seed fra FedProx ($\mu=0{,}01$) e FedAvg, con il numero di seed in cui FedProx è migliore; A con
+$\varepsilon=64$ per round a ogni $C$ (rumore proporzionale a $C$), B con lo stesso rumore di $C=1$.
+A destra: perdite della serie B. Con rumore uguale il vantaggio di FedProx resta a tutte le norme.}
+\label{fig:clipping}
+\end{figure*}
 
 \begin{table}[t]
 \caption{Replica confermativa al round 5 (10 seed nuovi, DP locale $\varepsilon=64$ per round,
@@ -183,6 +238,26 @@ i kWh richiesti, i minuti disponibili o l'ora la perdita di FedAvg scende di 3,4
 rapporto sale da 2,3 a 5--6. Con la DP il guadagno di FedProx (0,54--0,75 con $\mu=0{,}01$,
 0,51--0,63 con $\mu=0{,}1$) e le norme degli aggiornamenti (7,9--8,9 con FedAvg, 0,64--0,74 con
 FedProx) sono simili qualunque feature si tolga.
+
+\paragraph{Federazione con più client}
+Su Scotland abbiamo ripetuto il confronto con un client per council, cioè 32 client invece di 3
+(10 seed, 10 round; Figura~\ref{fig:scozia32} e Tabella~\ref{tab:utilita}). Senza DP il quadro non
+cambia: FedProx peggiora in tutti i seed (14 volte con $\mu=0{,}01$, 55 con $\mu=0{,}1$). Con la DP
+la perdita di FedAvg è molto più bassa che con 3 client (0,032 contro 0,183) e il vantaggio di
+FedProx non si ritrova: il rapporto è 1,04 con $\mu=0{,}01$ ($p=0{,}89$) e 0,69 con $\mu=0{,}1$
+($p=0{,}21$; FedProx migliore in 7 seed su 10). Con la DP locale ogni client aggiunge il proprio
+rumore e l'aggregato ne fa la media su più aggiornamenti. Un'ipotesi coerente con il meccanismo,
+che qui non misuriamo, è che il termine prossimale aiuti soprattutto quando il rumore di ogni
+client pesa molto nell'aggregato, cioè con pochi client.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig_scozia32.pdf}
+\caption{Scotland con 3 e con 32 client, DP locale $\varepsilon=64$ per round, round 10: rapporto
+fra la perdita media di FedProx e quella di FedAvg (barre, con il $p$ di permutazione a due code) e
+rapporto per seed (punti, 10 seed). Con 32 client il vantaggio di FedProx non è confermato.}
+\label{fig:scozia32}
+\end{figure}
 
 \begin{figure*}[t]
 \centering
@@ -229,6 +304,9 @@ ACN 4 feature & Senza DP & $2{,}0\cdot10^{-5}$ & $3{,}2\cdot10^{-4}$ (16; $<$0,0
  & Solo clipping & $4{,}7\cdot10^{-3}$ & $1{,}55\cdot10^{-3}$ (0,33; 0,03) & $8{,}5\cdot10^{-3}$ (1,81; 0,10) \\
  & Solo rumore & 0,162 & 0,172 (1,06; 0,86) & 0,156 (0,96; 0,91) \\
  & DP completa & 0,209 & 0,137 (0,65; 0,06) & 0,098 (0,47; 0,003) \\
+\midrule
+Scotland 32 client & Senza DP & $2{,}5\cdot10^{-5}$ & $3{,}6\cdot10^{-4}$ (14; $<$0,001) & $1{,}4\cdot10^{-3}$ (55; $<$0,001) \\
+ & DP completa & 0,032 & 0,033 (1,04; 0,89) & 0,022 (0,69; 0,21) \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -249,10 +327,50 @@ la DP centrale protegge il modello rilasciato ma non l'aggiornamento osservato d
 riconosciuto: al round 3 l'AUC appaiato sull'aggregatore è 0,499 con $\sigma=5$ ($\varepsilon\approx29$
 per soggetto), 0,522 con $\sigma=8$ e 0,476 con $\sigma=1000$, senza seed significativi (5 seed), contro
 0,80 senza DP nella stessa configurazione. Con la DP per sessione allo stesso $\sigma=5$
-($\varepsilon\le1{,}3$ per sessione) il canary persona resta visibile all'aggregatore: AUC
-appaiato 0,740 al round 1 (4 seed su 5) e 0,590 al round 3 (1 su 5), mentre con la DP per
-soggetto è 0,516 e 0,499 (nessun seed). È la verifica sperimentale dell'argomento sulla privacy
-di gruppo: la garanzia per sessione non copre un utente con molte sessioni.
+($\varepsilon\le1{,}3$ per sessione) il canary persona resta visibile all'aggregatore
+(Tabella~\ref{tab:sessione_dp} e Figura~\ref{fig:sessione_dp}): su 10 seed l'AUC appaiato è 0,664
+al round 1 e 0,614 al round 3 (4 seed su 10 in entrambi), sopra 0,5 ($p=0{,}0008$ e $0{,}002$,
+permutazione a una coda) e sopra la DP per soggetto allo stesso $\sigma$ (0,516 e 0,499;
+$p=0{,}008$ e $0{,}007$). Rendere più forte la garanzia per sessione non cambia il quadro: da
+$\sigma=1$ ($\varepsilon\approx10{,}8$ per sessione) a $\sigma=10$ ($\varepsilon\approx0{,}6$)
+l'AUC al round 1 resta fra 0,645 e 0,697 (5 seed). Con la DP per soggetto il segnale è più debole
+anche con un $\varepsilon$ per soggetto molto alto ($\approx112$ a $\sigma=2$: 0,596 al round 1 e
+0,542 al round 3). Sul modello rilasciato, con la DP per sessione a $\sigma=5$, nessun seed è
+significativo da solo, ma la media al round 3 (0,556) è sopra 0,5 ($p=0{,}02$). È la verifica
+sperimentale dell'argomento sulla privacy di gruppo: la garanzia per sessione non copre un utente
+con molte sessioni, qualunque sia il suo livello; conta l'unità protetta.
+
+\begin{table*}[t]
+\caption{Canary persona con DP per sessione e per soggetto (JPL, 30 copie, spostamento 0,5): AUC
+appaiato e seed significativi. $\varepsilon$ per sessione con RDP ($\delta=10^{-5}$), per soggetto
+come nella Sezione~\ref{subsec:res_unita}.}
+\label{tab:sessione_dp}
+\centering\footnotesize
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Meccanismo & $\varepsilon$ & Aggregatore, r.~1 & Aggregatore, r.~3 & Rilasciato, r.~3 \\
+\midrule
+Senza DP (10 seed)          & --              & 0,999 (10/10) & 0,802 (10/10) & 0,697 (8/10) \\
+Sessione $\sigma=1$ (5)      & $\approx10{,}8$ & 0,645 (2/5)   & 0,595 (1/5)   & 0,567 (0/5) \\
+Sessione $\sigma=2$ (5)      & $\approx3{,}7$  & 0,694 (3/5)   & 0,551 (1/5)   & 0,531 (1/5) \\
+Sessione $\sigma=5$ (10)     & $\approx1{,}3$  & 0,664 (4/10)  & 0,614 (4/10)  & 0,556 (0/10) \\
+Sessione $\sigma=10$ (5)     & $\approx0{,}6$  & 0,697 (4/5)   & 0,617 (2/5)   & 0,583 (1/5) \\
+Soggetto $\sigma=2$ (5)      & $\approx112$    & 0,596 (2/5)   & 0,542 (1/5)   & 0,546 (1/5) \\
+Soggetto $\sigma=5$ (5)      & $\approx29$     & 0,516 (0/5)   & 0,499 (0/5)   & 0,529 (0/5) \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_sessione_dp.pdf}
+\caption{Canary persona con DP per sessione e per soggetto: AUC appaiato all'aggregatore al round 1
+e 3, con il numero di seed significativi (10 seed senza DP e con sessione $\sigma=5$, 5 negli altri
+casi). Con la DP per sessione il segnale resta qualunque sia $\varepsilon$; con la DP per soggetto è
+più debole anche con $\varepsilon\approx112$.}
+\label{fig:sessione_dp}
+\end{figure*}
 
 \section{Discussione}
 \label{sec:discussion}
@@ -281,7 +399,9 @@ al no-DP. $\mu=0{,}1$ è uguale o migliore di $\mu=0{,}01$ su tutti e tre i data
 $\mu=0{,}01$ basta solo su ACN; senza DP FedProx peggiora sempre: la scelta dell'algoritmo
 dipende dalla presenza della DP. Il vantaggio è netto nei primi round (confermato a 5 round da
 una replica dichiarata prima), si riduce a 10 e non è più significativo a 30, perché il rumore
-accumulato domina.
+accumulato domina. Dipende anche dalla dimensione della federazione: con 32 client su Scotland non
+è confermato (0,69 con $\mu=0{,}1$, $p=0{,}21$). Con rumore uguale, infine, il vantaggio non cresce
+stringendo il clipping: la sensibilità a $C$ osservata a parità di $\varepsilon$ viene dal rumore.
 
 \paragraph{Due insidie dell'audit empirico}
 Nel canary persona i due bracci usavano lo stesso seed e quindi, finché il rumore della DP
@@ -291,7 +411,7 @@ comuni l'inizializzazione e i dati ma usare rumore indipendente fra i bracci, co
 due addestramenti reali. Il rumore condiviso altera anche la DP centrale vista
 dall'aggregatore, che pure riceve l'aggiornamento prima del rumore: sulla stessa macchina e
 con gli stessi seed, al round 1 i valori con rumore condiviso e indipendente coincidono, ma dal round 2 il modello globale porta il rumore
-condiviso nei round successivi (canary persona al round 3: 0,843 contro 0,711 allo spostamento
+condiviso nei round successivi (canary persona al round 3: 0,843 contro 0,722 allo spostamento
 0,5, 0,698 contro 0,580 allo spostamento 0 sugli stessi seed). Inoltre, sui canary, LiRA e RMIA nella versione online danno somme
 sotto 1 (fra 0,77 e 0,84). Il server dispone di pochi dati propri (112 sessioni per Office~1),
 quindi l'universo delle ombre online è fatto per circa due terzi di copie dei canary: le ombre
@@ -310,14 +430,16 @@ le forme online vanno usate con cautela quando i candidati sono record ripetuti.
 
 \paragraph{La DP per sessione non basta per gli utenti frequenti}
 Il canary persona mostra in pratica quello che la privacy di gruppo dice in teoria: con
-$\varepsilon\le1{,}3$ per sessione l'aggregatore riconosce ancora un utente con molte sessioni,
+$\varepsilon\le1{,}3$ per sessione l'aggregatore riconosce ancora un utente con molte sessioni
+(10 seed, $p=0{,}002$ al round 3), e lo riconosce allo stesso modo con $\varepsilon\approx0{,}6$,
 mentre la DP per soggetto allo stesso livello di rumore lo nasconde. In dati di ricarica, dove
 l'utente mediano ha 14 sessioni, l'unità da proteggere è l'utente.
 
 \paragraph{Limiti}
-Le federazioni hanno tre partecipanti per dataset; il modello è un autoencoder piccolo; i
+Le federazioni principali hanno tre partecipanti per dataset (con 32 client su Scotland il
+vantaggio di FedProx con la DP non è confermato); il modello è un autoencoder piccolo; i
 canary usano una configurazione indotta (7 feature, encoder 32--16, 3 round da 1000 epoche)
 diversa da quella principale; un $\varepsilon$ di 64 per round (430 in totale) è un livello di
 rumore, non una garanzia significativa; il canary persona è costruito solo su JPL; il
 canary per sessione, mediato con gli altri siti, sul modello globale si vede appena anche senza
-DP (somme 1,00--1,09 con Yeom e shadow) \pending{LiRA e RMIA dell'avversario esterno sul canary per sessione in corso}.
+DP (somme 1,00--1,09 con Yeom e shadow, 1,03--1,04 con LiRA e RMIA offline).

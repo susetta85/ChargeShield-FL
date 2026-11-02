@@ -1,6 +1,6 @@
 # ChargeShield-FL — Risultati per domanda di ricerca (campagna v3)
 
-> Aggiornato al 2026-10-30. Numeri letti dai CSV raccolti sulle tre macchine
+> Aggiornato al 2026-11-01. Numeri letti dai CSV raccolti sulle tre macchine
 > (`risultati/campagna_v3/mac_susy`, `mac_domenico`, `windows`) e dai JSON in `esiti/`.
 > Test: Mann-Whitney unilaterale per gli attacchi sul canary persona (Holm sulle metriche
 > secondarie, la primaria al round 3 non corretta); permutazione a due code (20 000
@@ -162,7 +162,7 @@ Spostamento 0, senza DP (10 seed: 42–1234 sul Mac principale, 1618–3141 su W
 è forte al round 1 (0,731, 2/5 e 0,818, 5/5; insieme 0,775, 7/10) e si indebolisce al round 3
 (0,536, 0/5 e 0,645, 2/5; insieme 0,59, 2/10). Con rumore indipendente (Mac principale, seed 42–1234, round 3): DP
 centrale sull'aggregatore 0,518 (0/5), sul modello rilasciato 0,465 (0/5); DP locale 0,484 (0/5)
-e 0,460 (0/5). Senza spostamento il canary non si vede in nessun regime con DP. Ripetizione con rumore indipendente sui seed 1618–3141 (Windows, `coda_v3h`, 5 seed, round 3):
+e 0,460 (0/5). Senza spostamento il canary non si vede in nessun regime con DP. Ripetizione con rumore indipendente sui seed 1618–3141 (Windows, `coda_v3h`, 5 seed, round 3; verificato il 2026-11-01: il `canary_persona.py` del pacchetto v3h ha la stessa impronta MD5 di quello del commit `cd70816`, quindi queste run usano già il rumore indipendente):
 DP centrale sull'aggregatore 0,580 (1/5), sul modello rilasciato 0,505 (1/5); DP locale 0,490 (0/5)
 e 0,510 (0/5). Con il rumore condiviso della versione precedente la central dava 0,698 (3/5): la
 differenza fra le due versioni è spiegata in 1.4. Insieme (10 seed, rumore indipendente, round 3):
@@ -308,6 +308,31 @@ Griglia di ε (5 seed, μ = 0,01): da ε = 2 a 16 la perdita è 0,37–0,47 (267
 
 μ = 0,001: 0,167 (0,91, p = 0,76). DP / no DP: 536× con μ = 0,01, 68× con μ = 0,1.
 A 30 round: μ = 0 0,297, μ = 0,01 0,228 (0,77, p = 0,37), μ = 0,1 0,221 (0,74, p = 0,34).
+
+### 2.2b ChargePlace Scotland a 32 client (un client per council) — consolidato (coda_v3m, Mac principale, 10 seed)
+
+Stesse varianti di 2.2 ma con 32 client, uno per council, invece di 3; DP locale ε = 64 per round,
+C = 1, 10 round, seed 42–3141 (la run di prova a 1 round non è inclusa). Solo utilità: perdita
+sull'holdout del modello rilasciato al round 10. Rapporto delle medie e p di permutazione a due
+code, come in 2.1–2.3.
+
+| Variante | μ=0 | μ=0,01 | μ=0,1 |
+|---|---|---|---|
+| No DP | 2,5·10⁻⁵ | 3,6·10⁻⁴ (14×, p < 0,001) | 1,4·10⁻³ (55×, p < 0,001) |
+| DP completa | 0,032 | 0,033 (1,04, p = 0,89) | 0,022 (0,69, p = 0,21) |
+
+DP / no DP: 1259× con μ = 0, 92× con μ = 0,01, 16× con μ = 0,1. Per seed, con la DP FedProx è
+migliore in 6 seed su 10 con μ = 0,01 (rapporto mediano 0,89) e in 7 su 10 con μ = 0,1
+(rapporto mediano 0,57; test appaiato a una coda p = 0,054). Senza DP FedAvg è migliore in tutti
+i seed.
+
+Lettura: senza DP il quadro è lo stesso degli altri dataset. Con la DP il vantaggio di FedProx
+misurato con 3 client non si ritrova con 32: con μ = 0,01 non c'è, con μ = 0,1 c'è una tendenza
+(0,69) non significativa con 10 seed. La perdita con la DP è molto più bassa che con 3 client
+(0,032 contro 0,183 con FedAvg). Con la DP locale ogni client aggiunge il proprio rumore e
+l'aggregato ne fa la media su 32 aggiornamenti invece di 3: è una spiegazione coerente con il
+meccanismo, non misurata qui. Se è così, il termine prossimale aiuta quando il rumore pesa molto,
+cioè nelle federazioni piccole.
 
 ### 2.3 ACN 4 feature (stesse feature di Scotland) — consolidato
 
@@ -544,6 +569,7 @@ senza DP FedAvg è comunque il migliore, e con la DP più round peggiorano.
 - Il vantaggio di FedProx non si conserva a 30 round (rapporti 0,74–0,80, p > 0,3): con la DP
   più round accumulano più rumore e la variabilità fra seed cresce.
 - Il vantaggio di FedProx con la DP resta a tutte le norme di clipping con rumore uguale (rapporto mediano 0,35–0,80, 2.4d). La dipendenza da C vista con rumore proporzionale a C (tabella A di 2.4d) viene in gran parte dal rumore.
+- Con 32 client invece di 3 (Scotland, 2.2b) la DP costa molto meno (0,032 contro 0,183 con FedAvg) e il vantaggio di FedProx non è confermato (μ = 0,01: 1,04, p = 0,89; μ = 0,1: 0,69, p = 0,21). Il risultato di RQ2 va quindi riportato per federazioni con pochi client.
 
 ---
 
@@ -578,51 +604,62 @@ k = 14, la mediana delle sessioni per utente in ACN: la garanzia è vuota per l'
 
 | σ | ε per soggetto | AUC appaiato aggregatore (r3) | Seed sig. | AUC appaiato rilasciato (r3) | Seed sig. |
 |---|---|---|---|---|---|
+| 2 | ≈ 112 | 0,542 | 1/5 | 0,546 | 1/5 |
 | 5 | ≈ 29 | 0,499 | 0/5 | 0,529 | 0/5 |
 | 8 | ≈ 15,6 | 0,522 | 0/5 | 0,562 | 1/5 |
 | 1000 | ≈ 0,08 | 0,476 | 0/5 | 0,440 | 0/5 |
 
 Con la DP per soggetto il canary persona non è riconosciuto né dall'aggregatore né dal modello
-rilasciato, già a σ = 5 (ε ≈ 29 per soggetto). Senza DP, nella stessa configurazione, l'AUC
+rilasciato, già a σ = 5 (ε ≈ 29 per soggetto); a σ = 2 (ε ≈ 112, coda v3m) resta un segnale debole, con 1 seed su 5 significativo. Senza DP, nella stessa configurazione, l'AUC
 appaiato sull'aggregatore è 0,80 in 10 seed su 10 (1.3). In condizioni naturali l'attacco al
 soggetto non vede niente con nessun meccanismo (1.1).
 
-### 3.3b Session DP sul canary persona — misurato (5 seed, rumore indipendente)
+### 3.3b Session DP sul canary persona — consolidato (σ = 5 su 10 seed; σ = 1, 2, 10 su 5 seed; rumore indipendente)
 
-`coda_v3l_mac.csv`, config `experiment_canary_multisite_record_s5.yaml`: stesso canary persona di
-1.3 e 3.3 (JPL, 20 + 20 utenti, 30 copie, spostamento 0,5, 3 round × 1000 epoche), con la DP per
-sessione σ = 5, C = 1 (DP-SGD per esempio, GroupNorm come la subject DP). AUC appaiato sulle
-sessioni di training, seed significativi su 5.
+`coda_v3l_mac.csv` (σ = 5, seed 42–1234) e `coda_v3m_mac.csv` (σ = 5, seed 1618–3141; σ = 1, 2,
+10 e subject DP σ = 2, seed 42–1234), Mac principale. Stesso canary persona di 1.3 e 3.3 (JPL,
+20 + 20 utenti, 30 copie, spostamento 0,5, 3 round × 1000 epoche), con la DP per sessione
+(DP-SGD per esempio, C = 1, GroupNorm come la subject DP). AUC appaiato sulle sessioni di
+training e seed significativi. ε per sessione con RDP (JPL: 41 078 sessioni di training,
+q = 32/41 078, 3,85 milioni di passi, δ = 10⁻⁵); ε per soggetto come in 3.3.
 
-| Round | Aggregatore | Modello rilasciato |
-|---|---|---|
-| 1 | 0,740, 4/5 | 0,458, 0/5 |
-| 2 | 0,628, 2/5 | 0,505, 0/5 |
-| 3 | 0,590, 1/5 | 0,544, 0/5 |
+| Meccanismo | ε | Seed | Aggregatore, round 1 | Aggregatore, round 3 | Modello rilasciato, round 3 |
+|---|---|---|---|---|---|
+| Nessuna DP | — | 10 | 0,999, 10/10 | 0,802, 10/10 | 0,697, 8/10 |
+| Session DP σ = 1 | ≈ 10,8 per sessione | 5 | 0,645, 2/5 | 0,595, 1/5 | 0,567, 0/5 |
+| Session DP σ = 2 | ≈ 3,7 per sessione | 5 | 0,694, 3/5 | 0,551, 1/5 | 0,531, 1/5 |
+| Session DP σ = 5 | ≈ 1,3 per sessione | 10 | 0,664, 4/10 | 0,614, 4/10 | 0,556, 0/10 |
+| Session DP σ = 10 | ≈ 0,6 per sessione | 5 | 0,697, 4/5 | 0,617, 2/5 | 0,583, 1/5 |
+| Subject DP σ = 2 | ≈ 112 per soggetto | 5 | 0,596, 2/5 | 0,542, 1/5 | 0,546, 1/5 |
+| Subject DP σ = 5 | ≈ 29 per soggetto | 5 | 0,516, 0/5 | 0,499, 0/5 | 0,529, 0/5 |
 
-Confronto all'aggregatore, round 1 / round 3: senza DP 0,999 (10/10) / 0,802 (10/10); session DP
-σ = 5 0,740 (4/5) / 0,590 (1/5); subject DP σ = 5 0,516 (0/5) / 0,499 (0/5); subject DP σ = 8
-0,576 (1/5) / 0,522 (0/5).
+Test formale su σ = 5 (10 seed; permutazione a una coda, 20 000 permutazioni): l'AUC appaiato
+sull'aggregatore è sopra 0,5 al round 1 (0,664, p = 0,0008) e al round 3 (0,614, p = 0,002), e
+sopra quello della subject DP allo stesso σ (5 seed; p = 0,008 al round 1, 0,007 al round 3).
+Sul modello rilasciato al round 3 la media è 0,556 (p = 0,02 contro 0,5) senza seed significativi
+da soli: un segnale debole che il test sul singolo seed non vede. I primi 5 seed (42–1234) danno
+0,590 (1/5) sull'aggregatore al round 3, i 5 nuovi (1618–3141) 0,637 (3/5).
 
-Lettura: la session DP riduce il segnale ma non lo toglie; all'aggregatore il canary persona è
-ancora riconosciuto al round 1 in 4 seed su 5, mentre con la subject DP allo stesso σ no. È la
-verifica sperimentale di 3.2: la garanzia per sessione non copre un utente con molte sessioni (qui
-600 sessioni di training della stessa persona). Al round 3 il segnale si indebolisce (1/5) e sul
-modello rilasciato non c'è. Con 5 seed il confronto fra session e subject DP è indicativo, non un
-test formale. ε per sessione della persona canary (JPL: 41 078 sessioni di training,
-q = 32/41 078, 3 × 1000 epoche, 3,85 milioni di passi, σ = 5, RDP): ε ≤ 1,3 con δ = 10⁻⁵, cioè
-una garanzia per sessione forte quanto quella di RQ3; per la persona (600 sessioni) la privacy
-di gruppo non dà nessuna garanzia.
+Lettura: con la DP per sessione il canary persona resta visibile all'aggregatore a ogni σ
+provato, da σ = 1 (ε ≈ 10,8 per sessione) a σ = 10 (ε ≈ 0,6): al round 1 l'AUC sta fra 0,645 e
+0,697 e non scende quando σ cresce. Con la subject DP il segnale è più debole anche con un ε per
+soggetto molto alto (≈ 112 a σ = 2: 0,596 al round 1, 0,542 al round 3). È la verifica
+sperimentale di 3.2: rendere più forte la garanzia per sessione non protegge un utente con molte
+sessioni (qui 600 sessioni di training della stessa persona); conta l'unità protetta, non il
+livello di ε. Per σ = 1, 2 e 10 (5 seed) la curva è indicativa; il test formale è su σ = 5.
 
 ### 3.4 Risposta a RQ3
 
 - La superficie conta quanto il meccanismo: la central DP protegge il modello rilasciato ma
   non l'aggiornamento visto dal server; la local DP protegge entrambi.
 - La session DP costa poco (2,7–3,9×) ma non protegge gli utenti con molte sessioni: lo dice
-  l'analisi (3.2) e lo conferma il canary persona, riconosciuto dall'aggregatore al round 1 in
-  4 seed su 5 con session DP σ = 5 e in nessuno con subject DP σ = 5 (3.3b).
+  l'analisi (3.2) e lo conferma il canary persona: con session DP σ = 5 (10 seed) l'AUC appaiato
+  sull'aggregatore è 0,664 al round 1 e 0,614 al round 3 (p ≤ 0,002 contro 0,5), con subject DP
+  allo stesso σ 0,516 e 0,499. Il segnale non scende rendendo più forte la garanzia per sessione
+  (σ da 1 a 10, ε per sessione da 10,8 a 0,6) (3.3b).
 - La subject DP protegge l'intero profilo a un costo intermedio (9–11× su ACN, 72× su Scotland),
-  e nasconde il canary persona già a σ = 5.
+  e nasconde il canary persona già a σ = 5; a σ = 2 (ε ≈ 112 per soggetto) resta un segnale debole
+  (0,542 al round 3, 1 seed su 5).
 
 ---
 
@@ -644,15 +681,16 @@ di gruppo non dà nessuna garanzia.
 | RQ2 a un orizzonte di 5 round | dati esistenti | fatto, esplorativo (2.5) |
 | Replica confermativa a 5 round (10 seed nuovi, ipotesi dichiarata in `LEGGIMI_v3k.txt`) | Mac di Domenico | fatto: confermata (2.5) |
 | Stessa replica senza DP (FedProx peggiora? stessi 10 seed nuovi) | Mac principale | fatto: confermato (2.5) |
-| Session DP σ = 5 sul canary persona (verifica empirica di 3.2, 5 seed) | Mac principale | fatto (3.3b) |
+| Session DP σ = 5 sul canary persona (verifica empirica di 3.2) | Mac principale | fatto (3.3b, 10 seed) |
 
 Approfondimenti (non necessari per le RQ, decisi il 2026-10-29):
 
 | Cosa | Dove | Stato |
 |---|---|---|
-| Session DP σ = 5 sul canary persona, altri 5 seed (test formale con 10 seed) | Mac principale | `coda_v3m_mac.csv` |
-| RQ2 su Scotland a 32 council (FedAvg/FedProx, con e senza DP, 10 seed, solo utilità) | Mac principale | `coda_v3m_mac.csv` |
-| Curva ε: session DP σ = 1, 2, 10 e subject DP σ = 2 sul canary persona (5 seed) | Mac principale | `coda_v3m_mac.csv` |
+| Session DP σ = 5 sul canary persona, altri 5 seed (test formale con 10 seed) | Mac principale | fatto (3.3b) |
+| RQ2 su Scotland a 32 council (FedAvg/FedProx, con e senza DP, 10 seed, solo utilità) | Mac principale | fatto (2.2b) |
+| Curva ε: session DP σ = 1, 2, 10 e subject DP σ = 2 sul canary persona (5 seed) | Mac principale | fatto (3.3, 3.3b) |
+| Rerun del canary persona a spostamento 0 sui seed 1618–3141 (`coda_v3q_windows_rerun.csv`) | Windows | non necessario: il codice della coda v3h aveva già il rumore indipendente (stessa impronta di `canary_persona.py`); fermato il 2026-11-01 |
 | Avversario B su Scotland (regime naturale, 15 run) e sul canary per sessione (30 run) | Mac di Domenico | fatto (1.1b) |
 | Quante sessioni servono: canary persona con 1, 5, 10, 30 copie, senza DP e session DP σ = 5 | Mac di Domenico | fatto (1.3b, 5 seed: potenza bassa) |
 | Canary persona allo spostamento 0,5, central e local con rumore indipendente, seed 1618–3141 (tabella 1.3 a 10 seed) | Windows | fatto (1.3) |
