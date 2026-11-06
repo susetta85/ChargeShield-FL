@@ -137,6 +137,8 @@ Yeom e shadow sul modello globale restano fra 0,97 e 1,02 (il canary è diluito 
 
 ### 1.3 Canary persona (JPL, 40 utenti, 30 copie, spostamento 0,5) — consolidato (no DP 10 seed; local e central con rumore indipendente, 10 seed)
 
+Normalizzazione verificata il 2026-11-06: le 20 run senza DP (10 seed × 2 bracci, `canary_persona_indotto_nodp_c30_d0.5_r3_e1000_*`, Mac principale, 23–24 ottobre) sono del codice dal 16 ottobre (campo `normalizzazione` presente, `norm` predefinito "group"): GroupNorm, come le run con DP.
+
 AUC appaiato al round 3, seed significativi. Con la DP valgono solo le run con rumore indipendente
 fra i bracci (1.4).
 
@@ -309,7 +311,7 @@ Griglia di ε (5 seed, μ = 0,01): da ε = 2 a 16 la perdita è 0,37–0,47 (267
 μ = 0,001: 0,167 (0,91, p = 0,76). DP / no DP: 536× con μ = 0,01, 68× con μ = 0,1.
 A 30 round: μ = 0 0,297, μ = 0,01 0,228 (0,77, p = 0,37), μ = 0,1 0,221 (0,74, p = 0,34).
 
-### 2.2b ChargePlace Scotland a 32 client (un client per council) — consolidato (coda_v3m, Mac principale, 10 seed)
+### 2.2b ChargePlace Scotland a 32 client (un client per council) — consolidato (coda_v3m, 10 seed; μ = 0,1 con la DP a 20 seed con la coda v3r)
 
 Stesse varianti di 2.2 ma con 32 client, uno per council, invece di 3; DP locale ε = 64 per round,
 C = 1, 10 round, seed 42–3141 (la run di prova a 1 round non è inclusa). Solo utilità: perdita
@@ -326,13 +328,26 @@ migliore in 6 seed su 10 con μ = 0,01 (rapporto mediano 0,89) e in 7 su 10 con 
 (rapporto mediano 0,57; test appaiato a una coda p = 0,054). Senza DP FedAvg è migliore in tutti
 i seed.
 
-Lettura: senza DP il quadro è lo stesso degli altri dataset. Con la DP il vantaggio di FedProx
-misurato con 3 client non si ritrova con 32: con μ = 0,01 non c'è, con μ = 0,1 c'è una tendenza
-(0,69) non significativa con 10 seed. La perdita con la DP è molto più bassa che con 3 client
-(0,032 contro 0,183 con FedAvg). Con la DP locale ogni client aggiunge il proprio rumore e
-l'aggregato ne fa la media su 32 aggiornamenti invece di 3: è una spiegazione coerente con il
-meccanismo, non misurata qui. Se è così, il termine prossimale aiuta quando il rumore pesa molto,
-cioè nelle federazioni piccole.
+**Estensione a 20 seed (coda v3r, Mac principale, 2–6 novembre).** Solo DP completa, μ = 0 e
+μ = 0,1, 10 seed nuovi (7, 99, 314, 999, 1999, 2468, 4321, 5555, 8128, 9973), stesso config.
+Non era una replica con ipotesi dichiarata prima: serve a dare più potenza al confronto con μ = 0,1.
+
+| Serie | Seed | FedAvg μ=0 | FedProx μ=0,1 | Rapporto delle medie | p (permutazione, due code) | Rapporto mediano per seed | Seed con FedProx migliore |
+|---|---|---|---|---|---|---|---|
+| v3m (42–3141) | 10 | 0,032 | 0,022 | 0,69 | 0,21 | 0,57 | 7/10 |
+| v3r (7–9973) | 10 | 0,050 | 0,013 | 0,26 | 0,003 | 0,29 | 9/10 |
+| **Insieme** | **20** | **0,041** | **0,018** | **0,43** | **0,001** | **0,56** | **16/20** |
+
+Test appaiato a una coda sulle differenze per seed (scambio di segno, 50 000 permutazioni), 20 seed:
+p = 0,0006. Con μ = 0,01 restano i 10 seed di v3m (1,04, p = 0,89).
+
+Lettura (aggiornata il 2026-11-06): con 20 seed, a 32 client e con la DP, FedProx con μ = 0,1 ha
+una perdita più bassa di FedAvg (0,43, p = 0,001, 16 seed su 20). Il vantaggio misurato con 3 client
+si ritrova quindi anche con 32, ma solo con μ = 0,1; con μ = 0,01 non c'è. Le due serie da 10 seed
+differiscono molto (0,69 contro 0,26), soprattutto perché FedAvg è molto variabile fra seed
+(0,010–0,127 nella serie v3r): il numero da riportare è quello a 20 seed. La perdita con la DP resta
+molto più bassa che con 3 client (0,041 contro 0,183 con FedAvg); il motivo (media su 32 rumori
+invece di 3) è coerente con il meccanismo ma non misurato.
 
 ### 2.3 ACN 4 feature (stesse feature di Scotland) — consolidato
 
@@ -538,7 +553,7 @@ split), quindi per questa serie si usano mediane e test appaiati.
 
 Lettura: con la DP il vantaggio di FedProx è robusto nei primi round e si riduce con i round,
 perché il rumore accumulato aumenta perdita e variabilità di entrambi; μ = 0,1 lo conserva a
-10 round su tutti e tre i dataset, μ = 0,01 solo su ACN. A 30 round sparisce (2.4). Il valore
+10 round su ACN, Scotland e ACN-4f, μ = 0,01 solo su ACN. A 30 round sparisce (2.4). Il valore
 di 0,55 a 10 round su ACN della prima serie (2.1) era nella parte favorevole della variabilità:
 con 20 seed è 0,65.
 
@@ -550,12 +565,12 @@ senza DP FedAvg è comunque il migliore, e con la DP più round peggiorano.
 
 ### 2.6 Risposta a RQ2
 
-- Il costo della DP per client è grande in tutti i dataset: con μ = 0,01, 66× su ACN, 422×
+- Il costo della DP per client è grande su entrambi i dataset e sulla variante ACN-4f: con μ = 0,01, 66× su ACN, 422×
   su ACN-4f, 536× su Scotland. Quasi tutto viene dal rumore: con solo rumore la perdita è
   10–100 volte quella con solo clipping.
 - Senza DP FedAvg è sempre migliore (FedProx peggiora da 2 a 87 volte).
 - Con la DP completa FedProx riduce il costo. Con 20 seed μ = 0,1 è uguale o migliore di
-  μ = 0,01 su tutti e tre i dataset (round 10: ACN 0,66 contro 0,65, Scotland 0,45 contro 0,94,
+  μ = 0,01 su ACN, Scotland e ACN-4f (round 10: ACN 0,66 contro 0,65, Scotland 0,45 contro 0,94,
   ACN-4f 0,53 contro 0,85); μ = 0,01 basta solo su ACN. μ = 0,001 non fa niente.
 - A μ = 0,01 il meccanismo è il clipping: FedProx aiuta molto con solo clip (0,27–0,45) e
   niente con solo rumore. A μ = 0,1 non è così: da soli né il clip né il rumore migliorano,
@@ -564,12 +579,12 @@ senza DP FedAvg è comunque il migliore, e con la DP più round peggiorano.
   quasi costante (il rapporto è più alto solo quando il compito è più facile); con la DP il
   guadagno (0,51–0,75) e le norme sono simili togliendo qualunque feature.
 - A 5 round il vantaggio di FedProx con la DP è confermato da una replica dichiarata prima, con
-  10 seed nuovi: rapporti 0,30–0,46 su tutti e tre i dataset, Holm p ≤ 0,003 (2.5). A 10 round,
+  10 seed nuovi: rapporti 0,30–0,46 su ACN, Scotland e ACN-4f, Holm p ≤ 0,003 (2.5). A 10 round,
   con 20 seed, resta per μ = 0,1 ovunque (0,45–0,66) e per μ = 0,01 solo su ACN (0,65).
 - Il vantaggio di FedProx non si conserva a 30 round (rapporti 0,74–0,80, p > 0,3): con la DP
   più round accumulano più rumore e la variabilità fra seed cresce.
 - Il vantaggio di FedProx con la DP resta a tutte le norme di clipping con rumore uguale (rapporto mediano 0,35–0,80, 2.4d). La dipendenza da C vista con rumore proporzionale a C (tabella A di 2.4d) viene in gran parte dal rumore.
-- Con 32 client invece di 3 (Scotland, 2.2b) la DP costa molto meno (0,032 contro 0,183 con FedAvg) e il vantaggio di FedProx non è confermato (μ = 0,01: 1,04, p = 0,89; μ = 0,1: 0,69, p = 0,21). Il risultato di RQ2 va quindi riportato per federazioni con pochi client.
+- Con 32 client invece di 3 (Scotland, 2.2b) la DP costa molto meno (0,041 contro 0,183 con FedAvg). Con 20 seed il vantaggio di FedProx si ritrova con μ = 0,1 (0,43, p = 0,001, 16/20 seed), non con μ = 0,01 (1,04, p = 0,89, 10 seed). Aggiornato il 2026-11-06: con 10 seed μ = 0,1 dava 0,69 (p = 0,21).
 
 ---
 
@@ -620,16 +635,16 @@ soggetto non vede niente con nessun meccanismo (1.1).
 10 e subject DP σ = 2, seed 42–1234), Mac principale. Stesso canary persona di 1.3 e 3.3 (JPL,
 20 + 20 utenti, 30 copie, spostamento 0,5, 3 round × 1000 epoche), con la DP per sessione
 (DP-SGD per esempio, C = 1, GroupNorm come la subject DP). AUC appaiato sulle sessioni di
-training e seed significativi. ε per sessione con RDP (JPL: 41 078 sessioni di training,
+training e seed significativi. ε per sessione con PLD e adiacenza per sostituzione, come nel resto del paper (ricalcolato il 2026-11-06, dp-accounting, discretizzazione 2·10⁻⁵); fra parentesi RDP con aggiunta/rimozione, i valori usati prima (JPL: 41 078 sessioni di training,
 q = 32/41 078, 3,85 milioni di passi, δ = 10⁻⁵); ε per soggetto come in 3.3.
 
 | Meccanismo | ε | Seed | Aggregatore, round 1 | Aggregatore, round 3 | Modello rilasciato, round 3 |
 |---|---|---|---|---|---|
 | Nessuna DP | — | 10 | 0,999, 10/10 | 0,802, 10/10 | 0,697, 8/10 |
-| Session DP σ = 1 | ≈ 10,8 per sessione | 5 | 0,645, 2/5 | 0,595, 1/5 | 0,567, 0/5 |
-| Session DP σ = 2 | ≈ 3,7 per sessione | 5 | 0,694, 3/5 | 0,551, 1/5 | 0,531, 1/5 |
-| Session DP σ = 5 | ≈ 1,3 per sessione | 10 | 0,664, 4/10 | 0,614, 4/10 | 0,556, 0/10 |
-| Session DP σ = 10 | ≈ 0,6 per sessione | 5 | 0,697, 4/5 | 0,617, 2/5 | 0,583, 1/5 |
+| Session DP σ = 1 | ≈ 19,1 per sessione (RDP agg./rim. 10,8) | 5 | 0,645, 2/5 | 0,595, 1/5 | 0,567, 0/5 |
+| Session DP σ = 2 | ≈ 7,3 per sessione (RDP agg./rim. 3,7) | 5 | 0,694, 3/5 | 0,551, 1/5 | 0,531, 1/5 |
+| Session DP σ = 5 | ≈ 2,5 per sessione (RDP agg./rim. 1,3) | 10 | 0,664, 4/10 | 0,614, 4/10 | 0,556, 0/10 |
+| Session DP σ = 10 | ≈ 1,2 per sessione (RDP agg./rim. 0,6) | 5 | 0,697, 4/5 | 0,617, 2/5 | 0,583, 1/5 |
 | Subject DP σ = 2 | ≈ 112 per soggetto | 5 | 0,596, 2/5 | 0,542, 1/5 | 0,546, 1/5 |
 | Subject DP σ = 5 | ≈ 29 per soggetto | 5 | 0,516, 0/5 | 0,499, 0/5 | 0,529, 0/5 |
 
@@ -641,12 +656,42 @@ da soli: un segnale debole che il test sul singolo seed non vede. I primi 5 seed
 0,590 (1/5) sull'aggregatore al round 3, i 5 nuovi (1618–3141) 0,637 (3/5).
 
 Lettura: con la DP per sessione il canary persona resta visibile all'aggregatore a ogni σ
-provato, da σ = 1 (ε ≈ 10,8 per sessione) a σ = 10 (ε ≈ 0,6): al round 1 l'AUC sta fra 0,645 e
+provato, da σ = 1 (ε ≈ 19 per sessione) a σ = 10 (ε ≈ 1,2): al round 1 l'AUC sta fra 0,645 e
 0,697 e non scende quando σ cresce. Con la subject DP il segnale è più debole anche con un ε per
 soggetto molto alto (≈ 112 a σ = 2: 0,596 al round 1, 0,542 al round 3). È la verifica
 sperimentale di 3.2: rendere più forte la garanzia per sessione non protegge un utente con molte
 sessioni (qui 600 sessioni di training della stessa persona); conta l'unità protetta, non il
 livello di ε. Per σ = 1, 2 e 10 (5 seed) la curva è indicativa; il test formale è su σ = 5.
+
+### 3.3c Canary per punto di ricarica su ChargePlace Scotland — consolidato (coda v3s, Mac di Domenico, 5 seed)
+
+Stesso disegno del canary persona di JPL (3.3, 3.3b), con il soggetto di Scotland: il punto di
+ricarica (`node_id`). Council Glasgow City (171 punti con almeno 30 sessioni), 40 punti scelti col
+seed, due gruppi da 20 a ruoli scambiati, 20 sessioni per punto nel training in 30 copie, 10 mai
+viste, spostamento 0,5; configurazione indotta (3 round × 1000 epoche, 32-16, latente 8, 4 feature,
+GroupNorm); rumore DP indipendente fra i bracci. Seed 42, 123, 456, 789, 1234. Codice:
+`canary_persona.py --chiave node_id --sito 'Glasgow City'` (opzione aggiunta il 2026-11-06).
+ε con PLD e sostituzione (come 3.3b): DP per sessione σ = 5 ≈ 2,6 per sessione (Glasgow, q = 32/37 418,
+3,5 milioni di passi); DP per soggetto σ = 5 ≈ 29 per punto (circa 189 punti nel client, 8 per passo).
+
+| Meccanismo | ε | Aggregatore, round 1 | Aggregatore, round 3 | Modello rilasciato, round 3 |
+|---|---|---|---|---|
+| Nessuna DP | — | 0,999, 5/5 | 0,778, 5/5 | 0,673, 3/5 |
+| Session DP σ = 5 | ≈ 2,6 per sessione | 0,634, 2/5 | 0,598, 1/5 | 0,502, 1/5 |
+| Subject DP σ = 5 | ≈ 29 per punto | 0,532, 1/5 | 0,543, 0/5 | 0,532, 0/5 |
+
+AUC appaiato medio e seed significativi (Mann–Whitney per seed, p < 0,05). Test fra i seed
+(permutazione a una coda su AUC − 0,5, 2⁵ = 32 combinazioni, quindi p minimo 0,031):
+senza DP p = 0,031 su tutte e tre le superfici (tutti i seed sopra 0,5); session DP aggregatore
+round 1 p = 0,031 (5 seed su 5 sopra 0,5), round 3 p = 0,063, rilasciato p = 0,50; subject DP
+aggregatore round 1 p = 0,31, round 3 p = 0,13, rilasciato p = 0,22.
+
+Lettura: stesso quadro di JPL. Senza DP il punto di ricarica memorizzato si riconosce (0,778 contro
+0,802 su JPL). Con la DP per sessione l'aggregatore lo riconosce ancora al round 1 (0,634, tutti i
+seed sopra 0,5; JPL 0,664) e in parte al round 3 (0,598; JPL 0,614); il modello rilasciato no.
+Con la DP per soggetto i valori restano vicini al caso (0,53–0,54; JPL 0,50–0,53). Con 5 seed il test
+fra i seed ha poca potenza: il risultato conferma la direzione di JPL, non è una prova autonoma.
+Su Scotland il soggetto è il punto di ricarica, non una persona.
 
 ### 3.4 Risposta a RQ3
 
@@ -689,9 +734,17 @@ Approfondimenti (non necessari per le RQ, decisi il 2026-10-29):
 |---|---|---|
 | Session DP σ = 5 sul canary persona, altri 5 seed (test formale con 10 seed) | Mac principale | fatto (3.3b) |
 | RQ2 su Scotland a 32 council (FedAvg/FedProx, con e senza DP, 10 seed, solo utilità) | Mac principale | fatto (2.2b) |
+| Scotland a 32 council, μ = 0 e μ = 0,1 con la DP, 10 seed nuovi (coda v3r, 20 seed in tutto) | Mac principale | fatto (2.2b): 0,43, p = 0,001 |
 | Curva ε: session DP σ = 1, 2, 10 e subject DP σ = 2 sul canary persona (5 seed) | Mac principale | fatto (3.3, 3.3b) |
 | Rerun del canary persona a spostamento 0 sui seed 1618–3141 (`coda_v3q_windows_rerun.csv`) | Windows | non necessario: il codice della coda v3h aveva già il rumore indipendente (stessa impronta di `canary_persona.py`); fermato il 2026-11-01 |
 | Avversario B su Scotland (regime naturale, 15 run) e sul canary per sessione (30 run) | Mac di Domenico | fatto (1.1b) |
 | Quante sessioni servono: canary persona con 1, 5, 10, 30 copie, senza DP e session DP σ = 5 | Mac di Domenico | fatto (1.3b, 5 seed: potenza bassa) |
 | Canary persona allo spostamento 0,5, central e local con rumore indipendente, seed 1618–3141 (tabella 1.3 a 10 seed) | Windows | fatto (1.3) |
 | Clipping a rumore uguale: C = 0,25, 0,5, 2 con ε = 9,83, 23,94, 190,99 (stesso σ di C = 1, ε = 64), FedAvg e FedProx, 10 seed | Windows | fatto (2.4d, tabella B) |
+
+Da fare in seguito (TODO, deciso il 2026-11-05; non necessario per il paper DSN):
+
+| Cosa | Dove | Stato |
+|---|---|---|
+| Canary per punto di ricarica su ChargePlace Scotland: senza DP, session DP σ = 5 e subject DP σ = 5, 5 seed (coda v3s, 30 run) | Mac di Domenico | fatto (3.3c) |
+| Nel paper: aggiungere il canary per punto di ricarica (3.3c) alla tabella del canary con DP per sessione e per soggetto, con la nota che su Scotland il soggetto è il punto di ricarica | testo (IV-E, V-D, limiti) | da fare |

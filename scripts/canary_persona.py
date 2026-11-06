@@ -93,17 +93,19 @@ def sito_di(s: dict) -> str:
 
 
 def costruisci_pool(sessions: list[dict], sito: str, k: int, min_sess: int, t: int, f: int,
-                    seed: int, divisione: str) -> dict[str, Any]:
-    """Pool, gruppi e parti (training / fresche) per utente. Dipende solo dal seed."""
+                    seed: int, divisione: str, chiave: str = "user_id") -> dict[str, Any]:
+    """Pool, gruppi e parti (training / fresche) per soggetto. Dipende solo dal seed.
+    `chiave` (2026-11-06): campo che identifica il soggetto; user_id in ACN-Data,
+    node_id (punto di ricarica) in ChargePlace Scotland, che non ha l'utente."""
     per_utente: dict[str, list[int]] = {}
     for i, s in enumerate(sessions):
-        u = s.get("user_id")
+        u = s.get(chiave)
         if u in (None, "") or sito_di(s) != sito:
             continue
         per_utente.setdefault(str(u), []).append(i)
     idonei = sorted(u for u, ix in per_utente.items() if len(ix) >= max(min_sess, t + f))
     if len(idonei) < 2 * k:
-        raise SystemExit(f"nel sito {sito} ci sono {len(idonei)} utenti con almeno "
+        raise SystemExit(f"nel sito {sito} ci sono {len(idonei)} soggetti ({chiave}) con almeno "
                          f"{max(min_sess, t + f)} sessioni: ne servono {2 * k}")
     rng = random.Random(seed + 424242)
     scelti = rng.sample(idonei, 2 * k)
@@ -119,7 +121,7 @@ def costruisci_pool(sessions: list[dict], sito: str, k: int, min_sess: int, t: i
         parti[u] = {"training": ix[:t], "fresche": ix[t:t + f]}
     # tutte le sessioni degli utenti del pool (in qualunque sito) restano fuori dallo sfondo
     pool_set = set(scelti)
-    sfondo = [i for i, s in enumerate(sessions) if str(s.get("user_id")) not in pool_set]
+    sfondo = [i for i, s in enumerate(sessions) if str(s.get(chiave)) not in pool_set]
     return {"g1": g1, "g2": g2, "parti": parti, "sfondo": sfondo, "idonei": len(idonei)}
 
 
@@ -266,6 +268,8 @@ def main() -> None:
     ap.add_argument("--copie", type=int, default=30, help="ripetizioni della parte di training dei membri")
     ap.add_argument("--sito", default="jpl")
     ap.add_argument("--utenti", type=int, default=20, help="utenti per gruppo (K)")
+    ap.add_argument("--chiave", default="user_id",
+                    help="campo del soggetto: user_id (ACN-Data), node_id (punto di ricarica, Scotland)")
     ap.add_argument("--min-sessioni", type=int, default=30)
     ap.add_argument("--sessioni-training", type=int, default=20, help="T: sessioni per persona nel training")
     ap.add_argument("--sessioni-fresche", type=int, default=10, help="F: sessioni per persona mai viste")
@@ -315,7 +319,7 @@ def main() -> None:
     mp._semina(a.seed)
     sessions = rx.enrich_sessions(rx.load_sessions(cfg))
     pool = costruisci_pool(sessions, a.sito, a.utenti, a.min_sessioni, a.sessioni_training,
-                           a.sessioni_fresche, a.seed, a.divisione)
+                           a.sessioni_fresche, a.seed, a.divisione, chiave=a.chiave)
     feats = rx._mia_feature_names(cfg)
     # normalizzazione con limiti pubblici, uguale nei due bracci (2026-10-16)
     stats, clip, info_norm = rx.statistiche_normalizzazione(cfg, [], feats)
@@ -327,7 +331,7 @@ def main() -> None:
     sdp = rx._subject_dp_config(cfg["ml"])
     if sdp["enabled"] and sdp["senza_chiave"] == "profili":
         from ml.profili_abitudini import addestra, assegna
-        senza = [i for i in pool["sfondo"] if sessions[i].get("user_id") in (None, "")]
+        senza = [i for i in pool["sfondo"] if sessions[i].get(a.chiave) in (None, "")]
         random.Random(a.seed + 4242).shuffle(senza)
         ris = set(senza[:int(round(0.3 * len(senza)))])
         pool["sfondo"] = [i for i in pool["sfondo"] if i not in ris]
@@ -381,7 +385,7 @@ def main() -> None:
         "config_sha": sha_config(cfg),
         "sha_senza_rumore": True,
         "commit": mp._commit(), "normalizzazione": info_norm, "profili": profili,
-        "sito": a.sito, "divisione": a.divisione, "spostamento": a.spostamento, "rounds": cfg["experiment"]["fl_rounds"],
+        "sito": a.sito, "chiave": a.chiave, "divisione": a.divisione, "spostamento": a.spostamento, "rounds": cfg["experiment"]["fl_rounds"],
         "seme_rumore_dp": cfg["ml"]["seme_rumore_dp"],
         "epochs": cfg["ml"]["epochs"], "feature": feats,
         "sessioni_training": a.sessioni_training, "sessioni_fresche": a.sessioni_fresche,

@@ -179,16 +179,22 @@ salva(fig, "fig_sessione_dp")
 # ------------------------------------------------------------------ fig_scozia32
 fig, a = plt.subplots(figsize=(6.4, 3.6))
 gruppi = [("Scotland, 3 client", "v3_sc3_eps64", [0.87, 0.49], ["p = 0,56", "p = 0,015"]),
-          ("Scotland, 32 client", "v3m_sc32_eps64", [1.04, 0.69], ["p = 0,89", "p = 0,21"])]
+          ("Scotland, 32 client", "v3m_sc32_eps64", [1.04, 0.43], ["p = 0,89\n10 seed", "p = 0,001\n20 seed"])]
+# 2026-11-06: per Scotland 32 con mu = 0 e mu = 0,1 si aggiungono i 10 seed della coda v3r
+def per_seed_32(cella):
+    s = per_seed(cella)
+    if cella.startswith("v3m_sc32_eps64_mu") and cella.split("_mu")[1] in ("0", "0.1"):
+        s = pd.concat([s, per_seed(cella.replace("v3m_", "v3r_"))])
+    return s
 cols = [(BLU, "", "μ = 0,01"), (ARANCIO, "///", "μ = 0,1")]
 rng = np.random.default_rng(0)
 for g, (nome, pref, rapp, pp) in enumerate(gruppi):
-    base = per_seed(f"{pref}_mu0")
+    base = per_seed_32(f"{pref}_mu0")
     for k, (mu, (col, h, lab)) in enumerate(zip(["0.01", "0.1"], cols)):
         xc = g + (k - 0.5) * 0.36
         a.bar(xc, rapp[k] - 1, 0.33, bottom=1, color=col, hatch=h, edgecolor="white", linewidth=0,
               label=lab if g == 0 else None)
-        b = per_seed(f"{pref}_mu{mu}")
+        b = per_seed_32(f"{pref}_mu{mu}")
         comuni = base.index.intersection(b.index)
         r = (b[comuni] / base[comuni]).values
         a.scatter(xc + rng.uniform(-0.07, 0.07, len(r)), r, s=14, color="white", edgecolor=INK, linewidth=0.8,

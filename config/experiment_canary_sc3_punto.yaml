@@ -1,0 +1,52 @@
+# ChargeShield-FL — canary per punto di ricarica su ChargePlace Scotland (coda v3s, 2026-11-06).
+# Stesso disegno del canary persona di JPL (scripts/canary_persona.py): 40 punti di ricarica
+# del council Glasgow City con almeno 30 sessioni, due gruppi da 20 a ruoli scambiati, 20
+# sessioni per punto nel training in 30 copie, 10 mai viste, spostamento 0,5. Il soggetto e'
+# il punto di ricarica (node_id), perche' Scotland non ha l'utente. Configurazione indotta
+# come experiment_canary_sc3_v3.yaml (3 round x 1000 epoche, 32-16, latente 8, 4 feature).
+# Il canary per sessione e' spento dallo script. Lanciare con --chiave node_id --sito 'Glasgow City'.
+# Senza DP.
+
+experiment:
+  name: chargeshield_canary_sc3_punto
+  fl_rounds: 3
+  seed: 42
+  epsilon: 1.0
+  delta: 1.0e-05
+  max_grad_norm: 1.0
+dataset_adapter: chargeplace_scotland
+chargeplace_scotland:
+  metadata_dir: datasets/alt/chargeplace_scotland/CPID_information
+  clients:
+  - Glasgow City
+  - Dundee City
+  - Shetland Islands
+  session_files:
+  - datasets/alt/chargeplace_scotland/Sessions_from_CPS/SEP-23.xlsx
+  - datasets/alt/chargeplace_scotland/Sessions_from_CPS/OCT-23.xlsx
+  - datasets/alt/chargeplace_scotland/Sessions_from_CPS/NOV-23.xlsx
+ml:
+  input_dim: 4
+  lr: 0.001
+  epochs: 1000
+  batch_size: 32
+  proximal_mu: 0.01
+  norm: group
+  feature_names:
+  - total_energy_kwh
+  - max_power_kw
+  - hour_of_day
+  - duration_hours
+  hidden_dims:
+  - 32
+  - 16
+  latent_dim: 8
+output:
+  experiments_dir: experiments
+canary:
+  enabled: false
+byzantine_attack:
+  enabled: false
+  attack_type: gradient_scaling
+  byzantine_node: synthetic_1
+  scale_factor: 10
