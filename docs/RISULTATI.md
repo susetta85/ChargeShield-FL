@@ -23,6 +23,19 @@
 
 ---
 
+## Nota statistica (2026-11-07) — leggere prima delle tabelle di RQ2
+
+I p-value dei confronti di utilità in questo file (sezioni 2.1–2.3, 2.2b, 2.4) vengono da un test di
+permutazione **non appaiato** sulla differenza delle medie. Il disegno è appaiato per seed (stessa
+partizione e inizializzazione), quindi il test corretto è quello appaiato esatto a scambio di segno.
+Ricalcolo completo, famiglie di correzione e confronto fra i due test in
+`revisione_statistica_2026-11-07/ricalcolo_statistico.md` (script `ricalcolo.py`). Con il test
+appaiato e Holm per blocco: DP completa a 10 round, 3 client, 2 confronti significativi su 6
+(Scotland e ACN 4f con μ = 0,1); ACN μ = 0,01 0,55 con p = 0,021 non corretto, 0,086 con Holm;
+Scotland 32 con la DP, 20 seed: μ = 0,01 0,57 (p = 0,048), μ = 0,1 0,43 (p = 0,003); ACN a 30 round
+0,80 (p = 0,29). Per i canary persona, l'AUC appaiato è una misura di sensibilità del controllo (usa
+i due bracci); l'attacco su una sola federazione è nella sezione 5 del file di ricalcolo.
+
 ## RQ1 — Rilevabilità dell'appartenenza e controlli positivi
 
 ### 1.1 Regime naturale: nessun attacco realistico vede i membri — consolidato
@@ -311,7 +324,7 @@ Griglia di ε (5 seed, μ = 0,01): da ε = 2 a 16 la perdita è 0,37–0,47 (267
 μ = 0,001: 0,167 (0,91, p = 0,76). DP / no DP: 536× con μ = 0,01, 68× con μ = 0,1.
 A 30 round: μ = 0 0,297, μ = 0,01 0,228 (0,77, p = 0,37), μ = 0,1 0,221 (0,74, p = 0,34).
 
-### 2.2b ChargePlace Scotland a 32 client (un client per council) — consolidato (coda_v3m, 10 seed; μ = 0,1 con la DP a 20 seed con la coda v3r)
+### 2.2b ChargePlace Scotland a 32 client (un client per council) — consolidato (coda_v3m, 10 seed; con la DP 20 seed: μ = 0 e 0,1 con la coda v3r, μ = 0,01 con la coda v3t)
 
 Stesse varianti di 2.2 ma con 32 client, uno per council, invece di 3; DP locale ε = 64 per round,
 C = 1, 10 round, seed 42–3141 (la run di prova a 1 round non è inclusa). Solo utilità: perdita
@@ -339,15 +352,29 @@ Non era una replica con ipotesi dichiarata prima: serve a dare più potenza al c
 | **Insieme** | **20** | **0,041** | **0,018** | **0,43** | **0,001** | **0,56** | **16/20** |
 
 Test appaiato a una coda sulle differenze per seed (scambio di segno, 50 000 permutazioni), 20 seed:
-p = 0,0006. Con μ = 0,01 restano i 10 seed di v3m (1,04, p = 0,89).
+p = 0,0006.
 
-Lettura (aggiornata il 2026-11-06): con 20 seed, a 32 client e con la DP, FedProx con μ = 0,1 ha
-una perdita più bassa di FedAvg (0,43, p = 0,001, 16 seed su 20). Il vantaggio misurato con 3 client
-si ritrova quindi anche con 32, ma solo con μ = 0,1; con μ = 0,01 non c'è. Le due serie da 10 seed
-differiscono molto (0,69 contro 0,26), soprattutto perché FedAvg è molto variabile fra seed
-(0,010–0,127 nella serie v3r): il numero da riportare è quello a 20 seed. La perdita con la DP resta
-molto più bassa che con 3 client (0,041 contro 0,183 con FedAvg); il motivo (media su 32 rumori
-invece di 3) è coerente con il meccanismo ma non misurato.
+**μ = 0,01 a 20 seed (coda v3t, Mac principale, 6–7 novembre).** FedProx μ = 0,01 con la DP sugli
+stessi 10 seed nuovi della coda v3r (FedAvg di quella coda come riferimento), per non estendere solo
+la cella che a 10 seed mostrava una tendenza.
+
+| Serie | Seed | FedAvg μ=0 | FedProx μ=0,01 | Rapporto delle medie | p (permutazione, due code) | Rapporto mediano per seed | Seed con FedProx migliore |
+|---|---|---|---|---|---|---|---|
+| v3m (42–3141) | 10 | 0,032 | 0,033 | 1,04 | 0,89 | 0,89 | 6/10 |
+| v3t (7–9973) | 10 | 0,050 | 0,014 | 0,28 | 0,007 | 0,30 | 8/10 |
+| **Insieme** | **20** | **0,041** | **0,024** | **0,57** | **0,036** | **0,60** | **14/20** |
+
+Test appaiato a una coda, 20 seed: p = 0,024.
+
+Lettura (aggiornata il 2026-11-07): con 20 seed, a 32 client e con la DP, FedProx ha una perdita più
+bassa di FedAvg con entrambi i μ: 0,57 (p = 0,036, 14/20) con μ = 0,01 e 0,43 (p = 0,001, 16/20) con
+μ = 0,1. Il vantaggio misurato con 3 client si ritrova quindi anche con 32, più netto con μ = 0,1.
+Le due serie da 10 seed sono molto diverse per entrambi i μ (μ = 0,01: 1,04 e 0,28; μ = 0,1: 0,69 e
+0,26): FedAvg con la DP varia molto fra seed (0,010–0,127 nella seconda serie) e nella seconda serie
+diversi seed hanno una perdita di FedAvg alta, dove FedProx guadagna molto. I numeri da riportare sono
+quelli a 20 seed, con la nota che l'effetto dipende dai seed. La perdita con la DP resta molto più
+bassa che con 3 client (0,041 contro 0,183 con FedAvg); il motivo (media su 32 rumori invece di 3) è
+coerente con il meccanismo ma non misurato.
 
 ### 2.3 ACN 4 feature (stesse feature di Scotland) — consolidato
 
@@ -584,7 +611,7 @@ senza DP FedAvg è comunque il migliore, e con la DP più round peggiorano.
 - Il vantaggio di FedProx non si conserva a 30 round (rapporti 0,74–0,80, p > 0,3): con la DP
   più round accumulano più rumore e la variabilità fra seed cresce.
 - Il vantaggio di FedProx con la DP resta a tutte le norme di clipping con rumore uguale (rapporto mediano 0,35–0,80, 2.4d). La dipendenza da C vista con rumore proporzionale a C (tabella A di 2.4d) viene in gran parte dal rumore.
-- Con 32 client invece di 3 (Scotland, 2.2b) la DP costa molto meno (0,041 contro 0,183 con FedAvg). Con 20 seed il vantaggio di FedProx si ritrova con μ = 0,1 (0,43, p = 0,001, 16/20 seed), non con μ = 0,01 (1,04, p = 0,89, 10 seed). Aggiornato il 2026-11-06: con 10 seed μ = 0,1 dava 0,69 (p = 0,21).
+- Con 32 client invece di 3 (Scotland, 2.2b) la DP costa molto meno (0,041 contro 0,183 con FedAvg). Con 20 seed il vantaggio di FedProx si ritrova con entrambi i μ: 0,57 (p = 0,036, 14/20) con μ = 0,01 e 0,43 (p = 0,001, 16/20) con μ = 0,1. L'effetto dipende molto dai seed: le due serie da 10 danno 1,04 e 0,28 (μ = 0,01), 0,69 e 0,26 (μ = 0,1). Aggiornato il 2026-11-07.
 
 ---
 
@@ -735,6 +762,7 @@ Approfondimenti (non necessari per le RQ, decisi il 2026-10-29):
 | Session DP σ = 5 sul canary persona, altri 5 seed (test formale con 10 seed) | Mac principale | fatto (3.3b) |
 | RQ2 su Scotland a 32 council (FedAvg/FedProx, con e senza DP, 10 seed, solo utilità) | Mac principale | fatto (2.2b) |
 | Scotland a 32 council, μ = 0 e μ = 0,1 con la DP, 10 seed nuovi (coda v3r, 20 seed in tutto) | Mac principale | fatto (2.2b): 0,43, p = 0,001 |
+| Scotland a 32 council, μ = 0,01 con la DP, stessi 10 seed nuovi (coda v3t, 20 seed in tutto) | Mac principale | fatto (2.2b): 0,57, p = 0,036 |
 | Curva ε: session DP σ = 1, 2, 10 e subject DP σ = 2 sul canary persona (5 seed) | Mac principale | fatto (3.3, 3.3b) |
 | Rerun del canary persona a spostamento 0 sui seed 1618–3141 (`coda_v3q_windows_rerun.csv`) | Windows | non necessario: il codice della coda v3h aveva già il rumore indipendente (stessa impronta di `canary_persona.py`); fermato il 2026-11-01 |
 | Avversario B su Scotland (regime naturale, 15 run) e sul canary per sessione (30 run) | Mac di Domenico | fatto (1.1b) |

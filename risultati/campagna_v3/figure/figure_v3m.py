@@ -179,12 +179,15 @@ salva(fig, "fig_sessione_dp")
 # ------------------------------------------------------------------ fig_scozia32
 fig, a = plt.subplots(figsize=(6.4, 3.6))
 gruppi = [("Scotland, 3 client", "v3_sc3_eps64", [0.87, 0.49], ["p = 0,56", "p = 0,015"]),
-          ("Scotland, 32 client", "v3m_sc32_eps64", [1.04, 0.43], ["p = 0,89\n10 seed", "p = 0,001\n20 seed"])]
+          ("Scotland, 32 client", "v3m_sc32_eps64", [0.57, 0.43], ["p = 0,036\n20 seed", "p = 0,001\n20 seed"])]
 # 2026-11-06: per Scotland 32 con mu = 0 e mu = 0,1 si aggiungono i 10 seed della coda v3r
 def per_seed_32(cella):
     s = per_seed(cella)
-    if cella.startswith("v3m_sc32_eps64_mu") and cella.split("_mu")[1] in ("0", "0.1"):
+    mu = cella.split("_mu")[1] if cella.startswith("v3m_sc32_eps64_mu") else None
+    if mu in ("0", "0.1"):          # 2026-11-06: coda v3r
         s = pd.concat([s, per_seed(cella.replace("v3m_", "v3r_"))])
+    elif mu == "0.01":              # 2026-11-07: coda v3t
+        s = pd.concat([s, per_seed(cella.replace("v3m_", "v3t_"))])
     return s
 cols = [(BLU, "", "μ = 0,01"), (ARANCIO, "///", "μ = 0,1")]
 rng = np.random.default_rng(0)
